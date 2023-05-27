@@ -1,5 +1,6 @@
 import { Controller, Get } from '@nestjs/common';
 import { AppService } from './app.service';
+import { ProductCodeUpdateStockDto } from './product/dto/product.code.dto';
 
 @Controller()
 export class AppController {
@@ -8,5 +9,10 @@ export class AppController {
     @Get()
     getHello(): string {
         return this.appService.getHello();
+    }
+
+    @Get('update-count')
+    updateCount(): Promise<ProductCodeUpdateStockDto[]> {
+        return this.appService.checkGoodCount();
     }
 }

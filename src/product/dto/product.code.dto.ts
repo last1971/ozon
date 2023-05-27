@@ -9,3 +9,12 @@ export class ProductCodeDto {
 export class ProductCodeStockDto extends ProductCodeDto {
     stock: number;
 }
+
+export class ProductCodeUpdateStockDto extends ProductCodeDto {
+    updated: boolean;
+    errors: string[];
+}
+
+export class ProductCodeUpdateStockResultDto {
+    result: ProductCodeUpdateStockDto[];
+}
