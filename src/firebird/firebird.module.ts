@@ -1,6 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import Firebird from 'node-firebird';
+import { Options, SupportedCharacterSet } from 'node-firebird';
 import { FirebirdDatabase } from 'ts-firebird';
 
 export const FIREBIRD = 'FIREBIRD';
@@ -12,13 +12,13 @@ export const FIREBIRD = 'FIREBIRD';
             useFactory: async (configService: ConfigService) => {
                 const host = configService.get<string>('FB_HOST');
                 if (!host) return null;
-                const options: Firebird.Options = {
+                const options: Options = {
                     host,
-                    port: 3050,
+                    port: configService.get<number>('FB_PORT', 3050),
                     database: configService.get<string>('FB_BASE', '/var/lib/firebird/2.5/data/base.fdb'),
-                    user: 'SYSDBA',
-                    password: '641767',
-                    encoding: 'UTF8',
+                    user: configService.get<string>('FB_USER', 'SYSDBA'),
+                    password: configService.get<string>('FB_PASS', '123456'),
+                    encoding: configService.get<SupportedCharacterSet>('FB_ENCD', 'UTF8'),
                 };
                 return FirebirdDatabase.buildAndAttach(options);
             },
