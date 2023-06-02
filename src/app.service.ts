@@ -5,10 +5,18 @@ import { GOOD_SERVICE, IGood } from './interfaces/IGood';
 import { StockType } from './product/stock.type';
 import { ProductCodeStockDto, ProductCodeUpdateStockDto } from './product/dto/product.code.dto';
 import { goodCode, goodQuantityCoeff, productQuantity } from './helpers';
+import { IInvoice, INVOICE_SERVICE } from './interfaces/IInvoice';
+import { ConfigService } from '@nestjs/config';
+import { DateTime } from 'luxon';
 
 @Injectable()
 export class AppService {
-    constructor(private productService: ProductService, @Inject(GOOD_SERVICE) private goodService: IGood) {}
+    constructor(
+        private productService: ProductService,
+        @Inject(GOOD_SERVICE) private goodService: IGood,
+        @Inject(INVOICE_SERVICE) private invoiceService: IInvoice,
+        private configService: ConfigService,
+    ) {}
     getHello(): string {
         return 'Hello World!';
     }
@@ -39,5 +47,28 @@ export class AppService {
             response = response.concat(await this.checkGoodCount(products.result.last_id));
         }
         return response;
+    }
+
+    async checkNewOrders(): Promise<void> {
+        const postings = await this.productService.orderList({
+            since: DateTime.now().startOf('day').toJSDate(),
+            to: DateTime.now().endOf('day').toJSDate(),
+            status: 'awaiting_packaging', // 'awaiting_deliver',
+        });
+        for (const posting of postings.result.postings) {
+            if (!(await this.invoiceService.isExists(posting.posting_number))) {
+                const buyerId = this.configService.get<number>('BUYER_ID', 24416);
+                await this.invoiceService.create({
+                    buyerId,
+                    date: new Date(posting.in_process_at),
+                    remark: posting.posting_number,
+                    invoiceLines: posting.products.map((product) => ({
+                        goodCode: product.offer_id,
+                        quantity: product.quantity,
+                        price: product.price,
+                    })),
+                });
+            }
+        }
     }
 }
