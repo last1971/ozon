@@ -1,20 +1,21 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
-import { ConfigService } from '@nestjs/config';
 import { catchError, firstValueFrom, map } from 'rxjs';
 import { AxiosError } from 'axios';
+import { VaultService } from '../vault/vault.service';
 
 @Injectable()
 export class OzonApiService {
     private logger = new Logger(OzonApiService.name);
-    constructor(private httpService: HttpService, private configService: ConfigService) {}
-    method(name: string, options: any): Promise<any> {
+    constructor(private httpService: HttpService, private vaultService: VaultService) {}
+    async method(name: string, options: any): Promise<any> {
+        const ozon = await this.vaultService.get('ozon');
         return firstValueFrom(
             this.httpService
-                .post(this.configService.get<string>('OZON_URL', 'https://api-seller.ozon.ru') + name, options, {
+                .post(ozon.URL + name, options, {
                     headers: {
-                        'Client-Id': this.configService.get<string>('CLIENT-ID', ''),
-                        'Api-Key': this.configService.get<string>('API-KEY', ''),
+                        'Client-Id': ozon.CLIENT_ID as string,
+                        'Api-Key': ozon.API_KEY as string,
                     },
                 })
                 .pipe(map((res) => res.data))

@@ -5,6 +5,7 @@ import { INVOICE_SERVICE } from './interfaces/IInvoice';
 import { ConfigService } from '@nestjs/config';
 import { ProductService } from './product/product.service';
 import { StockType } from './product/stock.type';
+import { VaultService } from './vault/vault.service';
 
 describe('Test App', () => {
     let service: AppService;
@@ -33,6 +34,7 @@ describe('Test App', () => {
                     },
                 },
                 { provide: ConfigService, useValue: { get: () => 24416 } },
+                { provide: VaultService, useValue: {} },
                 {
                     provide: ProductService,
                     useValue: {

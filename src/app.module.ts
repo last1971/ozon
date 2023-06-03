@@ -14,6 +14,7 @@ import { FIREBIRD, FirebirdModule } from './firebird/firebird.module';
 import { FirebirdDatabase } from 'ts-firebird';
 import { INVOICE_SERVICE } from './interfaces/IInvoice';
 import { Trade2006InvoiceService } from './trade2006.invoice/trade2006.invoice.service';
+import { VaultModule } from './vault/vault.module';
 
 @Module({
     imports: [
@@ -23,6 +24,7 @@ import { Trade2006InvoiceService } from './trade2006.invoice/trade2006.invoice.s
         ProductModule,
         ElectronicaApiModule,
         FirebirdModule,
+        VaultModule,
     ],
     controllers: [AppController],
     providers: [

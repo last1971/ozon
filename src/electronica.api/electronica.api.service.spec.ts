@@ -1,9 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ElectronicaApiService } from './electronica.api.service';
 import { HttpModule, HttpService } from '@nestjs/axios';
-import { ConfigService } from '@nestjs/config';
 import { AxiosResponse } from 'axios';
 import { of } from 'rxjs';
+import { VaultService } from '../vault/vault.service';
 
 describe('ElectronicaApiService', () => {
     let service: ElectronicaApiService;
@@ -11,7 +11,15 @@ describe('ElectronicaApiService', () => {
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
             imports: [HttpModule],
-            providers: [ElectronicaApiService, ConfigService],
+            providers: [
+                ElectronicaApiService,
+                {
+                    provide: VaultService,
+                    useValue: {
+                        get: () => ({ URL: '', TOKEN: '' }),
+                    },
+                },
+            ],
         }).compile();
 
         service = module.get<ElectronicaApiService>(ElectronicaApiService);

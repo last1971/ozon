@@ -1,20 +1,20 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { OzonApiService } from './ozon.api.service';
 import { HttpService } from '@nestjs/axios';
-import { ConfigService } from '@nestjs/config';
 import { of } from 'rxjs';
+import { VaultService } from '../vault/vault.service';
 
 describe('OzonApiService', () => {
     let service: OzonApiService;
     const post = jest.fn().mockReturnValue(of('post'));
-    const get = jest.fn().mockReturnValue('get');
+    const get = jest.fn().mockReturnValue({ URL: 'get', API_KEY: 'get', CLIENT_ID: 'get' });
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 OzonApiService,
                 { provide: HttpService, useValue: { post } },
-                { provide: ConfigService, useValue: { get } },
+                { provide: VaultService, useValue: { get } },
             ],
         }).compile();
 
@@ -27,11 +27,7 @@ describe('OzonApiService', () => {
 
     it('test method', async () => {
         await service.method('test', { option: 'option ' });
-        expect(get.mock.calls).toEqual([
-            ['OZON_URL', 'https://api-seller.ozon.ru'],
-            ['CLIENT-ID', ''],
-            ['API-KEY', ''],
-        ]);
+        expect(get.mock.calls[0]).toEqual(['ozon']);
         expect(post.mock.calls[0]).toEqual([
             'gettest',
             { option: 'option ' },
