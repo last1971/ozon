@@ -5,4 +5,5 @@ export const goodQuantityCoeff = (value: ProductCodeDto): any => {
     const coeff = value.offer_id.replace(/.*-/g, '');
     return coeff === value.offer_id ? 1 : parseInt(coeff);
 };
-export const productQuantity = (goodQuantity: number, goodCoeff: number) => Math.floor(goodQuantity / goodCoeff);
+export const productQuantity = (goodQuantity: number, goodCoeff: number) =>
+    goodQuantity ? Math.floor(goodQuantity / goodCoeff) : 0;

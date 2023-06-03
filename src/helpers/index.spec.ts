@@ -16,5 +16,7 @@ describe('Test helpers', () => {
         expect(productQuantity(11, 2)).toEqual(5);
         expect(productQuantity(11, 5)).toEqual(2);
         expect(productQuantity(11, 6)).toEqual(1);
+        expect(productQuantity(undefined, 6)).toEqual(0);
+        expect(productQuantity(NaN, 6)).toEqual(0);
     });
 });

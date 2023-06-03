@@ -47,12 +47,12 @@ describe('Test App', () => {
                                               {
                                                   offer_id: '1',
                                                   product_id: 1,
-                                                  stocks: [{ type: StockType.FBS, present: 1 }],
+                                                  stocks: [{ type: StockType.FBS, present: 1, reserved: 0 }],
                                               },
                                               {
                                                   offer_id: '2',
                                                   product_id: 2,
-                                                  stocks: [{ type: StockType.FBS, present: 0 }],
+                                                  stocks: [{ type: StockType.FBS, present: 0, reserved: 0 }],
                                               },
                                           ],
                                           last_id: '123',
