@@ -19,6 +19,7 @@ export const FIREBIRD = 'FIREBIRD';
                     user: configService.get<string>('FB_USER', 'SYSDBA'),
                     password: configService.get<string>('FB_PASS', '123456'),
                     encoding: configService.get<SupportedCharacterSet>('FB_ENCD', 'UTF8'),
+                    retryConnectionInterval: 1000, // reconnect interval in case of connection drop
                 };
                 return FirebirdDatabase.buildAndAttach(options);
             },
