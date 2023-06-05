@@ -58,7 +58,7 @@ export class AppService {
         }
         return response;
     }
-    @Cron('0 */5 8-19 * * 1-6')
+    @Cron('0 */5 * * * *')
     async checkNewOrders(): Promise<void> {
         const postings = await this.productService.orderList({
             since: DateTime.now().startOf('day').toJSDate(),
