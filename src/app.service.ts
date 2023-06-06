@@ -72,11 +72,11 @@ export class AppService {
                 await this.invoiceService.create({
                     buyerId,
                     date: new Date(posting.in_process_at),
-                    remark: posting.posting_number,
+                    remark: posting.posting_number.toString(),
                     invoiceLines: posting.products.map((product) => ({
-                        goodCode: product.offer_id,
-                        quantity: product.quantity,
-                        price: product.price,
+                        goodCode: goodCode(product),
+                        quantity: product.quantity * goodQuantityCoeff(product),
+                        price: (parseFloat(product.price) / goodQuantityCoeff(product)).toString(),
                     })),
                 });
             }
