@@ -2,7 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { OzonApiService } from './ozon.api.service';
 import { HttpService } from '@nestjs/axios';
 import { of } from 'rxjs';
-import { VaultService } from '../vault/vault.service';
+import { VaultService } from 'vault-module/lib/vault.service';
 
 describe('OzonApiService', () => {
     let service: OzonApiService;

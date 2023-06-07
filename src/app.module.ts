@@ -14,7 +14,7 @@ import { FIREBIRD, FirebirdModule } from './firebird/firebird.module';
 import { FirebirdDatabase } from 'ts-firebird';
 import { INVOICE_SERVICE } from './interfaces/IInvoice';
 import { Trade2006InvoiceService } from './trade2006.invoice/trade2006.invoice.service';
-import { VaultModule } from './vault/vault.module';
+import { VaultModule } from 'vault-module/lib/vault.module';
 
 @Module({
     imports: [
@@ -24,7 +24,23 @@ import { VaultModule } from './vault/vault.module';
         ProductModule,
         ElectronicaApiModule,
         FirebirdModule,
-        VaultModule,
+        VaultModule.forRootAsync({
+            imports: [ConfigModule],
+            useFactory: async (configService: ConfigService) => ({
+                credentials: {
+                    user: configService.get('VAULT_USER'),
+                    password: configService.get('VAULT_PASS'),
+                },
+                config: {
+                    https: true,
+                    baseUrl: configService.get('VAULT_URL'),
+                    rootPath: configService.get('VAULT_ROOT'),
+                    timeout: 2000,
+                    proxy: false,
+                },
+            }),
+            inject: [ConfigService],
+        }),
     ],
     controllers: [AppController],
     providers: [

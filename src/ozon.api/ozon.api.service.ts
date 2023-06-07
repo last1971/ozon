@@ -2,7 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { catchError, firstValueFrom, map } from 'rxjs';
 import { AxiosError } from 'axios';
-import { VaultService } from '../vault/vault.service';
+import { VaultService } from 'vault-module/lib/vault.service';
 
 @Injectable()
 export class OzonApiService {

@@ -3,7 +3,7 @@ import { ElectronicaApiService } from './electronica.api.service';
 import { HttpModule, HttpService } from '@nestjs/axios';
 import { AxiosResponse } from 'axios';
 import { of } from 'rxjs';
-import { VaultService } from '../vault/vault.service';
+import { VaultService } from 'vault-module/lib/vault.service';
 
 describe('ElectronicaApiService', () => {
     let service: ElectronicaApiService;

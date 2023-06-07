@@ -5,7 +5,7 @@ import { INVOICE_SERVICE } from './interfaces/IInvoice';
 import { ConfigService } from '@nestjs/config';
 import { ProductService } from './product/product.service';
 import { StockType } from './product/stock.type';
-import { VaultService } from './vault/vault.service';
+import { VaultService } from 'vault-module/lib/vault.service';
 
 describe('Test App', () => {
     let service: AppService;
