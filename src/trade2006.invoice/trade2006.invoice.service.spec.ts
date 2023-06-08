@@ -21,7 +21,19 @@ describe('Trade2006InvoiceService', () => {
                 {
                     provide: FIREBIRD,
                     useValue: {
-                        query: async (query: string, remark: string[]) => (remark[0] === 'test1' ? [1] : []),
+                        query: async (query: string, remark: string[]) =>
+                            remark[0] === 'test1'
+                                ? [
+                                      {
+                                          PRIM: 'test1',
+                                          POKUPATCODE: 1,
+                                          SCODE: 2,
+                                          DATA: '2020-01-01',
+                                          STATUS: 0,
+                                      },
+                                  ]
+                                : [],
+                        execute,
                         transaction: async () => ({
                             query,
                             execute,
@@ -37,6 +49,7 @@ describe('Trade2006InvoiceService', () => {
             ],
         }).compile();
 
+        execute.mockClear();
         service = module.get<Trade2006InvoiceService>(Trade2006InvoiceService);
     });
 
@@ -87,5 +100,24 @@ describe('Trade2006InvoiceService', () => {
         expect(res).toBeTruthy();
         res = await service.isExists('test2');
         expect(res).toBeFalsy();
+    });
+    it('test getByPosting', async () => {
+        const res = await service.getByPosting({
+            posting_number: 'test1',
+            status: 'string',
+            in_process_at: 'string',
+            products: [],
+        });
+        expect(res).toEqual({
+            id: 2,
+            buyerId: 1,
+            date: new Date('2020-01-01'),
+            remark: 'test1',
+            status: 0,
+        });
+    });
+    it('Test pickupInvoice', async () => {
+        await service.pickupInvoice({ id: 1, date: new Date(), remark: '1', buyerId: 1, status: 3 });
+        expect(execute.mock.calls[0]).toEqual(['UPDATE PODBPOS SET QUANSHOP = QUANSHOPNEED WHERE SCODE = ?', [1]]);
     });
 });

@@ -12,9 +12,9 @@ import { ElectronicaApiService } from './electronica.api/electronica.api.service
 import { Trade2006GoodService } from './trade2006.good/trade2006.good.service';
 import { FIREBIRD, FirebirdModule } from './firebird/firebird.module';
 import { FirebirdDatabase } from 'ts-firebird';
-import { INVOICE_SERVICE } from './interfaces/IInvoice';
-import { Trade2006InvoiceService } from './trade2006.invoice/trade2006.invoice.service';
 import { VaultModule } from 'vault-module/lib/vault.module';
+import { PostingModule } from './posting/posting.module';
+import { InvoiceModule } from './invoice/invoice.module';
 
 @Module({
     imports: [
@@ -41,6 +41,8 @@ import { VaultModule } from 'vault-module/lib/vault.module';
             }),
             inject: [ConfigService],
         }),
+        PostingModule,
+        InvoiceModule,
     ],
     controllers: [AppController],
     providers: [
@@ -52,12 +54,6 @@ import { VaultModule } from 'vault-module/lib/vault.module';
                     ? new Trade2006GoodService(dataBase)
                     : new ElectronicaGoodService(service),
             inject: [ElectronicaApiService, ConfigService, FIREBIRD],
-        },
-        {
-            provide: INVOICE_SERVICE,
-            useFactory: (configService: ConfigService, dataBase: FirebirdDatabase) =>
-                new Trade2006InvoiceService(dataBase, configService),
-            inject: [ConfigService, FIREBIRD],
         },
     ],
 })

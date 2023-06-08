@@ -1,4 +1,4 @@
-import { ProductPostingDto } from './product.posting.dto';
+import { ProductPostingDto } from '../../product/dto/product.posting.dto';
 
 export class PostingDto {
     posting_number: string;

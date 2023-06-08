@@ -2,8 +2,8 @@ import { Injectable } from '@nestjs/common';
 import { OzonApiService } from '../ozon.api/ozon.api.service';
 import { ProductListResultDto } from './dto/product.list.result.dto';
 import { ProductCodeStockDto, ProductCodeUpdateStockResultDto } from './dto/product.code.dto';
-import { PostingResultDto } from './dto/posting.result.dto';
-import { PostingsRequestDto } from './dto/postings.request.dto';
+import { PostingResultDto } from '../posting/dto/posting.result.dto';
+import { PostingsRequestDto } from '../posting/dto/postings.request.dto';
 
 @Injectable()
 export class ProductService {

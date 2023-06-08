@@ -6,17 +6,16 @@ import { StockType } from './product/stock.type';
 import { ProductCodeStockDto, ProductCodeUpdateStockDto } from './product/dto/product.code.dto';
 import { goodCode, goodQuantityCoeff, productQuantity } from './helpers';
 import { IInvoice, INVOICE_SERVICE } from './interfaces/IInvoice';
-import { ConfigService } from '@nestjs/config';
-import { DateTime } from 'luxon';
+import { PostingService } from './posting/posting.service';
 
 @Injectable()
 export class AppService {
     private logger = new Logger(AppService.name);
     constructor(
         private productService: ProductService,
+        private postingService: PostingService,
         @Inject(GOOD_SERVICE) private goodService: IGood,
         @Inject(INVOICE_SERVICE) private invoiceService: IInvoice,
-        private configService: ConfigService,
     ) {}
     getHello(): string {
         return 'Hello World!';
@@ -48,7 +47,9 @@ export class AppService {
         let response = result.result;
         if (response.length > 0) {
             this.logger.log(
-                `Try update quantity ${response.length} goods. ${response.filter((item) => !item.updated)} has errors`,
+                `Update quantity for ${response.length} goods with ${
+                    response.filter((item) => !item.updated).length
+                } errors.`,
             );
         }
         if (products.result.last_id !== '') {
@@ -60,26 +61,19 @@ export class AppService {
     }
     @Cron('0 */5 * * * *')
     async checkNewOrders(): Promise<void> {
-        const postings = await this.productService.orderList({
-            since: DateTime.now().startOf('day').toJSDate(),
-            to: DateTime.now().endOf('day').toJSDate(),
-            status: 'awaiting_packaging', // 'awaiting_deliver',
-        });
-        for (const posting of postings.result.postings) {
+        const packagingPostings = await this.postingService.listAwaitingPackaging();
+        for (const posting of packagingPostings) {
             if (!(await this.invoiceService.isExists(posting.posting_number))) {
-                this.logger.log(`Create order ${posting.posting_number} with ${posting.products.length} lines`);
-                const buyerId = this.configService.get<number>('BUYER_ID', 24416);
-                await this.invoiceService.create({
-                    buyerId,
-                    date: new Date(posting.in_process_at),
-                    remark: posting.posting_number.toString(),
-                    invoiceLines: posting.products.map((product) => ({
-                        goodCode: goodCode(product),
-                        quantity: product.quantity * goodQuantityCoeff(product),
-                        price: (parseFloat(product.price) / goodQuantityCoeff(product)).toString(),
-                    })),
-                });
+                await this.postingService.createInvoice(posting);
             }
+        }
+        const deliveringPostings = await this.postingService.listAwaitingDelivering();
+        for (const posting of deliveringPostings) {
+            let invoice = await this.invoiceService.getByPosting(posting);
+            if (!invoice) {
+                invoice = await this.postingService.createInvoice(posting);
+            }
+            await this.invoiceService.pickupInvoice(invoice);
         }
     }
 }
