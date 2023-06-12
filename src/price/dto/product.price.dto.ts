@@ -13,4 +13,5 @@ export class ProductPriceDto {
         old_price: number;
     };
     volume_weight: number;
+    product_id: number;
 }

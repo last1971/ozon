@@ -6,16 +6,12 @@ import { OzonApiModule } from './ozon.api/ozon.api.module';
 import { ProductModule } from './product/product.module';
 import { ElectronicaApiModule } from './electronica.api/electronica.api.module';
 import { ScheduleModule } from '@nestjs/schedule';
-import { GOOD_SERVICE } from './interfaces/IGood';
-import { ElectronicaGoodService } from './electronica.good/electronica.good.service';
-import { ElectronicaApiService } from './electronica.api/electronica.api.service';
-import { Trade2006GoodService } from './trade2006.good/trade2006.good.service';
-import { FIREBIRD, FirebirdModule } from './firebird/firebird.module';
-import { FirebirdDatabase } from 'ts-firebird';
+import { FirebirdModule } from './firebird/firebird.module';
 import { VaultModule } from 'vault-module/lib/vault.module';
 import { PostingModule } from './posting/posting.module';
 import { InvoiceModule } from './invoice/invoice.module';
 import { PriceModule } from './price/price.module';
+import { GoodModule } from './good/good.module';
 
 @Module({
     imports: [
@@ -45,18 +41,9 @@ import { PriceModule } from './price/price.module';
         PostingModule,
         InvoiceModule,
         PriceModule,
+        GoodModule,
     ],
     controllers: [AppController],
-    providers: [
-        AppService,
-        {
-            provide: GOOD_SERVICE,
-            useFactory: (service: ElectronicaApiService, configService: ConfigService, dataBase: FirebirdDatabase) =>
-                configService.get<string>('GOOD_PROVIDER', 'Trade2006') === 'Trade2006'
-                    ? new Trade2006GoodService(dataBase)
-                    : new ElectronicaGoodService(service),
-            inject: [ElectronicaApiService, ConfigService, FIREBIRD],
-        },
-    ],
+    providers: [AppService],
 })
 export class AppModule {}

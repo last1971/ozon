@@ -35,30 +35,55 @@ export type ProductVisibilityInterface = {
 export class ProductVisibilityClass implements ProductVisibilityInterface {
     @ApiProperty({ description: 'все товары, кроме архивных.' })
     ALL: string;
+    @ApiProperty({ description: 'все товары, кроме архивных.' })
     ARCHIVED: string;
+    @ApiProperty({ description: 'все товары, кроме архивных.' })
     BANNED: string;
+    @ApiProperty({ description: 'все товары, кроме архивных.' })
     BARCODE_EXISTS: string;
+    @ApiProperty({ description: 'все товары, кроме архивных.' })
     CRITICALLY_OVERPRICED: string;
+    @ApiProperty({ description: 'все товары, кроме архивных.' })
     DISABLED: string;
+    @ApiProperty({ description: 'все товары, кроме архивных.' })
     EMPTY_BARCODE: string;
+    @ApiProperty({ description: 'все товары, кроме архивных.' })
     EMPTY_STOCK: string;
+    @ApiProperty({ description: 'все товары, кроме архивных.' })
     IMAGE_ABSENT: string;
+    @ApiProperty({ description: 'товары, которые не видны покупателям.' })
     INVISIBLE: string;
+    @ApiProperty({ description: 'все товары, кроме архивных.' })
     IN_SALE: string;
+    @ApiProperty({ description: 'все товары, кроме архивных.' })
     MODERATED: string;
+    @ApiProperty({ description: 'все товары, кроме архивных.' })
     MODERATION_BLOCK: string;
+    @ApiProperty({ description: 'все товары, кроме архивных.' })
     NOT_MODERATED: string;
+    @ApiProperty({ description: 'все товары, кроме архивных.' })
     OVERPRICED: string;
+    @ApiProperty({ description: 'все товары, кроме архивных.' })
     OVERPRICED_WITH_STOCK: string;
+    @ApiProperty({ description: 'все товары, кроме архивных.' })
     PARTIAL_APPROVED: string;
+    @ApiProperty({ description: 'все товары, кроме архивных.' })
     QUARANTINE: string;
+    @ApiProperty({ description: 'все товары, кроме архивных.' })
     READY_TO_SUPPLY: string;
+    @ApiProperty({ description: 'все товары, кроме архивных.' })
     REMOVED_FROM_SALE: string;
+    @ApiProperty({ description: 'все товары, кроме архивных.' })
     STATE_FAILED: string;
+    @ApiProperty({ description: 'все товары, кроме архивных.' })
     TO_SUPPLY: string;
+    @ApiProperty({ description: 'все товары, кроме архивных.' })
     VALIDATION_STATE_FAIL: string;
+    @ApiProperty({ description: 'все товары, кроме архивных.' })
     VALIDATION_STATE_PENDING: string;
+    @ApiProperty({ description: 'все товары, кроме архивных.' })
     VALIDATION_STATE_SUCCESS: string;
+    @ApiProperty({ description: 'товары, которые видны покупателям.' })
     VISIBLE: string;
 }
 export const ProductVisibilityValues: ProductVisibilityInterface = {

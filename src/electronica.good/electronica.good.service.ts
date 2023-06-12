@@ -1,7 +1,8 @@
 import { Injectable } from '@nestjs/common';
 import { IGood } from '../interfaces/IGood';
-import { GoodDto } from '../good/good.dto';
+import { GoodDto } from '../good/dto/good.dto';
 import { ElectronicaApiService } from '../electronica.api/electronica.api.service';
+import { GoodPriceDto } from '../good/dto/good.price.dto';
 
 @Injectable()
 export class ElectronicaGoodService implements IGood {
@@ -18,5 +19,8 @@ export class ElectronicaGoodService implements IGood {
         return response.data.map(
             (good: any): GoodDto => ({ code: good.GOODSCODE, quantity: good.retailStore?.QUAN || 0 }),
         );
+    }
+    async prices(codes: string[]): Promise<GoodPriceDto[]> {
+        return [];
     }
 }

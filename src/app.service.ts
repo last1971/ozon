@@ -20,7 +20,7 @@ export class AppService {
     getHello(): string {
         return 'Hello World!';
     }
-    @Cron('0 0 10-19 * * 1-6')
+    //@Cron('0 0 10-19 * * 1-6')
     async checkGoodCount(last_id = ''): Promise<ProductCodeUpdateStockDto[]> {
         const products = await this.productService.listWithCount(last_id);
         const goodCodes = products.result.items.map((item) => goodCode(item));
@@ -59,7 +59,7 @@ export class AppService {
         }
         return response;
     }
-    @Cron('0 */5 * * * *')
+    //@Cron('0 */5 * * * *')
     async checkNewOrders(): Promise<void> {
         const packagingPostings = await this.postingService.listAwaitingPackaging();
         for (const posting of packagingPostings) {

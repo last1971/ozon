@@ -6,6 +6,7 @@ import { PostingResultDto } from '../posting/dto/posting.result.dto';
 import { PostingsRequestDto } from '../posting/dto/postings.request.dto';
 import { ProductPriceListDto } from '../price/dto/product.price.list.dto';
 import { PriceRequestDto } from '../price/dto/price.request.dto';
+import { ProductVisibility } from './product.visibility';
 
 @Injectable()
 export class ProductService {
@@ -23,7 +24,15 @@ export class ProductService {
         return this.ozonApiService.method('/v3/posting/fbs/list', { filter, limit });
     }
     async getPrices(priceRequest: PriceRequestDto): Promise<ProductPriceListDto> {
-        const res = await this.ozonApiService.method('/v4/product/info/prices', priceRequest);
+        const res = await this.ozonApiService.method('/v4/product/info/prices', {
+            filter: {
+                product_id: priceRequest.product_id || null,
+                offer_id: priceRequest.offer_id || null,
+                visibility: priceRequest.visibility || ProductVisibility.ALL,
+            },
+            limit: priceRequest.limit,
+            last_id: priceRequest.last_id || null,
+        });
         return res.result;
     }
 }
