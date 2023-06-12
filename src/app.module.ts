@@ -15,6 +15,7 @@ import { FirebirdDatabase } from 'ts-firebird';
 import { VaultModule } from 'vault-module/lib/vault.module';
 import { PostingModule } from './posting/posting.module';
 import { InvoiceModule } from './invoice/invoice.module';
+import { PriceModule } from './price/price.module';
 
 @Module({
     imports: [
@@ -43,6 +44,7 @@ import { InvoiceModule } from './invoice/invoice.module';
         }),
         PostingModule,
         InvoiceModule,
+        PriceModule,
     ],
     controllers: [AppController],
     providers: [

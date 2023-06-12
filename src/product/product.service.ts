@@ -4,6 +4,8 @@ import { ProductListResultDto } from './dto/product.list.result.dto';
 import { ProductCodeStockDto, ProductCodeUpdateStockResultDto } from './dto/product.code.dto';
 import { PostingResultDto } from '../posting/dto/posting.result.dto';
 import { PostingsRequestDto } from '../posting/dto/postings.request.dto';
+import { ProductPriceListDto } from '../price/dto/product.price.list.dto';
+import { PriceRequestDto } from '../price/dto/price.request.dto';
 
 @Injectable()
 export class ProductService {
@@ -19,5 +21,9 @@ export class ProductService {
     }
     async orderList(filter: PostingsRequestDto, limit = 100): Promise<PostingResultDto> {
         return this.ozonApiService.method('/v3/posting/fbs/list', { filter, limit });
+    }
+    async getPrices(priceRequest: PriceRequestDto): Promise<ProductPriceListDto> {
+        const res = await this.ozonApiService.method('/v4/product/info/prices', priceRequest);
+        return res.result;
     }
 }
