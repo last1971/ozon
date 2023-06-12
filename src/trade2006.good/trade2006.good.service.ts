@@ -49,7 +49,7 @@ export class Trade2006GoodService implements IGood {
                 perc_nor: good.PERC_NOR,
                 perc_max: good.PERC_MAX,
                 perc_adv: good.PREC_ADV,
-                price: good.PRICE,
+                price: good.PRIC,
             }),
         );
     }
