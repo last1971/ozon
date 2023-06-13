@@ -5,6 +5,8 @@ import { PricePresetDto } from './dto/price.preset.dto';
 import { ConfigService } from '@nestjs/config';
 import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
 import { PriceResponseDto } from './dto/price.response.dto';
+import { goodCode, goodQuantityCoeff } from '../helpers';
+import { GoodPercentDto } from '../good/dto/good.percent.dto';
 
 @Injectable()
 export class PriceService {
@@ -27,25 +29,37 @@ export class PriceService {
 
     async index(request: PriceRequestDto): Promise<PriceResponseDto> {
         const products = await this.product.getPrices(request);
-        const goods = await this.goodService.prices(products.items.map((item) => item.offer_id));
+        const codes = products.items.map((item) => goodCode(item));
+        const goods = await this.goodService.prices(codes);
+        const percents = await this.goodService.getPerc(codes);
         return {
             last_id: products.last_id,
             data: products.items.map((item) => {
-                const good = goods.find((g) => g.code.toString() === item.offer_id);
+                const good = goods.find((g) => g.code.toString() === goodCode(item));
+                const percent: GoodPercentDto = percents.find(
+                    (p) => p.offer_id.toString() === goodCode(item) && p.pieces === goodQuantityCoeff(item),
+                ) || {
+                    offer_id: item.offer_id,
+                    pieces: goodQuantityCoeff(item),
+                    adv_perc: 0,
+                    old_perc: this.configService.get<number>('PERC_MAX', 50),
+                    perc: this.configService.get<number>('PERC_NOR', 25),
+                    min_perc: this.configService.get<number>('PERC_MIN', 15),
+                };
                 return {
                     product_id: item.product_id,
                     offer_id: item.offer_id,
                     name: good.name,
                     marketing_price: item.price.marketing_price,
                     marketing_seller_price: item.price.marketing_seller_price,
-                    incoming_price: good.price,
+                    incoming_price: good.price * goodQuantityCoeff(item),
                     min_price: item.price.min_price,
                     price: item.price.price,
                     old_price: item.price.old_price,
-                    min_perc: good.perc_min,
-                    perc: good.perc_nor,
-                    old_perc: good.perc_max,
-                    adv_perc: good.perc_adv,
+                    min_perc: percent.min_perc,
+                    perc: percent.perc,
+                    old_perc: percent.old_perc,
+                    adv_perc: percent.adv_perc,
                     sales_percent: item.commissions.sales_percent + 1,
                     fbs_direct_flow_trans_max_amount: item.commissions.fbs_direct_flow_trans_max_amount,
                 };
