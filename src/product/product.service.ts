@@ -39,6 +39,6 @@ export class ProductService {
             last_id: priceRequest.last_id || null,
         };
         const res = await this.ozonApiService.method('/v4/product/info/prices', options);
-        return res.result;
+        return res?.result || { items: [], last_id: '' };
     }
 }

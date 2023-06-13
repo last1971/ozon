@@ -1,6 +1,7 @@
 import { StockPresentDto } from './stock.present.dto';
+import { IOfferIdable } from '../../interfaces/IOfferIdable';
 
-export class ProductCodeDto {
+export class ProductCodeDto implements IOfferIdable {
     offer_id: string;
     product_id: number;
     stocks?: StockPresentDto[];

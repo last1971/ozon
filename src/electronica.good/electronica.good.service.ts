@@ -3,6 +3,7 @@ import { IGood } from '../interfaces/IGood';
 import { GoodDto } from '../good/dto/good.dto';
 import { ElectronicaApiService } from '../electronica.api/electronica.api.service';
 import { GoodPriceDto } from '../good/dto/good.price.dto';
+import { GoodPercentDto } from '../good/dto/good.percent.dto';
 
 @Injectable()
 export class ElectronicaGoodService implements IGood {
@@ -23,4 +24,8 @@ export class ElectronicaGoodService implements IGood {
     async prices(codes: string[]): Promise<GoodPriceDto[]> {
         return [];
     }
+    async getPerc(codes: string[]): Promise<GoodPercentDto[]> {
+        return [];
+    }
+    async setPercents(perc: GoodPercentDto): Promise<void> {}
 }

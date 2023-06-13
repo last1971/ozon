@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { FirebirdDatabase } from 'ts-firebird';
 import { GOOD_SERVICE } from '../interfaces/IGood';
 import { Trade2006GoodService } from '../trade2006.good/trade2006.good.service';
+import { GoodController } from './good.controller';
 
 @Module({
     imports: [FirebirdModule],
@@ -16,5 +17,6 @@ import { Trade2006GoodService } from '../trade2006.good/trade2006.good.service';
         },
     ],
     exports: [GOOD_SERVICE],
+    controllers: [GoodController],
 })
 export class GoodModule {}
