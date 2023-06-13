@@ -12,10 +12,13 @@ import { PostingModule } from './posting/posting.module';
 import { InvoiceModule } from './invoice/invoice.module';
 import { PriceModule } from './price/price.module';
 import { GoodModule } from './good/good.module';
+import { ServeStaticModule } from '@nestjs/serve-static';
+import { join } from 'path';
 
 @Module({
     imports: [
         ConfigModule.forRoot({ isGlobal: true }),
+        ServeStaticModule.forRoot({ rootPath: join(__dirname, '..', 'public') }),
         ScheduleModule.forRoot(),
         OzonApiModule,
         ProductModule,
