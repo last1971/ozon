@@ -1,12 +1,22 @@
 <template>
-  <header :data-changes="dataSource.changes">
-    <nav>
-      <RouterLink to="/">Home</RouterLink>
-      <RouterLink to="/form1">Form1</RouterLink>
-    </nav>
-  </header>
+  <template v-if="dataSource.initialized.value === true">
+    <header :data-changes="dataSource.changes.value">
+      <nav>
+        <RouterLink to="/">Home</RouterLink>
+        <RouterLink to="/form1">Form1</RouterLink>
+      </nav>
+    </header>
 
-  <RouterView :changes="dataSource.changes" />
+    <RouterView :key="dataSource.changes.value" />
+  </template>
+  <aside v-else-if="dataSource.initialized.value === false">
+    Ошибка инициализации приложения:
+    <div>{{dataSource.initializationError}}</div>
+    Обратитесь к администратору.
+  </aside>
+  <aside v-else>
+    Инициализация приложения...
+  </aside>
 </template>
 
 <script setup lang="ts">
@@ -15,6 +25,19 @@ import { dataSource } from "@/data/data";
 </script>
 
 <style scoped lang="scss">
+aside{
+  width: 100%;
+  height: 100vw;
+  display: flex;
+  flex-flow: column;
+  justify-content: center;
+  align-items: center;
+  div {
+    margin: 20px;
+    padding: 20px;
+    color: var(--error)
+  }
+}
 header {
   line-height: 1.5;
   max-height: 100vh;
