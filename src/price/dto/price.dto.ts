@@ -31,4 +31,6 @@ export class PriceDto {
     sales_percent: number;
     @ApiProperty({ description: 'Расходы на доставку покупателю' })
     fbs_direct_flow_trans_max_amount: number;
+    @ApiProperty({ description: 'автоприменение акций у товара' })
+    auto_action_enabled: boolean;
 }

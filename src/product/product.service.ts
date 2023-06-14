@@ -8,6 +8,7 @@ import { ProductPriceListDto } from '../price/dto/product.price.list.dto';
 import { PriceRequestDto } from '../price/dto/price.request.dto';
 import { ProductVisibility } from './product.visibility';
 import { isArray } from 'lodash';
+import { UpdatePricesDto } from '../price/dto/update.price.dto';
 
 @Injectable()
 export class ProductService {
@@ -40,5 +41,8 @@ export class ProductService {
         };
         const res = await this.ozonApiService.method('/v4/product/info/prices', options);
         return res?.result || { items: [], last_id: '' };
+    }
+    async setPrice(prices: UpdatePricesDto): Promise<any> {
+        return this.ozonApiService.method('/v1/product/import/prices', prices);
     }
 }

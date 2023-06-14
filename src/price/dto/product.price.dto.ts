@@ -11,6 +11,7 @@ export class ProductPriceDto {
         min_price: number;
         price: number;
         old_price: number;
+        auto_action_enabled: boolean;
     };
     volume_weight: number;
     product_id: number;

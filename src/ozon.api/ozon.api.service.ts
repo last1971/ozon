@@ -21,7 +21,7 @@ export class OzonApiService {
                 .pipe(map((res) => res.data))
                 .pipe(
                     catchError(async (error: AxiosError) => {
-                        this.logger.error(error.message);
+                        this.logger.error(error.message + ' ' + error?.response?.data['message']);
                         return null;
                     }),
                 ),

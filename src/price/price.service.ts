@@ -7,6 +7,7 @@ import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
 import { PriceResponseDto } from './dto/price.response.dto';
 import { goodCode, goodQuantityCoeff } from '../helpers';
 import { GoodPercentDto } from '../good/dto/good.percent.dto';
+import { UpdatePricesDto } from './dto/update.price.dto';
 
 @Injectable()
 export class PriceService {
@@ -62,8 +63,12 @@ export class PriceService {
                     adv_perc: percent.adv_perc,
                     sales_percent: item.commissions.sales_percent + 1,
                     fbs_direct_flow_trans_max_amount: item.commissions.fbs_direct_flow_trans_max_amount,
+                    auto_action_enabled: item.price.auto_action_enabled,
                 };
             }),
         };
+    }
+    async update(prices: UpdatePricesDto): Promise<any> {
+        return this.product.setPrice(prices);
     }
 }
