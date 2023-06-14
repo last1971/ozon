@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ProductService } from './product.service';
 import { OzonApiService } from '../ozon.api/ozon.api.service';
+import { ProductVisibility } from './product.visibility';
 
 describe('ProductService', () => {
     let service: ProductService;
@@ -40,6 +41,28 @@ describe('ProductService', () => {
         expect(method.mock.calls[0]).toEqual([
             '/v3/posting/fbs/list',
             { filter: { since: date, to: date, status: 'test' }, limit: 100 },
+        ]);
+    });
+    it('test getPrices', async () => {
+        await service.getPrices({ limit: 0, visibility: ProductVisibility.ARCHIVED });
+        expect(method.mock.calls[0]).toEqual([
+            '/v4/product/info/prices',
+            {
+                filter: { product_id: null, offer_id: null, visibility: ProductVisibility.ARCHIVED },
+                limit: 0,
+                last_id: null,
+            },
+        ]);
+    });
+    it('test setPrice', async () => {
+        await service.setPrice({
+            prices: [{ min_price: 1, price: 2, old_price: 3, offer_id: '4', currency_code: 'RUB' }],
+        });
+        expect(method.mock.calls[0]).toEqual([
+            '/v1/product/import/prices',
+            {
+                prices: [{ min_price: 1, price: 2, old_price: 3, offer_id: '4', currency_code: 'RUB' }],
+            },
         ]);
     });
 });
