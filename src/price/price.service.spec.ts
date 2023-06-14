@@ -4,6 +4,7 @@ import { ProductService } from '../product/product.service';
 import { GOOD_SERVICE } from '../interfaces/IGood';
 import { ConfigService } from '@nestjs/config';
 import { ProductVisibility } from '../product/product.visibility';
+import { AutoAction } from './dto/update.price.dto';
 
 describe('PriceService', () => {
     let service: PriceService;
@@ -39,6 +40,14 @@ describe('PriceService', () => {
                                     return 2;
                                 case 'PERC_MAX':
                                     return 3;
+                                case 'PERC_MIL':
+                                    return 5.5;
+                                case 'PERC_EKV':
+                                    return 1.5;
+                                case 'SUM_OBTAIN':
+                                    return 25;
+                                case 'SUM_PACK':
+                                    return 13;
                                 default:
                                     return null;
                             }
@@ -77,5 +86,35 @@ describe('PriceService', () => {
     it('test update', async () => {
         await service.update({ prices: [] });
         expect(setPrice.mock.calls[0]).toEqual([{ prices: [] }]);
+    });
+
+    it('test calculatePrice', () => {
+        expect(
+            service.calculatePrice({
+                adv_perc: 1,
+                auto_action_enabled: false,
+                fbs_direct_flow_trans_max_amount: 20,
+                incoming_price: 100,
+                marketing_price: 0,
+                marketing_seller_price: 0,
+                min_perc: 10,
+                min_price: 0,
+                name: 'test',
+                offer_id: '123',
+                old_perc: 100,
+                old_price: 0,
+                perc: 50,
+                price: 0,
+                product_id: 0,
+                sales_percent: 20,
+            }),
+        ).toEqual({
+            auto_action_enabled: AutoAction.UNKNOWN,
+            currency_code: 'RUB',
+            min_price: 234,
+            offer_id: '123',
+            old_price: 359,
+            price: 289,
+        });
     });
 });

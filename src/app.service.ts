@@ -76,4 +76,7 @@ export class AppService {
             await this.invoiceService.pickupInvoice(invoice);
         }
     }
+    async updatePrices(): Promise<void> {
+
+    }
 }
