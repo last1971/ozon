@@ -23,11 +23,11 @@ export class AppService {
     //@Cron('0 0 10-19 * * 1-6')
     async checkGoodCount(last_id = ''): Promise<ProductCodeUpdateStockDto[]> {
         const products = await this.productService.listWithCount(last_id);
-        const goodCodes = products.result.items.map((item) => goodCode(item));
+        const goodCodes = (products.result?.items || []).map((item) => goodCode(item));
         const goods = new Map(
             (await this.goodService.in(goodCodes)).map((good) => [good.code.toString(), good.quantity]),
         );
-        const updateCount = products.result.items
+        const updateCount = (products.result?.items || [])
             .filter((item) => {
                 const stock = item.stocks.find((stock) => stock.type === StockType.FBS);
                 return (
@@ -44,7 +44,7 @@ export class AppService {
                 }),
             );
         const result = await this.productService.updateCount(updateCount);
-        let response = result.result;
+        let response = result.result || [];
         if (response.length > 0) {
             this.logger.log(
                 `Update quantity for ${response.length} goods with ${
@@ -52,7 +52,7 @@ export class AppService {
                 } errors.`,
             );
         }
-        if (products.result.last_id !== '') {
+        if (products.result && products.result.last_id !== '') {
             response = response.concat(await this.checkGoodCount(products.result.last_id));
         } else {
             this.logger.log('Goods quantity updating finished');

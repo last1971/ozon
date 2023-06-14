@@ -22,7 +22,10 @@ export class OzonApiService {
                 .pipe(
                     catchError(async (error: AxiosError) => {
                         this.logger.error(error.message + ' ' + error?.response?.data['message']);
-                        return null;
+                        return {
+                            result: null,
+                            error: { service_message: error.message, message: error?.response?.data['message'] },
+                        };
                     }),
                 ),
         );
