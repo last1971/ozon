@@ -30,6 +30,11 @@ const router = createRouter({
       redirect: '/'
     },
     {
+      path: '/api/price/preset',
+      name: 'api-price-preset',
+      redirect: '/'
+    },
+    {
       path: '/api/product/visibility',
       name: 'api-product-visibility',
       redirect: '/api/price'

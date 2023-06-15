@@ -18,7 +18,12 @@ type TDMPrice = {
   old_perc: number,
   adv_perc: number,
   sales_percent: number,
-  fbs_direct_flow_trans_max_amount: number
+  fbs_direct_flow_trans_max_amount: number,
+
+  _old_perc?: number,
+  _perc?: number,
+  _min_perc?: number,
+  _adv_perc?: number,
 }
 
 class DMPrice extends DMAbstract<TDMPrice[]> {
@@ -28,7 +33,6 @@ class DMPrice extends DMAbstract<TDMPrice[]> {
   #offer_id?: string[];
   #product_id?: number[];
   #visibility?: string;
-  isLoading: Ref<boolean>;
 
   constructor(
     onChange: () => void,
@@ -36,7 +40,6 @@ class DMPrice extends DMAbstract<TDMPrice[]> {
   ) {
     super(onChange, urlTransformer);
     this.limit = 5;
-    this.isLoading = ref(false)
   }
 
   getData(params?: {offer_id?: string[], product_id?: number[], visibility?: string}) {
@@ -49,17 +52,23 @@ class DMPrice extends DMAbstract<TDMPrice[]> {
   }
 
   async getNext() {
-    this.isLoading.value = true;
-
     const query = {offer_id: this.#offer_id, product_id: this.#product_id, visibility: this.#visibility, limit: this.limit, last_id: this.#last_id}
     const url = router.resolve({ name: 'api-price', query}).href;
     console.log(url)
     const {data, last_id} = await this.getJson(url);
+    const _data: TDMPrice[] = data.map((i: Partial<TDMPrice>)=> {
+      return {
+        ...i,
+        _adv_perc: i.adv_perc,
+        _min_perc: i.min_perc,
+        _old_perc: i.old_perc,
+        _perc: i.perc
+      } as TDMPrice;
+    });
     this.#last_id = last_id;
     this.data ??= [];
-    this.data.push(...(data as TDMPrice[]));
-
-    this.isLoading.value = false;
+    this.data.push(..._data);
+    this.changed();
   }
 }
 

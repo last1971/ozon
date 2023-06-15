@@ -4,13 +4,16 @@ import { DMVisibility } from "@/data/model/visibility";
 import type { Ref } from "vue";
 import { ref } from "vue";
 import { DMPrice } from "@/data/model/price";
+import { DMPricePreset } from "@/data/model/pricePreset";
 
 class Data {
+  dmVisibility?: DMVisibility;
+  dmPrice?: DMPrice;
+  dmPricePreset?: DMPricePreset;
+
   dev: boolean;
   initialized: Ref<boolean | undefined>;
   urlTransformer: (url: string) => string;
-  dmVisibility?: DMVisibility;
-  dmPrice?: DMPrice;
   appInitialized?: true;
   changes: Ref<number>;
   initializationError?: string;
@@ -25,8 +28,13 @@ class Data {
     this.appInitChecker();
   }
 
-  refresh = () => {
-    this.changes.value++;
+  async init() {
+    this.dmVisibility = new DMVisibility(this.refresh, this.urlTransformer);
+    await this.dmVisibility.getData();
+    this.dmPrice = new DMPrice(this.refresh, this.urlTransformer);
+    this.dmPricePreset = new DMPricePreset(this.refresh, this.urlTransformer);
+    await this.dmPricePreset.getData();
+    await this.sleep(500); // интеллектуальная пауза))
   }
 
   appInitChecker() {
@@ -48,16 +56,13 @@ class Data {
       });
   }
 
+  refresh = () => {
+    this.changes.value++;
+  }
+
+
   sleep(ms: number) {
     return new Promise( resolve => setTimeout(resolve, ms) );
-  }
-  
-  async init() {
-    this.dmVisibility = new DMVisibility(this.refresh, this.urlTransformer);
-    await this.dmVisibility.getData();
-    this.dmPrice = new DMPrice(this.refresh, this.urlTransformer);
-
-    // this.sleep(2000).then(()=>{this.dmVisibility!.data = {}})
   }
 }
 

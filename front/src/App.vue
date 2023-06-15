@@ -24,6 +24,108 @@ import { RouterLink, RouterView } from 'vue-router';
 import { dataSource } from "@/data/data";
 </script>
 
+<style id="variables">
+:root {
+  --color-text: #111;
+  --color-background: #eee;
+  --error: #f39;
+  --border-color: #ccc;
+  --grid-background: #bcd;
+  --header-background: #def;
+  --cell-background: #fff;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --color-text: #eee;
+    --color-background: #111;
+    --border-color: #333;
+    --grid-background: #123;
+    --header-background: #003;
+    --cell-background: #000;
+  }
+}
+</style>
+
+<style id="main">
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  font-weight: normal;
+}
+
+html {
+  color-scheme: dark light;
+  scroll-behavior: inherit;
+}
+
+body {
+  min-height: 100vh;
+  max-width: 100vw;
+  color: var(--color-text);
+  background: var(--color-background);
+  transition: color 0.5s, background-color 0.5s;
+  line-height: 1.6;
+  font-family: Inter, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Oxygen, Ubuntu,
+  Cantarell, 'Fira Sans', 'Droid Sans', 'Helvetica Neue', sans-serif;
+  font-size: 18px;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+main {
+  max-width: 100%;
+}
+
+#app {
+  margin: 0 auto;
+  padding: 10px;
+
+  font-weight: normal;
+}
+
+a,
+.green {
+  text-decoration: none;
+  color: hsla(160, 100%, 37%, 1);
+  transition: 0.4s;
+}
+
+@media (hover: hover) {
+  a:hover {
+    background-color: hsla(160, 100%, 37%, 0.2);
+  }
+}
+
+.grid {
+  display: grid;
+  grid-gap: 2px;
+  margin: 50px 0;
+  padding: 5px;
+  border: solid 1px var(--border-color);
+  background-color: var(--grid-background);
+  border-radius: 10px;
+
+  .g-c {
+    background-color: var(--cell-background);
+    padding: 5px;
+    display: flex;
+    flex-flow: column;
+    justify-content: start;
+    align-items: center;
+    border-radius: 4px;
+    &.g-h {
+      background-color: var(--header-background);
+      font-weight: 700;
+    }
+  }
+}
+
+</style>
+
 <style scoped lang="scss">
 aside{
   width: 100%;
@@ -50,4 +152,5 @@ header {
     }
   }
 }
+
 </style>

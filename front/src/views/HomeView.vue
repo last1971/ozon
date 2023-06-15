@@ -1,6 +1,7 @@
 <template>
   <main >
     <div>Visibility: {{dataSource.dmVisibility?.data}}</div>
+    <div>PricePreset: {{dataSource.dmPricePreset?.data}}</div>
   </main>
 </template>
 
