@@ -3,12 +3,12 @@ import { env } from "@/env";
 import { DMVisibility } from "@/data/model/visibility";
 import type { Ref } from "vue";
 import { ref } from "vue";
-import { DMPrice } from "@/data/model/price";
+import { DMPrices } from "@/data/model/price";
 import { DMPricePreset } from "@/data/model/pricePreset";
 
 class Data {
   dmVisibility?: DMVisibility;
-  dmPrice?: DMPrice;
+  dmPrice?: DMPrices;
   dmPricePreset?: DMPricePreset;
 
   dev: boolean;
@@ -31,9 +31,10 @@ class Data {
   async init() {
     this.dmVisibility = new DMVisibility(this.refresh, this.urlTransformer);
     await this.dmVisibility.getData();
-    this.dmPrice = new DMPrice(this.refresh, this.urlTransformer);
     this.dmPricePreset = new DMPricePreset(this.refresh, this.urlTransformer);
     await this.dmPricePreset.getData();
+    this.dmPrice = new DMPrices(this.refresh, this.urlTransformer, this.dmPricePreset);
+
     await this.sleep(500); // интеллектуальная пауза))
   }
 

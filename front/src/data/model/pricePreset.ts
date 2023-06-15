@@ -1,7 +1,5 @@
 import { DMAbstract } from "@/data/model/dmAbstract";
 import router from "@/router";
-import type { Ref } from "vue";
-import { ref } from "vue";
 
 type TDMPricePreset = {
   perc_min: number,

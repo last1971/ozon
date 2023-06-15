@@ -33,6 +33,8 @@ import { dataSource } from "@/data/data";
   --grid-background: #bcd;
   --header-background: #def;
   --cell-background: #fff;
+  --calculated-background: #ff02;
+  --changed-border-color: #fc96;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -109,7 +111,7 @@ a,
   background-color: var(--grid-background);
   border-radius: 10px;
 
-  .g-c {
+  .g-ce {
     background-color: var(--cell-background);
     padding: 5px;
     display: flex;
