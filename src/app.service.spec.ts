@@ -7,6 +7,7 @@ import { ProductService } from './product/product.service';
 import { StockType } from './product/stock.type';
 import { VaultService } from 'vault-module/lib/vault.service';
 import { PostingService } from './posting/posting.service';
+import { PriceService } from './price/price.service';
 
 describe('Test App', () => {
     let service: AppService;
@@ -74,6 +75,7 @@ describe('Test App', () => {
                 },
                 { provide: ConfigService, useValue: { get: () => 24416 } },
                 { provide: VaultService, useValue: {} },
+                { provide: PriceService, useValue: {} },
                 {
                     provide: ProductService,
                     useValue: {

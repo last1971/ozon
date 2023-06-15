@@ -8,5 +8,6 @@ import { GoodModule } from '../good/good.module';
     imports: [ProductModule, GoodModule],
     providers: [PriceService],
     controllers: [PriceController],
+    exports: [PriceService],
 })
 export class PriceModule {}

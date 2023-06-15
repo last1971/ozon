@@ -7,6 +7,8 @@ import { ProductCodeStockDto, ProductCodeUpdateStockDto } from './product/dto/pr
 import { goodCode, goodQuantityCoeff, productQuantity } from './helpers';
 import { IInvoice, INVOICE_SERVICE } from './interfaces/IInvoice';
 import { PostingService } from './posting/posting.service';
+import { PriceService } from "./price/price.service";
+import { ProductVisibility } from "./product/product.visibility";
 
 @Injectable()
 export class AppService {
@@ -14,6 +16,7 @@ export class AppService {
     constructor(
         private productService: ProductService,
         private postingService: PostingService,
+        private priceService: PriceService,
         @Inject(GOOD_SERVICE) private goodService: IGood,
         @Inject(INVOICE_SERVICE) private invoiceService: IInvoice,
     ) {}
@@ -76,7 +79,12 @@ export class AppService {
             await this.invoiceService.pickupInvoice(invoice);
         }
     }
-    async updatePrices(): Promise<void> {
-
+    @Cron('0 * * * * *')
+    async updatePrices(last_id = '', visibility = ProductVisibility.IN_SALE, limit = 1000): Promise<void> {
+        const pricesForObtain = await this.priceService.index({ limit, last_id, visibility });
+        const prices = pricesForObtain.data
+            .filter((price) => price.incoming_price > 1)
+            .map((price) => this.priceService.calculatePrice(price));
+        const res = await this.priceService.update({ prices });
     }
 }

@@ -9,6 +9,7 @@ import { goodCode, goodQuantityCoeff } from '../helpers';
 import { GoodPercentDto } from '../good/dto/good.percent.dto';
 import { AutoAction, UpdatePriceDto, UpdatePricesDto } from './dto/update.price.dto';
 import { PriceDto } from './dto/price.dto';
+import { toNumber } from 'lodash';
 
 @Injectable()
 export class PriceService {
@@ -75,15 +76,15 @@ export class PriceService {
     calculatePrice(price: PriceDto, auto_action = AutoAction.UNKNOWN): UpdatePriceDto {
         const calc = (percent: number, price: PriceDto): number =>
             Math.ceil(
-                (price.incoming_price * (1 + percent / 100) +
-                    this.configService.get<number>('SUM_OBTAIN', 25) +
-                    this.configService.get<number>('SUM_PACK', 13) +
-                    price.fbs_direct_flow_trans_max_amount) /
+                (toNumber(price.incoming_price) * (1 + toNumber(percent) / 100) +
+                    toNumber(this.configService.get<number>('SUM_OBTAIN', 25)) +
+                    toNumber(this.configService.get<number>('SUM_PACK', 13)) +
+                    toNumber(price.fbs_direct_flow_trans_max_amount)) /
                     (1 -
-                        (price.sales_percent +
-                            price.adv_perc +
-                            this.configService.get<number>('PERC_MIL', 5.5) +
-                            this.configService.get<number>('PERC_EKV', 1.5)) /
+                        (toNumber(price.sales_percent) +
+                            toNumber(price.adv_perc) +
+                            toNumber(this.configService.get<string>('PERC_MIL', '5.5')) +
+                            toNumber(this.configService.get<string>('PERC_EKV', '1.5'))) /
                             100),
             );
         return {
