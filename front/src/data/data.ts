@@ -33,7 +33,7 @@ class Data {
     await this.dmVisibility.getData();
     this.dmPricePreset = new DMPricePreset(this.refresh, this.urlTransformer);
     await this.dmPricePreset.getData();
-    this.dmPrice = new DMPrices(this.refresh, this.urlTransformer, this.dmPricePreset);
+    this.dmPrice = new DMPrices(this.refresh, this.urlTransformer, this.dmPricePreset, this.dmVisibility);
 
     await this.sleep(500); // интеллектуальная пауза))
   }

@@ -34,7 +34,8 @@ import { dataSource } from "@/data/data";
   --header-background: #def;
   --cell-background: #fff;
   --calculated-background: #ff02;
-  --changed-border-color: #fc96;
+  --changed-border-color: #69cc;
+  --transparent: #fff0;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -45,6 +46,7 @@ import { dataSource } from "@/data/data";
     --grid-background: #123;
     --header-background: #003;
     --cell-background: #000;
+    --changed-border-color: #fc96;
   }
 }
 </style>
@@ -100,6 +102,11 @@ a,
   a:hover {
     background-color: hsla(160, 100%, 37%, 0.2);
   }
+}
+
+input, button {
+  font-size: 20px;
+  padding: 5px;
 }
 
 .grid {
