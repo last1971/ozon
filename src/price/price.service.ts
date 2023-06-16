@@ -74,7 +74,7 @@ export class PriceService {
         return this.product.setPrice(prices);
     }
     calculatePrice(price: PriceDto, auto_action = AutoAction.UNKNOWN): UpdatePriceDto {
-        const calc = (percent: number, price: PriceDto): number =>
+        const calc = (percent: number, price: PriceDto): string =>
             Math.ceil(
                 (toNumber(price.incoming_price) * (1 + toNumber(percent) / 100) +
                     toNumber(this.configService.get<number>('SUM_OBTAIN', 25)) +
@@ -86,7 +86,7 @@ export class PriceService {
                             toNumber(this.configService.get<string>('PERC_MIL', '5.5')) +
                             toNumber(this.configService.get<string>('PERC_EKV', '1.5'))) /
                             100),
-            );
+            ).toString();
         return {
             auto_action_enabled: auto_action,
             currency_code: 'RUB',

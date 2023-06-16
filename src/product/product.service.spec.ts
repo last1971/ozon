@@ -56,12 +56,12 @@ describe('ProductService', () => {
     });
     it('test setPrice', async () => {
         await service.setPrice({
-            prices: [{ min_price: 1, price: 2, old_price: 3, offer_id: '4', currency_code: 'RUB' }],
+            prices: [{ min_price: '1', price: '2', old_price: '3', offer_id: '4', currency_code: 'RUB' }],
         });
         expect(method.mock.calls[0]).toEqual([
             '/v1/product/import/prices',
             {
-                prices: [{ min_price: 1, price: 2, old_price: 3, offer_id: '4', currency_code: 'RUB' }],
+                prices: [{ min_price: '1', price: '2', old_price: '3', offer_id: '4', currency_code: 'RUB' }],
             },
         ]);
     });

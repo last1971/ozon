@@ -43,6 +43,7 @@ export class Trade2006GoodService implements IGood {
         );
     }
     async getPerc(codes: string[]): Promise<GoodPercentDto[]> {
+        if (codes.length === 0) return [];
         const pecents = await this.db.query(
             `select * from ozon_perc where goodscode in (${'?'.repeat(codes.length).split('').join()})`,
             codes,

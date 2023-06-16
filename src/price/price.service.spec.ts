@@ -111,10 +111,10 @@ describe('PriceService', () => {
         ).toEqual({
             auto_action_enabled: AutoAction.UNKNOWN,
             currency_code: 'RUB',
-            min_price: 234,
+            min_price: '234',
             offer_id: '123',
-            old_price: 359,
-            price: 289,
+            old_price: '359',
+            price: '289',
         });
     });
 });
