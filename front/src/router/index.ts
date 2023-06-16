@@ -1,4 +1,5 @@
 import { createRouter, createWebHistory } from 'vue-router'
+// @ts-ignore
 import HomeView from '@/views/HomeView.vue'
 
 const router = createRouter({
@@ -32,6 +33,11 @@ const router = createRouter({
     {
       path: '/api/price/preset',
       name: 'api-price-preset',
+      redirect: '/'
+    },
+    {
+      path: '/api/good/percent',
+      name: 'api-good-percent',
       redirect: '/'
     },
     {

@@ -38,6 +38,7 @@ class Data {
     await this.sleep(500); // интеллектуальная пауза))
   }
 
+
   appInitChecker() {
     this.sleep(100)
       .then(()=>{

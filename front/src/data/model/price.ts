@@ -1,4 +1,4 @@
-import { DMAbstract } from "@/data/model/dmAbstract";
+import { DMAbstract, DMApiMethods } from "@/data/model/dmAbstract";
 import router from "@/router";
 import type { ComputedRef, Ref } from "vue";
 import { computed, ref } from "vue";
@@ -24,7 +24,7 @@ type TDMPrice = {
   fbs_direct_flow_trans_max_amount: number,
 }
 
-class DMPrice {
+class DMPrice extends DMApiMethods{
   data: TDMPrice;
 
   e_old_perc: ExtRef<number>;
@@ -40,6 +40,9 @@ class DMPrice {
   comCalculated: ExtComputedRef<number>;
   rekCalculated: ExtComputedRef<number>;
 
+  percentChanged: ComputedRef<boolean>;
+  priceChanged: ComputedRef<boolean>;
+
   #preset: DMPricePreset;
 
   currentCom() {
@@ -49,7 +52,8 @@ class DMPrice {
     return Math.ceil(this.data.price * this.data.adv_perc / 100);
   }
 
-  constructor(data: TDMPrice, preset: DMPricePreset) {
+  constructor(data: TDMPrice, preset: DMPricePreset, urlTransformer: (url: string) => string,) {
+    super(urlTransformer);
     this.data = stringToNumberCorrection(data, ['product_id', 'offer_id']);
     this.#preset = preset;
     this.e_adv_perc = new ExtRef<number>(upToHund, this.data.adv_perc);
@@ -99,15 +103,44 @@ class DMPrice {
     });
 
     this.calculatedPayment = this.normCalculated;
+
+    this.percentChanged = computed(()=>{
+      return this.e_adv_perc.value !== this.data.adv_perc ||
+        this.e_perc.value !== this.data.perc ||
+        this.e_old_perc.value !== this.data.old_perc ||
+        this.e_min_perc.value !== this.data.min_perc;
+    });
+    this.priceChanged = computed(()=>{
+      return this.comCalculated.isProcessedChanged || this.rekCalculated.isProcessedChanged || this.currentPayment.isProcessedChanged || this.maxCalculated.isProcessedChanged || this.normCalculated.isProcessedChanged || this.minCalculated.isProcessedChanged || this.calculatedPayment.isProcessedChanged;
+    });
   }
 
   async savePercent() {
-    const data = {
+    //query
+    const query = {
       offer_id: this.data.offer_id,
       min_perc: this.e_min_perc.processed,
       perc: this.e_perc.processed,
       old_perc: this.e_old_perc.processed,
       adv_perc: this.e_adv_perc.processed
+    }
+
+    const url = router.resolve({ name: 'api-good-percent', query}).href;
+    await this.postData(url);
+    this.data.min_perc = this.e_min_perc.processed;
+    this.data.perc = this.e_perc.processed;
+    this.data.old_perc = this.e_old_perc.processed;
+    this.data.adv_perc = this.e_adv_perc.processed;
+  }
+
+  async savePrice() {
+    const data = {
+      auto_action_enabled: "UNKNOWN",
+      min_price: this.minCalculated.processed.toString(),
+      old_price: this.maxCalculated.processed.toString(),
+      price: this.normCalculated.processed.toString(),
+      offer_id: this.data.offer_id,
+      product_id: this.data.product_id
     }
 
     console.log(data);
@@ -125,6 +158,7 @@ class DMPrices extends DMAbstract<DMPrice[]> {
   visibility: Ref<string | undefined>;
   visibilityAlias: Ref<string>;
   #preset: DMPricePreset;
+  #urlTransformer: (url: string) => string;
 
   constructor(
     onChange: () => void,
@@ -133,6 +167,7 @@ class DMPrices extends DMAbstract<DMPrice[]> {
     dmVisibility: DMVisibility
   ) {
     super(onChange, urlTransformer);
+    this.#urlTransformer = urlTransformer;
     this.limit = 5;
     this.offer_id = ref([]);
     this.product_id =ref([]);
@@ -160,7 +195,7 @@ class DMPrices extends DMAbstract<DMPrice[]> {
     const query = {offer_id: this.offer_id.value, product_id: this.product_id.value, visibility: this.visibility.value, limit: this.limit, last_id: this.#last_id}
     const url = router.resolve({ name: 'api-price', query}).href;
     const {data, last_id} = await this.getJson(url);
-    const _data: DMPrice[] = data.map((i: TDMPrice) => new DMPrice(i, this.#preset));
+    const _data: DMPrice[] = data.map((i: TDMPrice) => new DMPrice(i, this.#preset, this.#urlTransformer));
     this.#last_id = last_id;
     this.data ??= [];
     this.data.push(..._data);

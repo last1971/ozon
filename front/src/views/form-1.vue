@@ -91,10 +91,15 @@
         <div class="g-ce g-co1" title="Код Озон">
           <div>{{item.data.product_id}}</div>
           <div class="save-button">
-            <button type="button" @click="item.savePercent()">Сохр. %</button>
+            <button :disabled="!item.percentChanged.value" type="button" @click="item.savePercent()">Сохр. %</button>
           </div>
         </div>
-        <div class="g-ce g-co2" title="Наш код">{{item.data.offer_id}}</div>
+        <div class="g-ce g-co2" title="Наш код">
+          <div>{{item.data.offer_id}}</div>
+          <div class="save-button">
+            <button :disabled="!item.priceChanged.value" type="button" @click="item.savePrice()">Сохр. $</button>
+          </div>
+        </div>
         <div class="g-ce g-co3" title="Наименование">{{item.data.name}}</div>
         <div class="g-ce g-co4" title="Цена покупателю">{{rounding(item.data.marketing_price)}}</div>
         <div class="g-ce g-co5" title="Цена расч">{{rounding(item.data.marketing_seller_price)}}</div>
