@@ -7,7 +7,7 @@ import { ValidationPipe } from '@nestjs/common';
 async function bootstrap() {
     //TODO: remove cors for prod?
     const app = await NestFactory.create(AppModule, { cors: true });
-    app.useGlobalPipes(new ValidationPipe({ transform: true, transformOptions: { enableImplicitConversion: true } }));
+    app.useGlobalPipes(new ValidationPipe({ transform: true })); //, transformOptions: { enableImplicitConversion: true }
     const config = new DocumentBuilder()
         .setTitle('Pricing example')
         .setDescription('The pricing API description')

@@ -6,6 +6,7 @@ import { INVOICE_SERVICE } from './interfaces/IInvoice';
 import { ConfigService } from '@nestjs/config';
 import { ProductService } from './product/product.service';
 import { PostingService } from './posting/posting.service';
+import { PriceService } from './price/price.service';
 
 describe('AppController', () => {
     let appController: AppController;
@@ -20,6 +21,7 @@ describe('AppController', () => {
                 { provide: ConfigService, useValue: {} },
                 { provide: ProductService, useValue: {} },
                 { provide: PostingService, useValue: {} },
+                { provide: PriceService, useValue: {} },
             ],
         }).compile();
 

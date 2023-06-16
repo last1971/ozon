@@ -5,12 +5,14 @@ import { FIREBIRD } from '../firebird/firebird.module';
 describe('Trade2006GoodService', () => {
     let service: Trade2006GoodService;
     const query = jest.fn().mockReturnValue([{ GOODSCODE: 1, QUAN: 2 }]);
+    const execute = jest.fn();
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
-            providers: [Trade2006GoodService, { provide: FIREBIRD, useValue: { query } }],
+            providers: [Trade2006GoodService, { provide: FIREBIRD, useValue: { query, execute } }],
         }).compile();
 
+        query.mockClear();
         service = module.get<Trade2006GoodService>(Trade2006GoodService);
     });
 
@@ -24,6 +26,25 @@ describe('Trade2006GoodService', () => {
         expect(query.mock.calls[0]).toEqual([
             'SELECT GOODS.GOODSCODE, SHOPSKLAD.QUAN  FROM GOODS JOIN SHOPSKLAD ON GOODS.GOODSCODE = SHOPSKLAD.GOODSCODE WHERE GOODS.GOODSCODE IN (?)',
             ['1'],
+        ]);
+    });
+    it('test prices', async () => {
+        await service.prices(['1', '2']);
+        expect(query.mock.calls[0]).toEqual([
+            'select g.goodscode, n.name, ( select sum(t.ost * t.price)/sum(t.ost) from (select price, quan -  COALESCE((select sum(quan) from fifo_t where fifo_t.pr_meta_in_id=pr_meta.id), 0) as ost  from pr_meta where pr_meta.goodscode=g.goodscode and pr_meta.shopincode is not null  and COALESCE((select sum(quan) from fifo_t where fifo_t.pr_meta_in_id=pr_meta.id), 0) < quan) t) as pric from goods g, name n where g.namecode=n.namecode and g.goodscode in (?,?)',
+            ['1', '2'],
+        ]);
+    });
+    it('test getPerc', async () => {
+        await service.getPerc(['3']);
+        expect(query.mock.calls[0]).toEqual(['select * from ozon_perc where goodscode in (?)', ['3']]);
+    });
+    it('test setPerc', async () => {
+        await service.setPercents({ offer_id: '123', adv_perc: 10 });
+        expect(execute.mock.calls[0]).toEqual([
+            'UPDATE OR INSERT INTO OZON_PERC (PERC_MIN, PERC_NOR, PERC_MAX, PERC_ADV, GOODSCODE, PIECES)VALUES (?,' +
+                ' ?, ?, ?, ?, ?) MATCHING (GOODSCODE, PIECES)',
+            [null, null, null, 10, '123', 1],
         ]);
     });
 });

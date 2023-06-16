@@ -7,6 +7,9 @@ import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
 import { PriceResponseDto } from './dto/price.response.dto';
 import { goodCode, goodQuantityCoeff } from '../helpers';
 import { GoodPercentDto } from '../good/dto/good.percent.dto';
+import { AutoAction, UpdatePriceDto, UpdatePricesDto } from './dto/update.price.dto';
+import { PriceDto } from './dto/price.dto';
+import { toNumber } from 'lodash';
 
 @Injectable()
 export class PriceService {
@@ -20,10 +23,10 @@ export class PriceService {
             perc_min: this.configService.get<number>('PERC_MIN', 15),
             perc_nor: this.configService.get<number>('PERC_NOR', 30),
             perc_max: this.configService.get<number>('PERC_MAX', 100),
-            perc_mil: 5.5,
-            perc_ekv: 1.5,
-            sum_obtain: 25,
-            sum_pack: 13,
+            perc_mil: this.configService.get<number>('PERC_MIL', 5.5),
+            perc_ekv: this.configService.get<number>('PERC_EKV', 1.5),
+            sum_obtain: this.configService.get<number>('SUM_OBTAIN', 25),
+            sum_pack: this.configService.get<number>('SUM_PACK', 13),
         };
     }
 
@@ -62,8 +65,35 @@ export class PriceService {
                     adv_perc: percent.adv_perc,
                     sales_percent: item.commissions.sales_percent + 1,
                     fbs_direct_flow_trans_max_amount: item.commissions.fbs_direct_flow_trans_max_amount,
+                    auto_action_enabled: item.price.auto_action_enabled,
                 };
             }),
+        };
+    }
+    async update(prices: UpdatePricesDto): Promise<any> {
+        return this.product.setPrice(prices);
+    }
+    calculatePrice(price: PriceDto, auto_action = AutoAction.UNKNOWN): UpdatePriceDto {
+        const calc = (percent: number, price: PriceDto): string =>
+            Math.ceil(
+                (toNumber(price.incoming_price) * (1 + toNumber(percent) / 100) +
+                    toNumber(this.configService.get<number>('SUM_OBTAIN', 25)) +
+                    toNumber(this.configService.get<number>('SUM_PACK', 13)) +
+                    toNumber(price.fbs_direct_flow_trans_max_amount)) /
+                    (1 -
+                        (toNumber(price.sales_percent) +
+                            toNumber(price.adv_perc) +
+                            toNumber(this.configService.get<string>('PERC_MIL', '5.5')) +
+                            toNumber(this.configService.get<string>('PERC_EKV', '1.5'))) /
+                            100),
+            ).toString();
+        return {
+            auto_action_enabled: auto_action,
+            currency_code: 'RUB',
+            min_price: calc(price.min_perc, price),
+            offer_id: price.offer_id,
+            old_price: calc(price.old_perc, price),
+            price: calc(price.perc, price),
         };
     }
 }

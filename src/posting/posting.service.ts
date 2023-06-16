@@ -19,7 +19,7 @@ export class PostingService {
 
     async list(filter: PostingsRequestDto): Promise<PostingDto[]> {
         const response = await this.productService.orderList(filter);
-        return response.result.postings;
+        return response.result?.postings || [];
     }
     async listAwaitingPackaging(): Promise<PostingDto[]> {
         return this.list({
