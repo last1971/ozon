@@ -25,7 +25,6 @@ abstract class DMApiMethods {
 
   async postData(url: string, data?: Record<string, any>) {
     this.isLoading.value = true;
-    console.log(url);
     try {
       const init: RequestInit = {
         method: 'POST',

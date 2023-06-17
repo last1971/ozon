@@ -87,43 +87,43 @@
         <div class="g-ce g-h g-co13">Реклама</div>
         <div class="g-ce g-h g-co14">#</div>
 
-      <template v-for="(item, ind) in dataSource.dmPrice?.data" :key="item.data.product_id">
+      <template v-for="(item, ind) in dataSource.dmPrice?.data" :key="item.data.value.product_id">
         <div class="g-ce g-co1" title="Код Озон">
-          <div>{{item.data.product_id}}</div>
+          <div>{{item.data.value.product_id}}</div>
           <div class="save-button">
-            <button :data-key="item.key.value" :disabled="!item.percentChanged.value" type="button" @click="item.savePercent()">Сохр. %</button>
+            <button :disabled="!item.percentChanged.value || item.percentSaving.value" type="button" @click="item.savePercent()">Сохр. %</button>
           </div>
         </div>
         <div class="g-ce g-co2" title="Наш код">
-          <div>{{item.data.offer_id}}</div>
+          <div>{{item.data.value.offer_id}}</div>
           <div class="save-button">
             <button :disabled="!item.priceChanged.value" type="button" @click="item.savePrice()">Сохр. $</button>
           </div>
         </div>
-        <div class="g-ce g-co3" title="Наименование">{{item.data.name}}</div>
-        <div class="g-ce g-co4" title="Цена покупателю">{{rounding(item.data.marketing_price)}}</div>
-        <div class="g-ce g-co5" title="Цена расч">{{rounding(item.data.marketing_seller_price)}}</div>
+        <div class="g-ce g-co3" title="Наименование">{{item.data.value.name}}</div>
+        <div class="g-ce g-co4" title="Цена покупателю">{{rounding(item.data.value.marketing_price)}}</div>
+        <div class="g-ce g-co5" title="Цена расч">{{rounding(item.data.value.marketing_seller_price)}}</div>
         <div class="g-ce g-co6" title="Выплата">
           <div title="тек" :class="{calc: true, chan: item.currentPayment.isProcessedChanged}">{{item.currentPayment.processed}}</div>
           <div title="расч" :class="{calc: true, chan: item.calculatedPayment.isProcessedChanged}">{{item.calculatedPayment.processed}}</div>
         </div>
-        <div class="g-ce g-co7" title="Вх.цена">{{rounding(item.data.incoming_price)}}</div>
+        <div class="g-ce g-co7" title="Вх.цена">{{rounding(item.data.value.incoming_price)}}</div>
         <div class="g-ce g-co8" title="Max">
-          <div title="тек цена">{{rounding(item.data.old_price)}}</div>
+          <div title="тек цена">{{rounding(item.data.value.old_price)}}</div>
           <div title="расч цена" :class="{calc: true, chan: item.maxCalculated.isProcessedChanged}">{{item.maxCalculated.processed}}</div>
           <div title="процент">
             <input type="number" size="5" v-model="item.e_old_perc.value">
           </div>
         </div>
         <div class="g-ce g-co9" title="Норм">
-          <div title="тек цена">{{rounding(item.data.price)}}</div>
+          <div title="тек цена">{{rounding(item.data.value.price)}}</div>
           <div title="расч цена" :class="{calc: true, chan: item.normCalculated.isProcessedChanged}">{{item.normCalculated.processed}}</div>
           <div title="процент">
             <input type="number" v-model="item.e_perc.value">
           </div>
         </div>
         <div class="g-ce g-co10" title="Мин">
-          <div title="тек цена">{{rounding(item.data.min_price)}}</div>
+          <div title="тек цена">{{rounding(item.data.value.min_price)}}</div>
           <div title="расч цена" :class="{calc: true, chan: item.minCalculated.isProcessedChanged}">{{item.minCalculated.processed}}</div>
           <div title="процент">
             <input type="number" v-model="item.e_min_perc.value">
@@ -132,11 +132,11 @@
         <div class="g-ce g-co11" title="Комис">
           <div title="тек сум">{{item.currentCom()}}</div>
           <div title="рас сум" :class="{calc: true, chan: item.comCalculated.isProcessedChanged}">{{item.comCalculated.processed}}</div>
-          <div title="процент">{{item.data.sales_percent}}</div>
+          <div title="процент">{{item.data.value.sales_percent}}</div>
         </div>
         <div class="g-ce g-co12" title="Логист">
           <div title=""></div>
-          <div title="сумма">{{item.data.fbs_direct_flow_trans_max_amount}}</div>
+          <div title="сумма">{{item.data.value.fbs_direct_flow_trans_max_amount}}</div>
           <div title=""></div>
         </div>
         <div class="g-ce g-co13" title="Реклама">
