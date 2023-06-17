@@ -91,7 +91,7 @@
         <div class="g-ce g-co1" title="Код Озон">
           <div>{{item.data.product_id}}</div>
           <div class="save-button">
-            <button :disabled="!item.percentChanged.value" type="button" @click="item.savePercent()">Сохр. %</button>
+            <button :data-key="item.key.value" :disabled="!item.percentChanged.value" type="button" @click="item.savePercent()">Сохр. %</button>
           </div>
         </div>
         <div class="g-ce g-co2" title="Наш код">

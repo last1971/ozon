@@ -25,7 +25,7 @@ abstract class DMApiMethods {
 
   async postData(url: string, data?: Record<string, any>) {
     this.isLoading.value = true;
-
+    console.log(url);
     try {
       const init: RequestInit = {
         method: 'POST',
@@ -40,7 +40,7 @@ abstract class DMApiMethods {
 
       const resp = await  fetch(this.urlTransformer(url), init);
       this.isLoading.value = false;
-      return resp.json();
+      return resp.text();
     } catch (e) {
       this.isLoading.value = false;
       throw e;

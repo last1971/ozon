@@ -27,6 +27,7 @@ type TDMPrice = {
 class DMPrice extends DMApiMethods{
   data: TDMPrice;
 
+  key: Ref<number>;
   e_old_perc: ExtRef<number>;
   e_perc: ExtRef<number>;
   e_min_perc: ExtRef<number>;
@@ -54,8 +55,13 @@ class DMPrice extends DMApiMethods{
 
   constructor(data: TDMPrice, preset: DMPricePreset, urlTransformer: (url: string) => string,) {
     super(urlTransformer);
-    this.data = stringToNumberCorrection(data, ['product_id', 'offer_id']);
+    this.key = ref(0);
     this.#preset = preset;
+    this.data = stringToNumberCorrection(data, ['product_id', 'offer_id']);
+    this.data.adv_perc ??= 0;
+    this.data.min_perc ??= this.#preset.data?.perc_min ?? 0;
+    this.data.old_perc ??= this.#preset.data?.perc_max ?? 0;
+    this.data.perc ??= this.#preset.data?.perc_nor ?? 0;
     this.e_adv_perc = new ExtRef<number>(upToHund, this.data.adv_perc);
     this.e_min_perc = new ExtRef<number>(upToHund, this.data.min_perc);
     this.e_old_perc = new ExtRef<number>(upToHund, this.data.old_perc);
@@ -105,15 +111,20 @@ class DMPrice extends DMApiMethods{
     this.calculatedPayment = this.normCalculated;
 
     this.percentChanged = computed(()=>{
-      return this.e_adv_perc.value !== this.data.adv_perc ||
+      const ret = this.e_adv_perc.value !== this.data.adv_perc ||
         this.e_perc.value !== this.data.perc ||
         this.e_old_perc.value !== this.data.old_perc ||
-        this.e_min_perc.value !== this.data.min_perc;
+        this.e_min_perc.value !== this.data.min_perc &&
+        this.key.value >= 0;
+      console.log(ret);
+      return ret;
     });
     this.priceChanged = computed(()=>{
       return this.comCalculated.isProcessedChanged || this.rekCalculated.isProcessedChanged || this.currentPayment.isProcessedChanged || this.maxCalculated.isProcessedChanged || this.normCalculated.isProcessedChanged || this.minCalculated.isProcessedChanged || this.calculatedPayment.isProcessedChanged;
     });
   }
+
+  refresh(){this.key.value+=1}
 
   async savePercent() {
     //query
@@ -127,10 +138,12 @@ class DMPrice extends DMApiMethods{
 
     const url = router.resolve({ name: 'api-good-percent', query}).href;
     await this.postData(url);
+    //const data = {...this.data};
     this.data.min_perc = this.e_min_perc.processed;
     this.data.perc = this.e_perc.processed;
     this.data.old_perc = this.e_old_perc.processed;
     this.data.adv_perc = this.e_adv_perc.processed;
+    this.refresh();
   }
 
   async savePrice() {
