@@ -43,6 +43,7 @@ class Data {
     this.sleep(100)
       .then(()=>{
         try {
+          // eslint-disable-next-line @typescript-eslint/no-unused-vars
           const check = router;
           this.appInitialized = true;
           this.init()

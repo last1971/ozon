@@ -24,7 +24,7 @@ import { RouterLink, RouterView } from 'vue-router';
 import { dataSource } from "@/data/data";
 </script>
 
-<style id="variables">
+<style lang="scss" id="variables">
 :root {
   --color-text: #111;
   --color-background: #eee;
@@ -51,7 +51,7 @@ import { dataSource } from "@/data/data";
 }
 </style>
 
-<style id="main">
+<style lang="scss" id="main">
 *,
 *::before,
 *::after {

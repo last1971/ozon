@@ -9,13 +9,13 @@
       <div class="g-ce g-h g-co6">Обработка</div>
       <div class="g-ce g-h g-co7">Упак</div>
 
-      <div class="g-ce g-co1">{{dataSource.dmPricePreset.data.perc_max}}</div>
-      <div class="g-ce g-co2">{{dataSource.dmPricePreset.data.perc_nor}}</div>
-      <div class="g-ce g-co3">{{dataSource.dmPricePreset.data.perc_min}}</div>
-      <div class="g-ce g-co4">{{dataSource.dmPricePreset.data.perc_ekv}}</div>
-      <div class="g-ce g-co5">{{dataSource.dmPricePreset.data.perc_mil}}</div>
-      <div class="g-ce g-co6">{{dataSource.dmPricePreset.data.sum_obtain}}</div>
-      <div class="g-ce g-co7">{{dataSource.dmPricePreset.data.sum_pack}}</div>
+      <div class="g-ce g-co1">{{dataSource.dmPricePreset?.data?.perc_max}}</div>
+      <div class="g-ce g-co2">{{dataSource.dmPricePreset?.data?.perc_nor}}</div>
+      <div class="g-ce g-co3">{{dataSource.dmPricePreset?.data?.perc_min}}</div>
+      <div class="g-ce g-co4">{{dataSource.dmPricePreset?.data?.perc_ekv}}</div>
+      <div class="g-ce g-co5">{{dataSource.dmPricePreset?.data?.perc_mil}}</div>
+      <div class="g-ce g-co6">{{dataSource.dmPricePreset?.data?.sum_obtain}}</div>
+      <div class="g-ce g-co7">{{dataSource.dmPricePreset?.data?.sum_pack}}</div>
     </div>
 
     <div class="params">
@@ -36,7 +36,7 @@
           <option :value="undefined">Все типы</option>
           <option
             :key="option"
-            v-for="option in Object.keys(dataSource.dmVisibility!.data)"
+            v-for="option in Object.keys(dataSource.dmVisibility?.data ?? {})"
             :value="option"
           >
             {{dataSource.dmPrice?.getAliasByVisibility(option)}}
@@ -97,41 +97,41 @@
         <div class="g-ce g-co2" title="Наш код">
           <div>{{item.data.value.offer_id}}</div>
           <div class="save-button">
-            <button :disabled="!item.priceChanged.value" type="button" @click="item.savePrice()">Сохр. $</button>
+            <button :disabled="!item.priceChanged.value || item.priceSaving.value" type="button" @click="item.savePrice()">Сохр. $</button>
           </div>
         </div>
         <div class="g-ce g-co3" title="Наименование">{{item.data.value.name}}</div>
         <div class="g-ce g-co4" title="Цена покупателю">{{rounding(item.data.value.marketing_price)}}</div>
         <div class="g-ce g-co5" title="Цена расч">{{rounding(item.data.value.marketing_seller_price)}}</div>
         <div class="g-ce g-co6" title="Выплата">
-          <div title="тек" :class="{calc: true, chan: item.currentPayment.isProcessedChanged}">{{item.currentPayment.processed}}</div>
-          <div title="расч" :class="{calc: true, chan: item.calculatedPayment.isProcessedChanged}">{{item.calculatedPayment.processed}}</div>
+          <div title="тек" :class="{calc: true, chan: item.currentPayment.isProcessedChanged.value}">{{item.currentPayment.processed}}</div>
+          <div title="расч" :class="{calc: true, chan: item.calculatedPayment.isProcessedChanged.value}">{{item.calculatedPayment.processed}}</div>
         </div>
         <div class="g-ce g-co7" title="Вх.цена">{{rounding(item.data.value.incoming_price)}}</div>
         <div class="g-ce g-co8" title="Max">
           <div title="тек цена">{{rounding(item.data.value.old_price)}}</div>
-          <div title="расч цена" :class="{calc: true, chan: item.maxCalculated.isProcessedChanged}">{{item.maxCalculated.processed}}</div>
+          <div title="расч цена" :class="{calc: true, chan: item.maxCalculated.isProcessedChanged.value}">{{item.maxCalculated.processed}}</div>
           <div title="процент">
             <input type="number" size="5" v-model="item.e_old_perc.value">
           </div>
         </div>
         <div class="g-ce g-co9" title="Норм">
           <div title="тек цена">{{rounding(item.data.value.price)}}</div>
-          <div title="расч цена" :class="{calc: true, chan: item.normCalculated.isProcessedChanged}">{{item.normCalculated.processed}}</div>
+          <div title="расч цена" :class="{calc: true, chan: item.normCalculated.isProcessedChanged.value}">{{item.normCalculated.processed}}</div>
           <div title="процент">
             <input type="number" v-model="item.e_perc.value">
           </div>
         </div>
         <div class="g-ce g-co10" title="Мин">
           <div title="тек цена">{{rounding(item.data.value.min_price)}}</div>
-          <div title="расч цена" :class="{calc: true, chan: item.minCalculated.isProcessedChanged}">{{item.minCalculated.processed}}</div>
+          <div title="расч цена" :class="{calc: true, chan: item.minCalculated.isProcessedChanged.value}">{{item.minCalculated.processed}}</div>
           <div title="процент">
             <input type="number" v-model="item.e_min_perc.value">
           </div>
         </div>
         <div class="g-ce g-co11" title="Комис">
           <div title="тек сум">{{item.currentCom()}}</div>
-          <div title="рас сум" :class="{calc: true, chan: item.comCalculated.isProcessedChanged}">{{item.comCalculated.processed}}</div>
+          <div title="рас сум" :class="{calc: true, chan: item.comCalculated.isProcessedChanged.value}">{{item.comCalculated.processed}}</div>
           <div title="процент">{{item.data.value.sales_percent}}</div>
         </div>
         <div class="g-ce g-co12" title="Логист">
@@ -141,7 +141,7 @@
         </div>
         <div class="g-ce g-co13" title="Реклама">
           <div title="тек">{{item.currentRek()}}</div>
-          <div title="расч" :class="{calc: true, chan: item.rekCalculated.isProcessedChanged}">{{item.rekCalculated.processed}}</div>
+          <div title="расч" :class="{calc: true, chan: item.rekCalculated.isProcessedChanged.value}">{{item.rekCalculated.processed}}</div>
           <div title="процент">
             <input type="number" v-model.number="item.e_adv_perc.processed" step="" min="0" max="100">
           </div>

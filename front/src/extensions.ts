@@ -25,29 +25,34 @@ class ExtRef<T> {
 
 class ExtComputedRef<T> {
   #ref: ComputedRef<T>
-  initialValue?: T;
-  #initialProcessed?: T;
+  initialValue: Ref<T | undefined>;
+  #initialProcessed: Ref<T | undefined>;
   processor: (val: T) => T;
   get value(): T {
     const val = this.#ref.value;
-    this.initialValue ??= val;
+    this.initialValue.value ??= val;
     return val;
   }
   get processed(): T {
     const val = this.processor(this.value);
-    this.#initialProcessed ??= val;
+    this.#initialProcessed.value ??= val;
     return val;
   }
-  get isValueChanged(): boolean {
-    return this.value !== this.initialValue;
-  }
-  get isProcessedChanged(): boolean {
-    return this.processed !== this.#initialProcessed;
-  }
+  isValueChanged: ComputedRef<boolean>;
+  isProcessedChanged: ComputedRef<boolean>;
+
 
   constructor(processor: (val: T) => T, refSource: (val: T) => T) {
     this.processor = processor;
+    this.initialValue = ref(undefined);
+    this.#initialProcessed = ref(undefined);
     this.#ref = computed<T>(refSource) as ComputedRef<T>
+    this.isProcessedChanged = computed(() => this.processed !== this.#initialProcessed.value);
+    this.isValueChanged = computed(() => this.value !== this.initialValue.value);
+  }
+  reset() {
+    this.initialValue.value = undefined;
+    this.#initialProcessed.value = undefined;
   }
 }
 
