@@ -1,5 +1,6 @@
 import { DMAbstract } from "@/data/model/dmAbstract";
 import router from "@/router";
+import { stringToNumberCorrection } from "@/extensions";
 
 type TDMPricePreset = {
   perc_min: number,
@@ -22,6 +23,7 @@ class DMPricePreset extends DMAbstract<TDMPricePreset> {
   async getData() {
     const url = router.resolve({ name: 'api-price-preset'}).href;
     this.data = await this.getJson(url);
+    this.data = stringToNumberCorrection(this.data as TDMPricePreset, []);
   }
 }
 
