@@ -104,7 +104,13 @@ class DMPrice extends DMApiMethods{
 
       // =(incoming_price*(1+min_perc/100)+prset. sum_obtain+ppreset. sum_pack+fbs_direct_flow_trans_max_amount)/(1-(sales_percent+adv_perc+preset.perc_mil+prset.perc_ekv)/100)
     });
-    this.calculatedPayment = this.normCalculated;
+    this.calculatedPayment = new ExtComputedRef(Math.ceil, ()=>{
+      if (!this.#preset.data) throw Error('no preset data');
+      return this.normCalculated.value- this.data.value.fbs_direct_flow_trans_max_amount - this.#preset.data.sum_obtain - this.#preset.data.sum_pack - this.data.value.marketing_seller_price * (this.#preset.data.perc_ekv + this.#preset.data.perc_mil + this.data.value.sales_percent + this.e_adv_perc.value) / 100;
+
+      // =Норм рас цена -fbs_direct_flow_trans_max_amount-preset.sum_obtain-preset.sum_pack-Норм рас цена *(preset.perc_ekv+preset.perc_mil+sales_percent+adv_perc)/100
+
+    });
 
     this.percentChanged = computed(()=>{
       return  this.e_adv_perc.value !== this.data.value.adv_perc ||
