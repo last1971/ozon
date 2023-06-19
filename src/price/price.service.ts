@@ -20,13 +20,13 @@ export class PriceService {
     ) {}
     async preset(): Promise<PricePresetDto> {
         return {
-            perc_min: this.configService.get<number>('PERC_MIN', 15),
-            perc_nor: this.configService.get<number>('PERC_NOR', 30),
-            perc_max: this.configService.get<number>('PERC_MAX', 100),
-            perc_mil: this.configService.get<number>('PERC_MIL', 5.5),
-            perc_ekv: this.configService.get<number>('PERC_EKV', 1.5),
-            sum_obtain: this.configService.get<number>('SUM_OBTAIN', 25),
-            sum_pack: this.configService.get<number>('SUM_PACK', 13),
+            perc_min: toNumber(this.configService.get<number>('PERC_MIN', 15)),
+            perc_nor: toNumber(this.configService.get<number>('PERC_NOR', 30)),
+            perc_max: toNumber(this.configService.get<number>('PERC_MAX', 100)),
+            perc_mil: toNumber(this.configService.get<number>('PERC_MIL', 5.5)),
+            perc_ekv: toNumber(this.configService.get<number>('PERC_EKV', 1.5)),
+            sum_obtain: toNumber(this.configService.get<number>('SUM_OBTAIN', 25)),
+            sum_pack: toNumber(this.configService.get<number>('SUM_PACK', 13)),
         };
     }
 
