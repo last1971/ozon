@@ -14,13 +14,13 @@ export class Trade2006GoodService implements IGood {
     async in(codes: string[]): Promise<GoodDto[]> {
         if (codes.length === 0) return [];
         const response: any[] = await this.db.query(
-            `SELECT GOODS.GOODSCODE, SHOPSKLAD.QUAN  FROM GOODS JOIN SHOPSKLAD ON GOODS.GOODSCODE = SHOPSKLAD.GOODSCODE WHERE GOODS.GOODSCODE IN (${'?'
+            `SELECT GOODS.GOODSCODE, SHOPSKLAD.QUAN, (SELECT SUM(QUANSHOP) + SUM(QUANSKLAD) from RESERVEDPOS where GOODS.GOODSCODE = RESERVEDPOS.GOODSCODE) AS RES  FROM GOODS JOIN SHOPSKLAD ON GOODS.GOODSCODE = SHOPSKLAD.GOODSCODE WHERE GOODS.GOODSCODE IN (${'?'
                 .repeat(codes.length)
                 .split('')
                 .join()})`,
             codes,
         );
-        return response.map((item): GoodDto => ({ code: item.GOODSCODE, quantity: item.QUAN }));
+        return response.map((item): GoodDto => ({ code: item.GOODSCODE, quantity: item.QUAN, reserve: item.RES }));
     }
 
     async prices(codes: string[]): Promise<GoodPriceDto[]> {

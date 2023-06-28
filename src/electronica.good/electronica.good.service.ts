@@ -18,7 +18,7 @@ export class ElectronicaGoodService implements IGood {
             filterValues: ['[' + codes.join() + ']'],
         });
         return response.data.map(
-            (good: any): GoodDto => ({ code: good.GOODSCODE, quantity: good.retailStore?.QUAN || 0 }),
+            (good: any): GoodDto => ({ code: good.GOODSCODE, quantity: good.retailStore?.QUAN || 0, reserve: 0 }),
         );
     }
     async prices(codes: string[]): Promise<GoodPriceDto[]> {

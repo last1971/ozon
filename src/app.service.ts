@@ -24,12 +24,12 @@ export class AppService {
     getHello(): string {
         return 'Hello World!';
     }
-    //@Cron('0 0 10-19 * * 1-6')
+    @Cron('0 0 9-19 * * 1-6')
     async checkGoodCount(last_id = ''): Promise<ProductCodeUpdateStockDto[]> {
         const products = await this.productService.listWithCount(last_id);
         const goodCodes = (products.result?.items || []).map((item) => goodCode(item));
         const goods = new Map(
-            (await this.goodService.in(goodCodes)).map((good) => [good.code.toString(), good.quantity]),
+            (await this.goodService.in(goodCodes)).map((good) => [good.code.toString(), good.quantity - good.reserve]),
         );
         const updateCount = (products.result?.items || [])
             .filter((item) => {
@@ -63,7 +63,7 @@ export class AppService {
         }
         return response;
     }
-    //@Cron('0 */5 * * * *')
+    @Cron('0 */5 * * * *')
     async checkNewOrders(): Promise<void> {
         const packagingPostings = await this.postingService.listAwaitingPackaging();
         for (const posting of packagingPostings) {
@@ -80,7 +80,7 @@ export class AppService {
             await this.invoiceService.pickupInvoice(invoice);
         }
     }
-    //@Cron('* * * * * 0')
+    @Cron('0 0 0 * * 0')
     async updatePrices(level = 0, last_id = '', visibility = ProductVisibility.IN_SALE, limit = 1000): Promise<any> {
         const pricesForObtain = await this.priceService.index({ limit, last_id, visibility });
         let answer = [];

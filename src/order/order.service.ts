@@ -6,7 +6,7 @@ import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 @Injectable()
 export class OrderService {
     constructor(private productService: ProductService, @Inject(INVOICE_SERVICE) private invoiceService: IInvoice) {}
-    @Cron('0 * * * * *')
+    //@Cron('0 * * * * *')
     async updateTransactions(): Promise<any> {
         const res = await this.productService.getTransactionList({
             date: {
