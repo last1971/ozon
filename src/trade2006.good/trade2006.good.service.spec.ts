@@ -24,7 +24,7 @@ describe('Trade2006GoodService', () => {
         const res = await service.in(['1']);
         expect(res).toEqual([{ code: 1, quantity: 2 }]);
         expect(query.mock.calls[0]).toEqual([
-            'SELECT GOODS.GOODSCODE, SHOPSKLAD.QUAN  FROM GOODS JOIN SHOPSKLAD ON GOODS.GOODSCODE = SHOPSKLAD.GOODSCODE WHERE GOODS.GOODSCODE IN (?)',
+            'SELECT GOODS.GOODSCODE, SHOPSKLAD.QUAN, (SELECT SUM(QUANSHOP) + SUM(QUANSKLAD) from RESERVEDPOS where GOODS.GOODSCODE = RESERVEDPOS.GOODSCODE) AS RES  FROM GOODS JOIN SHOPSKLAD ON GOODS.GOODSCODE = SHOPSKLAD.GOODSCODE WHERE GOODS.GOODSCODE IN (?)',
             ['1'],
         ]);
     });

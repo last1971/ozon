@@ -59,8 +59,8 @@ describe('Test App', () => {
                     provide: GOOD_SERVICE,
                     useValue: {
                         in: async () => [
-                            { code: 1, quantity: 1 },
-                            { code: 2, quantity: 1 },
+                            { code: 1, quantity: 1, reserve: 0 },
+                            { code: 2, quantity: 1, reserve: 0 },
                         ],
                     },
                 },
