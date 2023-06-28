@@ -8,6 +8,7 @@ import { DateTime } from 'luxon';
 import { ConfigService } from '@nestjs/config';
 import { PostingDto } from '../posting/dto/posting.dto';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
+import { TransactionDto } from '../posting/dto/transaction.dto';
 
 @Injectable()
 export class Trade2006InvoiceService implements IInvoice {
@@ -64,6 +65,59 @@ export class Trade2006InvoiceService implements IInvoice {
                   status: res[0].STATUS,
               }
             : null;
+    }
+    async updateByTransactions(transactions: TransactionDto[]): Promise<void> {
+        const transaction = await this.db.transaction(Firebird.ISOLATION_READ_COMMITTED);
+        try {
+            const invoices = await transaction.query(
+                `SELECT * FROM S WHERE PRIM IN (${'?'.repeat(transactions.length).split('').join()})`,
+                transactions.map((t) => t.posting_number),
+            );
+            if (invoices.length !== transactions.length) {
+                const delta = transactions.filter(
+                    (t) => !invoices.find((invoice) => invoice.PRIM === t.posting_number),
+                );
+                throw new Error(`Not find ${delta.map((invoice) => invoice.posting_number).toString()}`);
+            }
+            await transaction.execute(
+                `UPDATE S SET STATUS=0 WHERE SCODE IN (${'?'.repeat(transactions.length).split('').join()})`,
+                invoices.map((invoice) => invoice.SCODE),
+            );
+            for (const invoice of invoices) {
+                const lines = await transaction.query('SELECT * FROM REALPRICE WHERE SCODE = ?', [invoice.SCODE]);
+                const newAmount = transactions.find((t) => t.posting_number === invoice.PRIM).amount;
+                const oldAmount = lines.reduce((s, line) => s + parseFloat(line.SUMMAP), 0);
+                for (const line of lines) {
+                    await transaction.execute('UPDATE REALPRICE SET SUMMAP = ? WHERE REALPRICECODE = ?', [
+                        (newAmount * parseFloat(line.SUMMAP)) / oldAmount,
+                        line.REALPRICECODE,
+                    ]);
+                }
+            }
+            await transaction.execute(
+                `UPDATE S SET STATUS=4 WHERE SCODE IN (${'?'.repeat(transactions.length).split('').join()})`,
+                invoices.map((invoice) => invoice.SCODE),
+            );
+            for (const invoice of invoices) {
+                const newAmount = transactions.find((t) => t.posting_number === invoice.PRIM).amount;
+                await transaction.execute(
+                    'UPDATE OR INSERT INTO SCHET (MONEYSCHET, NS, DATA, POKUPATCODE, SCODE) VALUES (?, ?, ?, ?,' +
+                        ' ?) MATCHING (SCODE)',
+                    [
+                        newAmount,
+                        invoice.NS,
+                        new Date(),
+                        this.configService.get<number>('BUYER_ID', 24416),
+                        invoice.SCODE,
+                    ],
+                );
+            }
+            await transaction.commit();
+        } catch (e) {
+            this.logger.error(e.message);
+            await transaction.rollback();
+            return null;
+        }
     }
     async pickupInvoice(invoice: InvoiceDto): Promise<void> {
         if (invoice.status === 3) {

@@ -9,6 +9,8 @@ import { PriceRequestDto } from '../price/dto/price.request.dto';
 import { ProductVisibility } from './product.visibility';
 import { isArray } from 'lodash';
 import { UpdatePricesDto } from '../price/dto/update.price.dto';
+import { TransactionFilterDto } from '../posting/dto/transaction.filter.dto';
+import { TransactionDto } from '../posting/dto/transaction.dto';
 
 @Injectable()
 export class ProductService {
@@ -44,5 +46,18 @@ export class ProductService {
     }
     async setPrice(prices: UpdatePricesDto): Promise<any> {
         return this.ozonApiService.method('/v1/product/import/prices', prices);
+    }
+    async getTransactionList(filter: TransactionFilterDto, page = 1): Promise<any> {
+        const res = await this.ozonApiService.method('/v3/finance/transaction/list', { filter, page, page_size: 1000 });
+        const response: TransactionDto[] = res.result.operations.map(
+            (operation: any): TransactionDto => ({
+                amount: operation.amount,
+                posting_number: operation.posting.posting_number,
+            }),
+        );
+        if (page !== res.result.page_count) {
+            response.concat(await this.getTransactionList(filter, page + 1));
+        }
+        return response;
     }
 }

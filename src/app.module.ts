@@ -14,6 +14,7 @@ import { PriceModule } from './price/price.module';
 import { GoodModule } from './good/good.module';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
+import { OrderModule } from './order/order.module';
 
 @Module({
     imports: [
@@ -48,6 +49,7 @@ import { join } from 'path';
         InvoiceModule,
         PriceModule,
         GoodModule,
+        OrderModule,
     ],
     controllers: [AppController],
     providers: [AppService],
