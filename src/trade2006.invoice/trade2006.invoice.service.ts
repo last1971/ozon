@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { IInvoice } from '../interfaces/IInvoice';
 import { FIREBIRD } from '../firebird/firebird.module';
-import { FirebirdDatabase } from 'ts-firebird';
+import { FirebirdDatabase, FirebirdTransaction } from 'ts-firebird';
 import { InvoiceCreateDto } from '../invoice/dto/invoice.create.dto';
 import Firebird from 'node-firebird';
 import { DateTime } from 'luxon';
@@ -65,6 +65,33 @@ export class Trade2006InvoiceService implements IInvoice {
                   status: res[0].STATUS,
               }
             : null;
+    }
+    async getByPostingNumbers(
+        postingNumbers: string[],
+        transaction: FirebirdTransaction = null,
+    ): Promise<InvoiceDto[]> {
+        const workingTransaction = transaction ?? (await this.db.transaction(Firebird.ISOLATION_READ_COMMITTED));
+        try {
+            const invoices = await workingTransaction.query(
+                `SELECT *
+                 FROM S
+                 WHERE PRIM IN (${'?'.repeat(postingNumbers.length).split('').join()})`,
+                postingNumbers.map((postingNumber) => postingNumber),
+            );
+            if (!transaction) await workingTransaction.commit();
+            return invoices.map(
+                (invoice): InvoiceDto => ({
+                    id: invoice.SCODE,
+                    status: invoice.STATUS,
+                    buyerId: invoice.POKUPATCODE,
+                    date: invoice.DATA,
+                    remark: invoice.PRIM,
+                }),
+            );
+        } catch (e) {
+            if (transaction) throw e;
+            await workingTransaction.rollback();
+        }
     }
     async updateByTransactions(transactions: TransactionDto[]): Promise<void> {
         const transaction = await this.db.transaction(Firebird.ISOLATION_READ_COMMITTED);
