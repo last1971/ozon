@@ -15,10 +15,12 @@ import { GoodModule } from './good/good.module';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
 import { OrderModule } from './order/order.module';
+import { configValidate } from './env.validation';
+import { CronSetupProviderService } from './cron.setup.provider/cron.setup.provider.service';
 
 @Module({
     imports: [
-        ConfigModule.forRoot({ isGlobal: true }),
+        ConfigModule.forRoot({ isGlobal: true, validate: configValidate }),
         ServeStaticModule.forRoot({
             rootPath: join(__dirname, '..', 'public'),
             renderPath: '/price-admin/*',
@@ -52,6 +54,6 @@ import { OrderModule } from './order/order.module';
         OrderModule,
     ],
     controllers: [AppController],
-    providers: [AppService],
+    providers: [AppService, CronSetupProviderService],
 })
 export class AppModule {}

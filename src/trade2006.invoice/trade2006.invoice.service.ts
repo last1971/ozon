@@ -71,79 +71,118 @@ export class Trade2006InvoiceService implements IInvoice {
         transaction: FirebirdTransaction = null,
     ): Promise<InvoiceDto[]> {
         const workingTransaction = transaction ?? (await this.db.transaction(Firebird.ISOLATION_READ_COMMITTED));
-        try {
-            const invoices = await workingTransaction.query(
-                `SELECT *
+        const invoices = await workingTransaction.query(
+            `SELECT *
                  FROM S
                  WHERE PRIM IN (${'?'.repeat(postingNumbers.length).split('').join()})`,
-                postingNumbers.map((postingNumber) => postingNumber),
+            postingNumbers.map((postingNumber) => postingNumber),
+            !transaction,
+        );
+        return invoices.map(
+            (invoice): InvoiceDto => ({
+                id: invoice.SCODE,
+                number: invoice.NS,
+                status: invoice.STATUS,
+                buyerId: invoice.POKUPATCODE,
+                date: invoice.DATA,
+                remark: invoice.PRIM,
+            }),
+        );
+    }
+
+    async bulkSetStatus(
+        invoices: InvoiceDto[],
+        status: number,
+        transaction: FirebirdTransaction = null,
+    ): Promise<void> {
+        const workingTransaction = transaction ?? (await this.db.transaction(Firebird.ISOLATION_READ_COMMITTED));
+        await workingTransaction.execute(
+            `UPDATE S SET STATUS = ? WHERE SCODE IN (${'?'.repeat(invoices.length).split('').join()})`,
+            [status, ...invoices.map((invoice) => invoice.id)],
+            !transaction,
+        );
+    }
+    async upsertInvoiceCashFlow(
+        invoice: InvoiceDto,
+        amount: number,
+        transaction: FirebirdTransaction = null,
+    ): Promise<void> {
+        const workingTransaction = transaction ?? (await this.db.transaction(Firebird.ISOLATION_READ_COMMITTED));
+        await workingTransaction.execute(
+            'UPDATE OR INSERT INTO SCHET (MONEYSCHET, NS, DATA, POKUPATCODE, SCODE) VALUES (?, ?, ?, ?,' +
+                ' ?) MATCHING (SCODE)',
+            [amount, invoice.number, new Date(), this.configService.get<number>('BUYER_ID', 24416), invoice.id],
+            !transaction,
+        );
+    }
+    async setInvoiceAmount(
+        invoice: InvoiceDto,
+        newAmount: number,
+        transaction: FirebirdTransaction = null,
+    ): Promise<void> {
+        const workingTransaction = transaction ?? (await this.db.transaction(Firebird.ISOLATION_READ_COMMITTED));
+        const lines = await workingTransaction.query(
+            'SELECT * FROM REALPRICE WHERE SCODE = ?',
+            [invoice.id],
+            !transaction,
+        );
+        const oldAmount = lines.reduce((s, line) => s + parseFloat(line.SUMMAP), 0);
+        for (const line of lines) {
+            await workingTransaction.execute(
+                'UPDATE REALPRICE SET SUMMAP = ? WHERE REALPRICECODE = ?',
+                [(newAmount * parseFloat(line.SUMMAP)) / oldAmount, line.REALPRICECODE],
+                !transaction,
             );
-            if (!transaction) await workingTransaction.commit();
-            return invoices.map(
-                (invoice): InvoiceDto => ({
-                    id: invoice.SCODE,
-                    status: invoice.STATUS,
-                    buyerId: invoice.POKUPATCODE,
-                    date: invoice.DATA,
-                    remark: invoice.PRIM,
-                }),
-            );
-        } catch (e) {
-            if (transaction) throw e;
-            await workingTransaction.rollback();
         }
     }
-    async updateByTransactions(transactions: TransactionDto[]): Promise<void> {
+    async createTransferOut(invoice: InvoiceDto, transaction: FirebirdTransaction = null): Promise<void> {
+        const workingTransaction = transaction ?? (await this.db.transaction(Firebird.ISOLATION_READ_COMMITTED));
+        await workingTransaction.execute(
+            'EXECUTE PROCEDURE CREATESF9 (?, ?, ?, ?, ?)',
+            [null, invoice.id, this.configService.get<number>('STAFF_ID', 25), null, 0],
+            !transaction,
+        );
+    }
+    async updateByTransactions(transactions: TransactionDto[]): Promise<any> {
         const transaction = await this.db.transaction(Firebird.ISOLATION_READ_COMMITTED);
         try {
-            const invoices = await transaction.query(
-                `SELECT * FROM S WHERE PRIM IN (${'?'.repeat(transactions.length).split('').join()})`,
+            const invoices = await this.getByPostingNumbers(
                 transactions.map((t) => t.posting_number),
+                transaction,
             );
             if (invoices.length !== transactions.length) {
                 const delta = transactions.filter(
-                    (t) => !invoices.find((invoice) => invoice.PRIM === t.posting_number),
+                    (t) => !invoices.find((invoice) => invoice.remark === t.posting_number),
                 );
-                throw new Error(`Not find ${delta.map((invoice) => invoice.posting_number).toString()}`);
+                await transaction.rollback();
+                return {
+                    isSuccess: false,
+                    message: `Not find ${delta.map((invoice) => invoice.posting_number).toString()}`,
+                };
             }
-            await transaction.execute(
-                `UPDATE S SET STATUS=0 WHERE SCODE IN (${'?'.repeat(transactions.length).split('').join()})`,
-                invoices.map((invoice) => invoice.SCODE),
-            );
             for (const invoice of invoices) {
-                const lines = await transaction.query('SELECT * FROM REALPRICE WHERE SCODE = ?', [invoice.SCODE]);
-                const newAmount = transactions.find((t) => t.posting_number === invoice.PRIM).amount;
-                const oldAmount = lines.reduce((s, line) => s + parseFloat(line.SUMMAP), 0);
-                for (const line of lines) {
-                    await transaction.execute('UPDATE REALPRICE SET SUMMAP = ? WHERE REALPRICECODE = ?', [
-                        (newAmount * parseFloat(line.SUMMAP)) / oldAmount,
-                        line.REALPRICECODE,
-                    ]);
+                if (invoice.status === 5) {
+                    await transaction.rollback();
+                    return {
+                        isSuccess: false,
+                        message: `Invoice № ${invoice.number} has wrong status`,
+                    };
                 }
+                const newAmount = transactions.find((t) => t.posting_number === invoice.remark).amount;
+                await this.setInvoiceAmount(invoice, newAmount, transaction);
+                await this.upsertInvoiceCashFlow(invoice, newAmount, transaction);
+                await this.createTransferOut(invoice, transaction);
             }
-            await transaction.execute(
-                `UPDATE S SET STATUS=4 WHERE SCODE IN (${'?'.repeat(transactions.length).split('').join()})`,
-                invoices.map((invoice) => invoice.SCODE),
-            );
-            for (const invoice of invoices) {
-                const newAmount = transactions.find((t) => t.posting_number === invoice.PRIM).amount;
-                await transaction.execute(
-                    'UPDATE OR INSERT INTO SCHET (MONEYSCHET, NS, DATA, POKUPATCODE, SCODE) VALUES (?, ?, ?, ?,' +
-                        ' ?) MATCHING (SCODE)',
-                    [
-                        newAmount,
-                        invoice.NS,
-                        new Date(),
-                        this.configService.get<number>('BUYER_ID', 24416),
-                        invoice.SCODE,
-                    ],
-                );
-            }
+            await this.bulkSetStatus(invoices, 5, transaction);
             await transaction.commit();
+            return { isSuccess: true };
         } catch (e) {
             this.logger.error(e.message);
             await transaction.rollback();
-            return null;
+            return {
+                isSuccess: false,
+                message: e.message,
+            };
         }
     }
     async pickupInvoice(invoice: InvoiceDto): Promise<void> {
