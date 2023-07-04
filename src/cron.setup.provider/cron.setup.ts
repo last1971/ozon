@@ -48,4 +48,30 @@ export const cronConfig: Record<string, CronSetup> = {
             },
         },
     },
+    testCase1: {
+        production: false,
+        development: false,
+    },
+    testCase2: {
+        production: false,
+        development: true,
+    },
+    testCase3: {
+        production: false,
+        development: {
+            enabled: false,
+            settings: {
+                time: '0 30 15 * * *',
+            },
+        },
+    },
+    testCase4: {
+        production: false,
+        development: {
+            enabled: true,
+            settings: {
+                time: '0 30 15 * * *',
+            },
+        },
+    },
 };
