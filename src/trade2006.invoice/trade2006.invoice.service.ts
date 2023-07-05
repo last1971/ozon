@@ -9,6 +9,7 @@ import { ConfigService } from '@nestjs/config';
 import { PostingDto } from '../posting/dto/posting.dto';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { TransactionDto } from '../posting/dto/transaction.dto';
+import { ResultDto } from '../helpers/result.dto';
 
 @Injectable()
 export class Trade2006InvoiceService implements IInvoice {
@@ -143,7 +144,7 @@ export class Trade2006InvoiceService implements IInvoice {
             !transaction,
         );
     }
-    async updateByTransactions(transactions: TransactionDto[]): Promise<any> {
+    async updateByTransactions(transactions: TransactionDto[]): Promise<ResultDto> {
         const transaction = await this.db.transaction(Firebird.ISOLATION_READ_COMMITTED);
         try {
             const invoices = await this.getByPostingNumbers(

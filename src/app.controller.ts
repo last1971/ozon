@@ -15,9 +15,4 @@ export class AppController {
     updateCount(): Promise<ProductCodeUpdateStockDto[]> {
         return this.appService.checkGoodCount();
     }
-
-    @Get('update-order')
-    updateOrder(): Promise<void> {
-        return this.appService.checkNewOrders();
-    }
 }

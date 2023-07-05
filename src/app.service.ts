@@ -6,7 +6,6 @@ import { StockType } from './product/stock.type';
 import { ProductCodeStockDto, ProductCodeUpdateStockDto } from './product/dto/product.code.dto';
 import { goodCode, goodQuantityCoeff, productQuantity } from './helpers';
 import { IInvoice, INVOICE_SERVICE } from './interfaces/IInvoice';
-import { PostingService } from './posting/posting.service';
 import { PriceService } from './price/price.service';
 import { ProductVisibility } from './product/product.visibility';
 import { AutoAction } from './price/dto/update.price.dto';
@@ -16,7 +15,6 @@ export class AppService {
     private logger = new Logger(AppService.name);
     constructor(
         private productService: ProductService,
-        private postingService: PostingService,
         private priceService: PriceService,
         @Inject(GOOD_SERVICE) private goodService: IGood,
         @Inject(INVOICE_SERVICE) private invoiceService: IInvoice,
@@ -63,23 +61,7 @@ export class AppService {
         }
         return response;
     }
-    @Cron('0 */5 * * * *', { name: 'checkNewOrders' })
-    async checkNewOrders(): Promise<void> {
-        const packagingPostings = await this.postingService.listAwaitingPackaging();
-        for (const posting of packagingPostings) {
-            if (!(await this.invoiceService.isExists(posting.posting_number))) {
-                await this.postingService.createInvoice(posting);
-            }
-        }
-        const deliveringPostings = await this.postingService.listAwaitingDelivering();
-        for (const posting of deliveringPostings) {
-            let invoice = await this.invoiceService.getByPosting(posting);
-            if (!invoice) {
-                invoice = await this.postingService.createInvoice(posting);
-            }
-            await this.invoiceService.pickupInvoice(invoice);
-        }
-    }
+
     @Cron('0 0 0 * * 0', { name: 'updatePrices' })
     async updatePrices(level = 0, last_id = '', visibility = ProductVisibility.IN_SALE, limit = 1000): Promise<any> {
         const pricesForObtain = await this.priceService.index({ limit, last_id, visibility });
