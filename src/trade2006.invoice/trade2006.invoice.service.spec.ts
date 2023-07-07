@@ -7,7 +7,7 @@ describe('Trade2006InvoiceService', () => {
     let service: Trade2006InvoiceService;
     const query = jest
         .fn()
-        .mockResolvedValueOnce([{ MAX: 1 }])
+        .mockResolvedValueOnce([{ MAX: 1, SUMMAP: 1 }])
         .mockResolvedValueOnce([{ GEN_ID: 2 }])
         .mockRejectedValueOnce({ message: 'Test error' });
     const execute = jest.fn();
@@ -50,6 +50,7 @@ describe('Trade2006InvoiceService', () => {
         }).compile();
 
         execute.mockClear();
+        query.mockClear();
         service = module.get<Trade2006InvoiceService>(Trade2006InvoiceService);
     });
 
@@ -119,5 +120,44 @@ describe('Trade2006InvoiceService', () => {
     it('Test pickupInvoice', async () => {
         await service.pickupInvoice({ id: 1, date: new Date(), remark: '1', buyerId: 1, status: 3 });
         expect(execute.mock.calls[0]).toEqual(['UPDATE PODBPOS SET QUANSHOP = QUANSHOPNEED WHERE SCODE = ?', [1]]);
+    });
+    it('test getByPostingNumbers', async () => {
+        query.mockReturnValueOnce([]);
+        await service.getByPostingNumbers(['1', '2', '3']);
+        expect(query.mock.calls[0]).toEqual([
+            'SELECT *\n                 FROM S\n                 WHERE PRIM IN' + ' (?,?,?)',
+            ['1', '2', '3'],
+            true,
+        ]);
+    });
+    it('test bulkSetStatus', async () => {
+        await service.bulkSetStatus([{ id: 1, status: 1, buyerId: 1, remark: '1', date: new Date() }], 3);
+        expect(execute.mock.calls[0]).toEqual(['UPDATE S SET STATUS = ? WHERE SCODE IN (?)', [3, 1], true]);
+    });
+    it('test upsertInvoiceCashFlow', async () => {
+        await service.upsertInvoiceCashFlow({ id: 1, status: 1, buyerId: 1, remark: '1', date: new Date() }, 111.11);
+        expect(execute.mock.calls[0][0]).toEqual(
+            'UPDATE OR INSERT INTO SCHET (MONEYSCHET, NS, DATA, POKUPATCODE, SCODE) VALUES (?, ?, ?, ?, ?) MATCHING (SCODE)',
+        );
+        expect(execute.mock.calls[0][1][0]).toEqual(111.11);
+    });
+    it('test setInvoiceAmount', async () => {
+        query.mockReturnValueOnce([{ SUMMAP: 1 }]);
+        await service.setInvoiceAmount({ id: 1, status: 1, buyerId: 1, remark: '1', date: new Date() }, 111.11);
+        expect(query.mock.calls[0]).toEqual(['SELECT * FROM REALPRICE WHERE SCODE = ?', [1], true]);
+        expect(execute.mock.calls[0]).toEqual([
+            'UPDATE REALPRICE SET SUMMAP = ? WHERE REALPRICECODE = ?',
+            [111.11, undefined],
+            true,
+        ]);
+    });
+    it('test createTransferOut', async () => {
+        get.mockReturnValueOnce(1);
+        await service.createTransferOut({ id: 1, status: 1, buyerId: 1, remark: '1', date: new Date() });
+        expect(execute.mock.calls[0]).toEqual([
+            'EXECUTE PROCEDURE CREATESF9 (?, ?, ?, ?, ?)',
+            [null, 1, 1, null, 0],
+            true,
+        ]);
     });
 });
