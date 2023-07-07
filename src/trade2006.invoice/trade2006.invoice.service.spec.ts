@@ -7,7 +7,7 @@ describe('Trade2006InvoiceService', () => {
     let service: Trade2006InvoiceService;
     const query = jest
         .fn()
-        .mockResolvedValueOnce([{ MAX: 1, SUMMAP: 1 }])
+        .mockResolvedValueOnce([{ MAX: 1, SUMMAP: 1, SCODE: 2, PRIM: '2-2' }])
         .mockResolvedValueOnce([{ GEN_ID: 2 }])
         .mockRejectedValueOnce({ message: 'Test error' });
     const execute = jest.fn();
@@ -159,5 +159,17 @@ describe('Trade2006InvoiceService', () => {
             [null, 1, 1, null, 0],
             true,
         ]);
+    });
+    it('test updateByTransactions', async () => {
+        query.mockReturnValue([{ SCODE: 2, PRIM: '2-2' }]);
+        await service.updateByTransactions([{ posting_number: '2-2', amount: 111.11 }]);
+        expect(query.mock.calls).toHaveLength(2);
+        expect(query.mock.calls[0]).toEqual([
+            'SELECT *\n                 FROM S\n                 WHERE PRIM IN' + ' (?)',
+            ['2-2'],
+            false,
+        ]);
+        expect(query.mock.calls[1]).toEqual(['SELECT * FROM REALPRICE WHERE SCODE = ?', [2], false]);
+        expect(execute.mock.calls).toHaveLength(4);
     });
 });
