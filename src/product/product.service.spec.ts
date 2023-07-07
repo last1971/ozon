@@ -65,4 +65,11 @@ describe('ProductService', () => {
             },
         ]);
     });
+    it('test getTransaction', async () => {
+        const date = new Date();
+        method.mockResolvedValue({ result: { operations: [], page_count: 1 } });
+        const filter = { date: { from: date, to: date }, transaction_type: 'test' };
+        await service.getTransactionList(filter);
+        expect(method.mock.calls[0]).toEqual(['/v3/finance/transaction/list', { filter, page: 1, page_size: 1000 }]);
+    });
 });
