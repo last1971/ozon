@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ProductService } from '../product/product.service';
 import { PriceRequestDto } from './dto/price.request.dto';
 import { PricePresetDto } from './dto/price.preset.dto';
@@ -10,9 +10,12 @@ import { GoodPercentDto } from '../good/dto/good.percent.dto';
 import { AutoAction, UpdatePriceDto, UpdatePricesDto } from './dto/update.price.dto';
 import { PriceDto } from './dto/price.dto';
 import { toNumber } from 'lodash';
+import { Cron } from '@nestjs/schedule';
+import { ProductVisibility } from '../product/product.visibility';
 
 @Injectable()
 export class PriceService {
+    private logger = new Logger(PriceService.name);
     constructor(
         private product: ProductService,
         @Inject(GOOD_SERVICE) private goodService: IGood,
@@ -95,5 +98,24 @@ export class PriceService {
             old_price: calc(price.old_perc, price),
             price: calc(price.perc, price),
         };
+    }
+    @Cron('0 0 0 * * 0', { name: 'updatePrices' })
+    async updatePrices(level = 0, last_id = '', visibility = ProductVisibility.IN_SALE, limit = 1000): Promise<any> {
+        const pricesForObtain = await this.index({ limit, last_id, visibility });
+        let answer = [];
+        if (pricesForObtain.data.length > 0) {
+            const prices = pricesForObtain.data
+                .filter((price) => price.incoming_price > 1)
+                .map((price) => this.calculatePrice(price, AutoAction.ENABLED));
+            const res = await this.update({ prices });
+            answer = res.result
+                .filter((update: any) => !update.updated)
+                .concat(await this.updatePrices(level + 1, pricesForObtain.last_id));
+        }
+        if (level === 0) {
+            this.logger.log('Update prices was finished');
+            if (answer.length > 0) this.logger.error(answer);
+        }
+        return answer;
     }
 }

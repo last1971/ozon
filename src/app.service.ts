@@ -7,8 +7,6 @@ import { ProductCodeStockDto, ProductCodeUpdateStockDto } from './product/dto/pr
 import { goodCode, goodQuantityCoeff, productQuantity } from './helpers';
 import { IInvoice, INVOICE_SERVICE } from './interfaces/IInvoice';
 import { PriceService } from './price/price.service';
-import { ProductVisibility } from './product/product.visibility';
-import { AutoAction } from './price/dto/update.price.dto';
 
 @Injectable()
 export class AppService {
@@ -60,25 +58,5 @@ export class AppService {
             this.logger.log('Goods quantity updating finished');
         }
         return response;
-    }
-
-    @Cron('0 0 0 * * 0', { name: 'updatePrices' })
-    async updatePrices(level = 0, last_id = '', visibility = ProductVisibility.IN_SALE, limit = 1000): Promise<any> {
-        const pricesForObtain = await this.priceService.index({ limit, last_id, visibility });
-        let answer = [];
-        if (pricesForObtain.data.length > 0) {
-            const prices = pricesForObtain.data
-                .filter((price) => price.incoming_price > 1)
-                .map((price) => this.priceService.calculatePrice(price, AutoAction.ENABLED));
-            const res = await this.priceService.update({ prices });
-            answer = res.result
-                .filter((update: any) => !update.updated)
-                .concat(await this.updatePrices(level + 1, pricesForObtain.last_id));
-        }
-        if (level === 0) {
-            this.logger.log('Update prices was finished');
-            if (answer.length > 0) this.logger.error(answer);
-        }
-        return answer;
     }
 }

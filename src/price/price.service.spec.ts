@@ -8,20 +8,14 @@ import { AutoAction } from './dto/update.price.dto';
 
 describe('PriceService', () => {
     let service: PriceService;
-    const getPrices = jest.fn().mockResolvedValue({
-        items: [
-            { offer_id: '1', price: {}, commissions: { sales_percent: 1, fbs_direct_flow_trans_max_amount: 2 } },
-            { offer_id: '2', price: {}, commissions: { sales_percent: 1, fbs_direct_flow_trans_max_amount: 2 } },
-            { offer_id: '3', price: {}, commissions: { sales_percent: 1, fbs_direct_flow_trans_max_amount: 2 } },
-        ],
-    });
+    const getPrices = jest.fn();
     const prices = jest.fn().mockResolvedValue([
-        { code: 1, name: '1' },
-        { code: 2, name: '2' },
-        { code: 3, name: '3' },
+        { code: 1, name: '1', price: 1 },
+        { code: 2, name: '2', price: 2 },
+        { code: 3, name: '3', price: 3 },
     ]);
     const getPerc = jest.fn().mockResolvedValue([]);
-    const setPrice = jest.fn();
+    const setPrice = jest.fn().mockResolvedValue({ result: [] });
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
@@ -57,6 +51,10 @@ describe('PriceService', () => {
             ],
         }).compile();
 
+        getPrices.mockClear();
+        prices.mockClear();
+        getPerc.mockClear();
+        setPrice.mockClear();
         service = module.get<PriceService>(PriceService);
     });
 
@@ -77,6 +75,13 @@ describe('PriceService', () => {
     });
 
     it('test index', async () => {
+        getPrices.mockResolvedValueOnce({
+            items: [
+                { offer_id: '1', price: {}, commissions: { sales_percent: 1, fbs_direct_flow_trans_max_amount: 2 } },
+                { offer_id: '2', price: {}, commissions: { sales_percent: 1, fbs_direct_flow_trans_max_amount: 2 } },
+                { offer_id: '3', price: {}, commissions: { sales_percent: 1, fbs_direct_flow_trans_max_amount: 2 } },
+            ],
+        });
         await service.index({ limit: 0, visibility: ProductVisibility.VISIBLE });
         expect(getPrices.mock.calls[0]).toEqual([{ limit: 0, visibility: 'VISIBLE' }]);
         expect(prices.mock.calls[0]).toEqual([['1', '2', '3']]);
@@ -116,5 +121,56 @@ describe('PriceService', () => {
             old_price: '359',
             price: '289',
         });
+    });
+    it('Test updatePrices', async () => {
+        getPrices
+            .mockResolvedValueOnce({
+                items: [
+                    {
+                        offer_id: '1',
+                        price: {},
+                        commissions: { sales_percent: 1, fbs_direct_flow_trans_max_amount: 2 },
+                    },
+                    {
+                        offer_id: '2',
+                        price: {},
+                        commissions: { sales_percent: 1, fbs_direct_flow_trans_max_amount: 2 },
+                    },
+                    {
+                        offer_id: '3',
+                        price: {},
+                        commissions: { sales_percent: 1, fbs_direct_flow_trans_max_amount: 2 },
+                    },
+                ],
+            })
+            .mockResolvedValueOnce({ items: [] });
+        await service.updatePrices();
+        expect(getPrices.mock.calls).toHaveLength(2);
+        expect(getPrices.mock.calls[0]).toEqual([{ last_id: '', limit: 1000, visibility: 'IN_SALE' }]);
+        expect(prices.mock.calls).toEqual([[['1', '2', '3']], [[]]]);
+        expect(getPerc.mock.calls).toHaveLength(2);
+        expect(setPrice.mock.calls).toHaveLength(1);
+        expect(setPrice.mock.calls[0]).toEqual([
+            {
+                prices: [
+                    {
+                        auto_action_enabled: 'ENABLED',
+                        currency_code: 'RUB',
+                        min_price: '47',
+                        offer_id: '2',
+                        old_price: '47',
+                        price: '47',
+                    },
+                    {
+                        auto_action_enabled: 'ENABLED',
+                        currency_code: 'RUB',
+                        min_price: '48',
+                        offer_id: '3',
+                        old_price: '48',
+                        price: '48',
+                    },
+                ],
+            },
+        ]);
     });
 });
