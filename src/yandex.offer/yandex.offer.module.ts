@@ -1,9 +1,9 @@
 import { Module } from '@nestjs/common';
 import { YandexOfferService } from './yandex.offer.service';
-import { YandexApiService } from '../yandex.api/yandex.api.service';
+import { YandexApiModule } from '../yandex.api/yandex.api.module';
 
 @Module({
-    imports: [YandexApiService],
+    imports: [YandexApiModule],
     providers: [YandexOfferService],
     exports: [YandexOfferService],
 })
