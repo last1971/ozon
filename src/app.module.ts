@@ -17,6 +17,7 @@ import { join } from 'path';
 import { OrderModule } from './order/order.module';
 import { configValidate } from './env.validation';
 import { CronSetupProviderService } from './cron.setup.provider/cron.setup.provider.service';
+import { YandexApiModule } from './yandex.api/yandex.api.module';
 
 @Module({
     imports: [
@@ -52,6 +53,7 @@ import { CronSetupProviderService } from './cron.setup.provider/cron.setup.provi
         PriceModule,
         GoodModule,
         OrderModule,
+        YandexApiModule,
     ],
     controllers: [AppController],
     providers: [AppService, CronSetupProviderService],
