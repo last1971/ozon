@@ -14,7 +14,7 @@ export type CronSetup = {
 export const cronConfig: Record<string, CronSetup> = {
     updatePrices: {
         production: {
-            enabled: false,
+            enabled: true,
             settings: {
                 time: CronExpression.EVERY_WEEK,
             },
