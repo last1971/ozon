@@ -32,4 +32,8 @@ export class PriceController {
     async update(@Body() prices: UpdatePricesDto): Promise<any> {
         return this.service.update(prices);
     }
+    @Post('all')
+    async updatePrices(): Promise<any> {
+        return this.service.updatePrices();
+    }
 }
