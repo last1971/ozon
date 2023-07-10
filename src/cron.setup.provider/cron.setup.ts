@@ -25,7 +25,7 @@ export const cronConfig: Record<string, CronSetup> = {
         production: {
             enabled: true,
             settings: {
-                time: '0 0 9-19 * * 1-6',
+                time: CronExpression.EVERY_HOUR,
             },
         },
         development: false,

@@ -18,6 +18,7 @@ import { OrderModule } from './order/order.module';
 import { configValidate } from './env.validation';
 import { CronSetupProviderService } from './cron.setup.provider/cron.setup.provider.service';
 import { YandexApiModule } from './yandex.api/yandex.api.module';
+import { YandexOfferModule } from './yandex.offer/yandex.offer.module';
 
 @Module({
     imports: [
@@ -54,6 +55,7 @@ import { YandexApiModule } from './yandex.api/yandex.api.module';
         GoodModule,
         OrderModule,
         YandexApiModule,
+        YandexOfferModule,
     ],
     controllers: [AppController],
     providers: [AppService, CronSetupProviderService],
