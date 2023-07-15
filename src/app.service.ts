@@ -2,31 +2,35 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { ProductService } from './product/product.service';
 import { GOOD_SERVICE, IGood } from './interfaces/IGood';
-import { StockType } from './product/stock.type';
-import { ProductCodeStockDto, ProductCodeUpdateStockDto } from './product/dto/product.code.dto';
-import { goodCode, goodQuantityCoeff, productQuantity } from './helpers';
-import { IInvoice, INVOICE_SERVICE } from './interfaces/IInvoice';
-import { PriceService } from './price/price.service';
+import { YandexOfferService } from './yandex.offer/yandex.offer.service';
 
 @Injectable()
 export class AppService {
     private logger = new Logger(AppService.name);
     constructor(
         private productService: ProductService,
-        private priceService: PriceService,
+        private yandexOffer: YandexOfferService,
         @Inject(GOOD_SERVICE) private goodService: IGood,
-        @Inject(INVOICE_SERVICE) private invoiceService: IInvoice,
     ) {}
     getHello(): string {
         return 'Hello World!';
     }
     @Cron('0 0 9-19 * * 1-6', { name: 'checkGoodCount' })
-    async checkGoodCount(last_id = ''): Promise<ProductCodeUpdateStockDto[]> {
+    async checkGoodCount(): Promise<void> {
+        this.logger.log(
+            `Update quantity for ${await this.goodService.updateCountForService(
+                this.productService,
+                '',
+            )} goods in ozon`,
+        );
+        this.logger.log(
+            `Update quantity for ${await this.goodService.updateCountForService(this.yandexOffer, '')} goods in yandex`,
+        );
+
+        /*
         const products = await this.productService.listWithCount(last_id);
         const goodCodes = (products.result?.items || []).map((item) => goodCode(item));
-        const goods = new Map(
-            (await this.goodService.in(goodCodes)).map((good) => [good.code.toString(), good.quantity - good.reserve]),
-        );
+        const goods = await this.goodService.getQuantities(goodCodes);
         const updateCount = (products.result?.items || [])
             .filter((item) => {
                 const stock = item.stocks.find((stock) => stock.type === StockType.FBS);
@@ -58,5 +62,7 @@ export class AppService {
             this.logger.log('Goods quantity updating finished');
         }
         return response;
+        
+         */
     }
 }

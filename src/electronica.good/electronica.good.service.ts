@@ -4,6 +4,7 @@ import { GoodDto } from '../good/dto/good.dto';
 import { ElectronicaApiService } from '../electronica.api/electronica.api.service';
 import { GoodPriceDto } from '../good/dto/good.price.dto';
 import { GoodPercentDto } from '../good/dto/good.percent.dto';
+import { ICountUpdateable } from '../interfaces/ICountUpdatebale';
 
 @Injectable()
 export class ElectronicaGoodService implements IGood {
@@ -28,4 +29,11 @@ export class ElectronicaGoodService implements IGood {
         return [];
     }
     async setPercents(perc: GoodPercentDto): Promise<void> {}
+
+    async getQuantities(goodCodes: string[]): Promise<Map<string, number>> {
+        return new Map<string, number>();
+    }
+    async updateCountForService(service: ICountUpdateable, args: any): Promise<number> {
+        return 0;
+    }
 }

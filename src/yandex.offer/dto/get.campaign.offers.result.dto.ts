@@ -3,5 +3,5 @@ import { GetCampaignOfferDto } from './get.campaign.offer.dto';
 
 export class GetCampaignOffersResultDto {
     paging: ScrollingPagerDto;
-    offers: GetCampaignOfferDto;
+    offers: GetCampaignOfferDto[];
 }

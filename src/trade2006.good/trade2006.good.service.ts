@@ -5,7 +5,8 @@ import { FIREBIRD } from '../firebird/firebird.module';
 import { FirebirdDatabase } from 'ts-firebird';
 import { GoodPriceDto } from '../good/dto/good.price.dto';
 import { GoodPercentDto } from '../good/dto/good.percent.dto';
-import { goodCode, goodQuantityCoeff } from '../helpers';
+import { goodCode, goodQuantityCoeff, productQuantity, StringToIOfferIdableAdapter } from '../helpers';
+import { ICountUpdateable } from '../interfaces/ICountUpdatebale';
 
 @Injectable()
 export class Trade2006GoodService implements IGood {
@@ -70,5 +71,33 @@ export class Trade2006GoodService implements IGood {
                 goodQuantityCoeff(perc),
             ],
         );
+    }
+
+    async getQuantities(goodCodes: string[]): Promise<Map<string, number>> {
+        return new Map((await this.in(goodCodes)).map((good) => [good.code.toString(), good.quantity - good.reserve]));
+    }
+
+    async updateCountForService(service: ICountUpdateable, args: any): Promise<number> {
+        const serviceGoods = await service.getGoodIds(args);
+        if (serviceGoods.goods.size === 0) return 0;
+        const goodIds: string[] = [];
+        for (const goodId of serviceGoods.goods.keys()) {
+            const id = goodCode(new StringToIOfferIdableAdapter(goodId));
+            if (!goodIds.includes(id)) goodIds.push(id);
+        }
+        const goods = await this.getQuantities(goodIds);
+        const updateGoods: Map<string, number> = new Map();
+        for (const [id, count] of serviceGoods.goods) {
+            const item = new StringToIOfferIdableAdapter(id);
+            const goodCount = productQuantity(goods.get(goodCode(item)), goodQuantityCoeff(item));
+            if (count !== goodCount) {
+                updateGoods.set(id, goodCount);
+            }
+        }
+        let count = updateGoods.size === 0 ? 0 : await service.updateGoodCounts(updateGoods);
+        if (serviceGoods.nextArgs) {
+            count += await this.updateCountForService(service, serviceGoods.nextArgs);
+        }
+        return count;
     }
 }

@@ -11,9 +11,11 @@ import { isArray } from 'lodash';
 import { UpdatePricesDto } from '../price/dto/update.price.dto';
 import { TransactionFilterDto } from '../posting/dto/transaction.filter.dto';
 import { TransactionDto } from '../posting/dto/transaction.dto';
+import { GoodCountsDto, ICountUpdateable } from '../interfaces/ICountUpdatebale';
+import { StockType } from './stock.type';
 
 @Injectable()
-export class ProductService {
+export class ProductService implements ICountUpdateable {
     constructor(private ozonApiService: OzonApiService) {}
     async list(last_id = '', limit = 100): Promise<ProductListResultDto> {
         return this.ozonApiService.method('/v2/product/list', { last_id, limit });
@@ -59,5 +61,24 @@ export class ProductService {
             response.concat(await this.getTransactionList(filter, page + 1));
         }
         return response;
+    }
+
+    async getGoodIds(args: any): Promise<GoodCountsDto> {
+        const products = await this.listWithCount(args);
+        const goods = new Map<string, number>();
+        (products.result?.items || []).forEach((product) => {
+            const stock = product.stocks.find((stock) => stock.type === StockType.FBS);
+            goods.set(product.offer_id, product.stocks.length > 0 ? stock.present - stock.reserved : 0);
+        });
+        return { goods, nextArgs: products?.result.last_id };
+    }
+    async updateGoodCounts(goods: Map<string, number>): Promise<number> {
+        const updateGoods: ProductCodeStockDto[] = [];
+        goods.forEach((stock, offer_id) => {
+            updateGoods.push({ offer_id, stock });
+        });
+        const result = await this.updateCount(updateGoods);
+        const response = result.result || [];
+        return response.length;
     }
 }

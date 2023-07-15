@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ProductService } from './product.service';
 import { OzonApiService } from '../ozon.api/ozon.api.service';
 import { ProductVisibility } from './product.visibility';
+import { StockType } from './stock.type';
 
 describe('ProductService', () => {
     let service: ProductService;
@@ -71,5 +72,21 @@ describe('ProductService', () => {
         const filter = { date: { from: date, to: date }, transaction_type: 'test' };
         await service.getTransactionList(filter);
         expect(method.mock.calls[0]).toEqual(['/v3/finance/transaction/list', { filter, page: 1, page_size: 1000 }]);
+    });
+    it('getGoodIds', async () => {
+        method.mockResolvedValueOnce({
+            result: {
+                items: [{ offer_id: '345', stocks: [{ type: StockType.FBS, present: 2, reserved: 1 }] }],
+                last_id: '123',
+            },
+        });
+        const res = await service.getGoodIds('');
+        expect(res).toEqual({ goods: new Map([['345', 1]]), nextArgs: '123' });
+    });
+    it('updateGoodCounts', async () => {
+        method.mockResolvedValueOnce({ result: [2] });
+        const res = await service.updateGoodCounts(new Map([['1', 1]]));
+        expect(res).toEqual(1);
+        expect(method.mock.calls[0]).toEqual(['/v1/product/import/stocks', { stocks: [{ offer_id: '1', stock: 1 }] }]);
     });
 });

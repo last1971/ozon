@@ -7,3 +7,10 @@ export const goodQuantityCoeff = (value: IOfferIdable): any => {
 };
 export const productQuantity = (goodQuantity: number, goodCoeff: number) =>
     goodQuantity ? Math.floor(goodQuantity / goodCoeff) : 0;
+
+export class StringToIOfferIdableAdapter implements IOfferIdable {
+    offer_id: string;
+    constructor(offer_id: string) {
+        this.offer_id = offer_id;
+    }
+}

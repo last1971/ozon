@@ -4,9 +4,11 @@ import { FirebirdDatabase } from 'ts-firebird';
 import { GOOD_SERVICE } from '../interfaces/IGood';
 import { Trade2006GoodService } from '../trade2006.good/trade2006.good.service';
 import { GoodController } from './good.controller';
+import { ProductModule } from '../product/product.module';
+import { YandexOfferModule } from '../yandex.offer/yandex.offer.module';
 
 @Module({
-    imports: [FirebirdModule],
+    imports: [FirebirdModule, ProductModule, YandexOfferModule],
     providers: [
         {
             provide: GOOD_SERVICE,
