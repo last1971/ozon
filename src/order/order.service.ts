@@ -5,14 +5,20 @@ import { ResultDto } from '../helpers/result.dto';
 import { TransactionFilterDto } from '../posting/dto/transaction.filter.dto';
 import { Cron } from '@nestjs/schedule';
 import { PostingService } from '../posting/posting.service';
+import { YandexOrderService } from '../yandex.order/yandex.order.service';
+import { IOrderable } from '../interfaces/IOrderable';
 
 @Injectable()
 export class OrderService {
+    private orderServices: IOrderable[];
     constructor(
         private productService: ProductService,
         @Inject(INVOICE_SERVICE) private invoiceService: IInvoice,
         private postingService: PostingService,
-    ) {}
+        private yandexOrder: YandexOrderService,
+    ) {
+        this.orderServices = [yandexOrder, postingService];
+    }
     async updateTransactions(data: TransactionFilterDto): Promise<ResultDto> {
         /*
         {
@@ -29,19 +35,21 @@ export class OrderService {
 
     @Cron('0 */5 * * * *', { name: 'checkNewOrders' })
     async checkNewOrders(): Promise<void> {
-        const packagingPostings = await this.postingService.listAwaitingPackaging();
-        for (const posting of packagingPostings) {
-            if (!(await this.invoiceService.isExists(posting.posting_number))) {
-                await this.postingService.createInvoice(posting);
+        for (const service of this.orderServices) {
+            const packagingPostings = await service.listAwaitingPackaging();
+            for (const posting of packagingPostings) {
+                if (!(await this.invoiceService.isExists(posting.posting_number))) {
+                    await service.createInvoice(posting);
+                }
             }
-        }
-        const deliveringPostings = await this.postingService.listAwaitingDelivering();
-        for (const posting of deliveringPostings) {
-            let invoice = await this.invoiceService.getByPosting(posting);
-            if (!invoice) {
-                invoice = await this.postingService.createInvoice(posting);
+            const deliveringPostings = await service.listAwaitingDelivering();
+            for (const posting of deliveringPostings) {
+                let invoice = await this.invoiceService.getByPosting(posting);
+                if (!invoice) {
+                    invoice = await this.postingService.createInvoice(posting);
+                }
+                await this.invoiceService.pickupInvoice(invoice);
             }
-            await this.invoiceService.pickupInvoice(invoice);
         }
     }
 }

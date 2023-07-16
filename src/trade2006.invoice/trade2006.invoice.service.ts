@@ -10,6 +10,7 @@ import { PostingDto } from '../posting/dto/posting.dto';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { TransactionDto } from '../posting/dto/transaction.dto';
 import { ResultDto } from '../helpers/result.dto';
+import { goodCode, goodQuantityCoeff } from '../helpers';
 
 @Injectable()
 export class Trade2006InvoiceService implements IInvoice {
@@ -191,5 +192,20 @@ export class Trade2006InvoiceService implements IInvoice {
             await this.db.execute('UPDATE PODBPOS SET QUANSHOP = QUANSHOPNEED WHERE SCODE = ?', [invoice.id]);
             this.logger.log(`Order ${invoice.remark} has been pickuped`);
         }
+    }
+
+    async createInvoiceFromPostingDto(buyerId: number, posting: PostingDto): Promise<InvoiceDto> {
+        this.logger.log(`Create order ${posting.posting_number} with ${posting.products.length} lines for ${buyerId}`);
+        //const buyerId = this.configService.get<number>('BUYER_ID', 24416);
+        return this.create({
+            buyerId,
+            date: new Date(posting.in_process_at),
+            remark: posting.posting_number.toString(),
+            invoiceLines: posting.products.map((product) => ({
+                goodCode: goodCode(product),
+                quantity: product.quantity * goodQuantityCoeff(product),
+                price: (parseFloat(product.price) / goodQuantityCoeff(product)).toString(),
+            })),
+        });
     }
 }

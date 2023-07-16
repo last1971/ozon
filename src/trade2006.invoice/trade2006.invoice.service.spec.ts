@@ -5,11 +5,7 @@ import { ConfigService } from '@nestjs/config';
 
 describe('Trade2006InvoiceService', () => {
     let service: Trade2006InvoiceService;
-    const query = jest
-        .fn()
-        .mockResolvedValueOnce([{ MAX: 1, SUMMAP: 1, SCODE: 2, PRIM: '2-2' }])
-        .mockResolvedValueOnce([{ GEN_ID: 2 }])
-        .mockRejectedValueOnce({ message: 'Test error' });
+    const query = jest.fn();
     const execute = jest.fn();
     const commit = jest.fn();
     const rollback = jest.fn();
@@ -59,6 +55,10 @@ describe('Trade2006InvoiceService', () => {
     });
 
     it('test create', async () => {
+        query
+            .mockResolvedValueOnce([{ MAX: 1, SUMMAP: 1, SCODE: 2, PRIM: '2-2' }])
+            .mockResolvedValueOnce([{ GEN_ID: 2 }])
+            .mockRejectedValueOnce({ message: 'Test error' });
         const date = new Date();
         let res = await service.create({
             buyerId: 1,
@@ -171,5 +171,32 @@ describe('Trade2006InvoiceService', () => {
         ]);
         expect(query.mock.calls[1]).toEqual(['SELECT * FROM REALPRICE WHERE SCODE = ?', [2], false]);
         expect(execute.mock.calls).toHaveLength(4);
+    });
+    it('createInvoiceFromPostingDto', async () => {
+        const date = new Date();
+        const posting = {
+            posting_number: '321',
+            status: 'string',
+            in_process_at: date.toISOString(),
+            products: [
+                {
+                    price: '1.11',
+                    offer_id: '444',
+                    quantity: 2,
+                },
+            ],
+        };
+        query
+            .mockResolvedValueOnce([{ MAX: 1, SUMMAP: 1, SCODE: 2, PRIM: '2-2' }])
+            .mockResolvedValueOnce([{ GEN_ID: 3 }]);
+        const res = await service.createInvoiceFromPostingDto(1111, posting);
+        expect(res).toEqual({
+            buyerId: 1111,
+            date: date,
+            id: 3,
+            invoiceLines: [{ goodCode: '444', price: '1.11', quantity: 2 }],
+            remark: '321',
+            status: 3,
+        });
     });
 });

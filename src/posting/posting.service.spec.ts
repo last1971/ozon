@@ -8,6 +8,7 @@ import { DateTime } from 'luxon';
 describe('PostingService', () => {
     let service: PostingService;
     const create = jest.fn();
+    const createInvoiceFromPostingDto = jest.fn();
     const date = new Date();
     const postings = [
         {
@@ -37,6 +38,7 @@ describe('PostingService', () => {
                     useValue: {
                         isExists: async (remark: string) => remark === '123',
                         create,
+                        createInvoiceFromPostingDto,
                     },
                 },
                 { provide: ConfigService, useValue: { get: () => 24416 } },
@@ -85,19 +87,6 @@ describe('PostingService', () => {
             ],
         };
         await service.createInvoice(posting);
-        expect(create.mock.calls[0]).toEqual([
-            {
-                buyerId: 24416,
-                date,
-                remark: '321',
-                invoiceLines: [
-                    {
-                        goodCode: '444',
-                        price: '1.11',
-                        quantity: 2,
-                    },
-                ],
-            },
-        ]);
+        expect(createInvoiceFromPostingDto.mock.calls[0]).toEqual([24416, posting]);
     });
 });

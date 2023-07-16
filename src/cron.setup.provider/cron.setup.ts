@@ -42,12 +42,17 @@ export const cronConfig: Record<string, CronSetup> = {
                 time: CronExpression.EVERY_5_MINUTES,
             },
         },
-        development: false,
+        development: {
+            enabled: false,
+            settings: {
+                time: CronExpression.EVERY_MINUTE,
+            },
+        },
     },
     updateTransactions: {
         production: false,
         development: {
-            enabled: true,
+            enabled: false,
             settings: {
                 time: '0 30 15 * * *',
             },

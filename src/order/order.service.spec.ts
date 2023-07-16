@@ -3,6 +3,7 @@ import { OrderService } from './order.service';
 import { ProductService } from '../product/product.service';
 import { INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { PostingService } from '../posting/posting.service';
+import { YandexOrderService } from '../yandex.order/yandex.order.service';
 
 describe('OrderService', () => {
     let service: OrderService;
@@ -24,6 +25,14 @@ describe('OrderService', () => {
                         getByPosting,
                         pickupInvoice,
                         isExists: async (remark: string) => remark === '123',
+                    },
+                },
+                {
+                    provide: YandexOrderService,
+                    useValue: {
+                        createInvoice,
+                        listAwaitingPackaging: () => [],
+                        listAwaitingDelivering: () => [],
                     },
                 },
                 {

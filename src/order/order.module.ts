@@ -4,9 +4,10 @@ import { ProductModule } from '../product/product.module';
 import { InvoiceModule } from '../invoice/invoice.module';
 import { OrderController } from './order.controller';
 import { PostingModule } from '../posting/posting.module';
+import { YandexOrderModule } from '../yandex.order/yandex.order.module';
 
 @Module({
-    imports: [ProductModule, PostingModule, InvoiceModule],
+    imports: [ProductModule, PostingModule, InvoiceModule, YandexOrderModule],
     providers: [OrderService],
     controllers: [OrderController],
 })

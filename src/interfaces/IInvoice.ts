@@ -10,5 +10,6 @@ export interface IInvoice {
     getByPosting(posting: PostingDto): Promise<InvoiceDto>;
     updateByTransactions(transactions: TransactionDto[]): Promise<ResultDto>;
     pickupInvoice(invoice: InvoiceDto): Promise<void>;
+    createInvoiceFromPostingDto(buyerId: number, posting: PostingDto): Promise<InvoiceDto>;
 }
 export const INVOICE_SERVICE = 'INVOICE_SERVICE';

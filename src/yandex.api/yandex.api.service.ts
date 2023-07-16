@@ -22,7 +22,7 @@ export class YandexApiService {
                 response = this.httpService.put(yandexSeller.url + name, options, { headers });
                 break;
             default:
-                response = this.httpService.get(yandexSeller.url + name, { headers });
+                response = this.httpService.get(yandexSeller.url + name, { headers, params: options });
         }
         return firstValueFrom(
             response.pipe(map((res) => res.data)).pipe(
