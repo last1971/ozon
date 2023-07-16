@@ -4,6 +4,7 @@ import { YandexApiService } from '../yandex.api/yandex.api.service';
 import { VaultService } from 'vault-module/lib/vault.service';
 import { ConfigService } from '@nestjs/config';
 import { INVOICE_SERVICE } from '../interfaces/IInvoice';
+import { DateTime } from 'luxon';
 
 describe('YandexOrderService', () => {
     let service: YandexOrderService;
@@ -60,7 +61,7 @@ describe('YandexOrderService', () => {
         const res = await service.list(YandexOrderSubStatus.STARTED);
         expect(res).toEqual([
             {
-                in_process_at: 'Sun Jul 16 2023 11:35:08 GMT+0300 (Moscow Standard Time)',
+                in_process_at: DateTime.fromFormat('16-07-2023 11:35:08', 'dd-LL-y HH:mm:ss').toJSDate().toString(),
                 posting_number: 125,
                 products: [{ offer_id: '1111', price: 1.11, quantity: 6 }],
                 status: 'HZ',
