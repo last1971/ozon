@@ -77,9 +77,21 @@ describe('PriceService', () => {
     it('test index', async () => {
         getPrices.mockResolvedValueOnce({
             items: [
-                { offer_id: '1', price: {}, commissions: { sales_percent: 1, fbs_direct_flow_trans_max_amount: 2 } },
-                { offer_id: '2', price: {}, commissions: { sales_percent: 1, fbs_direct_flow_trans_max_amount: 2 } },
-                { offer_id: '3', price: {}, commissions: { sales_percent: 1, fbs_direct_flow_trans_max_amount: 2 } },
+                {
+                    offer_id: '1',
+                    price: {},
+                    commissions: { sales_percent_fbs: 1, fbs_direct_flow_trans_max_amount: 2 },
+                },
+                {
+                    offer_id: '2',
+                    price: {},
+                    commissions: { sales_percent_fbs: 1, fbs_direct_flow_trans_max_amount: 2 },
+                },
+                {
+                    offer_id: '3',
+                    price: {},
+                    commissions: { sales_percent_fbs: 1, fbs_direct_flow_trans_max_amount: 2 },
+                },
             ],
         });
         await service.index({ limit: 0, visibility: ProductVisibility.VISIBLE });
@@ -129,17 +141,17 @@ describe('PriceService', () => {
                     {
                         offer_id: '1',
                         price: {},
-                        commissions: { sales_percent: 1, fbs_direct_flow_trans_max_amount: 2 },
+                        commissions: { sales_percent_fbs: 1, fbs_direct_flow_trans_max_amount: 2 },
                     },
                     {
                         offer_id: '2',
                         price: {},
-                        commissions: { sales_percent: 1, fbs_direct_flow_trans_max_amount: 2 },
+                        commissions: { sales_percent_fbs: 1, fbs_direct_flow_trans_max_amount: 2 },
                     },
                     {
                         offer_id: '3',
                         price: {},
-                        commissions: { sales_percent: 1, fbs_direct_flow_trans_max_amount: 2 },
+                        commissions: { sales_percent_fbs: 1, fbs_direct_flow_trans_max_amount: 2 },
                     },
                 ],
             })
@@ -156,18 +168,18 @@ describe('PriceService', () => {
                     {
                         auto_action_enabled: 'ENABLED',
                         currency_code: 'RUB',
-                        min_price: '47',
+                        min_price: '46',
                         offer_id: '2',
-                        old_price: '47',
-                        price: '47',
+                        old_price: '46',
+                        price: '46',
                     },
                     {
                         auto_action_enabled: 'ENABLED',
                         currency_code: 'RUB',
-                        min_price: '48',
+                        min_price: '47',
                         offer_id: '3',
-                        old_price: '48',
-                        price: '48',
+                        old_price: '47',
+                        price: '47',
                     },
                 ],
             },
