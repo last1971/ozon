@@ -66,7 +66,7 @@ export class PriceService {
                     perc: percent.perc,
                     old_perc: percent.old_perc,
                     adv_perc: percent.adv_perc,
-                    sales_percent: item.commissions.sales_percent + 1,
+                    sales_percent: item.commissions.sales_percent_fbs,
                     fbs_direct_flow_trans_max_amount: item.commissions.fbs_direct_flow_trans_max_amount,
                     auto_action_enabled: item.price.auto_action_enabled,
                 };

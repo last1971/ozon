@@ -2,7 +2,7 @@ export class ProductPriceDto {
     commissions: {
         fbs_direct_flow_trans_max_amount: number;
         fbs_direct_flow_trans_min_amount: number;
-        sales_percent: number;
+        sales_percent_fbs: number;
     };
     offer_id: string;
     price: {
