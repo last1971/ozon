@@ -31,11 +31,11 @@ describe('YandexOfferService', () => {
 
     it('test updateCount', async () => {
         const updatedAt = new Date();
-        await service.updateCount(123, [
+        await service.updateCount([
             { sku: 'abc', warehouseId: 456, items: [{ count: 1, type: StockType.FIT, updatedAt }] },
         ]);
         expect(method.mock.calls[0]).toEqual([
-            'campaigns/123/offers/stocks',
+            'campaigns/undefined/offers/stocks',
             'put',
             { skus: [{ sku: 'abc', warehouseId: 456, items: [{ count: 1, type: StockType.FIT, updatedAt }] }] },
         ]);
@@ -43,10 +43,10 @@ describe('YandexOfferService', () => {
 
     it('test index', async () => {
         method.mockResolvedValueOnce({ result: 'test' });
-        const res = await service.index(123);
+        const res = await service.index();
         expect(res).toEqual('test');
         expect(method.mock.calls[0]).toEqual([
-            'campaigns/123/offers?limit=100&page_token=',
+            'campaigns/undefined/offers?limit=100&page_token=',
             'post',
             { statuses: ['PUBLISHED', 'NO_STOCKS', 'CHECKING'] },
         ]);
@@ -54,21 +54,21 @@ describe('YandexOfferService', () => {
 
     it('test getSkus', async () => {
         method.mockResolvedValueOnce({ result: 'test' });
-        const res = await service.getSkus(123, ['abc', 'def']);
+        const res = await service.getSkus(['abc', 'def']);
         expect(res).toEqual('test');
-        expect(method.mock.calls[0]).toEqual(['campaigns/123/stats/skus', 'post', { shopSkus: ['abc', 'def'] }]);
+        expect(method.mock.calls[0]).toEqual(['campaigns/undefined/stats/skus', 'post', { shopSkus: ['abc', 'def'] }]);
     });
 
     it('test getGoodIds', async () => {
         method
-            .mockResolvedValueOnce({ result: { offers: [{ offerId: '123' }], paging: { nextPageToken: 'hz' } } })
+            .mockResolvedValueOnce({ result: { offers: [{ offerId: '999' }], paging: { nextPageToken: 'hz' } } })
             .mockResolvedValueOnce({
                 result: {
                     shopSkus: [
                         {
                             shopSku: '999',
                             warehouses: [
-                                { id: 222, stocks: [{ type: GoodsStatsWarehouseStockType.AVAILABLE, count: 5 }] },
+                                { id: undefined, stocks: [{ type: GoodsStatsWarehouseStockType.AVAILABLE, count: 5 }] },
                             ],
                         },
                     ],

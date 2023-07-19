@@ -4,6 +4,7 @@ import { AppService } from './app.service';
 import { GOOD_SERVICE } from './interfaces/IGood';
 import { ProductService } from './product/product.service';
 import { YandexOfferService } from './yandex.offer/yandex.offer.service';
+import { ExpressOfferService } from './yandex.offer/express.offer.service';
 
 describe('AppController', () => {
     let appController: AppController;
@@ -16,6 +17,7 @@ describe('AppController', () => {
                 { provide: GOOD_SERVICE, useValue: {} },
                 { provide: ProductService, useValue: {} },
                 { provide: YandexOfferService, useValue: {} },
+                { provide: ExpressOfferService, useValue: {} },
             ],
         }).compile();
 

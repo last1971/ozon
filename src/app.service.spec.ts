@@ -3,6 +3,7 @@ import { AppService } from './app.service';
 import { GOOD_SERVICE } from './interfaces/IGood';
 import { ProductService } from './product/product.service';
 import { YandexOfferService } from './yandex.offer/yandex.offer.service';
+import { ExpressOfferService } from './yandex.offer/express.offer.service';
 
 describe('Test App', () => {
     let service: AppService;
@@ -14,6 +15,7 @@ describe('Test App', () => {
                 { provide: GOOD_SERVICE, useValue: { updateCountForService } },
                 { provide: ProductService, useValue: {} },
                 { provide: YandexOfferService, useValue: {} },
+                { provide: ExpressOfferService, useValue: {} },
             ],
         }).compile();
 
@@ -26,6 +28,6 @@ describe('Test App', () => {
 
     it('test checkGoodCount', async () => {
         await service.checkGoodCount();
-        expect(updateCountForService.mock.calls).toHaveLength(2);
+        expect(updateCountForService.mock.calls).toHaveLength(3);
     });
 });
