@@ -8,6 +8,7 @@ import { GetCampaignOffersResultDto } from './dto/get.campaign.offers.result.dto
 import { GoodsStatsDto } from './dto/goods.stats.dto';
 import { GoodsStatsWarehouseStockType } from './dto/goods.stats.warehouse.stock.dto';
 import { StockType } from './dto/stock.item.dto';
+import { GoodsStatsGoodsDto } from './dto/goods.stats.goods.dto';
 
 @Injectable()
 export abstract class AbstractOfferService implements ICountUpdateable {
@@ -33,7 +34,31 @@ export abstract class AbstractOfferService implements ICountUpdateable {
         return res.result;
     }
 
-    async getGoodIds(args: any): Promise<GoodCountsDto> {
+    async getShopSkus(args: any): Promise<GoodCountsDto<GoodsStatsGoodsDto>> {
+        const offersData: GetCampaignOffersResultDto = await this.index(args);
+        const skus = offersData.offers.map((offer) => offer.offerId);
+        const leftoversData = await this.getSkus(skus);
+        return {
+            goods: new Map(leftoversData.shopSkus.map((shopSku) => [shopSku.shopSku, shopSku])),
+            nextArgs: offersData.paging.nextPageToken,
+        };
+    }
+
+    async getGoodIds(args: any): Promise<GoodCountsDto<number>> {
+        const res = await this.getShopSkus(args);
+        const goods = new Map<string, number>();
+        for (const [key, shopSku] of res.goods) {
+            const warehouse = shopSku.warehouses
+                ? shopSku.warehouses.find((warehouse) => warehouse.id === this.warehouseId)
+                : null;
+            const stock = warehouse?.stocks.find((stock) => stock.type === GoodsStatsWarehouseStockType.AVAILABLE);
+            goods.set(key, stock?.count || 0);
+        }
+        return {
+            goods,
+            nextArgs: res.nextArgs,
+        };
+        /*
         const offersData: GetCampaignOffersResultDto = await this.index(args);
         const skus = offersData.offers.map((offer) => offer.offerId);
         const leftoversData = await this.getSkus(skus);
@@ -52,6 +77,7 @@ export abstract class AbstractOfferService implements ICountUpdateable {
             ),
             nextArgs: offersData.paging.nextPageToken,
         };
+        */
     }
 
     async updateGoodCounts(goods: Map<string, number>): Promise<number> {
