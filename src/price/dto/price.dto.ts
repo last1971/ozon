@@ -1,6 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { IPriceable } from '../../interfaces/IPriceable';
 
-export class PriceDto {
+export class PriceDto implements IPriceable {
     @ApiProperty({ description: 'Код товара Озон' })
     product_id: number;
     @ApiProperty({ description: 'Наш код товара' })

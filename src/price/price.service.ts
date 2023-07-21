@@ -8,10 +8,10 @@ import { PriceResponseDto } from './dto/price.response.dto';
 import { goodCode, goodQuantityCoeff } from '../helpers';
 import { GoodPercentDto } from '../good/dto/good.percent.dto';
 import { AutoAction, UpdatePriceDto, UpdatePricesDto } from './dto/update.price.dto';
-import { PriceDto } from './dto/price.dto';
 import { toNumber } from 'lodash';
 import { Cron } from '@nestjs/schedule';
 import { ProductVisibility } from '../product/product.visibility';
+import { IPriceable } from '../interfaces/IPriceable';
 
 @Injectable()
 export class PriceService {
@@ -76,8 +76,8 @@ export class PriceService {
     async update(prices: UpdatePricesDto): Promise<any> {
         return this.product.setPrice(prices);
     }
-    calculatePrice(price: PriceDto, auto_action = AutoAction.UNKNOWN): UpdatePriceDto {
-        const calc = (percent: number, price: PriceDto): string =>
+    calculatePrice(price: IPriceable, auto_action = AutoAction.UNKNOWN): UpdatePriceDto {
+        const calc = (percent: number, price: IPriceable): string =>
             Math.ceil(
                 (toNumber(price.incoming_price) * (1 + toNumber(percent) / 100) +
                     toNumber(this.configService.get<number>('SUM_OBTAIN', 25)) +

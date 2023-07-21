@@ -109,20 +109,12 @@ describe('PriceService', () => {
         expect(
             service.calculatePrice({
                 adv_perc: 1,
-                auto_action_enabled: false,
                 fbs_direct_flow_trans_max_amount: 20,
                 incoming_price: 100,
-                marketing_price: 0,
-                marketing_seller_price: 0,
                 min_perc: 10,
-                min_price: 0,
-                name: 'test',
                 offer_id: '123',
                 old_perc: 100,
-                old_price: 0,
                 perc: 50,
-                price: 0,
-                product_id: 0,
                 sales_percent: 20,
             }),
         ).toEqual({
