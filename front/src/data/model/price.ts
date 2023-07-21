@@ -48,10 +48,10 @@ class DMPrice extends DMApiMethods{
   #preset: DMPricePreset;
 
   currentCom() {
-    return Math.ceil(this.data.value.price * this.data.value.sales_percent / 100);
+    return Math.ceil(this.data.value.marketing_seller_price * this.data.value.sales_percent / 100);
   }
   currentRek() {
-    return Math.ceil(this.data.value.price * this.data.value.adv_perc / 100);
+    return Math.ceil(this.data.value.marketing_seller_price * this.data.value.adv_perc / 100);
   }
 
   constructor(data: TDMPrice, preset: DMPricePreset, urlTransformer: (url: string) => string,) {
@@ -70,18 +70,18 @@ class DMPrice extends DMApiMethods{
     this.e_perc = new ExtRef<number>(upToHund, this.data.value.perc);
 
     this.comCalculated = new ExtComputedRef(Math.ceil, ()=>{
-      return this.normCalculated.value * this.data.value.sales_percent / 100;
+      return this.minCalculated.value * this.data.value.sales_percent / 100;
 
       // sales_percent / 100   * рас цена
     });
     this.rekCalculated = new ExtComputedRef(Math.ceil, ()=>{
-      return this.normCalculated.value * this.e_adv_perc.value / 100;
+      return this.minCalculated.value * this.e_adv_perc.value / 100;
 
       // (adv_price/100) * рас цена
     });
     this.currentPayment = new ExtComputedRef(Math.ceil, ()=>{
       if (!this.#preset.data) throw Error('no preset data');
-      return this.data.value.marketing_seller_price - this.data.value.fbs_direct_flow_trans_max_amount - this.#preset.data.sum_obtain - this.#preset.data.sum_pack - this.data.value.marketing_seller_price * (this.#preset.data.perc_ekv + this.#preset.data.perc_mil + this.data.value.sales_percent + this.e_adv_perc.value) / 100;
+      return this.data.value.marketing_seller_price - this.data.value.fbs_direct_flow_trans_max_amount - this.#preset.data.sum_obtain - this.#preset.data.sum_pack - this.data.value.marketing_seller_price * (this.#preset.data.perc_ekv + this.#preset.data.perc_mil + this.data.value.sales_percent + this.data.value.adv_perc) / 100;
 
       // =marketing_seller_price-fbs_direct_flow_trans_max_amount-preset.sum_obtain-preset.sum_pack-maketing_seller_price*(preset.perc_ekv+preset.perc_mil+sales_percent+adv_perc)/100
 
