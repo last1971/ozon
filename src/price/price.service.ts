@@ -77,19 +77,32 @@ export class PriceService {
         return this.product.setPrice(prices);
     }
     calculatePrice(price: IPriceable, auto_action = AutoAction.UNKNOWN): UpdatePriceDto {
-        const calc = (percent: number, price: IPriceable): string =>
-            Math.ceil(
+        const minMil = price.min_mil || this.configService.get<number>('MIN_MIL');
+        const percMil: number = toNumber(this.configService.get<string>('PERC_MIL', '5.5'));
+        const percEkv: number = price.ekv_perc || toNumber(this.configService.get<string>('PERC_EKV', '1.5'));
+        const sumObtain = toNumber(this.configService.get<number>('SUM_OBTAIN', 25));
+        const sumPack = toNumber(this.configService.get<number>('SUM_PACK', 13));
+        const calc = (percent: number, price: IPriceable): string => {
+            let calcPrice = Math.ceil(
                 (toNumber(price.incoming_price) * (1 + toNumber(percent) / 100) +
-                    toNumber(this.configService.get<number>('SUM_OBTAIN', 25)) +
-                    toNumber(this.configService.get<number>('SUM_PACK', 13)) +
+                    sumObtain +
+                    sumPack +
                     toNumber(price.fbs_direct_flow_trans_max_amount)) /
-                    (1 -
-                        (toNumber(price.sales_percent) +
-                            toNumber(price.adv_perc) +
-                            toNumber(this.configService.get<string>('PERC_MIL', '5.5')) +
-                            toNumber(this.configService.get<string>('PERC_EKV', '1.5'))) /
-                            100),
-            ).toString();
+                    (1 - (toNumber(price.sales_percent) + toNumber(price.adv_perc) + percMil + percEkv) / 100),
+            );
+            const mil = calcPrice * (percMil / 100);
+            if (mil < minMil) {
+                calcPrice = Math.ceil(
+                    (toNumber(price.incoming_price) * (1 + toNumber(percent) / 100) +
+                        minMil +
+                        sumObtain +
+                        sumPack +
+                        toNumber(price.fbs_direct_flow_trans_max_amount)) /
+                        (1 - (toNumber(price.sales_percent) + toNumber(price.adv_perc) + percEkv) / 100),
+                );
+            }
+            return calcPrice.toString();
+        };
         return {
             auto_action_enabled: auto_action,
             currency_code: 'RUB',
@@ -97,6 +110,7 @@ export class PriceService {
             offer_id: price.offer_id,
             old_price: calc(price.old_perc, price),
             price: calc(price.perc, price),
+            incoming_price: price.incoming_price,
         };
     }
     @Cron('0 0 0 * * 0', { name: 'updatePrices' })

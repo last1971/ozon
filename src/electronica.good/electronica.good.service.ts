@@ -36,4 +36,7 @@ export class ElectronicaGoodService implements IGood {
     async updateCountForService(service: ICountUpdateable, args: any): Promise<number> {
         return 0;
     }
+    getGoodIds(goods: IterableIterator<string>): string[] {
+        return [];
+    };
 }

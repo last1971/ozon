@@ -21,6 +21,10 @@ export const cronConfig: Record<string, CronSetup> = {
         },
         development: false,
     },
+    updateYandexPrices: {
+        production: false,
+        development: true,
+    },
     checkGoodCount: {
         production: {
             enabled: true,

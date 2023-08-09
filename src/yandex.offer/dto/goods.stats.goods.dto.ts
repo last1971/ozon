@@ -1,4 +1,6 @@
 import { GoodsStatsWarehouseDto } from './goods.stats.warehouse.dto';
+import { GoodsStatsWeightDimensionsDto } from './goods.stats.weight.dimensions.dto';
+import { GoodsStatsTariffDto } from './goods.stats.tariff.dto';
 
 export class GoodsStatsGoodsDto {
     shopSku: string;
@@ -8,4 +10,6 @@ export class GoodsStatsGoodsDto {
     categoryId: number;
     categoryName: string;
     warehouses: GoodsStatsWarehouseDto[];
+    weightDimensions: GoodsStatsWeightDimensionsDto;
+    tariffs: GoodsStatsTariffDto[];
 }

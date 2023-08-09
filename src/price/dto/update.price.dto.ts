@@ -46,6 +46,10 @@ export class UpdatePriceDto {
     @IsOptional()
     @IsNumber()
     product_id?: number;
+    @ApiProperty({ description: 'Входящая цена', required: false })
+    @IsOptional()
+    @IsNumber()
+    incoming_price?: number;
 }
 
 export class UpdatePricesDto {

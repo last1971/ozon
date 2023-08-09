@@ -7,4 +7,6 @@ export interface IPriceable {
     perc: number;
     old_perc: number;
     adv_perc: number;
+    min_mil?: number;
+    ekv_perc?: number;
 }

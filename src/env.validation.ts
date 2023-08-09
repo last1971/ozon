@@ -64,10 +64,22 @@ class EnvironmentVariables {
     PERC_EKV: number;
 
     @IsNumber()
+    MIN_MIL: number;
+
+    @IsNumber()
     SUM_OBTAIN: number;
 
     @IsNumber()
     SUM_PACK: number;
+
+    @IsNumber()
+    YANDEX_SUM_PACK: number;
+
+    @IsNumber()
+    YANDEX_MIN_MIL: number;
+
+    @IsNumber()
+    YANDEX_PERC_EKV: number;
 }
 
 export function configValidate(config: Record<string, unknown>) {

@@ -27,6 +27,7 @@ export class YandexApiService {
         return firstValueFrom(
             response.pipe(map((res) => res.data)).pipe(
                 catchError(async (error: AxiosError) => {
+                    const hz = options;
                     this.logger.error(error.message + ' ' + error?.response?.data['message']);
                     return {
                         result: null,

@@ -10,5 +10,6 @@ export interface IGood {
     getPerc(codes: string[]): Promise<GoodPercentDto[]>;
     getQuantities(goodCodes: string[]): Promise<Map<string, number>>;
     updateCountForService(service: ICountUpdateable, args: any): Promise<number>;
+    getGoodIds(goods: IterableIterator<string>): string[];
 }
 export const GOOD_SERVICE = 'GOOD_SERVICE';
