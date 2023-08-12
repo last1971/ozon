@@ -7,10 +7,12 @@ import { GoodPriceDto } from '../good/dto/good.price.dto';
 import { GoodPercentDto } from '../good/dto/good.percent.dto';
 import { goodCode, goodQuantityCoeff, productQuantity, StringToIOfferIdableAdapter } from '../helpers';
 import { ICountUpdateable } from '../interfaces/ICountUpdatebale';
+import { ConfigService } from '@nestjs/config';
+import { GoodsWithPercents } from '../good/goods.with.percents';
 
 @Injectable()
 export class Trade2006GoodService implements IGood {
-    constructor(@Inject(FIREBIRD) private db: FirebirdDatabase) {}
+    constructor(@Inject(FIREBIRD) private db: FirebirdDatabase, private configService: ConfigService) {}
 
     async in(codes: string[]): Promise<GoodDto[]> {
         if (codes.length === 0) return [];
@@ -102,5 +104,18 @@ export class Trade2006GoodService implements IGood {
             count += await this.updateCountForService(service, serviceGoods.nextArgs);
         }
         return count;
+    }
+
+    async codesToUpdatePrices(goodCodes: string[]): Promise<GoodsWithPercents> {
+        const goods = await this.prices(goodCodes);
+        const percents = await this.getPerc(goodCodes);
+        const defaultPercents: GoodPercentDto = {
+            offer_id: null,
+            min_perc: this.configService.get<number>('PERC_MIN'),
+            perc: this.configService.get<number>('PERC_NOR'),
+            old_perc: this.configService.get<number>('PERC_MAX'),
+            adv_perc: 0,
+        };
+        return new GoodsWithPercents(goods, percents, defaultPercents);
     }
 }

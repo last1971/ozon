@@ -5,6 +5,7 @@ import { ElectronicaApiService } from '../electronica.api/electronica.api.servic
 import { GoodPriceDto } from '../good/dto/good.price.dto';
 import { GoodPercentDto } from '../good/dto/good.percent.dto';
 import { ICountUpdateable } from '../interfaces/ICountUpdatebale';
+import { GoodsWithPercents } from '../good/goods.with.percents';
 
 @Injectable()
 export class ElectronicaGoodService implements IGood {
@@ -38,5 +39,8 @@ export class ElectronicaGoodService implements IGood {
     }
     getGoodIds(goods: IterableIterator<string>): string[] {
         return [];
-    };
+    }
+    codesToUpdatePrices(goodCodes: string[]): Promise<GoodsWithPercents> {
+        return null;
+    }
 }

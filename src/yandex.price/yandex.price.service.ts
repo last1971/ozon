@@ -9,9 +9,11 @@ import { YandexApiService } from '../yandex.api/yandex.api.service';
 import { UpdateBusinessOfferPriceDto } from './dto/update.business.offer.price.dto';
 import { VaultService } from 'vault-module/lib/vault.service';
 import { Cron } from '@nestjs/schedule';
-import { goodCode, goodQuantityCoeff } from '../helpers';
 import { GoodsStatsGoodsDto } from '../yandex.offer/dto/goods.stats.goods.dto';
-import { GoodsStatsTariffType } from '../yandex.offer/dto/goods.stats.tariff.dto';
+import { GoodsStatsGoodsDtoUpdatePriceableAdapter } from './goods.stats.goods.dto.update.priceable.adapter';
+import { toNumber } from 'lodash';
+import { GoodCountsDto } from '../interfaces/ICountUpdatebale';
+import { IUpdatePriceable } from '../interfaces/IUpdatePriceable';
 
 @Injectable()
 export class YandexPriceService implements OnModuleInit {
@@ -29,7 +31,7 @@ export class YandexPriceService implements OnModuleInit {
         const yandex = await this.vaultService.get('yandex-seller');
         this.businessId = yandex['electronica-business'] as string;
     }
-    private calculateTransMaxAmout(dto: GoodsStatsGoodsDto): number {
+    private calculateTransMaxAmount(dto: GoodsStatsGoodsDto): number {
         const weight = Math.max(
             dto.weightDimensions.weight,
             (dto.weightDimensions.length * dto.weightDimensions.height * dto.weightDimensions.width) / 5000,
@@ -66,9 +68,27 @@ export class YandexPriceService implements OnModuleInit {
         }
         return 400;
     }
-    @Cron('0 03 15 * * *', { name: 'updateYandexPrices' })
+    async updatePrices2(offers: GoodCountsDto<GoodsStatsGoodsDto>): Promise<UpdatePriceDto[]> {
+        const goodCodes: string[] = this.goodService.getGoodIds(offers.goods.keys());
+        const goodsWithPercents = await this.goodService.codesToUpdatePrices(goodCodes);
+        const percentsDto = {
+            minMil: this.configService.get<number>('YANDEX_MIN_MIL', 40),
+            percMil: toNumber(this.configService.get<string>('PERC_MIL', '5.5')),
+            percEkv: this.configService.get<number>('YANDEX_PERC_EKV', 1),
+            sumObtain: toNumber(this.configService.get<number>('SUM_OBTAIN', 25)),
+            sumPack: toNumber(this.configService.get<number>('SUM_PACK', 13)),
+        };
+        const updatePrices: IUpdatePriceable[] = [];
+        for (const good of offers.goods.values()) {
+            updatePrices.push(new GoodsStatsGoodsDtoUpdatePriceableAdapter(good, percentsDto));
+        }
+        return updatePrices.map((u) => u.make(goodsWithPercents));
+    }
+
+    @Cron('0 28 20 * * *', { name: 'updateYandexPrices' })
     async updatePrices(level = 0, args = ''): Promise<void> {
         const offers = await this.offerService.getShopSkus(args);
+        /*
         const goodCodes: string[] = this.goodService.getGoodIds(offers.goods.keys());
         const goods = await this.goodService.prices(goodCodes);
         const percents = await this.goodService.getPerc(goodCodes);
@@ -91,7 +111,7 @@ export class YandexPriceService implements OnModuleInit {
                 this.priceService.calculatePrice({
                     offer_id: good.shopSku,
                     incoming_price,
-                    fbs_direct_flow_trans_max_amount: this.calculateTransMaxAmout(good),
+                    fbs_direct_flow_trans_max_amount: this.calculateTransMaxAmount(good),
                     sales_percent,
                     min_perc,
                     perc,
@@ -101,16 +121,17 @@ export class YandexPriceService implements OnModuleInit {
                     ekv_perc: this.configService.get<number>('YANDEX_PERC_EKV', 1),
                 }),
             );
-        }
+        }*/
+        const updatePrices = await this.updatePrices2(offers);
         await this.update(updatePrices);
         if (offers.nextArgs) {
             await this.updatePrices(level + 1, offers.nextArgs);
         }
         if (level === 0) {
-            this.logger.log('All Yndex Prices was updated');
+            this.logger.log('All Yandex Prices was updated');
         }
     }
-    async update(prices: UpdatePriceDto[]): Promise<void> {
+    async update(prices: UpdatePriceDto[]): Promise<any> {
         await this.updateOfferPrices(prices);
         await this.updateIncomingPrices(prices);
     }
