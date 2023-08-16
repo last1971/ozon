@@ -119,7 +119,6 @@ export class PriceService implements IPriceUpdateable {
     }
 
     async updatePrices(updatePrices: UpdatePriceDto[]): Promise<any> {
-        return [];
-        //return this.update({ prices: updatePrices });
+        return this.update({ prices: updatePrices });
     }
 }

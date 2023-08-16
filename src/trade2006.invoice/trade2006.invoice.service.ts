@@ -11,6 +11,7 @@ import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { TransactionDto } from '../posting/dto/transaction.dto';
 import { ResultDto } from '../helpers/result.dto';
 import { goodCode, goodQuantityCoeff } from '../helpers';
+import { chunk, flatten } from 'lodash';
 
 @Injectable()
 export class Trade2006InvoiceService implements IInvoice {
@@ -73,13 +74,27 @@ export class Trade2006InvoiceService implements IInvoice {
         transaction: FirebirdTransaction = null,
     ): Promise<InvoiceDto[]> {
         const workingTransaction = transaction ?? (await this.db.transaction(Firebird.ISOLATION_READ_COMMITTED));
-        const invoices = await workingTransaction.query(
+        const invoices = flatten(
+            await Promise.all(
+                chunk(postingNumbers, 50).map((part: string[]) =>
+                    workingTransaction.query(
+                        `SELECT *
+                 FROM S
+                 WHERE PRIM IN (${'?'.repeat(part.length).split('').join()})`,
+                        part,
+                        !transaction,
+                    ),
+                ),
+            ),
+        );
+        /*
+        await workingTransaction.query(
             `SELECT *
                  FROM S
                  WHERE PRIM IN (${'?'.repeat(postingNumbers.length).split('').join()})`,
             postingNumbers.map((postingNumber) => postingNumber),
             !transaction,
-        );
+        );*/
         return invoices.map(
             (invoice): InvoiceDto => ({
                 id: invoice.SCODE,
