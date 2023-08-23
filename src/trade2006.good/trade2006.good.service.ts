@@ -5,12 +5,16 @@ import { FIREBIRD } from '../firebird/firebird.module';
 import { FirebirdDatabase } from 'ts-firebird';
 import { GoodPriceDto } from '../good/dto/good.price.dto';
 import { GoodPercentDto } from '../good/dto/good.percent.dto';
-import { goodCode, goodQuantityCoeff, productQuantity, StringToIOfferIdableAdapter } from '../helpers';
+import { calculatePrice, goodCode, goodQuantityCoeff, productQuantity, StringToIOfferIdableAdapter } from '../helpers';
 import { ICountUpdateable } from '../interfaces/ICountUpdatebale';
+import { IPriceUpdateable } from '../interfaces/i.price.updateable';
+import { IProductCoeffsable } from '../interfaces/i.product.coeffsable';
+import { UpdatePriceDto } from '../price/dto/update.price.dto';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class Trade2006GoodService implements IGood {
-    constructor(@Inject(FIREBIRD) private db: FirebirdDatabase) {}
+    constructor(@Inject(FIREBIRD) private db: FirebirdDatabase, private configService: ConfigService) {}
 
     async in(codes: string[]): Promise<GoodDto[]> {
         if (codes.length === 0) return [];
@@ -99,5 +103,44 @@ export class Trade2006GoodService implements IGood {
             count += await this.updateCountForService(service, serviceGoods.nextArgs);
         }
         return count;
+    }
+
+    async updatePriceForService(service: IPriceUpdateable, skus: string[]): Promise<any> {
+        const codes = skus.map((item) => goodCode({ offer_id: item }));
+        const goods = await this.prices(codes);
+        const percents = await this.getPerc(codes);
+        const products: IProductCoeffsable[] = await service.getProductsWithCoeffs(skus);
+        const updatePrices: UpdatePriceDto[] = [];
+        products.forEach((product) => {
+            const gCode = goodCode({ offer_id: product.getSku() });
+            const gCoeff = goodQuantityCoeff({ offer_id: product.getSku() });
+            const incoming_price = goods.find((g) => g.code.toString() === gCode).price * gCoeff;
+            if (incoming_price !== 0) {
+                const { min_perc, perc, old_perc, adv_perc } = percents.find(
+                    (p) => p.offer_id.toString() === gCode && p.pieces === gCoeff,
+                ) || {
+                    adv_perc: 0,
+                    old_perc: this.configService.get<number>('PERC_MAX', 50),
+                    perc: this.configService.get<number>('PERC_NOR', 25),
+                    min_perc: this.configService.get<number>('PERC_MIN', 15),
+                };
+                updatePrices.push(
+                    calculatePrice(
+                        {
+                            adv_perc,
+                            fbs_direct_flow_trans_max_amount: product.getTransMaxAmount(),
+                            incoming_price,
+                            min_perc,
+                            offer_id: product.getSku(),
+                            old_perc,
+                            perc,
+                            sales_percent: product.getSalesPercent(),
+                        },
+                        service.getObtainCoeffs(),
+                    ),
+                );
+            }
+        });
+        return service.updatePrices(updatePrices);
     }
 }

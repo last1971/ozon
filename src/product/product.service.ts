@@ -63,7 +63,7 @@ export class ProductService implements ICountUpdateable {
         return response;
     }
 
-    async getGoodIds(args: any): Promise<GoodCountsDto> {
+    async getGoodIds(args: any): Promise<GoodCountsDto<number>> {
         const products = await this.listWithCount(args);
         const goods = new Map<string, number>();
         (products.result?.items || []).forEach((product) => {

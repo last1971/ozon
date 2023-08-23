@@ -19,6 +19,15 @@ export class UpdatePriceDto {
     auto_action_enabled? = AutoAction.UNKNOWN;
     currency_code = 'RUB';
     @ApiProperty({
+        description: 'Атрибут для включения и выключения автоприменения стратегий цены',
+        enum: AutoAction,
+        default: AutoAction.UNKNOWN,
+        required: false,
+    })
+    @IsOptional()
+    @IsEnum(AutoAction)
+    price_strategy_enabled? = AutoAction.UNKNOWN;
+    @ApiProperty({
         description: 'Минимальная цена товара после применения акций',
         required: true,
     })
@@ -46,6 +55,10 @@ export class UpdatePriceDto {
     @IsOptional()
     @IsNumber()
     product_id?: number;
+    @ApiProperty({ description: 'Входящая цена', required: false })
+    @IsOptional()
+    @IsNumber()
+    incoming_price?: number;
 }
 
 export class UpdatePricesDto {

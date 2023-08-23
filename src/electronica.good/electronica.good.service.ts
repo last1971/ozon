@@ -5,6 +5,7 @@ import { ElectronicaApiService } from '../electronica.api/electronica.api.servic
 import { GoodPriceDto } from '../good/dto/good.price.dto';
 import { GoodPercentDto } from '../good/dto/good.percent.dto';
 import { ICountUpdateable } from '../interfaces/ICountUpdatebale';
+import { IPriceUpdateable } from "../interfaces/i.price.updateable";
 
 @Injectable()
 export class ElectronicaGoodService implements IGood {
@@ -35,5 +36,9 @@ export class ElectronicaGoodService implements IGood {
     }
     async updateCountForService(service: ICountUpdateable, args: any): Promise<number> {
         return 0;
+    }
+
+    updatePriceForService(service: IPriceUpdateable, skus: string[]): Promise<any> {
+        return Promise.resolve(undefined);
     }
 }

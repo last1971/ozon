@@ -7,14 +7,17 @@ import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
 import { PriceResponseDto } from './dto/price.response.dto';
 import { goodCode, goodQuantityCoeff } from '../helpers';
 import { GoodPercentDto } from '../good/dto/good.percent.dto';
-import { AutoAction, UpdatePriceDto, UpdatePricesDto } from './dto/update.price.dto';
-import { PriceDto } from './dto/price.dto';
+import { UpdatePriceDto, UpdatePricesDto } from './dto/update.price.dto';
 import { toNumber } from 'lodash';
 import { Cron } from '@nestjs/schedule';
 import { ProductVisibility } from '../product/product.visibility';
+import { IPriceUpdateable } from '../interfaces/i.price.updateable';
+import { ObtainCoeffsDto } from '../helpers/obtain.coeffs.dto';
+import { IProductCoeffsable } from '../interfaces/i.product.coeffsable';
+import { OzonProductCoeffsAdapter } from './ozon.product.coeffs.adapter';
 
 @Injectable()
-export class PriceService {
+export class PriceService implements IPriceUpdateable {
     private logger = new Logger(PriceService.name);
     constructor(
         private product: ProductService,
@@ -76,46 +79,46 @@ export class PriceService {
     async update(prices: UpdatePricesDto): Promise<any> {
         return this.product.setPrice(prices);
     }
-    calculatePrice(price: PriceDto, auto_action = AutoAction.UNKNOWN): UpdatePriceDto {
-        const calc = (percent: number, price: PriceDto): string =>
-            Math.ceil(
-                (toNumber(price.incoming_price) * (1 + toNumber(percent) / 100) +
-                    toNumber(this.configService.get<number>('SUM_OBTAIN', 25)) +
-                    toNumber(this.configService.get<number>('SUM_PACK', 13)) +
-                    toNumber(price.fbs_direct_flow_trans_max_amount)) /
-                    (1 -
-                        (toNumber(price.sales_percent) +
-                            toNumber(price.adv_perc) +
-                            toNumber(this.configService.get<string>('PERC_MIL', '5.5')) +
-                            toNumber(this.configService.get<string>('PERC_EKV', '1.5'))) /
-                            100),
-            ).toString();
-        return {
-            auto_action_enabled: auto_action,
-            currency_code: 'RUB',
-            min_price: calc(price.min_perc, price),
-            offer_id: price.offer_id,
-            old_price: calc(price.old_perc, price),
-            price: calc(price.perc, price),
-        };
-    }
-    @Cron('0 0 0 * * 0', { name: 'updatePrices' })
-    async updatePrices(level = 0, last_id = '', visibility = ProductVisibility.IN_SALE, limit = 1000): Promise<any> {
-        const pricesForObtain = await this.index({ limit, last_id, visibility });
+    @Cron('0 0 0 * * 0', { name: 'updateOzonPrices' })
+    async updateAllPrices(level = 0, last_id = '', visibility = ProductVisibility.IN_SALE, limit = 1000): Promise<any> {
+        const pricesForObtain = await this.product.getPrices({ limit, last_id, visibility });
         let answer = [];
-        if (pricesForObtain.data.length > 0) {
-            const prices = pricesForObtain.data
-                .filter((price) => price.incoming_price > 1)
-                .map((price) => this.calculatePrice(price, AutoAction.ENABLED));
-            const res = await this.update({ prices });
+        if (pricesForObtain.items.length > 0) {
+            const res = await this.goodService.updatePriceForService(
+                this,
+                pricesForObtain.items.map((p) => p.offer_id),
+            );
             answer = res.result
                 .filter((update: any) => !update.updated)
-                .concat(await this.updatePrices(level + 1, pricesForObtain.last_id));
+                .concat(await this.updateAllPrices(level + 1, pricesForObtain.last_id));
         }
         if (level === 0) {
-            this.logger.log('Update prices was finished');
+            this.logger.log('Update ozon prices was finished');
             if (answer.length > 0) this.logger.error(answer);
         }
         return answer;
+    }
+
+    getObtainCoeffs(): ObtainCoeffsDto {
+        return {
+            minMil: this.configService.get<number>('MIN_MIL', 20),
+            percMil: toNumber(this.configService.get<number>('PERC_MIL', 5.5)),
+            percEkv: toNumber(this.configService.get<number>('PERC_EKV', 1.5)),
+            sumObtain: toNumber(this.configService.get<number>('SUM_OBTAIN', 25)),
+            sumPack: toNumber(this.configService.get<number>('SUM_PACK', 13)),
+        };
+    }
+
+    async getProductsWithCoeffs(skus: string[]): Promise<IProductCoeffsable[]> {
+        const response = await this.product.getPrices({
+            offer_id: skus,
+            limit: 1000,
+            visibility: ProductVisibility.IN_SALE,
+        });
+        return response.items.map((product) => new OzonProductCoeffsAdapter(product));
+    }
+
+    async updatePrices(updatePrices: UpdatePriceDto[]): Promise<any> {
+        return this.update({ prices: updatePrices });
     }
 }

@@ -1,8 +1,8 @@
-export class GoodCountsDto {
-    goods: Map<string, number>;
+export class GoodCountsDto<T> {
+    goods: Map<string, T>;
     nextArgs: any;
 }
 export interface ICountUpdateable {
-    getGoodIds(args: any): Promise<GoodCountsDto>;
+    getGoodIds(args: any): Promise<GoodCountsDto<number>>;
     updateGoodCounts(goods: Map<string, number>): Promise<number>;
 }
