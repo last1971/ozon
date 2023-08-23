@@ -87,14 +87,6 @@ export class Trade2006InvoiceService implements IInvoice {
                 ),
             ),
         );
-        /*
-        await workingTransaction.query(
-            `SELECT *
-                 FROM S
-                 WHERE PRIM IN (${'?'.repeat(postingNumbers.length).split('').join()})`,
-            postingNumbers.map((postingNumber) => postingNumber),
-            !transaction,
-        );*/
         return invoices.map(
             (invoice): InvoiceDto => ({
                 id: invoice.SCODE,

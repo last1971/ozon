@@ -1,14 +1,26 @@
-import { Body, Controller, Get, Post, Query } from '@nestjs/common';
+import { Body, Controller, forwardRef, Get, Inject, Param, Post, Query } from '@nestjs/common';
 import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { PriceRequestDto } from './dto/price.request.dto';
 import { PricePresetDto } from './dto/price.preset.dto';
 import { PriceService } from './price.service';
 import { PriceResponseDto } from './dto/price.response.dto';
 import { UpdatePricesDto } from './dto/update.price.dto';
+import { YandexPriceService } from '../yandex.price/yandex.price.service';
+import { IPriceUpdateable } from '../interfaces/i.price.updateable';
+import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
 @ApiTags('price')
 @Controller('api/price')
 export class PriceController {
-    constructor(private service: PriceService) {}
+    private services: Map<string, IPriceUpdateable>;
+    constructor(
+        private service: PriceService,
+        @Inject(forwardRef(() => YandexPriceService)) private yandexPriceService: YandexPriceService,
+        @Inject(GOOD_SERVICE) private goodService: IGood,
+    ) {
+        this.services = new Map<string, IPriceUpdateable>();
+        this.services.set('yandex', yandexPriceService);
+        this.services.set('ozon', service);
+    }
     @ApiOkResponse({
         description: 'Получить информацию о ценах товаров',
         type: PriceResponseDto,
@@ -30,10 +42,15 @@ export class PriceController {
     })
     @Post()
     async update(@Body() prices: UpdatePricesDto): Promise<any> {
-        return this.service.update(prices);
+        const skus = prices.prices.map((price) => price.offer_id);
+        await Promise.all(
+            Array.from(this.services.values()).map((service) => this.goodService.updatePriceForService(service, skus)),
+        );
+        //return this.service.update(prices);
     }
-    @Post('all')
-    async updatePrices(): Promise<any> {
-        return this.service.updateAllPrices();
+    @Post('all/:service')
+    async updatePrices(@Param('service') service: string): Promise<any> {
+        const command = this.services.get(service) || this.service;
+        return command.updateAllPrices();
     }
 }

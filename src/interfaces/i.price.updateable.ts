@@ -6,4 +6,5 @@ export interface IPriceUpdateable {
     getObtainCoeffs(): ObtainCoeffsDto;
     getProductsWithCoeffs(skus: string[]): Promise<IProductCoeffsable[]>;
     updatePrices(updatePrices: UpdatePriceDto[]): Promise<any>;
+    updateAllPrices(): Promise<any>;
 }

@@ -20,6 +20,7 @@ import { CronSetupProviderService } from './cron.setup.provider/cron.setup.provi
 import { YandexApiModule } from './yandex.api/yandex.api.module';
 import { YandexOfferModule } from './yandex.offer/yandex.offer.module';
 import { YandexOrderModule } from './yandex.order/yandex.order.module';
+import { YandexPriceModule } from './yandex.price/yandex.price.module';
 
 @Module({
     imports: [
@@ -58,6 +59,7 @@ import { YandexOrderModule } from './yandex.order/yandex.order.module';
         YandexApiModule,
         YandexOfferModule,
         YandexOrderModule,
+        YandexPriceModule,
     ],
     controllers: [AppController],
     providers: [AppService, CronSetupProviderService],

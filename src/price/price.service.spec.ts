@@ -4,7 +4,7 @@ import { ProductService } from '../product/product.service';
 import { GOOD_SERVICE } from '../interfaces/IGood';
 import { ConfigService } from '@nestjs/config';
 import { ProductVisibility } from '../product/product.visibility';
-import { AutoAction } from './dto/update.price.dto';
+import { OzonProductCoeffsAdapter } from './ozon.product.coeffs.adapter';
 
 describe('PriceService', () => {
     let service: PriceService;
@@ -16,13 +16,14 @@ describe('PriceService', () => {
     ]);
     const getPerc = jest.fn().mockResolvedValue([]);
     const setPrice = jest.fn().mockResolvedValue({ result: [] });
+    const updatePriceForService = jest.fn().mockResolvedValue({ result: [] });
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 PriceService,
                 { provide: ProductService, useValue: { getPrices, setPrice } },
-                { provide: GOOD_SERVICE, useValue: { prices, getPerc } },
+                { provide: GOOD_SERVICE, useValue: { prices, getPerc, updatePriceForService } },
                 {
                     provide: ConfigService,
                     useValue: {
@@ -104,36 +105,6 @@ describe('PriceService', () => {
         await service.update({ prices: [] });
         expect(setPrice.mock.calls[0]).toEqual([{ prices: [] }]);
     });
-
-    it('test calculatePrice', () => {
-        expect(
-            service.calculatePrice({
-                adv_perc: 1,
-                auto_action_enabled: false,
-                fbs_direct_flow_trans_max_amount: 20,
-                incoming_price: 100,
-                marketing_price: 0,
-                marketing_seller_price: 0,
-                min_perc: 10,
-                min_price: 0,
-                name: 'test',
-                offer_id: '123',
-                old_perc: 100,
-                old_price: 0,
-                perc: 50,
-                price: 0,
-                product_id: 0,
-                sales_percent: 20,
-            }),
-        ).toEqual({
-            auto_action_enabled: AutoAction.UNKNOWN,
-            currency_code: 'RUB',
-            min_price: '234',
-            offer_id: '123',
-            old_price: '359',
-            price: '289',
-        });
-    });
     it('Test updatePrices', async () => {
         getPrices
             .mockResolvedValueOnce({
@@ -159,30 +130,29 @@ describe('PriceService', () => {
         await service.updateAllPrices();
         expect(getPrices.mock.calls).toHaveLength(2);
         expect(getPrices.mock.calls[0]).toEqual([{ last_id: '', limit: 1000, visibility: 'IN_SALE' }]);
-        expect(prices.mock.calls).toEqual([[['1', '2', '3']], [[]]]);
-        expect(getPerc.mock.calls).toHaveLength(2);
-        expect(setPrice.mock.calls).toHaveLength(1);
-        expect(setPrice.mock.calls[0]).toEqual([
-            {
-                prices: [
-                    {
-                        auto_action_enabled: 'ENABLED',
-                        currency_code: 'RUB',
-                        min_price: '46',
-                        offer_id: '2',
-                        old_price: '46',
-                        price: '46',
-                    },
-                    {
-                        auto_action_enabled: 'ENABLED',
-                        currency_code: 'RUB',
-                        min_price: '47',
-                        offer_id: '3',
-                        old_price: '47',
-                        price: '47',
-                    },
-                ],
-            },
-        ]);
+        expect(updatePriceForService.mock.calls).toHaveLength(1);
+    });
+    it('getObtainCoeffs', () => {
+        expect(service.getObtainCoeffs()).toEqual({
+            minMil: null,
+            percEkv: 1.5,
+            percMil: 5.5,
+            sumObtain: 25,
+            sumPack: 13,
+        });
+    });
+    it('getProductsWithCoeffs', async () => {
+        getPrices.mockResolvedValueOnce({
+            items: [
+                {
+                    offer_id: '1',
+                    price: {},
+                    commissions: { sales_percent_fbs: 1, fbs_direct_flow_trans_max_amount: 2 },
+                },
+            ],
+        });
+        const res = await service.getProductsWithCoeffs(['1']);
+        expect(res[0]).toBeInstanceOf(OzonProductCoeffsAdapter);
+        expect(getPrices.mock.calls[0]).toEqual([{ limit: 1000, offer_id: ['1'], visibility: 'IN_SALE' }]);
     });
 });

@@ -22,7 +22,8 @@ export class StringToIOfferIdableAdapter implements IOfferIdable {
 export const calculatePrice = (
     price: IPriceable,
     percents: ObtainCoeffsDto,
-    auto_action = AutoAction.UNKNOWN,
+    auto_action = AutoAction.ENABLED,
+    price_strategy_enabled = AutoAction.DISABLED,
 ): UpdatePriceDto => {
     const calc = (percent: number, price: IPriceable): string => {
         let calcPrice = Math.ceil(
@@ -49,6 +50,7 @@ export const calculatePrice = (
     };
     return {
         auto_action_enabled: auto_action,
+        price_strategy_enabled,
         currency_code: 'RUB',
         min_price: calc(price.min_perc, price),
         offer_id: price.offer_id,

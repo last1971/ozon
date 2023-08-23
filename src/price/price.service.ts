@@ -14,7 +14,7 @@ import { ProductVisibility } from '../product/product.visibility';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
 import { ObtainCoeffsDto } from '../helpers/obtain.coeffs.dto';
 import { IProductCoeffsable } from '../interfaces/i.product.coeffsable';
-import { OzonProductCoeffsAdapter } from './ozonProductCoeffsAdapter';
+import { OzonProductCoeffsAdapter } from './ozon.product.coeffs.adapter';
 
 @Injectable()
 export class PriceService implements IPriceUpdateable {
@@ -79,7 +79,7 @@ export class PriceService implements IPriceUpdateable {
     async update(prices: UpdatePricesDto): Promise<any> {
         return this.product.setPrice(prices);
     }
-    @Cron('0 0 0 * * 0', { name: 'updatePrices' })
+    @Cron('0 0 0 * * 0', { name: 'updateOzonPrices' })
     async updateAllPrices(level = 0, last_id = '', visibility = ProductVisibility.IN_SALE, limit = 1000): Promise<any> {
         const pricesForObtain = await this.product.getPrices({ limit, last_id, visibility });
         let answer = [];

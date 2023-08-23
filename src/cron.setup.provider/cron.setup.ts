@@ -12,7 +12,16 @@ export type CronSetup = {
 };
 
 export const cronConfig: Record<string, CronSetup> = {
-    updatePrices: {
+    updateOzonPrices: {
+        production: {
+            enabled: true,
+            settings: {
+                time: CronExpression.EVERY_WEEK,
+            },
+        },
+        development: false,
+    },
+    updateYandexPrices: {
         production: {
             enabled: true,
             settings: {

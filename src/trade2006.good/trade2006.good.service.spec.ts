@@ -2,15 +2,41 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Trade2006GoodService } from './trade2006.good.service';
 import { FIREBIRD } from '../firebird/firebird.module';
 import { ICountUpdateable } from '../interfaces/ICountUpdatebale';
+import { ConfigService } from '@nestjs/config';
+import { IPriceUpdateable } from '../interfaces/i.price.updateable';
 
 describe('Trade2006GoodService', () => {
     let service: Trade2006GoodService;
     const query = jest.fn().mockReturnValue([{ GOODSCODE: 1, QUAN: 2, RES: 1 }]);
     const execute = jest.fn();
+    const getProductsWithCoeffs = jest.fn().mockResolvedValueOnce([
+        {
+            getSku: () => '1',
+            getTransMaxAmount: () => 40,
+            getSalesPercent: () => 10,
+        },
+    ]);
+    const updatePrices = jest.fn();
+    const priceUdateable: IPriceUpdateable = {
+        getObtainCoeffs: () => ({
+            minMil: 1,
+            percMil: 5.5,
+            percEkv: 1.5,
+            sumObtain: 25,
+            sumPack: 10,
+        }),
+        getProductsWithCoeffs,
+        updatePrices,
+        updateAllPrices: (): Promise<any> => null,
+    };
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
-            providers: [Trade2006GoodService, { provide: FIREBIRD, useValue: { query, execute } }],
+            providers: [
+                Trade2006GoodService,
+                { provide: FIREBIRD, useValue: { query, execute } },
+                { provide: ConfigService, useValue: { get: () => null } },
+            ],
         }).compile();
 
         query.mockClear();
@@ -61,5 +87,29 @@ describe('Trade2006GoodService', () => {
         expect(res).toEqual(1);
         expect(updateGoodCounts.mock.calls[0]).toEqual([new Map([['1', 1]])]);
         expect(getGoodIds.mock.calls[0]).toEqual(['4']);
+    });
+    it('updatePriceForService', async () => {
+        query
+            .mockResolvedValueOnce([{ GOODSCODE: 1, NAME: 'ONE', PRIC: 10.11 }])
+            .mockResolvedValueOnce([
+                { GOODSCODE: 1, PIECES: 1, PERC_NOR: 20, PERC_ADV: 0, PERC_MIN: 10, PERC_MAX: 30 },
+            ]);
+        await service.updatePriceForService(priceUdateable, ['1']);
+        expect(query.mock.calls).toHaveLength(2);
+        expect(getProductsWithCoeffs.mock.calls[0]).toEqual([['1']]);
+        expect(updatePrices.mock.calls[0]).toEqual([
+            [
+                {
+                    auto_action_enabled: 'ENABLED',
+                    currency_code: 'RUB',
+                    incoming_price: 10.11,
+                    min_price: '104',
+                    offer_id: '1',
+                    old_price: '107',
+                    price: '105',
+                    price_strategy_enabled: 'DISABLED',
+                },
+            ],
+        ]);
     });
 });
