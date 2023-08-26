@@ -7,7 +7,10 @@ import { CronTime } from 'cron';
 
 @Injectable()
 export class CronSetupProviderService {
-    constructor(private schedulerRegistry: SchedulerRegistry, private configService: ConfigService) {}
+    constructor(
+        private schedulerRegistry: SchedulerRegistry,
+        private configService: ConfigService,
+    ) {}
     @Timeout(0)
     setupConJobs() {
         const environment = this.configService.get<Environment>('NODE_ENV');

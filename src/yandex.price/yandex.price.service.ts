@@ -4,7 +4,7 @@ import { ObtainCoeffsDto } from '../helpers/obtain.coeffs.dto';
 import { IProductCoeffsable } from '../interfaces/i.product.coeffsable';
 import { UpdatePriceDto } from '../price/dto/update.price.dto';
 import { ConfigService } from '@nestjs/config';
-import { toNumber } from 'lodash';
+import { chunk, toNumber } from 'lodash';
 import { YandexOfferService } from '../yandex.offer/yandex.offer.service';
 import { GoodsStatsDto } from '../yandex.offer/dto/goods.stats.dto';
 import { YandexProductCoeffsAdapter } from './yandex.product.coeffs.adapter';
@@ -14,6 +14,7 @@ import { VaultService } from 'vault-module/lib/vault.service';
 import { UpdateBusinessOfferPriceDto } from './dto/update.business.offer.price.dto';
 import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
 import { Cron } from '@nestjs/schedule';
+import Excel from 'exceljs';
 @Injectable()
 export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
     private logger = new Logger(YandexPriceService.name);
@@ -89,5 +90,44 @@ export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
         if (level === 0) {
             this.logger.log('All Yandex Prices was updated');
         }
+    }
+
+    async getDisountPrices(skus: string[]): Promise<Map<string, number[]>> {
+        const response = await Promise.all(
+            chunk(skus, 200).map((offerIds) =>
+                this.api.method(`businesses/${this.businessId}/offer-mappings`, 'post', { offerIds }),
+            ),
+        );
+        const res = new Map<string, number[]>();
+        response
+            .map((value) => value.result.offerMappings)
+            .flat()
+            .forEach((value) => {
+                res.set(value.offer.offerId, [value.offer.cofinancePrice.value, value.offer.basicPrice.discountBase]);
+            });
+        return res;
+    }
+
+    async createAction(filename: string = 'public/test.xlsx'): Promise<void> {
+        const workbook = new Excel.Workbook();
+        await workbook.xlsx.readFile(filename);
+        const worksheet = workbook.getWorksheet(10);
+        const skus: string[] = [];
+        worksheet.eachRow((row: Excel.Row, rowNumber) => {
+            if (rowNumber > 7) {
+                skus.push(row.getCell(3).value.toString());
+            }
+        });
+        const discountPrices = await this.getDisountPrices(skus);
+        worksheet.eachRow((row: Excel.Row, rowNumber) => {
+            if (
+                rowNumber > 7 &&
+                parseInt(row.getCell(10).value.toString()) >= discountPrices.get(row.getCell(3).value.toString())[0]
+            ) {
+                row.getCell(11).value = discountPrices.get(row.getCell(3).value.toString())[1];
+                row.getCell(12).value = discountPrices.get(row.getCell(3).value.toString())[0];
+            }
+        });
+        await workbook.xlsx.writeFile(filename);
     }
 }
