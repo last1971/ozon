@@ -16,7 +16,10 @@ import { chunk, flatten } from 'lodash';
 @Injectable()
 export class Trade2006InvoiceService implements IInvoice {
     private logger = new Logger(Trade2006InvoiceService.name);
-    constructor(@Inject(FIREBIRD) private db: FirebirdDatabase, private configService: ConfigService) {}
+    constructor(
+        @Inject(FIREBIRD) private db: FirebirdDatabase,
+        private configService: ConfigService,
+    ) {}
 
     async create(invoice: InvoiceCreateDto): Promise<InvoiceDto> {
         const transaction = await this.db.transaction(Firebird.ISOLATION_READ_COMMITTED);
@@ -87,18 +90,12 @@ export class Trade2006InvoiceService implements IInvoice {
                 ),
             ),
         );
-        return invoices.map(
-            (invoice): InvoiceDto => ({
-                id: invoice.SCODE,
-                number: invoice.NS,
-                status: invoice.STATUS,
-                buyerId: invoice.POKUPATCODE,
-                date: invoice.DATA,
-                remark: invoice.PRIM,
-            }),
-        );
+        return InvoiceDto.map(invoices);
     }
-
+    async getByBuyerAndStatus(buyerId: number, status: number): Promise<InvoiceDto[]> {
+        const invoices = await this.db.query('SELECT * FROM S WHERE POKUPATCODE = ? AND STATUS = ?', [buyerId, status]);
+        return InvoiceDto.map(invoices);
+    }
     async bulkSetStatus(
         invoices: InvoiceDto[],
         status: number,
@@ -151,6 +148,28 @@ export class Trade2006InvoiceService implements IInvoice {
             [null, invoice.id, this.configService.get<number>('STAFF_ID', 25), null, 0],
             !transaction,
         );
+    }
+    async updateByCommissions(commissions: Map<string, number>): Promise<ResultDto> {
+        const transaction = await this.db.transaction(Firebird.ISOLATION_READ_COMMITTED);
+        try {
+            const invoices = await this.getByPostingNumbers(Array.from(commissions.keys()), transaction);
+            for (const invoice of invoices) {
+                const newAmount = commissions.get(invoice.remark);
+                await this.setInvoiceAmount(invoice, newAmount, transaction);
+                await this.upsertInvoiceCashFlow(invoice, newAmount, transaction);
+                await this.createTransferOut(invoice, transaction);
+            }
+            await this.bulkSetStatus(invoices, 5, transaction);
+            await transaction.commit();
+            return { isSuccess: true };
+        } catch (e) {
+            this.logger.error(e.message);
+            await transaction.rollback();
+            return {
+                isSuccess: false,
+                message: e.message,
+            };
+        }
     }
     async updateByTransactions(transactions: TransactionDto[]): Promise<ResultDto> {
         const transaction = await this.db.transaction(Firebird.ISOLATION_READ_COMMITTED);

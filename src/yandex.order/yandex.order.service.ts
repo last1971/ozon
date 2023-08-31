@@ -8,6 +8,9 @@ import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { ConfigService } from '@nestjs/config';
 import { DateTime } from 'luxon';
+import { ResultDto } from '../helpers/result.dto';
+import { StatsOrderRequestDto } from './dto/stats.order.request.dto';
+import { OrderStatsDto } from './dto/order.stats.dto';
 
 export enum YandexOrderSubStatus {
     STARTED = 'STARTED',
@@ -55,5 +58,36 @@ export class YandexOrderService implements IOrderable, OnModuleInit {
     async createInvoice(posting: PostingDto): Promise<InvoiceDto> {
         const buyerId = this.configService.get<number>('YANDEX_BUYER_ID', 24465);
         return this.invoiceService.createInvoiceFromPostingDto(buyerId, posting);
+    }
+    async statsOrder(request: StatsOrderRequestDto, page_token: string = ''): Promise<OrderStatsDto[]> {
+        const res = await this.yandexApi.method(
+            `campaigns/${this.campaignId}/stats/orders?page_token=${page_token}`,
+            'post',
+            request,
+        );
+        let orders: OrderStatsDto[] = [];
+        if (res.result.orders.length > 0) {
+            orders = (res.result.orders as OrderStatsDto[]).concat(
+                await this.statsOrder(request, res.result.paging.nextPageToken),
+            );
+        }
+        return orders;
+    }
+    async updateTransactions(): Promise<ResultDto> {
+        const buyerId = this.configService.get<number>('YANDEX_BUYER_ID', 24465);
+        const invoices = await this.invoiceService.getByBuyerAndStatus(buyerId, 4);
+        const orders = await this.statsOrder({
+            statuses: ['DELIVERED'],
+            orders: invoices.map((invoice) => parseInt(invoice.remark)),
+        });
+        const commissions: Map<string, number> = new Map<string, number>();
+        orders.forEach((order) => {
+            commissions.set(
+                order.partnerOrderId,
+                order.payments.reduce((accumulator, payment) => accumulator + payment.total, 0) -
+                    order.commissions.reduce((accumulator, commission) => accumulator + commission.actual, 0),
+            );
+        });
+        return this.invoiceService.updateByCommissions(commissions);
     }
 }

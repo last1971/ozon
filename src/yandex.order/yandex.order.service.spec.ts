@@ -10,6 +10,8 @@ describe('YandexOrderService', () => {
     let service: YandexOrderService;
     const method = jest.fn();
     const createInvoiceFromPostingDto = jest.fn();
+    const getByBuyerAndStatus = jest.fn();
+    const updateByCommissions = jest.fn();
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
@@ -29,7 +31,7 @@ describe('YandexOrderService', () => {
                 },
                 {
                     provide: INVOICE_SERVICE,
-                    useValue: { createInvoiceFromPostingDto },
+                    useValue: { createInvoiceFromPostingDto, getByBuyerAndStatus, updateByCommissions },
                 },
             ],
         }).compile();
@@ -89,5 +91,46 @@ describe('YandexOrderService', () => {
         };
         await service.createInvoice(posting);
         expect(createInvoiceFromPostingDto.mock.calls[0]).toEqual([2222, posting]);
+    });
+    it('statsOrder', async () => {
+        method
+            .mockResolvedValueOnce({ result: { orders: [1], paging: { nextPageToken: 'next' } } })
+            .mockResolvedValueOnce({ result: { orders: [], paging: {} } });
+        await service.statsOrder({ orders: [1, 2], statuses: ['first', 'second'] });
+        expect(method.mock.calls).toHaveLength(2);
+        expect(method.mock.calls[1]).toEqual([
+            'campaigns/undefined/stats/orders?page_token=next',
+            'post',
+            { orders: [1, 2], statuses: ['first', 'second'] },
+        ]);
+    });
+    it('updateTransactions', async () => {
+        getByBuyerAndStatus.mockResolvedValueOnce([{ remark: '123' }, { remark: '124' }]);
+        method
+            .mockResolvedValueOnce({
+                result: {
+                    orders: [
+                        {
+                            partnerOrderId: '123',
+                            payments: [{ total: 123 }],
+                            commissions: [{ actual: 1 }, { actual: 2 }],
+                        },
+                        {
+                            partnerOrderId: '124',
+                            payments: [{ total: 124 }],
+                            commissions: [{ actual: 3 }, { actual: 4 }],
+                        },
+                    ],
+                    paging: {},
+                },
+            })
+            .mockResolvedValueOnce({ result: { orders: [], paging: {} } });
+        await service.updateTransactions();
+        expect(updateByCommissions.mock.calls[0]).toEqual([
+            new Map([
+                ['123', 120],
+                ['124', 117],
+            ]),
+        ]);
     });
 });

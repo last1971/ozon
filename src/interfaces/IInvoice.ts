@@ -8,6 +8,8 @@ export interface IInvoice {
     create(invoice: InvoiceCreateDto): Promise<InvoiceDto>;
     isExists(remark: string): Promise<boolean>;
     getByPosting(posting: PostingDto): Promise<InvoiceDto>;
+    getByBuyerAndStatus(buyerId: number, status: number): Promise<InvoiceDto[]>;
+    updateByCommissions(commissions: Map<string, number>): Promise<ResultDto>;
     updateByTransactions(transactions: TransactionDto[]): Promise<ResultDto>;
     pickupInvoice(invoice: InvoiceDto): Promise<void>;
     createInvoiceFromPostingDto(buyerId: number, posting: PostingDto): Promise<InvoiceDto>;

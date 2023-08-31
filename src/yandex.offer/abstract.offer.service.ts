@@ -14,7 +14,10 @@ import { GoodsStatsGoodsDto } from './dto/goods.stats.goods.dto';
 export abstract class AbstractOfferService implements ICountUpdateable {
     protected campaignId: number;
     protected warehouseId: number;
-    constructor(private yandexApi: YandexApiService, protected vaultService: VaultService) {}
+    constructor(
+        private yandexApi: YandexApiService,
+        protected vaultService: VaultService,
+    ) {}
     async updateCount(skus: StockDto[]): Promise<ResultDto> {
         await this.yandexApi.method(`campaigns/${this.campaignId}/offers/stocks`, 'put', { skus });
         return { isSuccess: true };

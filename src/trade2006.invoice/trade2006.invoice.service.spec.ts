@@ -9,7 +9,7 @@ describe('Trade2006InvoiceService', () => {
     const execute = jest.fn();
     const commit = jest.fn();
     const rollback = jest.fn();
-    const get = jest.fn().mockReturnValueOnce(1).mockReturnValueOnce(2);
+    const get = jest.fn();
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
@@ -17,18 +17,7 @@ describe('Trade2006InvoiceService', () => {
                 {
                     provide: FIREBIRD,
                     useValue: {
-                        query: async (query: string, remark: string[]) =>
-                            remark[0] === 'test1'
-                                ? [
-                                      {
-                                          PRIM: 'test1',
-                                          POKUPATCODE: 1,
-                                          SCODE: 2,
-                                          DATA: '2020-01-01',
-                                          STATUS: 0,
-                                      },
-                                  ]
-                                : [],
+                        query,
                         execute,
                         transaction: async () => ({
                             query,
@@ -47,6 +36,8 @@ describe('Trade2006InvoiceService', () => {
 
         execute.mockClear();
         query.mockClear();
+        commit.mockClear();
+        get.mockClear();
         service = module.get<Trade2006InvoiceService>(Trade2006InvoiceService);
     });
 
@@ -55,6 +46,7 @@ describe('Trade2006InvoiceService', () => {
     });
 
     it('test create', async () => {
+        get.mockReturnValueOnce(1).mockReturnValueOnce(2);
         query
             .mockResolvedValueOnce([{ MAX: 1, SUMMAP: 1, SCODE: 2, PRIM: '2-2' }])
             .mockResolvedValueOnce([{ GEN_ID: 2 }])
@@ -97,12 +89,32 @@ describe('Trade2006InvoiceService', () => {
         expect(rollback.mock.calls).toHaveLength(1);
     });
     it('test isExists', async () => {
+        query
+            .mockResolvedValueOnce([
+                {
+                    PRIM: 'test1',
+                    POKUPATCODE: 1,
+                    SCODE: 2,
+                    DATA: '2020-01-01',
+                    STATUS: 0,
+                },
+            ])
+            .mockResolvedValueOnce([]);
         let res = await service.isExists('test1');
         expect(res).toBeTruthy();
         res = await service.isExists('test2');
         expect(res).toBeFalsy();
     });
     it('test getByPosting', async () => {
+        query.mockResolvedValueOnce([
+            {
+                PRIM: 'test1',
+                POKUPATCODE: 1,
+                SCODE: 2,
+                DATA: '2020-01-01',
+                STATUS: 0,
+            },
+        ]);
         const res = await service.getByPosting({
             posting_number: 'test1',
             status: 'string',
@@ -198,5 +210,42 @@ describe('Trade2006InvoiceService', () => {
             remark: '321',
             status: 3,
         });
+    });
+    it('getByBuyerAndStatus', async () => {
+        query.mockResolvedValueOnce([]);
+        await service.getByBuyerAndStatus(1, 2);
+        expect(query.mock.calls[0]).toEqual(['SELECT * FROM S WHERE POKUPATCODE = ? AND STATUS = ?', [1, 2]]);
+    });
+    it('updateByCommissions', async () => {
+        get.mockReturnValueOnce(1).mockReturnValueOnce(2);
+        query
+            .mockResolvedValueOnce([
+                { SCODE: 1, NS: '1', STATUS: 2, POKUPATCODE: 1, DATA: '2020-11-11', PRIM: '120' },
+                { SCODE: 2, NS: '2', STATUS: 2, POKUPATCODE: 2, DATA: '2020-12-12', PRIM: '121' },
+            ])
+            .mockResolvedValueOnce([{ REALPRICECODE: '1', SUMMAP: 99 }])
+            .mockResolvedValueOnce([{ REALPRICECODE: '2', SUMMAP: 100 }]);
+        await service.updateByCommissions(
+            new Map([
+                ['120', 120],
+                ['121', 121],
+            ]),
+        );
+        expect(execute.mock.calls).toHaveLength(7);
+        expect(commit.mock.calls).toHaveLength(1);
+        expect(execute.mock.calls[0]).toEqual([
+            'UPDATE REALPRICE SET SUMMAP = ? WHERE REALPRICECODE = ?',
+            [120, '1'],
+            false,
+        ]);
+        expect(execute.mock.calls[1][0]).toEqual(
+            'UPDATE OR INSERT INTO SCHET (MONEYSCHET, NS, DATA, POKUPATCODE, SCODE) VALUES (?, ?, ?, ?, ?) MATCHING (SCODE)',
+        );
+        expect(execute.mock.calls[2]).toEqual([
+            'EXECUTE PROCEDURE CREATESF9 (?, ?, ?, ?, ?)',
+            [null, 1, 2, null, 0],
+            false,
+        ]);
+        expect(execute.mock.calls[6]).toEqual(['UPDATE S SET STATUS = ? WHERE SCODE IN (?,?)', [5, 1, 2], false]);
     });
 });

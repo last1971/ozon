@@ -129,4 +129,27 @@ describe('YandexPriceService', () => {
         expect(getShopSkus.mock.calls[0]).toEqual(['']);
         expect(updatePriceForService.mock.calls[0]).toEqual([service, ['123']]);
     });
+
+    it('getDisountPrices', async () => {
+        method.mockResolvedValueOnce({
+            result: {
+                offerMappings: [
+                    { offer: { offerId: '123', cofinancePrice: { value: 123 }, basicPrice: { discountBase: 223 } } },
+                    { offer: { offerId: '321', cofinancePrice: { value: 321 }, basicPrice: { discountBase: 421 } } },
+                ],
+            },
+        });
+        const res = await service.getDisountPrices(['123', '321']);
+        expect(method.mock.calls[0]).toEqual([
+            'businesses/undefined/offer-mappings',
+            'post',
+            { offerIds: ['123', '321'] },
+        ]);
+        expect(res).toEqual(
+            new Map<string, number[]>([
+                ['123', [123, 223]],
+                ['321', [321, 421]],
+            ]),
+        );
+    });
 });
