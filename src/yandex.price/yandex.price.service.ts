@@ -108,6 +108,7 @@ export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
         return res;
     }
 
+    // @Timeout(0)
     async createAction(filename: string = 'public/test.xlsx'): Promise<void> {
         const workbook = new Excel.Workbook();
         await workbook.xlsx.readFile(filename);
