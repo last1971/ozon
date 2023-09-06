@@ -36,7 +36,7 @@ export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
             percMil: toNumber(this.configService.get<number>('PERC_MIL', 5.5)),
             percEkv: this.configService.get<number>('YANDEX_PERC_EKV', 1),
             sumObtain: toNumber(this.configService.get<number>('SUM_OBTAIN', 25)),
-            sumPack: toNumber(this.configService.get<number>('SUM_PACK', 13)),
+            sumLabel: toNumber(this.configService.get<number>('SUM_LABEL', 13)),
         };
     }
 
@@ -52,13 +52,13 @@ export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
 
     async updateIncomingPrices(prices: UpdatePriceDto[]): Promise<void> {
         const packing =
-            this.configService.get<number>('SUM_PACK', 10) + this.configService.get<number>('YANDEX_SUM_PACK', 15);
+            this.configService.get<number>('SUM_LABEL', 10) + this.configService.get<number>('YANDEX_SUM_PACK', 15);
         const updates = prices.map(
             (price): UpdateOfferDto => ({
                 offerId: price.offer_id,
                 cofinancePrice: { value: parseInt(price.min_price), currencyId: 'RUR' },
                 purchasePrice: { value: Math.ceil(price.incoming_price), currencyId: 'RUR' },
-                additionalExpenses: { value: packing, currencyId: 'RUR' },
+                additionalExpenses: { value: packing + (price.sum_pack || 0), currencyId: 'RUR' },
             }),
         );
         const offerMappings = updates.map((offer) => ({ offer }));

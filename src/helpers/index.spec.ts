@@ -38,7 +38,7 @@ describe('Test helpers', () => {
                     percMil: 5.5,
                     percEkv: 1,
                     sumObtain: 25,
-                    sumPack: 10,
+                    sumLabel: 10,
                 },
             ),
         ).toEqual({

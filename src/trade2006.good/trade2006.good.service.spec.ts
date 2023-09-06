@@ -23,7 +23,7 @@ describe('Trade2006GoodService', () => {
             percMil: 5.5,
             percEkv: 1.5,
             sumObtain: 25,
-            sumPack: 10,
+            sumLabel: 10,
         }),
         getProductsWithCoeffs,
         updatePrices,
@@ -69,9 +69,10 @@ describe('Trade2006GoodService', () => {
     it('test setPerc', async () => {
         await service.setPercents({ offer_id: '123', adv_perc: 10 });
         expect(execute.mock.calls[0]).toEqual([
-            'UPDATE OR INSERT INTO OZON_PERC (PERC_MIN, PERC_NOR, PERC_MAX, PERC_ADV, GOODSCODE, PIECES)VALUES (?,' +
-                ' ?, ?, ?, ?, ?) MATCHING (GOODSCODE, PIECES)',
-            [null, null, null, 10, '123', 1],
+            'UPDATE OR INSERT INTO OZON_PERC (PERC_MIN, PERC_NOR, PERC_MAX, PERC_ADV, PACKING_PRICE, GOODSCODE,' +
+                ' PIECES)VALUES (?,' +
+                ' ?, ?, ?, ?, ?, ?) MATCHING (GOODSCODE, PIECES)',
+            [null, null, null, 10, null, '123', 1],
         ]);
     });
 

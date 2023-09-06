@@ -32,7 +32,9 @@ export class PriceService implements IPriceUpdateable {
             perc_mil: toNumber(this.configService.get<number>('PERC_MIL', 5.5)),
             perc_ekv: toNumber(this.configService.get<number>('PERC_EKV', 1.5)),
             sum_obtain: toNumber(this.configService.get<number>('SUM_OBTAIN', 25)),
-            sum_pack: toNumber(this.configService.get<number>('SUM_PACK', 13)),
+            sum_pack:
+                toNumber(this.configService.get<number>('SUM_PACK', 10)) +
+                toNumber(this.configService.get<number>('SUM_LABEL', 2)),
         };
     }
 
@@ -105,7 +107,7 @@ export class PriceService implements IPriceUpdateable {
             percMil: toNumber(this.configService.get<number>('PERC_MIL', 5.5)),
             percEkv: toNumber(this.configService.get<number>('PERC_EKV', 1.5)),
             sumObtain: toNumber(this.configService.get<number>('SUM_OBTAIN', 25)),
-            sumPack: toNumber(this.configService.get<number>('SUM_PACK', 13)),
+            sumLabel: toNumber(this.configService.get<number>('SUM_LABEL', 13)),
         };
     }
 
