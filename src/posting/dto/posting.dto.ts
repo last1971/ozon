@@ -5,4 +5,7 @@ export class PostingDto {
     status: string;
     in_process_at: string;
     products: ProductPostingDto[];
+    analytics_data?: {
+        warehouse_name: string;
+    };
 }

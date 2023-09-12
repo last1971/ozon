@@ -13,6 +13,8 @@ import { TransactionFilterDto } from '../posting/dto/transaction.filter.dto';
 import { TransactionDto } from '../posting/dto/transaction.dto';
 import { GoodCountsDto, ICountUpdateable } from '../interfaces/ICountUpdatebale';
 import { StockType } from './stock.type';
+import { PostingsFboRequestDto } from '../posting.fbo/dto/postings.fbo.request.dto';
+import { PostingDto } from '../posting/dto/posting.dto';
 
 @Injectable()
 export class ProductService implements ICountUpdateable {
@@ -28,6 +30,9 @@ export class ProductService implements ICountUpdateable {
     }
     async orderList(filter: PostingsRequestDto, limit = 100): Promise<PostingResultDto> {
         return this.ozonApiService.method('/v3/posting/fbs/list', { filter, limit });
+    }
+    async orderFboList(request: PostingsFboRequestDto): Promise<{ result: PostingDto[] }> {
+        return this.ozonApiService.method('/v2/posting/fbo/list', request);
     }
     async getPrices(priceRequest: PriceRequestDto): Promise<ProductPriceListDto> {
         const options = {

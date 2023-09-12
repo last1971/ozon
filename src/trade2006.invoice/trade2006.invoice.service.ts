@@ -12,6 +12,7 @@ import { TransactionDto } from '../posting/dto/transaction.dto';
 import { ResultDto } from '../helpers/result.dto';
 import { goodCode, goodQuantityCoeff } from '../helpers';
 import { chunk, flatten } from 'lodash';
+import { ProductPostingDto } from '../product/dto/product.posting.dto';
 
 @Injectable()
 export class Trade2006InvoiceService implements IInvoice {
@@ -21,6 +22,9 @@ export class Trade2006InvoiceService implements IInvoice {
         private configService: ConfigService,
     ) {}
 
+    async getTransaction(): Promise<FirebirdTransaction> {
+        return this.db.transaction(Firebird.ISOLATION_READ_COMMITTED);
+    }
     async create(invoice: InvoiceCreateDto): Promise<InvoiceDto> {
         const transaction = await this.db.transaction(Firebird.ISOLATION_READ_COMMITTED);
         try {
@@ -233,5 +237,23 @@ export class Trade2006InvoiceService implements IInvoice {
                 price: (parseFloat(product.price) / goodQuantityCoeff(product)).toString(),
             })),
         });
+    }
+    async unPickupOzonFbo(
+        product: ProductPostingDto,
+        prim: string,
+        transaction: FirebirdTransaction = null,
+    ): Promise<void> {
+        const workingTransaction = transaction || (await this.getTransaction());
+        const pickups = await workingTransaction.query(
+            'SELECT PODBPOSCODE, QUANSHOP FROM PODBPOS WHERE GOODSCODE = ? AND QUANSHOP >= ? AND SCODE IN (SELECT SCODE' +
+                ' FROM S WHERE S.STATUS = 1 AND S.PRIM CONTAINING ?)',
+            [product.offer_id, product.quantity, prim],
+        );
+        if (pickups.length === 0) throw new Error('Have not position on FBO');
+        await workingTransaction.execute('UPDATE PODBPOS SET QUANSHOP = ? WHERE PODBPOSCODE = ?', [
+            pickups[0].QUANSHOP - product.quantity,
+            pickups[0].PODBPOSCODE,
+        ]);
+        if (!transaction) workingTransaction.commit();
     }
 }

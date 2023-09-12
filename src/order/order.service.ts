@@ -7,6 +7,7 @@ import { Cron } from '@nestjs/schedule';
 import { PostingService } from '../posting/posting.service';
 import { YandexOrderService } from '../yandex.order/yandex.order.service';
 import { IOrderable } from '../interfaces/IOrderable';
+import { PostingFboService } from '../posting.fbo/posting.fbo.service';
 
 @Injectable()
 export class OrderService {
@@ -16,8 +17,9 @@ export class OrderService {
         @Inject(INVOICE_SERVICE) private invoiceService: IInvoice,
         private postingService: PostingService,
         private yandexOrder: YandexOrderService,
+        private postingFboService: PostingFboService,
     ) {
-        this.orderServices = [yandexOrder, postingService];
+        this.orderServices = [yandexOrder, postingService, postingFboService];
     }
     async updateTransactions(data: TransactionFilterDto): Promise<ResultDto> {
         /*
@@ -46,7 +48,7 @@ export class OrderService {
             for (const posting of deliveringPostings) {
                 let invoice = await this.invoiceService.getByPosting(posting);
                 if (!invoice) {
-                    invoice = await this.postingService.createInvoice(posting);
+                    invoice = await service.createInvoice(posting);
                 }
                 await this.invoiceService.pickupInvoice(invoice);
             }

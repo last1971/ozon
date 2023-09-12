@@ -89,4 +89,20 @@ describe('ProductService', () => {
         expect(res).toEqual(1);
         expect(method.mock.calls[0]).toEqual(['/v1/product/import/stocks', { stocks: [{ offer_id: '1', stock: 1 }] }]);
     });
+    it('orderFboList', async () => {
+        const date = new Date();
+        await service.orderFboList({
+            limit: 1,
+            filter: { since: date, to: date, status: 'staus' },
+            with: { analytics_data: false },
+        });
+        expect(method.mock.calls[0]).toEqual([
+            '/v2/posting/fbo/list',
+            {
+                limit: 1,
+                filter: { since: date, to: date, status: 'staus' },
+                with: { analytics_data: false },
+            },
+        ]);
+    });
 });
