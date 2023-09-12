@@ -21,6 +21,7 @@ import { YandexApiModule } from './yandex.api/yandex.api.module';
 import { YandexOfferModule } from './yandex.offer/yandex.offer.module';
 import { YandexOrderModule } from './yandex.order/yandex.order.module';
 import { YandexPriceModule } from './yandex.price/yandex.price.module';
+import { PostingFboModule } from './posting.fbo/posting.fbo.module';
 
 @Module({
     imports: [
@@ -60,6 +61,7 @@ import { YandexPriceModule } from './yandex.price/yandex.price.module';
         YandexOfferModule,
         YandexOrderModule,
         YandexPriceModule,
+        PostingFboModule,
     ],
     controllers: [AppController],
     providers: [AppService, CronSetupProviderService],

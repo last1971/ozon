@@ -37,12 +37,23 @@ describe('Trade2006InvoiceService', () => {
         execute.mockClear();
         query.mockClear();
         commit.mockClear();
+        rollback.mockClear();
         get.mockClear();
         service = module.get<Trade2006InvoiceService>(Trade2006InvoiceService);
     });
 
     it('should be defined', () => {
         expect(service).toBeDefined();
+    });
+
+    it('getTransaction', async () => {
+        const transaction = await service.getTransaction();
+        expect(transaction).toEqual({
+            query,
+            execute,
+            commit,
+            rollback,
+        });
     });
 
     it('test create', async () => {
@@ -247,5 +258,17 @@ describe('Trade2006InvoiceService', () => {
             false,
         ]);
         expect(execute.mock.calls[6]).toEqual(['UPDATE S SET STATUS = ? WHERE SCODE IN (?,?)', [5, 1, 2], false]);
+    });
+    it('unPickupOzonFbo', async () => {
+        query.mockResolvedValueOnce([{ PODBPOSCODE: '789', QUANSHOP: 5 }]);
+        await service.unPickupOzonFbo({ offer_id: '123', price: '456', quantity: 2 }, '12345');
+        expect(query.mock.calls[0]).toEqual([
+            'SELECT PODBPOSCODE, QUANSHOP FROM PODBPOS WHERE GOODSCODE = ? AND QUANSHOP >= ? AND SCODE IN (SELECT' +
+                ' SCODE FROM S WHERE S.STATUS = 1 AND S.PRIM CONTAINING ?)',
+            ['123', 2, '12345'],
+        ]);
+        expect(execute.mock.calls[0]).toEqual(['UPDATE PODBPOS SET QUANSHOP = ? WHERE PODBPOSCODE = ?', [3, '789']]);
+        expect(commit.mock.calls).toHaveLength(1);
+        expect(rollback.mock.calls).toHaveLength(0);
     });
 });
