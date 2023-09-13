@@ -93,7 +93,7 @@ describe('Trade2006GoodService', () => {
         query
             .mockResolvedValueOnce([{ GOODSCODE: 1, NAME: 'ONE', PRIC: 10.11 }])
             .mockResolvedValueOnce([
-                { GOODSCODE: 1, PIECES: 1, PERC_NOR: 20, PERC_ADV: 0, PERC_MIN: 10, PERC_MAX: 30 },
+                { GOODSCODE: 1, PIECES: 1, PERC_NOR: 20, PERC_ADV: 0, PERC_MIN: 10, PERC_MAX: 30, PACKING_PRICE: 0 },
             ]);
         await service.updatePriceForService(priceUdateable, ['1']);
         expect(query.mock.calls).toHaveLength(2);
@@ -109,6 +109,7 @@ describe('Trade2006GoodService', () => {
                     old_price: '107',
                     price: '105',
                     price_strategy_enabled: 'DISABLED',
+                    sum_pack: 0,
                 },
             ],
         ]);

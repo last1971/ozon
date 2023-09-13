@@ -32,6 +32,7 @@ describe('Test helpers', () => {
                     old_perc: 100,
                     perc: 50,
                     sales_percent: 20,
+                    sum_pack: 0,
                 },
                 {
                     minMil: 20,
@@ -50,6 +51,7 @@ describe('Test helpers', () => {
             old_price: '353',
             price: '289',
             price_strategy_enabled: AutoAction.DISABLED,
+            sum_pack: 0,
         });
     });
 });

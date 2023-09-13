@@ -63,7 +63,7 @@ export class Trade2006GoodService implements IGood {
             adv_perc: percent.PERC_ADV,
             old_perc: percent.PERC_MAX,
             min_perc: percent.PERC_MIN,
-            packing_price: percent.PACKING_PRICE || this.configService.get<number>('SUM_PACK', 10),
+            packing_price: percent.PACKING_PRICE ?? this.configService.get<number>('SUM_PACK', 10),
         }));
     }
     async setPercents(perc: GoodPercentDto): Promise<void> {
