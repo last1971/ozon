@@ -14,7 +14,10 @@ import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class Trade2006GoodService implements IGood {
-    constructor(@Inject(FIREBIRD) private db: FirebirdDatabase, private configService: ConfigService) {}
+    constructor(
+        @Inject(FIREBIRD) private db: FirebirdDatabase,
+        private configService: ConfigService,
+    ) {}
 
     async in(codes: string[]): Promise<GoodDto[]> {
         if (codes.length === 0) return [];

@@ -244,16 +244,18 @@ export class Trade2006InvoiceService implements IInvoice {
         transaction: FirebirdTransaction = null,
     ): Promise<void> {
         const workingTransaction = transaction || (await this.getTransaction());
+        const code = goodCode(product);
+        const quantity = product.quantity * goodQuantityCoeff(product);
         const pickups = await workingTransaction.query(
             'SELECT PODBPOSCODE, QUANSHOP FROM PODBPOS WHERE GOODSCODE = ? AND QUANSHOP >= ? AND SCODE IN (SELECT SCODE' +
                 ' FROM S WHERE S.STATUS = 1 AND S.PRIM CONTAINING ?)',
-            [product.offer_id, product.quantity, prim],
+            [code, quantity, prim],
         );
         if (pickups.length === 0) throw new Error('Have not position on FBO');
         await workingTransaction.execute('UPDATE PODBPOS SET QUANSHOP = ? WHERE PODBPOSCODE = ?', [
-            pickups[0].QUANSHOP - product.quantity,
+            pickups[0].QUANSHOP - quantity,
             pickups[0].PODBPOSCODE,
         ]);
-        if (!transaction) workingTransaction.commit();
+        if (!transaction) await workingTransaction.commit();
     }
 }
