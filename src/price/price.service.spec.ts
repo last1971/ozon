@@ -137,8 +137,8 @@ describe('PriceService', () => {
             minMil: null,
             percEkv: 1.5,
             percMil: 5.5,
+            sumLabel: 0,
             sumObtain: 25,
-            sumPack: 13,
         });
     });
     it('getProductsWithCoeffs', async () => {

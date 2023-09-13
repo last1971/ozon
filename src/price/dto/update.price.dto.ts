@@ -59,6 +59,7 @@ export class UpdatePriceDto {
     @IsOptional()
     @IsNumber()
     incoming_price?: number;
+    sum_pack?: number;
 }
 
 export class UpdatePricesDto {

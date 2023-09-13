@@ -63,17 +63,20 @@ export class Trade2006GoodService implements IGood {
             adv_perc: percent.PERC_ADV,
             old_perc: percent.PERC_MAX,
             min_perc: percent.PERC_MIN,
+            packing_price: percent.PACKING_PRICE ?? this.configService.get<number>('SUM_PACK', 10),
         }));
     }
     async setPercents(perc: GoodPercentDto): Promise<void> {
         await this.db.execute(
-            'UPDATE OR INSERT INTO OZON_PERC (PERC_MIN, PERC_NOR, PERC_MAX, PERC_ADV, GOODSCODE, PIECES)' +
-                'VALUES (?, ?, ?, ?, ?, ?) MATCHING (GOODSCODE, PIECES)',
+            'UPDATE OR INSERT INTO OZON_PERC (PERC_MIN, PERC_NOR, PERC_MAX, PERC_ADV, PACKING_PRICE, GOODSCODE,' +
+                ' PIECES)' +
+                'VALUES (?, ?, ?, ?, ?, ?, ?) MATCHING (GOODSCODE, PIECES)',
             [
                 perc.min_perc || null,
                 perc.perc || null,
                 perc.old_perc || null,
                 perc.adv_perc || null,
+                perc.packing_price || null,
                 goodCode(perc),
                 goodQuantityCoeff(perc),
             ],
@@ -119,13 +122,14 @@ export class Trade2006GoodService implements IGood {
             const gCoeff = goodQuantityCoeff({ offer_id: product.getSku() });
             const incoming_price = goods.find((g) => g.code.toString() === gCode).price * gCoeff;
             if (incoming_price !== 0) {
-                const { min_perc, perc, old_perc, adv_perc } = percents.find(
+                const { min_perc, perc, old_perc, adv_perc, packing_price } = percents.find(
                     (p) => p.offer_id.toString() === gCode && p.pieces === gCoeff,
                 ) || {
                     adv_perc: 0,
                     old_perc: this.configService.get<number>('PERC_MAX', 50),
                     perc: this.configService.get<number>('PERC_NOR', 25),
                     min_perc: this.configService.get<number>('PERC_MIN', 15),
+                    packing_price: this.configService.get<number>('SUM_PACK', 10),
                 };
                 updatePrices.push(
                     calculatePrice(
@@ -138,6 +142,7 @@ export class Trade2006GoodService implements IGood {
                             old_perc,
                             perc,
                             sales_percent: product.getSalesPercent(),
+                            sum_pack: packing_price,
                         },
                         service.getObtainCoeffs(),
                     ),

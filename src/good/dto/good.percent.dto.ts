@@ -27,5 +27,10 @@ export class GoodPercentDto implements IOfferIdable {
     @Type(() => Number)
     @Min(0)
     adv_perc?: number;
+    @ApiProperty({ description: 'Стоимость упаковки', required: false })
+    @IsOptional()
+    @Type(() => Number)
+    @Min(0)
+    packing_price?: number;
     pieces?: number;
 }

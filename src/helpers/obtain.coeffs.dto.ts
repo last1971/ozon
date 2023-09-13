@@ -3,5 +3,5 @@ export class ObtainCoeffsDto {
     percMil: number;
     percEkv: number;
     sumObtain: number;
-    sumPack: number;
+    sumLabel: number;
 }

@@ -7,4 +7,5 @@ export interface IPriceable {
     perc: number;
     old_perc: number;
     adv_perc: number;
+    sum_pack: number;
 }

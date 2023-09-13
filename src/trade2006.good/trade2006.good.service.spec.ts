@@ -23,7 +23,7 @@ describe('Trade2006GoodService', () => {
             percMil: 5.5,
             percEkv: 1.5,
             sumObtain: 25,
-            sumPack: 10,
+            sumLabel: 10,
         }),
         getProductsWithCoeffs,
         updatePrices,
@@ -69,9 +69,10 @@ describe('Trade2006GoodService', () => {
     it('test setPerc', async () => {
         await service.setPercents({ offer_id: '123', adv_perc: 10 });
         expect(execute.mock.calls[0]).toEqual([
-            'UPDATE OR INSERT INTO OZON_PERC (PERC_MIN, PERC_NOR, PERC_MAX, PERC_ADV, GOODSCODE, PIECES)VALUES (?,' +
-                ' ?, ?, ?, ?, ?) MATCHING (GOODSCODE, PIECES)',
-            [null, null, null, 10, '123', 1],
+            'UPDATE OR INSERT INTO OZON_PERC (PERC_MIN, PERC_NOR, PERC_MAX, PERC_ADV, PACKING_PRICE, GOODSCODE,' +
+                ' PIECES)VALUES (?,' +
+                ' ?, ?, ?, ?, ?, ?) MATCHING (GOODSCODE, PIECES)',
+            [null, null, null, 10, null, '123', 1],
         ]);
     });
 
@@ -92,7 +93,7 @@ describe('Trade2006GoodService', () => {
         query
             .mockResolvedValueOnce([{ GOODSCODE: 1, NAME: 'ONE', PRIC: 10.11 }])
             .mockResolvedValueOnce([
-                { GOODSCODE: 1, PIECES: 1, PERC_NOR: 20, PERC_ADV: 0, PERC_MIN: 10, PERC_MAX: 30 },
+                { GOODSCODE: 1, PIECES: 1, PERC_NOR: 20, PERC_ADV: 0, PERC_MIN: 10, PERC_MAX: 30, PACKING_PRICE: 0 },
             ]);
         await service.updatePriceForService(priceUdateable, ['1']);
         expect(query.mock.calls).toHaveLength(2);
@@ -108,6 +109,7 @@ describe('Trade2006GoodService', () => {
                     old_price: '107',
                     price: '105',
                     price_strategy_enabled: 'DISABLED',
+                    sum_pack: 0,
                 },
             ],
         ]);

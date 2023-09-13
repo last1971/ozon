@@ -67,9 +67,9 @@ describe('YandexPriceService', () => {
         expect(service.getObtainCoeffs()).toEqual({
             minMil: 20,
             percMil: 5.5,
+            sumLabel: 13,
             percEkv: 1,
             sumObtain: 25,
-            sumPack: 10,
         });
     });
 

@@ -73,6 +73,9 @@ class EnvironmentVariables {
     SUM_PACK: number;
 
     @IsNumber()
+    SUM_LABEL: number;
+
+    @IsNumber()
     YANDEX_SUM_PACK: number;
 
     @IsNumber()

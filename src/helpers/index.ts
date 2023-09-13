@@ -29,7 +29,8 @@ export const calculatePrice = (
         let calcPrice = Math.ceil(
             (toNumber(price.incoming_price) * (1 + toNumber(percent) / 100) +
                 percents.sumObtain +
-                percents.sumPack +
+                percents.sumLabel +
+                price.sum_pack +
                 toNumber(price.fbs_direct_flow_trans_max_amount)) /
                 (1 -
                     (toNumber(price.sales_percent) + toNumber(price.adv_perc) + percents.percMil + percents.percEkv) /
@@ -41,7 +42,8 @@ export const calculatePrice = (
                 (toNumber(price.incoming_price) * (1 + toNumber(percent) / 100) +
                     percents.minMil +
                     percents.sumObtain +
-                    percents.sumPack +
+                    percents.sumLabel +
+                    price.sum_pack +
                     toNumber(price.fbs_direct_flow_trans_max_amount)) /
                     (1 - (toNumber(price.sales_percent) + toNumber(price.adv_perc) + percents.percEkv) / 100),
             );
@@ -57,5 +59,6 @@ export const calculatePrice = (
         old_price: calc(price.old_perc, price),
         price: calc(price.perc, price),
         incoming_price: price.incoming_price,
+        sum_pack: price.sum_pack,
     };
 };
