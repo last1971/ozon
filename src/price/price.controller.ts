@@ -43,10 +43,9 @@ export class PriceController {
     @Post()
     async update(@Body() prices: UpdatePricesDto): Promise<any> {
         const skus = prices.prices.map((price) => price.offer_id);
-        await Promise.all(
+        return Promise.all(
             Array.from(this.services.values()).map((service) => this.goodService.updatePriceForService(service, skus)),
         );
-        //return this.service.update(prices);
     }
     @Post('all/:service')
     async updatePrices(@Param('service') service: string): Promise<any> {

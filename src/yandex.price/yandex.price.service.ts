@@ -46,11 +46,13 @@ export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
     }
 
     async updatePrices(updatePrices: UpdatePriceDto[]): Promise<any> {
-        await this.updateOfferPrices(updatePrices);
-        await this.updateIncomingPrices(updatePrices);
+        return {
+            offerUpdate: await this.updateOfferPrices(updatePrices),
+            incomingUpdate: await this.updateIncomingPrices(updatePrices),
+        };
     }
 
-    async updateIncomingPrices(prices: UpdatePriceDto[]): Promise<void> {
+    async updateIncomingPrices(prices: UpdatePriceDto[]): Promise<any> {
         const packing =
             this.configService.get<number>('SUM_LABEL', 10) + this.configService.get<number>('YANDEX_SUM_PACK', 15);
         const updates = prices.map(
@@ -62,12 +64,12 @@ export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
             }),
         );
         const offerMappings = updates.map((offer) => ({ offer }));
-        await this.api.method(`businesses/${this.businessId}/offer-mappings/update`, 'post', {
+        return this.api.method(`businesses/${this.businessId}/offer-mappings/update`, 'post', {
             offerMappings,
         });
     }
 
-    async updateOfferPrices(prices: UpdatePriceDto[]): Promise<void> {
+    async updateOfferPrices(prices: UpdatePriceDto[]): Promise<any> {
         const offers = prices.map(
             (price): UpdateBusinessOfferPriceDto => ({
                 offerId: price.offer_id,
@@ -78,7 +80,7 @@ export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
                 },
             }),
         );
-        await this.api.method(`businesses/${this.businessId}/offer-prices/updates`, 'post', { offers });
+        return this.api.method(`businesses/${this.businessId}/offer-prices/updates`, 'post', { offers });
     }
     @Cron('0 5 0 * * 0', { name: 'updateYandexPrices' })
     async updateAllPrices(level = 0, args = ''): Promise<void> {
