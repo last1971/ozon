@@ -37,7 +37,7 @@ export class AppService {
         );
     }
 
-    @OnEvent('reserve.created')
+    @OnEvent('reserve.created', { async: true })
     async reserveCreated(skus: string[]): Promise<void> {
         this.logger.log('Sku - ' + skus.join() + ' was reserved');
         let count: number;
