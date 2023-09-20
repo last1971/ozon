@@ -1,4 +1,4 @@
-import { calculatePrice, goodCode, goodQuantityCoeff, productQuantity } from './index';
+import { calculatePrice, goodCode, goodQuantityCoeff, productQuantity, skusToGoodIds } from './index';
 import { AutoAction } from '../price/dto/update.price.dto';
 
 describe('Test helpers', () => {
@@ -53,5 +53,8 @@ describe('Test helpers', () => {
             price_strategy_enabled: AutoAction.DISABLED,
             sum_pack: 0,
         });
+    });
+    it('skusToGoodIds', () => {
+        expect(skusToGoodIds(['1111', '1111-10', '1111-20', '23', '24-2'])).toEqual(['1111', '23', '24']);
     });
 });

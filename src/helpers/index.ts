@@ -62,3 +62,12 @@ export const calculatePrice = (
         sum_pack: price.sum_pack,
     };
 };
+
+export const skusToGoodIds = (skus: string[]): string[] => {
+    const goodIds: string[] = [];
+    for (const sku of skus) {
+        const goodId = goodCode(new StringToIOfferIdableAdapter(sku));
+        if (!goodIds.includes(goodId)) goodIds.push(goodId);
+    }
+    return goodIds;
+};

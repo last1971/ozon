@@ -22,9 +22,11 @@ import { YandexOfferModule } from './yandex.offer/yandex.offer.module';
 import { YandexOrderModule } from './yandex.order/yandex.order.module';
 import { YandexPriceModule } from './yandex.price/yandex.price.module';
 import { PostingFboModule } from './posting.fbo/posting.fbo.module';
+import { EventEmitterModule } from '@nestjs/event-emitter';
 
 @Module({
     imports: [
+        EventEmitterModule.forRoot(),
         ConfigModule.forRoot({ isGlobal: true, validate: configValidate }),
         ServeStaticModule.forRoot({
             rootPath: join(__dirname, '..', 'public'),

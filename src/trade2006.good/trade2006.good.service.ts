@@ -5,7 +5,14 @@ import { FIREBIRD } from '../firebird/firebird.module';
 import { FirebirdDatabase } from 'ts-firebird';
 import { GoodPriceDto } from '../good/dto/good.price.dto';
 import { GoodPercentDto } from '../good/dto/good.percent.dto';
-import { calculatePrice, goodCode, goodQuantityCoeff, productQuantity, StringToIOfferIdableAdapter } from '../helpers';
+import {
+    calculatePrice,
+    goodCode,
+    goodQuantityCoeff,
+    productQuantity,
+    skusToGoodIds,
+    StringToIOfferIdableAdapter,
+} from '../helpers';
 import { ICountUpdateable } from '../interfaces/ICountUpdatebale';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
 import { IProductCoeffsable } from '../interfaces/i.product.coeffsable';
@@ -90,11 +97,11 @@ export class Trade2006GoodService implements IGood {
     async updateCountForService(service: ICountUpdateable, args: any): Promise<number> {
         const serviceGoods = await service.getGoodIds(args);
         if (serviceGoods.goods.size === 0) return 0;
-        const goodIds: string[] = [];
-        for (const goodId of serviceGoods.goods.keys()) {
-            const id = goodCode(new StringToIOfferIdableAdapter(goodId));
-            if (!goodIds.includes(id)) goodIds.push(id);
-        }
+        const goodIds: string[] = skusToGoodIds(Array.from(serviceGoods.goods.keys()));
+        // for (const goodId of serviceGoods.goods.keys()) {
+        //    const id = goodCode(new StringToIOfferIdableAdapter(goodId));
+        //    if (!goodIds.includes(id)) goodIds.push(id);
+        // }
         const goods = await this.getQuantities(goodIds);
         const updateGoods: Map<string, number> = new Map();
         for (const [id, count] of serviceGoods.goods) {
@@ -109,6 +116,25 @@ export class Trade2006GoodService implements IGood {
             count += await this.updateCountForService(service, serviceGoods.nextArgs);
         }
         return count;
+    }
+
+    async updateCountForSkus(service: ICountUpdateable, skus: string[]): Promise<number> {
+        const goodIds: string[] = skusToGoodIds(skus);
+        const goods = await this.getQuantities(goodIds);
+        const fullSkus = skus;
+        for (const percent of await this.getPerc(goodIds)) {
+            const sku = percent.offer_id + '-' + percent.pieces;
+            if (percent.pieces > 1 && !fullSkus.includes(sku)) {
+                fullSkus.push(sku);
+            }
+        }
+        const updateGoods: Map<string, number> = new Map();
+        fullSkus.forEach((sku) => {
+            const item = new StringToIOfferIdableAdapter(sku);
+            const goodCount = productQuantity(goods.get(goodCode(item)), goodQuantityCoeff(item));
+            updateGoods.set(sku, goodCount);
+        });
+        return service.updateGoodCounts(updateGoods);
     }
 
     async updatePriceForService(service: IPriceUpdateable, skus: string[]): Promise<any> {

@@ -13,6 +13,7 @@ import { ResultDto } from '../helpers/result.dto';
 import { goodCode, goodQuantityCoeff } from '../helpers';
 import { chunk, flatten } from 'lodash';
 import { ProductPostingDto } from '../product/dto/product.posting.dto';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 @Injectable()
 export class Trade2006InvoiceService implements IInvoice {
@@ -20,6 +21,7 @@ export class Trade2006InvoiceService implements IInvoice {
     constructor(
         @Inject(FIREBIRD) private db: FirebirdDatabase,
         private configService: ConfigService,
+        private eventEmitter: EventEmitter2,
     ) {}
 
     async getTransaction(): Promise<FirebirdTransaction> {
@@ -52,6 +54,10 @@ export class Trade2006InvoiceService implements IInvoice {
             }
             await transaction.execute('UPDATE S SET STATUS = 3 WHERE SCODE = ?', [scode]);
             await transaction.commit();
+            this.eventEmitter.emit(
+                'reserve.created',
+                invoice.invoiceLines.map((line) => line.originalCode || line.goodCode),
+            );
             return { id: scode, status: 3, ...invoice };
         } catch (e) {
             this.logger.error(e.message);
@@ -235,6 +241,7 @@ export class Trade2006InvoiceService implements IInvoice {
                 goodCode: goodCode(product),
                 quantity: product.quantity * goodQuantityCoeff(product),
                 price: (parseFloat(product.price) / goodQuantityCoeff(product)).toString(),
+                originalCode: product.offer_id,
             })),
         });
     }

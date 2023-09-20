@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Trade2006InvoiceService } from './trade2006.invoice.service';
 import { FIREBIRD } from '../firebird/firebird.module';
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 describe('Trade2006InvoiceService', () => {
     let service: Trade2006InvoiceService;
@@ -10,6 +11,7 @@ describe('Trade2006InvoiceService', () => {
     const commit = jest.fn();
     const rollback = jest.fn();
     const get = jest.fn();
+    const emit = jest.fn();
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
@@ -31,6 +33,10 @@ describe('Trade2006InvoiceService', () => {
                     provide: ConfigService,
                     useValue: { get },
                 },
+                {
+                    provide: EventEmitter2,
+                    useValue: { emit },
+                },
             ],
         }).compile();
 
@@ -39,6 +45,7 @@ describe('Trade2006InvoiceService', () => {
         commit.mockClear();
         rollback.mockClear();
         get.mockClear();
+        emit.mockClear();
         service = module.get<Trade2006InvoiceService>(Trade2006InvoiceService);
     });
 
@@ -217,10 +224,11 @@ describe('Trade2006InvoiceService', () => {
             buyerId: 1111,
             date: date,
             id: 3,
-            invoiceLines: [{ goodCode: '444', price: '1.11', quantity: 2 }],
+            invoiceLines: [{ goodCode: '444', originalCode: '444', price: '1.11', quantity: 2 }],
             remark: '321',
             status: 3,
         });
+        expect(emit.mock.calls[0]).toEqual(['reserve.created', ['444']]);
     });
     it('getByBuyerAndStatus', async () => {
         query.mockResolvedValueOnce([]);

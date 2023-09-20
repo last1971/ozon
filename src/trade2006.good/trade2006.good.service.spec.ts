@@ -89,6 +89,24 @@ describe('Trade2006GoodService', () => {
         expect(updateGoodCounts.mock.calls[0]).toEqual([new Map([['1', 1]])]);
         expect(getGoodIds.mock.calls[0]).toEqual(['4']);
     });
+    it('updateCountForSkus', async () => {
+        const updateGoodCounts = jest.fn().mockResolvedValueOnce(2);
+        const getGoodIds = jest.fn().mockResolvedValueOnce({
+            goods: new Map([
+                ['1', 5],
+                ['2', 6],
+            ]),
+        });
+        const countUpdateable: ICountUpdateable = { updateGoodCounts, getGoodIds };
+        const res = await service.updateCountForSkus(countUpdateable, ['1', '2']);
+        expect(res).toEqual(2);
+        expect(updateGoodCounts.mock.calls[0]).toEqual([
+            new Map([
+                ['1', 1],
+                ['2', 0],
+            ]),
+        ]);
+    });
     it('updatePriceForService', async () => {
         query
             .mockResolvedValueOnce([{ GOODSCODE: 1, NAME: 'ONE', PRIC: 10.11 }])
