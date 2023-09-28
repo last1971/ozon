@@ -5,27 +5,31 @@ import { catchError, firstValueFrom, map, Observable } from 'rxjs';
 import { AxiosError, AxiosResponse } from 'axios';
 
 @Injectable()
-export class YandexApiService {
-    private logger = new Logger(YandexApiService.name);
+export class WbApiService {
+    private logger: Logger;
     constructor(
         private httpService: HttpService,
         private vaultService: VaultService,
-    ) {}
+    ) {
+        this.logger = new Logger(WbApiService.name);
+    }
     async method(name: string, method: string, options: any): Promise<any> {
-        const yandexSeller = await this.vaultService.get('yandex-seller');
+        const wb = await this.vaultService.get('wildberries');
         let response: Observable<AxiosResponse>;
         const headers = {
-            Authorization: `Bearer ${yandexSeller.token as string}`,
+            Authorization: `${wb.API_TOKEN as string}`,
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
         };
         switch (method) {
             case 'post':
-                response = this.httpService.post(yandexSeller.url + name, options, { headers });
+                response = this.httpService.post(wb.URL + name, options, { headers });
                 break;
             case 'put':
-                response = this.httpService.put(yandexSeller.url + name, options, { headers });
+                response = this.httpService.put(wb.URL + name, options, { headers });
                 break;
             default:
-                response = this.httpService.get(yandexSeller.url + name, { headers, params: options });
+                response = this.httpService.get(wb.URL + name, { headers, params: options });
         }
         return firstValueFrom(
             response.pipe(map((res) => res.data)).pipe(
