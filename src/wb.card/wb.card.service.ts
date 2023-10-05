@@ -1,8 +1,8 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { GoodCountsDto, ICountUpdateable } from '../interfaces/ICountUpdatebale';
 import { WbApiService } from '../wb.api/wb.api.service';
-import { head } from 'lodash';
 import { VaultService } from 'vault-module/lib/vault.service';
+import { barCodeSkuPairs } from '../helpers';
 
 @Injectable()
 export class WbCardService implements ICountUpdateable, OnModuleInit {
@@ -13,7 +13,7 @@ export class WbCardService implements ICountUpdateable, OnModuleInit {
     ) {}
     async onModuleInit(): Promise<any> {
         const wb = await this.vault.get('wildberries');
-        this.warehouseId = wb.WAREHOSE_ID as number;
+        this.warehouseId = wb.WAREHOUSE_ID as number;
     }
     async getGoodIds(args: any): Promise<GoodCountsDto<number>> {
         const res = await this.api.method(
@@ -32,26 +32,49 @@ export class WbCardService implements ICountUpdateable, OnModuleInit {
                       },
                   },
         );
-        const skus = new Map<string, string>();
-        res.data.cards.forEach((card) => {
-            const barcode = head(card.sizes.skus);
-            skus.set(barcode, card.vendorCode);
-        });
+        const { cards, cursor } = res.data;
+        const barcodes = barCodeSkuPairs(cards);
         const quantities = await this.api.method('/api/v3/stocks/' + this.warehouseId, 'post', {
-            skus: Array.from(skus.keys()),
+            skus: Array.from(barcodes.keys()),
         });
         const goods = new Map<string, number>();
         quantities.stocks.forEach((stock) => {
-            const sku = skus.get(stock.sku);
+            const sku = barcodes.get(stock.sku);
             goods.set(sku, stock.amount);
         });
+        const { updatedAt, nmID, total } = cursor;
         return {
             goods,
-            nextArgs: {},
+            nextArgs:
+                total < 1000
+                    ? null
+                    : {
+                          sort: {
+                              cursor: {
+                                  limit: 1000,
+                                  updatedAt,
+                                  nmID,
+                              },
+                              filter: {
+                                  withPhoto: -1,
+                              },
+                          },
+                      },
         };
     }
 
-    updateGoodCounts(goods: Map<string, number>): Promise<number> {
-        return Promise.resolve(0);
+    async updateGoodCounts(goods: Map<string, number>): Promise<number> {
+        const res = await this.api.method('/content/v1/cards/filter', 'post', {
+            vendorCodes: Array.from(goods.keys()),
+        });
+        const skus = new Map<string, string>();
+        [...barCodeSkuPairs(res.data)].forEach((barCode) => {
+            skus.set(barCode[1], barCode[0]);
+        });
+        const stocks = [...goods].map((good) => ({
+            sku: skus.get(good[0]),
+            amount: good[1],
+        }));
+        return (await this.api.method('/api/v3/stocks/' + this.warehouseId, 'put', { stocks })) ? 0 : [...goods].length;
     }
 }

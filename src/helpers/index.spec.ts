@@ -1,4 +1,4 @@
-import { calculatePrice, goodCode, goodQuantityCoeff, productQuantity, skusToGoodIds } from './index';
+import { barCodeSkuPairs, calculatePrice, goodCode, goodQuantityCoeff, productQuantity, skusToGoodIds } from './index';
 import { AutoAction } from '../price/dto/update.price.dto';
 
 describe('Test helpers', () => {
@@ -56,5 +56,36 @@ describe('Test helpers', () => {
     });
     it('skusToGoodIds', () => {
         expect(skusToGoodIds(['1111', '1111-10', '1111-20', '23', '24-2'])).toEqual(['1111', '23', '24']);
+    });
+    it('barCodeSkuPairs', () => {
+        const res = barCodeSkuPairs([
+            {
+                nmID: 1,
+                vendorCode: '1',
+                sizes: [
+                    {
+                        skus: ['1-1', '1-2'],
+                    },
+                ],
+            },
+            {
+                nmID: 1,
+                vendorCode: '2',
+                sizes: [
+                    {
+                        skus: ['2-1', '2-2'],
+                    },
+                    {
+                        skus: ['3-1', '3-2'],
+                    },
+                ],
+            },
+        ]);
+        expect(res).toEqual(
+            new Map([
+                ['1-1', '1'],
+                ['2-1', '2'],
+            ]),
+        );
     });
 });

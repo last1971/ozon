@@ -2,7 +2,8 @@ import { IOfferIdable } from '../interfaces/IOfferIdable';
 import { IPriceable } from '../interfaces/i.priceable';
 import { ObtainCoeffsDto } from './obtain.coeffs.dto';
 import { AutoAction, UpdatePriceDto } from '../price/dto/update.price.dto';
-import { toNumber } from 'lodash';
+import { toNumber, head } from 'lodash';
+import { WbCardDto } from '../wb.card/dto/wb.card.dto';
 
 export const goodCode = (value: IOfferIdable): string => value.offer_id.replace(/-.*/g, '');
 export const goodQuantityCoeff = (value: IOfferIdable): any => {
@@ -70,4 +71,13 @@ export const skusToGoodIds = (skus: string[]): string[] => {
         if (!goodIds.includes(goodId)) goodIds.push(goodId);
     }
     return goodIds;
+};
+
+export const barCodeSkuPairs = (cards: WbCardDto[]): Map<string, string> => {
+    const skus = new Map<string, string>();
+    cards.forEach((card) => {
+        const barcode = head(head(card.sizes).skus);
+        skus.set(barcode, card.vendorCode);
+    });
+    return skus;
 };
