@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { IOrderable } from '../interfaces/IOrderable';
 import { PostingDto } from '../posting/dto/posting.dto';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
@@ -9,6 +9,7 @@ import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 
 @Injectable()
 export class PostingFboService implements IOrderable {
+    private logger = new Logger(PostingFboService.name);
     constructor(
         private productService: ProductService,
         private configService: ConfigService,
@@ -24,8 +25,9 @@ export class PostingFboService implements IOrderable {
             await transaction.commit();
             return this.invoiceService.createInvoiceFromPostingDto(buyerId, posting);
         } catch (e) {
+            this.logger.error(e.message);
             await transaction.rollback();
-            throw e;
+            return null;
         }
     }
 

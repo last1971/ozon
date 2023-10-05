@@ -50,7 +50,9 @@ export class OrderService {
                 if (!invoice) {
                     invoice = await service.createInvoice(posting);
                 }
-                await this.invoiceService.pickupInvoice(invoice);
+                if (invoice) {
+                    await this.invoiceService.pickupInvoice(invoice);
+                }
             }
         }
     }

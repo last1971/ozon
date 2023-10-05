@@ -71,10 +71,14 @@ export class WbCardService implements ICountUpdateable, OnModuleInit {
         [...barCodeSkuPairs(res.data)].forEach((barCode) => {
             skus.set(barCode[1], barCode[0]);
         });
-        const stocks = [...goods].map((good) => ({
-            sku: skus.get(good[0]),
-            amount: good[1],
-        }));
-        return (await this.api.method('/api/v3/stocks/' + this.warehouseId, 'put', { stocks })) ? 0 : [...goods].length;
+        const stocks = [...goods]
+            .filter((good) => skus.get(good[0]))
+            .map((good) => ({
+                sku: skus.get(good[0]),
+                amount: good[1],
+            }));
+        return (await this.api.method('/api/v3/stocks/' + this.warehouseId, 'put', { stocks }))
+            ? 0
+            : [...stocks].length;
     }
 }

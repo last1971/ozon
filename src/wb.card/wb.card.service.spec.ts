@@ -95,6 +95,7 @@ describe('WbCardService', () => {
             new Map([
                 ['1', 1],
                 ['2', 2],
+                ['3', 3],
             ]),
         );
         expect(res).toEqual(2);
@@ -103,7 +104,7 @@ describe('WbCardService', () => {
             '/content/v1/cards/filter',
             'post',
             {
-                vendorCodes: ['1', '2'],
+                vendorCodes: ['1', '2', '3'],
             },
         ]);
         expect(method.mock.calls[1]).toEqual([
