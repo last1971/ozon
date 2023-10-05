@@ -7,6 +7,7 @@ import { YandexOfferService } from '../yandex.offer/yandex.offer.service';
 import { ICountUpdateable } from '../interfaces/ICountUpdatebale';
 import { ProductService } from '../product/product.service';
 import { ExpressOfferService } from '../yandex.offer/express.offer.service';
+import { WbCardService } from '../wb.card/wb.card.service';
 @ApiTags('good')
 @Controller('api/good')
 export class GoodController {
@@ -16,11 +17,13 @@ export class GoodController {
         private expressOffer: ExpressOfferService,
         private yandexOffer: YandexOfferService,
         private ozonProduct: ProductService,
+        private wbCard: WbCardService,
     ) {
         this.services = new Map<string, ICountUpdateable>();
         this.services.set('yandex', yandexOffer);
         this.services.set('ozon', ozonProduct);
         this.services.set('express', expressOffer);
+        this.services.set('wb', wbCard);
     }
     @Post('percent')
     async setPercent(@Query() percent: GoodPercentDto): Promise<void> {

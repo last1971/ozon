@@ -55,7 +55,7 @@ export abstract class AbstractOfferService implements ICountUpdateable {
                 ? shopSku.warehouses.find((warehouse) => warehouse.id === this.warehouseId)
                 : null;
             const stock = warehouse?.stocks.find((stock) => stock.type === GoodsStatsWarehouseStockType.AVAILABLE);
-            goods.set(key, stock?.count || -1);
+            goods.set(key, stock?.count || 0);
         }
         return {
             goods,

@@ -7,9 +7,10 @@ import { GoodController } from './good.controller';
 import { ProductModule } from '../product/product.module';
 import { YandexOfferModule } from '../yandex.offer/yandex.offer.module';
 import { ConfigService } from '@nestjs/config';
+import { WbCardModule } from '../wb.card/wb.card.module';
 
 @Module({
-    imports: [FirebirdModule, ProductModule, YandexOfferModule],
+    imports: [FirebirdModule, ProductModule, YandexOfferModule, WbCardModule],
     providers: [
         {
             provide: GOOD_SERVICE,

@@ -23,6 +23,8 @@ import { YandexOrderModule } from './yandex.order/yandex.order.module';
 import { YandexPriceModule } from './yandex.price/yandex.price.module';
 import { PostingFboModule } from './posting.fbo/posting.fbo.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
+import { WbCardModule } from './wb.card/wb.card.module';
+import { WbApiModule } from './wb.api/wb.api.module';
 
 @Module({
     imports: [
@@ -64,6 +66,8 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
         YandexOrderModule,
         YandexPriceModule,
         PostingFboModule,
+        WbCardModule,
+        WbApiModule,
     ],
     controllers: [AppController],
     providers: [AppService, CronSetupProviderService],

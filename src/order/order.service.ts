@@ -19,7 +19,7 @@ export class OrderService {
         private yandexOrder: YandexOrderService,
         private postingFboService: PostingFboService,
     ) {
-        this.orderServices = [yandexOrder, postingService, postingFboService];
+        this.orderServices = [postingFboService, yandexOrder, postingService];
     }
     async updateTransactions(data: TransactionFilterDto): Promise<ResultDto> {
         /*
