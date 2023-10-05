@@ -4,6 +4,7 @@ import { GOOD_SERVICE } from './interfaces/IGood';
 import { ProductService } from './product/product.service';
 import { YandexOfferService } from './yandex.offer/yandex.offer.service';
 import { ExpressOfferService } from './yandex.offer/express.offer.service';
+import { WbCardService } from './wb.card/wb.card.service';
 
 describe('Test App', () => {
     let service: AppService;
@@ -17,6 +18,7 @@ describe('Test App', () => {
                 { provide: ProductService, useValue: {} },
                 { provide: YandexOfferService, useValue: {} },
                 { provide: ExpressOfferService, useValue: {} },
+                { provide: WbCardService, useValue: {} },
             ],
         }).compile();
 
@@ -30,11 +32,11 @@ describe('Test App', () => {
 
     it('test checkGoodCount', async () => {
         await service.checkGoodCount();
-        expect(updateCountForService.mock.calls).toHaveLength(3);
+        expect(updateCountForService.mock.calls).toHaveLength(4);
     });
 
     it('reserveCreated', async () => {
         await service.reserveCreated(['1', '2']);
-        expect(updateCountForSkus.mock.calls).toHaveLength(3);
+        expect(updateCountForSkus.mock.calls).toHaveLength(4);
     });
 });

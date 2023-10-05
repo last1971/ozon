@@ -5,6 +5,7 @@ import { GOOD_SERVICE, IGood } from './interfaces/IGood';
 import { YandexOfferService } from './yandex.offer/yandex.offer.service';
 import { ExpressOfferService } from './yandex.offer/express.offer.service';
 import { OnEvent } from '@nestjs/event-emitter';
+import { WbCardService } from './wb.card/wb.card.service';
 
 @Injectable()
 export class AppService {
@@ -13,6 +14,7 @@ export class AppService {
         private productService: ProductService,
         private yandexOffer: YandexOfferService,
         private expressOffer: ExpressOfferService,
+        private wbCard: WbCardService,
         @Inject(GOOD_SERVICE) private goodService: IGood,
     ) {}
     getHello(): string {
@@ -35,13 +37,16 @@ export class AppService {
                 '',
             )} goods in express`,
         );
+        this.logger.log(
+            `Update quantity for ${await this.goodService.updateCountForService(this.wbCard, '')} goods in wb`,
+        );
     }
 
     @OnEvent('reserve.created', { async: true })
     async reserveCreated(skus: string[]): Promise<void> {
         this.logger.log('Sku - ' + skus.join() + ' was reserved');
         let count: number;
-        for (const service of [this.yandexOffer, this.expressOffer, this.productService]) {
+        for (const service of [this.yandexOffer, this.expressOffer, this.productService, this.wbCard]) {
             count = await this.goodService.updateCountForSkus(service, skus);
         }
         this.logger.log(`Update quantity for ${count} goods`);
