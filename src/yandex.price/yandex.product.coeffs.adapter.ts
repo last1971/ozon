@@ -13,6 +13,7 @@ export class YandexProductCoeffsAdapter implements IProductCoeffsable {
     }
 
     getTransMaxAmount(): number {
+        if (!this.dto.weightDimensions) return 45;
         const weight = Math.max(
             this.dto.weightDimensions.weight,
             (this.dto.weightDimensions.length * this.dto.weightDimensions.height * this.dto.weightDimensions.width) /
