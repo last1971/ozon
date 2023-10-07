@@ -77,8 +77,10 @@ export class WbCardService implements ICountUpdateable, OnModuleInit {
                 sku: skus.get(good[0]),
                 amount: good[1],
             }));
-        return (await this.api.method('/api/v3/stocks/' + this.warehouseId, 'put', { stocks }))
-            ? 0
-            : [...stocks].length;
+        if (stocks && stocks.length) {
+            await this.api.method('/api/v3/stocks/' + this.warehouseId, 'put', { stocks });
+            return stocks.length;
+        }
+        return 0;
     }
 }

@@ -45,9 +45,13 @@ export class AppService {
     @OnEvent('reserve.created', { async: true })
     async reserveCreated(skus: string[]): Promise<void> {
         this.logger.log('Sku - ' + skus.join() + ' was reserved');
-        let count: number;
+        let count: number = 0;
         for (const service of [this.yandexOffer, this.expressOffer, this.productService, this.wbCard]) {
-            count = await this.goodService.updateCountForSkus(service, skus);
+            try {
+                count += await this.goodService.updateCountForSkus(service, skus);
+            } catch (e) {
+                this.logger.error(e.message, e);
+            }
         }
         this.logger.log(`Update quantity for ${count} goods`);
     }
