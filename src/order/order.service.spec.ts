@@ -5,6 +5,7 @@ import { INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { PostingService } from '../posting/posting.service';
 import { YandexOrderService } from '../yandex.order/yandex.order.service';
 import { PostingFboService } from '../posting.fbo/posting.fbo.service';
+import { WbOrderService } from '../wb.order/wb.order.service';
 
 describe('OrderService', () => {
     let service: OrderService;
@@ -38,6 +39,14 @@ describe('OrderService', () => {
                 },
                 {
                     provide: PostingFboService,
+                    useValue: {
+                        createInvoice,
+                        listAwaitingPackaging: () => [],
+                        listAwaitingDelivering: () => [],
+                    },
+                },
+                {
+                    provide: WbOrderService,
                     useValue: {
                         createInvoice,
                         listAwaitingPackaging: () => [],

@@ -25,6 +25,7 @@ import { PostingFboModule } from './posting.fbo/posting.fbo.module';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { WbCardModule } from './wb.card/wb.card.module';
 import { WbApiModule } from './wb.api/wb.api.module';
+import { WbOrderModule } from './wb.order/wb.order.module';
 
 @Module({
     imports: [
@@ -68,6 +69,7 @@ import { WbApiModule } from './wb.api/wb.api.module';
         PostingFboModule,
         WbCardModule,
         WbApiModule,
+        WbOrderModule,
     ],
     controllers: [AppController],
     providers: [AppService, CronSetupProviderService],

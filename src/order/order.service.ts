@@ -8,6 +8,7 @@ import { PostingService } from '../posting/posting.service';
 import { YandexOrderService } from '../yandex.order/yandex.order.service';
 import { IOrderable } from '../interfaces/IOrderable';
 import { PostingFboService } from '../posting.fbo/posting.fbo.service';
+import { WbOrderService } from '../wb.order/wb.order.service';
 
 @Injectable()
 export class OrderService {
@@ -18,8 +19,9 @@ export class OrderService {
         private postingService: PostingService,
         private yandexOrder: YandexOrderService,
         private postingFboService: PostingFboService,
+        private wbOrder: WbOrderService,
     ) {
-        this.orderServices = [postingFboService, yandexOrder, postingService];
+        this.orderServices = [wbOrder, postingFboService, yandexOrder, postingService];
     }
     async updateTransactions(data: TransactionFilterDto): Promise<ResultDto> {
         /*
