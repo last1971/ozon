@@ -26,6 +26,7 @@ import { EventEmitterModule } from '@nestjs/event-emitter';
 import { WbCardModule } from './wb.card/wb.card.module';
 import { WbApiModule } from './wb.api/wb.api.module';
 import { WbOrderModule } from './wb.order/wb.order.module';
+import { WbPriceModule } from './wb.price/wb.price.module';
 
 @Module({
     imports: [
@@ -70,6 +71,7 @@ import { WbOrderModule } from './wb.order/wb.order.module';
         WbCardModule,
         WbApiModule,
         WbOrderModule,
+        WbPriceModule,
     ],
     controllers: [AppController],
     providers: [AppService, CronSetupProviderService],

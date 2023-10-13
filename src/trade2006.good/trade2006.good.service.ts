@@ -18,6 +18,8 @@ import { IPriceUpdateable } from '../interfaces/i.price.updateable';
 import { IProductCoeffsable } from '../interfaces/i.product.coeffsable';
 import { UpdatePriceDto } from '../price/dto/update.price.dto';
 import { ConfigService } from '@nestjs/config';
+import { GoodWbDto } from '../good/dto/good.wb.dto';
+import { chunk, flatten, snakeCase, toUpper } from 'lodash';
 
 @Injectable()
 export class Trade2006GoodService implements IGood {
@@ -87,6 +89,49 @@ export class Trade2006GoodService implements IGood {
                 goodCode(perc),
                 goodQuantityCoeff(perc),
             ],
+        );
+    }
+
+    async setWbData(data: GoodWbDto): Promise<void> {
+        const attribs = [];
+        const values = [];
+        let count = 0;
+        for (const key in data) {
+            if (data[key]) {
+                count++;
+                attribs.push(toUpper(snakeCase(key)));
+                values.push(data[key]);
+            }
+        }
+        await this.db.execute(
+            `UPDATE OR INSERT INTO WILDBERRIES (${attribs.join()}) VALUES (${'?'
+                .repeat(count)
+                .split('')
+                .join()}) MATCHING (ID)`,
+            values,
+        );
+    }
+
+    async getWbData(ids: string[]): Promise<GoodWbDto[]> {
+        const wbData: any[] = flatten(
+            await Promise.all(
+                chunk(ids, 50).map((part: string[]) =>
+                    this.db.query(
+                        `SELECT *
+                 FROM WILDBERRIES
+                 WHERE ID IN (${'?'.repeat(part.length).split('').join()})`,
+                        part,
+                    ),
+                ),
+            ),
+        );
+        return wbData.map(
+            (data): GoodWbDto => ({
+                id: data.ID,
+                commission: data.COMMISSION,
+                tariff: data.TARIFF,
+                minPrice: data.MIN_PRICE,
+            }),
         );
     }
 

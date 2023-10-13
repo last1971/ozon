@@ -192,6 +192,7 @@ export class Trade2006InvoiceService implements IInvoice {
                 const delta = transactions.filter(
                     (t) => !invoices.find((invoice) => invoice.remark === t.posting_number),
                 );
+                throw Error('bad');
                 await transaction.rollback();
                 return {
                     isSuccess: false,
