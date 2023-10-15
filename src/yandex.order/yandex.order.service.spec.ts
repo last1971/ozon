@@ -89,8 +89,8 @@ describe('YandexOrderService', () => {
                 },
             ],
         };
-        await service.createInvoice(posting);
-        expect(createInvoiceFromPostingDto.mock.calls[0]).toEqual([2222, posting]);
+        await service.createInvoice(posting, null);
+        expect(createInvoiceFromPostingDto.mock.calls[0]).toEqual([2222, posting, null]);
     });
     it('statsOrder', async () => {
         method
@@ -131,6 +131,7 @@ describe('YandexOrderService', () => {
                 ['123', 120],
                 ['124', 117],
             ]),
+            null,
         ]);
     });
 });

@@ -1,9 +1,8 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { IInvoice } from '../interfaces/IInvoice';
 import { FIREBIRD } from '../firebird/firebird.module';
-import { FirebirdDatabase, FirebirdTransaction } from 'ts-firebird';
+import { FirebirdPool, FirebirdTransaction } from 'ts-firebird';
 import { InvoiceCreateDto } from '../invoice/dto/invoice.create.dto';
-import Firebird from 'node-firebird';
 import { DateTime } from 'luxon';
 import { ConfigService } from '@nestjs/config';
 import { PostingDto } from '../posting/dto/posting.dto';
@@ -19,16 +18,16 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 export class Trade2006InvoiceService implements IInvoice {
     private logger = new Logger(Trade2006InvoiceService.name);
     constructor(
-        @Inject(FIREBIRD) private db: FirebirdDatabase,
+        @Inject(FIREBIRD) private pool: FirebirdPool,
         private configService: ConfigService,
         private eventEmitter: EventEmitter2,
     ) {}
 
     async getTransaction(): Promise<FirebirdTransaction> {
-        return this.db.transaction(Firebird.ISOLATION_READ_COMMITTED);
+        return this.pool.getTransaction();
     }
-    async create(invoice: InvoiceCreateDto): Promise<InvoiceDto> {
-        const transaction = await this.db.transaction(Firebird.ISOLATION_READ_COMMITTED);
+    async create(invoice: InvoiceCreateDto, t: FirebirdTransaction = null): Promise<InvoiceDto> {
+        const transaction = t ?? (await this.pool.getTransaction());
         try {
             const firmId = this.configService.get<number>('FIRM_ID', 31);
             const staffId = this.configService.get<number>('STAFF_ID', 25);
@@ -53,7 +52,7 @@ export class Trade2006InvoiceService implements IInvoice {
                 ]);
             }
             await transaction.execute('UPDATE S SET STATUS = 3 WHERE SCODE = ?', [scode]);
-            await transaction.commit();
+            if (!t) await transaction.commit(true);
             this.eventEmitter.emit(
                 'reserve.created',
                 invoice.invoiceLines.map((line) => line.originalCode || line.goodCode),
@@ -61,17 +60,20 @@ export class Trade2006InvoiceService implements IInvoice {
             return { id: scode, status: 3, ...invoice };
         } catch (e) {
             this.logger.error(e.message);
-            await transaction.rollback();
+            if (!t) await transaction.rollback(true);
             return null;
         }
     }
 
-    async isExists(remark: string): Promise<boolean> {
-        const res = await this.db.query('SELECT SCODE FROM S WHERE PRIM = ?', [remark]);
+    async isExists(remark: string, t: FirebirdTransaction = null): Promise<boolean> {
+        const transaction = t ?? (await this.pool.getTransaction());
+        const res = await transaction.query('SELECT SCODE FROM S WHERE PRIM = ?', [remark], !t);
         return res.length > 0;
     }
-    async getByPosting(posting: PostingDto): Promise<InvoiceDto> {
-        const res = await this.db.query('SELECT * FROM S WHERE PRIM = ?', [posting.posting_number]);
+
+    async getByPosting(posting: PostingDto, t: FirebirdTransaction = null): Promise<InvoiceDto> {
+        const transaction = t ?? (await this.pool.getTransaction());
+        const res = await transaction.query('SELECT * FROM S WHERE PRIM = ?', [posting.posting_number], !t);
         return res.length > 0
             ? {
                   id: res[0].SCODE,
@@ -82,28 +84,30 @@ export class Trade2006InvoiceService implements IInvoice {
               }
             : null;
     }
-    async getByPostingNumbers(
-        postingNumbers: string[],
-        transaction: FirebirdTransaction = null,
-    ): Promise<InvoiceDto[]> {
-        const workingTransaction = transaction ?? (await this.db.transaction(Firebird.ISOLATION_READ_COMMITTED));
+    async getByPostingNumbers(postingNumbers: string[]): Promise<InvoiceDto[]> {
         const invoices = flatten(
             await Promise.all(
-                chunk(postingNumbers, 50).map((part: string[]) =>
-                    workingTransaction.query(
+                chunk(postingNumbers, 50).map(async (part: string[]) => {
+                    const t = await this.pool.getTransaction();
+                    return t.query(
                         `SELECT *
                  FROM S
                  WHERE PRIM IN (${'?'.repeat(part.length).split('').join()})`,
                         part,
-                        !transaction,
-                    ),
-                ),
+                        true,
+                    );
+                }),
             ),
         );
         return InvoiceDto.map(invoices);
     }
-    async getByBuyerAndStatus(buyerId: number, status: number): Promise<InvoiceDto[]> {
-        const invoices = await this.db.query('SELECT * FROM S WHERE POKUPATCODE = ? AND STATUS = ?', [buyerId, status]);
+    async getByBuyerAndStatus(buyerId: number, status: number, t: FirebirdTransaction = null): Promise<InvoiceDto[]> {
+        const transaction = t ?? (await this.pool.getTransaction());
+        const invoices = await transaction.query(
+            'SELECT * FROM S WHERE POKUPATCODE = ? AND STATUS = ?',
+            [buyerId, status],
+            !t,
+        );
         return InvoiceDto.map(invoices);
     }
     async bulkSetStatus(
@@ -111,7 +115,7 @@ export class Trade2006InvoiceService implements IInvoice {
         status: number,
         transaction: FirebirdTransaction = null,
     ): Promise<void> {
-        const workingTransaction = transaction ?? (await this.db.transaction(Firebird.ISOLATION_READ_COMMITTED));
+        const workingTransaction = transaction ?? (await this.pool.getTransaction());
         await workingTransaction.execute(
             `UPDATE S SET STATUS = ? WHERE SCODE IN (${'?'.repeat(invoices.length).split('').join()})`,
             [status, ...invoices.map((invoice) => invoice.id)],
@@ -123,7 +127,7 @@ export class Trade2006InvoiceService implements IInvoice {
         amount: number,
         transaction: FirebirdTransaction = null,
     ): Promise<void> {
-        const workingTransaction = transaction ?? (await this.db.transaction(Firebird.ISOLATION_READ_COMMITTED));
+        const workingTransaction = transaction ?? (await this.pool.getTransaction());
         await workingTransaction.execute(
             'UPDATE OR INSERT INTO SCHET (MONEYSCHET, NS, DATA, POKUPATCODE, SCODE) VALUES (?, ?, ?, ?,' +
                 ' ?) MATCHING (SCODE)',
@@ -136,33 +140,29 @@ export class Trade2006InvoiceService implements IInvoice {
         newAmount: number,
         transaction: FirebirdTransaction = null,
     ): Promise<void> {
-        const workingTransaction = transaction ?? (await this.db.transaction(Firebird.ISOLATION_READ_COMMITTED));
-        const lines = await workingTransaction.query(
-            'SELECT * FROM REALPRICE WHERE SCODE = ?',
-            [invoice.id],
-            !transaction,
-        );
+        const workingTransaction = transaction ?? (await this.pool.getTransaction());
+        const lines = await workingTransaction.query('SELECT * FROM REALPRICE WHERE SCODE = ?', [invoice.id]);
         const oldAmount = lines.reduce((s, line) => s + parseFloat(line.SUMMAP), 0);
         for (const line of lines) {
-            await workingTransaction.execute(
-                'UPDATE REALPRICE SET SUMMAP = ? WHERE REALPRICECODE = ?',
-                [(newAmount * parseFloat(line.SUMMAP)) / oldAmount, line.REALPRICECODE],
-                !transaction,
-            );
+            await workingTransaction.execute('UPDATE REALPRICE SET SUMMAP = ? WHERE REALPRICECODE = ?', [
+                (newAmount * parseFloat(line.SUMMAP)) / oldAmount,
+                line.REALPRICECODE,
+            ]);
         }
+        if (!transaction) await workingTransaction.commit(true);
     }
     async createTransferOut(invoice: InvoiceDto, transaction: FirebirdTransaction = null): Promise<void> {
-        const workingTransaction = transaction ?? (await this.db.transaction(Firebird.ISOLATION_READ_COMMITTED));
+        const workingTransaction = transaction ?? (await this.pool.getTransaction());
         await workingTransaction.execute(
             'EXECUTE PROCEDURE CREATESF9 (?, ?, ?, ?, ?)',
             [null, invoice.id, this.configService.get<number>('STAFF_ID', 25), null, 0],
             !transaction,
         );
     }
-    async updateByCommissions(commissions: Map<string, number>): Promise<ResultDto> {
-        const transaction = await this.db.transaction(Firebird.ISOLATION_READ_COMMITTED);
+    async updateByCommissions(commissions: Map<string, number>, t: FirebirdTransaction = null): Promise<ResultDto> {
+        const transaction = t ?? (await this.pool.getTransaction());
         try {
-            const invoices = await this.getByPostingNumbers(Array.from(commissions.keys()), transaction);
+            const invoices = await this.getByPostingNumbers(Array.from(commissions.keys()));
             for (const invoice of invoices) {
                 const newAmount = commissions.get(invoice.remark);
                 await this.setInvoiceAmount(invoice, newAmount, transaction);
@@ -170,30 +170,26 @@ export class Trade2006InvoiceService implements IInvoice {
                 await this.createTransferOut(invoice, transaction);
             }
             await this.bulkSetStatus(invoices, 5, transaction);
-            await transaction.commit();
+            if (!t) await transaction.commit(true);
             return { isSuccess: true };
         } catch (e) {
             this.logger.error(e.message);
-            await transaction.rollback();
+            if (!t) await transaction.rollback(true);
             return {
                 isSuccess: false,
                 message: e.message,
             };
         }
     }
-    async updateByTransactions(transactions: TransactionDto[]): Promise<ResultDto> {
-        const transaction = await this.db.transaction(Firebird.ISOLATION_READ_COMMITTED);
+    async updateByTransactions(transactions: TransactionDto[], t: FirebirdTransaction = null): Promise<ResultDto> {
+        const transaction = t ?? (await this.pool.getTransaction());
         try {
-            const invoices = await this.getByPostingNumbers(
-                transactions.map((t) => t.posting_number),
-                transaction,
-            );
+            const invoices = await this.getByPostingNumbers(transactions.map((t) => t.posting_number));
             if (invoices.length !== transactions.length) {
                 const delta = transactions.filter(
-                    (t) => !invoices.find((invoice) => invoice.remark === t.posting_number),
+                    (dto) => !invoices.find((invoice) => invoice.remark === dto.posting_number),
                 );
-                throw Error('bad');
-                await transaction.rollback();
+                if (!t) await transaction.rollback(true);
                 return {
                     isSuccess: false,
                     message: `Not find ${delta.map((invoice) => invoice.posting_number).toString()}`,
@@ -201,50 +197,57 @@ export class Trade2006InvoiceService implements IInvoice {
             }
             for (const invoice of invoices) {
                 if (invoice.status === 5) {
-                    await transaction.rollback();
+                    if (!t) await transaction.rollback(true);
                     return {
                         isSuccess: false,
                         message: `Invoice № ${invoice.number} has wrong status`,
                     };
                 }
-                const newAmount = transactions.find((t) => t.posting_number === invoice.remark).amount;
+                const newAmount = transactions.find((dto) => dto.posting_number === invoice.remark).amount;
                 await this.setInvoiceAmount(invoice, newAmount, transaction);
                 await this.upsertInvoiceCashFlow(invoice, newAmount, transaction);
                 await this.createTransferOut(invoice, transaction);
             }
             await this.bulkSetStatus(invoices, 5, transaction);
-            await transaction.commit();
+            if (!t) await transaction.commit(true);
             return { isSuccess: true };
         } catch (e) {
             this.logger.error(e.message);
-            await transaction.rollback();
+            if (!t) await transaction.rollback(true);
             return {
                 isSuccess: false,
                 message: e.message,
             };
         }
     }
-    async pickupInvoice(invoice: InvoiceDto): Promise<void> {
+    async pickupInvoice(invoice: InvoiceDto, t: FirebirdTransaction = null): Promise<void> {
         if (invoice.status === 3) {
-            await this.db.execute('UPDATE PODBPOS SET QUANSHOP = QUANSHOPNEED WHERE SCODE = ?', [invoice.id]);
+            const transaction = t ?? (await this.pool.getTransaction());
+            await transaction.execute('UPDATE PODBPOS SET QUANSHOP = QUANSHOPNEED WHERE SCODE = ?', [invoice.id], !t);
             this.logger.log(`Order ${invoice.remark} has been pickuped`);
         }
     }
 
-    async createInvoiceFromPostingDto(buyerId: number, posting: PostingDto): Promise<InvoiceDto> {
+    async createInvoiceFromPostingDto(
+        buyerId: number,
+        posting: PostingDto,
+        t: FirebirdTransaction = null,
+    ): Promise<InvoiceDto> {
         this.logger.log(`Create order ${posting.posting_number} with ${posting.products.length} lines for ${buyerId}`);
-        //const buyerId = this.configService.get<number>('BUYER_ID', 24416);
-        return this.create({
-            buyerId,
-            date: new Date(posting.in_process_at),
-            remark: posting.posting_number.toString(),
-            invoiceLines: posting.products.map((product) => ({
-                goodCode: goodCode(product),
-                quantity: product.quantity * goodQuantityCoeff(product),
-                price: (parseFloat(product.price) / goodQuantityCoeff(product)).toString(),
-                originalCode: product.offer_id,
-            })),
-        });
+        return this.create(
+            {
+                buyerId,
+                date: new Date(posting.in_process_at),
+                remark: posting.posting_number.toString(),
+                invoiceLines: posting.products.map((product) => ({
+                    goodCode: goodCode(product),
+                    quantity: product.quantity * goodQuantityCoeff(product),
+                    price: (parseFloat(product.price) / goodQuantityCoeff(product)).toString(),
+                    originalCode: product.offer_id,
+                })),
+            },
+            t,
+        );
     }
     async unPickupOzonFbo(
         product: ProductPostingDto,
@@ -259,11 +262,14 @@ export class Trade2006InvoiceService implements IInvoice {
                 ' FROM S WHERE S.STATUS = 1 AND S.PRIM CONTAINING ?)',
             [code, quantity, prim],
         );
-        if (pickups.length === 0) throw new Error('Have not position on FBO');
+        if (pickups.length === 0) {
+            if (!transaction) await workingTransaction.rollback(true);
+            throw new Error(`Have not position on FBO. Warehouse - ${prim}. GOODSCODE - ${code}.`);
+        }
         await workingTransaction.execute('UPDATE PODBPOS SET QUANSHOP = ? WHERE PODBPOSCODE = ?', [
             pickups[0].QUANSHOP - quantity,
             pickups[0].PODBPOSCODE,
         ]);
-        if (!transaction) await workingTransaction.commit();
+        if (!transaction) await workingTransaction.commit(true);
     }
 }

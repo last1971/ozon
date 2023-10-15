@@ -86,7 +86,7 @@ describe('PostingService', () => {
                 },
             ],
         };
-        await service.createInvoice(posting);
-        expect(createInvoiceFromPostingDto.mock.calls[0]).toEqual([24416, posting]);
+        await service.createInvoice(posting, null);
+        expect(createInvoiceFromPostingDto.mock.calls[0]).toEqual([24416, posting, null]);
     });
 });

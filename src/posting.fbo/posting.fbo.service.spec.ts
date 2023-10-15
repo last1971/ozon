@@ -67,13 +67,12 @@ describe('PostingFboService', () => {
                 warehouse_name: 'CENTER',
             },
         };
-        await service.createInvoice(posting);
-        expect(commit.mock.calls).toHaveLength(1);
+        await service.createInvoice(posting, null);
         expect(unPickupOzonFbo.mock.calls[0]).toEqual([
             { offer_id: '444', price: '1.11', quantity: 2 },
             'CENTER',
-            { commit },
+            null,
         ]);
-        expect(createInvoiceFromPostingDto.mock.calls[0]).toEqual([123, posting]);
+        expect(createInvoiceFromPostingDto.mock.calls[0]).toEqual([123, posting, null]);
     });
 });

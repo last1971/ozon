@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { IGood } from '../interfaces/IGood';
 import { GoodDto } from '../good/dto/good.dto';
 import { FIREBIRD } from '../firebird/firebird.module';
-import { FirebirdDatabase } from 'ts-firebird';
+import { FirebirdPool, FirebirdTransaction } from 'ts-firebird';
 import { GoodPriceDto } from '../good/dto/good.price.dto';
 import { GoodPercentDto } from '../good/dto/good.percent.dto';
 import {
@@ -24,25 +24,28 @@ import { chunk, flatten, snakeCase, toUpper } from 'lodash';
 @Injectable()
 export class Trade2006GoodService implements IGood {
     constructor(
-        @Inject(FIREBIRD) private db: FirebirdDatabase,
+        @Inject(FIREBIRD) private pool: FirebirdPool,
         private configService: ConfigService,
     ) {}
 
-    async in(codes: string[]): Promise<GoodDto[]> {
+    async in(codes: string[], t: FirebirdTransaction = null): Promise<GoodDto[]> {
         if (codes.length === 0) return [];
-        const response: any[] = await this.db.query(
+        const transaction = t ?? (await this.pool.getTransaction());
+        const response: any[] = await transaction.query(
             `SELECT GOODS.GOODSCODE, SHOPSKLAD.QUAN, (SELECT SUM(QUANSHOP) + SUM(QUANSKLAD) from RESERVEDPOS where GOODS.GOODSCODE = RESERVEDPOS.GOODSCODE) AS RES  FROM GOODS JOIN SHOPSKLAD ON GOODS.GOODSCODE = SHOPSKLAD.GOODSCODE WHERE GOODS.GOODSCODE IN (${'?'
                 .repeat(codes.length)
                 .split('')
                 .join()})`,
             codes,
+            !t,
         );
         return response.map((item): GoodDto => ({ code: item.GOODSCODE, quantity: item.QUAN, reserve: item.RES }));
     }
 
-    async prices(codes: string[]): Promise<GoodPriceDto[]> {
+    async prices(codes: string[], t: FirebirdTransaction = null): Promise<GoodPriceDto[]> {
         if (codes.length === 0) return [];
-        const response: any[] = await this.db.query(
+        const transaction = t ?? (await this.pool.getTransaction());
+        const response: any[] = await transaction.query(
             'select g.goodscode, n.name, ' +
                 '( select sum(t.ost * t.price)/sum(t.ost) from (select price, quan -  COALESCE((select sum(quan) from fifo_t where fifo_t.pr_meta_in_id=pr_meta.id), 0) as ost' +
                 '  from pr_meta where pr_meta.goodscode=g.goodscode and pr_meta.shopincode is not null' +
@@ -50,6 +53,7 @@ export class Trade2006GoodService implements IGood {
                 ') as pric from goods g, name n ' +
                 `where g.namecode=n.namecode and g.goodscode in (${'?'.repeat(codes.length).split('').join()})`,
             codes,
+            !t,
         );
         return response.map(
             (good: any): GoodPriceDto => ({
@@ -59,11 +63,13 @@ export class Trade2006GoodService implements IGood {
             }),
         );
     }
-    async getPerc(codes: string[]): Promise<GoodPercentDto[]> {
+    async getPerc(codes: string[], t: FirebirdTransaction = null): Promise<GoodPercentDto[]> {
         if (codes.length === 0) return [];
-        const pecents = await this.db.query(
+        const transaction = t ?? (await this.pool.getTransaction());
+        const pecents = await transaction.query(
             `select * from ozon_perc where goodscode in (${'?'.repeat(codes.length).split('').join()})`,
             codes,
+            !t,
         );
         return pecents.map((percent) => ({
             offer_id: percent.GOODSCODE,
@@ -75,8 +81,9 @@ export class Trade2006GoodService implements IGood {
             packing_price: percent.PACKING_PRICE ?? this.configService.get<number>('SUM_PACK', 10),
         }));
     }
-    async setPercents(perc: GoodPercentDto): Promise<void> {
-        await this.db.execute(
+    async setPercents(perc: GoodPercentDto, t: FirebirdTransaction = null): Promise<void> {
+        const transaction = t ?? (await this.pool.getTransaction());
+        await transaction.execute(
             'UPDATE OR INSERT INTO OZON_PERC (PERC_MIN, PERC_NOR, PERC_MAX, PERC_ADV, PACKING_PRICE, GOODSCODE,' +
                 ' PIECES)' +
                 'VALUES (?, ?, ?, ?, ?, ?, ?) MATCHING (GOODSCODE, PIECES)',
@@ -89,10 +96,11 @@ export class Trade2006GoodService implements IGood {
                 goodCode(perc),
                 goodQuantityCoeff(perc),
             ],
+            !t,
         );
     }
 
-    async setWbData(data: GoodWbDto): Promise<void> {
+    async setWbData(data: GoodWbDto, t: FirebirdTransaction = null): Promise<void> {
         const attribs = [];
         const values = [];
         let count = 0;
@@ -103,26 +111,30 @@ export class Trade2006GoodService implements IGood {
                 values.push(data[key]);
             }
         }
-        await this.db.execute(
+        const transaction = t ?? (await this.pool.getTransaction());
+        await transaction.execute(
             `UPDATE OR INSERT INTO WILDBERRIES (${attribs.join()}) VALUES (${'?'
                 .repeat(count)
                 .split('')
                 .join()}) MATCHING (ID)`,
             values,
+            !t,
         );
     }
 
     async getWbData(ids: string[]): Promise<GoodWbDto[]> {
         const wbData: any[] = flatten(
             await Promise.all(
-                chunk(ids, 50).map((part: string[]) =>
-                    this.db.query(
+                chunk(ids, 50).map(async (part: string[]) => {
+                    const t = await this.pool.getTransaction();
+                    return t.query(
                         `SELECT *
                  FROM WILDBERRIES
                  WHERE ID IN (${'?'.repeat(part.length).split('').join()})`,
                         part,
-                    ),
-                ),
+                        true,
+                    );
+                }),
             ),
         );
         return wbData.map(
@@ -135,18 +147,16 @@ export class Trade2006GoodService implements IGood {
         );
     }
 
-    async getQuantities(goodCodes: string[]): Promise<Map<string, number>> {
-        return new Map((await this.in(goodCodes)).map((good) => [good.code.toString(), good.quantity - good.reserve]));
+    async getQuantities(goodCodes: string[], t: FirebirdTransaction = null): Promise<Map<string, number>> {
+        return new Map(
+            (await this.in(goodCodes, t)).map((good) => [good.code.toString(), good.quantity - good.reserve]),
+        );
     }
 
     async updateCountForService(service: ICountUpdateable, args: any): Promise<number> {
         const serviceGoods = await service.getGoodIds(args);
         if (serviceGoods.goods.size === 0) return 0;
         const goodIds: string[] = skusToGoodIds(Array.from(serviceGoods.goods.keys()));
-        // for (const goodId of serviceGoods.goods.keys()) {
-        //    const id = goodCode(new StringToIOfferIdableAdapter(goodId));
-        //    if (!goodIds.includes(id)) goodIds.push(id);
-        // }
         const goods = await this.getQuantities(goodIds);
         const updateGoods: Map<string, number> = new Map();
         for (const [id, count] of serviceGoods.goods) {
@@ -220,6 +230,6 @@ export class Trade2006GoodService implements IGood {
                 );
             }
         });
-        return service.updatePrices(updatePrices);
+        return updatePrices.length > 0 ? service.updatePrices(updatePrices) : null;
     }
 }

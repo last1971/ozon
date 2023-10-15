@@ -6,6 +6,7 @@ import { ProductService } from './product/product.service';
 import { YandexOfferService } from './yandex.offer/yandex.offer.service';
 import { ExpressOfferService } from './yandex.offer/express.offer.service';
 import { WbCardService } from './wb.card/wb.card.service';
+import { ConfigService } from '@nestjs/config';
 
 describe('AppController', () => {
     let appController: AppController;
@@ -20,6 +21,7 @@ describe('AppController', () => {
                 { provide: YandexOfferService, useValue: {} },
                 { provide: ExpressOfferService, useValue: {} },
                 { provide: WbCardService, useValue: {} },
+                { provide: ConfigService, useValue: {} },
             ],
         }).compile();
 

@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from "@nestjs/common";
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
 import { ObtainCoeffsDto } from '../helpers/obtain.coeffs.dto';
 import { IProductCoeffsable } from '../interfaces/i.product.coeffsable';
@@ -65,7 +65,7 @@ export class WbPriceService implements IPriceUpdateable {
         wbs.forEach((wb) => {
             wb.minPrice = find(updatePrices, { offer_id: wb.id }).min_price;
         });
-        await Promise.all(wbs.map((wb) => this.goodService.setWbData(wb)));
+        await Promise.all(wbs.map((wb) => this.goodService.setWbData(wb, null)));
         return {
             updatePrices: await this.updateWbPrice(prices),
             updateDiscounts: await this.updateDiscounts(discounts),

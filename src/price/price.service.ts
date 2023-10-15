@@ -41,8 +41,8 @@ export class PriceService implements IPriceUpdateable {
     async index(request: PriceRequestDto): Promise<PriceResponseDto> {
         const products = await this.product.getPrices(request);
         const codes = products.items.map((item) => goodCode(item));
-        const goods = await this.goodService.prices(codes);
-        const percents = await this.goodService.getPerc(codes);
+        const goods = await this.goodService.prices(codes, null);
+        const percents = await this.goodService.getPerc(codes, null);
         return {
             last_id: products.last_id,
             data: products.items.map((item) => {

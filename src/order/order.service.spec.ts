@@ -14,6 +14,8 @@ describe('OrderService', () => {
     const createInvoice = jest.fn().mockResolvedValue(1);
     const getByPosting = jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(2);
     const pickupInvoice = jest.fn();
+    const commit = jest.fn();
+    const getTransaction = () => ({ commit });
     const date = new Date();
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
@@ -23,6 +25,7 @@ describe('OrderService', () => {
                 {
                     provide: INVOICE_SERVICE,
                     useValue: {
+                        getTransaction,
                         updateByTransactions,
                         getByPosting,
                         pickupInvoice,
@@ -109,7 +112,7 @@ describe('OrderService', () => {
         expect(getTransactionList.mock.calls).toHaveLength(1);
         expect(updateByTransactions.mock.calls).toHaveLength(1);
         expect(getTransactionList.mock.calls[0]).toEqual([dto]);
-        expect(updateByTransactions.mock.calls[0]).toEqual([[]]);
+        expect(updateByTransactions.mock.calls[0]).toEqual([[], null]);
     });
 
     it('test checkNewOrders', async () => {
@@ -127,6 +130,7 @@ describe('OrderService', () => {
                 ],
                 status: 'awaiting_packaging',
             },
+            { commit },
         ]);
         expect(createInvoice.mock.calls[1]).toEqual([
             {
@@ -135,7 +139,12 @@ describe('OrderService', () => {
                 products: [],
                 status: 'awaiting_packaging',
             },
+            { commit },
         ]);
-        expect(pickupInvoice.mock.calls).toEqual([[1], [2]]);
+        expect(pickupInvoice.mock.calls).toEqual([
+            [1, { commit }],
+            [2, { commit }],
+        ]);
+        expect(commit.mock.calls).toHaveLength(4);
     });
 });

@@ -27,7 +27,6 @@ import { WbCardModule } from './wb.card/wb.card.module';
 import { WbApiModule } from './wb.api/wb.api.module';
 import { WbOrderModule } from './wb.order/wb.order.module';
 import { WbPriceModule } from './wb.price/wb.price.module';
-
 @Module({
     imports: [
         EventEmitterModule.forRoot(),

@@ -1,7 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Options, SupportedCharacterSet } from 'node-firebird';
-import { FirebirdDatabase } from 'ts-firebird';
+import { FirebirdPool } from 'ts-firebird';
 
 export const FIREBIRD = 'FIREBIRD';
 
@@ -21,7 +21,7 @@ export const FIREBIRD = 'FIREBIRD';
                     encoding: configService.get<SupportedCharacterSet>('FB_ENCD', 'UTF8'),
                     retryConnectionInterval: 1000, // reconnect interval in case of connection drop
                 };
-                return FirebirdDatabase.buildAndAttach(options);
+                return new FirebirdPool(5, options);
             },
             inject: [ConfigService],
         },

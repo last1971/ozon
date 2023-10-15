@@ -11,6 +11,7 @@ import { DateTime } from 'luxon';
 import { ResultDto } from '../helpers/result.dto';
 import { StatsOrderRequestDto } from './dto/stats.order.request.dto';
 import { OrderStatsDto } from './dto/order.stats.dto';
+import { FirebirdTransaction } from 'ts-firebird';
 
 export enum YandexOrderSubStatus {
     STARTED = 'STARTED',
@@ -55,9 +56,9 @@ export class YandexOrderService implements IOrderable, OnModuleInit {
     async listAwaitingDelivering(): Promise<PostingDto[]> {
         return this.list(YandexOrderSubStatus.READY_TO_SHIP);
     }
-    async createInvoice(posting: PostingDto): Promise<InvoiceDto> {
+    async createInvoice(posting: PostingDto, transaction: FirebirdTransaction): Promise<InvoiceDto> {
         const buyerId = this.configService.get<number>('YANDEX_BUYER_ID', 24465);
-        return this.invoiceService.createInvoiceFromPostingDto(buyerId, posting);
+        return this.invoiceService.createInvoiceFromPostingDto(buyerId, posting, transaction);
     }
     async statsOrder(request: StatsOrderRequestDto, page_token: string = ''): Promise<OrderStatsDto[]> {
         const res = await this.yandexApi.method(
@@ -75,7 +76,7 @@ export class YandexOrderService implements IOrderable, OnModuleInit {
     }
     async updateTransactions(): Promise<ResultDto> {
         const buyerId = this.configService.get<number>('YANDEX_BUYER_ID', 24465);
-        const invoices = await this.invoiceService.getByBuyerAndStatus(buyerId, 4);
+        const invoices = await this.invoiceService.getByBuyerAndStatus(buyerId, 4, null);
         const orders = await this.statsOrder({
             statuses: ['DELIVERED'],
             orders: invoices.map((invoice) => parseInt(invoice.remark)),
@@ -88,6 +89,6 @@ export class YandexOrderService implements IOrderable, OnModuleInit {
                     order.commissions.reduce((accumulator, commission) => accumulator + commission.actual, 0),
             );
         });
-        return this.invoiceService.updateByCommissions(commissions);
+        return this.invoiceService.updateByCommissions(commissions, null);
     }
 }
