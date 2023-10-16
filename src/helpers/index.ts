@@ -29,24 +29,27 @@ export const calculatePrice = (
     const calc = (percent: number, price: IPriceable): string => {
         let calcPrice = Math.ceil(
             (toNumber(price.incoming_price) * (1 + toNumber(percent) / 100) +
-                percents.sumObtain +
-                percents.sumLabel +
-                price.sum_pack +
+                toNumber(percents.sumObtain) +
+                toNumber(percents.sumLabel) +
+                toNumber(price.sum_pack) +
                 toNumber(price.fbs_direct_flow_trans_max_amount)) /
                 (1 -
-                    (toNumber(price.sales_percent) + toNumber(price.adv_perc) + percents.percMil + percents.percEkv) /
+                    (toNumber(price.sales_percent) +
+                        toNumber(price.adv_perc) +
+                        toNumber(percents.percMil) +
+                        toNumber(percents.percEkv)) /
                         100),
         );
         const mil = calcPrice * (percents.percMil / 100);
         if (mil < percents.minMil) {
             calcPrice = Math.ceil(
                 (toNumber(price.incoming_price) * (1 + toNumber(percent) / 100) +
-                    percents.minMil +
-                    percents.sumObtain +
-                    percents.sumLabel +
-                    price.sum_pack +
+                    toNumber(percents.minMil) +
+                    toNumber(percents.sumObtain) +
+                    toNumber(percents.sumLabel) +
+                    toNumber(price.sum_pack) +
                     toNumber(price.fbs_direct_flow_trans_max_amount)) /
-                    (1 - (toNumber(price.sales_percent) + toNumber(price.adv_perc) + percents.percEkv) / 100),
+                    (1 - (toNumber(price.sales_percent) + toNumber(price.adv_perc) + toNumber(percents.percEkv)) / 100),
             );
         }
         return calcPrice.toString();

@@ -8,6 +8,7 @@ import { ICountUpdateable } from '../interfaces/ICountUpdatebale';
 import { ProductService } from '../product/product.service';
 import { ExpressOfferService } from '../yandex.offer/express.offer.service';
 import { WbCardService } from '../wb.card/wb.card.service';
+import { GoodWbDto } from './dto/good.wb.dto';
 @ApiTags('good')
 @Controller('api/good')
 export class GoodController {
@@ -27,7 +28,7 @@ export class GoodController {
     }
     @Post('percent')
     async setPercent(@Query() percent: GoodPercentDto): Promise<void> {
-        await this.goodService.setPercents(percent);
+        await this.goodService.setPercents(percent, null);
     }
     @Put('update/:service')
     async updateService(@Param('service') service: string): Promise<ResultDto> {
@@ -38,5 +39,9 @@ export class GoodController {
                 '',
             )} offers in ${service}`,
         };
+    }
+    @Put('wb')
+    async setWb(@Query() dto: GoodWbDto): Promise<void> {
+        await this.goodService.setWbData(dto, null);
     }
 }

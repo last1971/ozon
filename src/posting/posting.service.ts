@@ -7,6 +7,7 @@ import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { ConfigService } from '@nestjs/config';
 import { IOrderable } from '../interfaces/IOrderable';
+import { FirebirdTransaction } from 'ts-firebird';
 
 @Injectable()
 export class PostingService implements IOrderable {
@@ -34,8 +35,8 @@ export class PostingService implements IOrderable {
             status: 'awaiting_deliver',
         });
     }
-    async createInvoice(posting: PostingDto): Promise<InvoiceDto> {
+    async createInvoice(posting: PostingDto, transaction: FirebirdTransaction): Promise<InvoiceDto> {
         const buyerId = this.configService.get<number>('OZON_BUYER_ID', 24416);
-        return this.invoiceService.createInvoiceFromPostingDto(buyerId, posting);
+        return this.invoiceService.createInvoiceFromPostingDto(buyerId, posting, transaction);
     }
 }

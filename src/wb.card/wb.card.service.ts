@@ -3,6 +3,8 @@ import { GoodCountsDto, ICountUpdateable } from '../interfaces/ICountUpdatebale'
 import { WbApiService } from '../wb.api/wb.api.service';
 import { VaultService } from 'vault-module/lib/vault.service';
 import { barCodeSkuPairs } from '../helpers';
+import { WbCardDto } from './dto/wb.card.dto';
+import { chunk } from 'lodash';
 
 @Injectable()
 export class WbCardService implements ICountUpdateable, OnModuleInit {
@@ -82,5 +84,14 @@ export class WbCardService implements ICountUpdateable, OnModuleInit {
             return stocks.length;
         }
         return 0;
+    }
+
+    async getCardsByVendorCodes(vendorChunkCodes: string[]): Promise<WbCardDto[]> {
+        const res = await Promise.all(
+            chunk(vendorChunkCodes, 100).map((vendorCodes) =>
+                this.api.method('/content/v1/cards/filter', 'post', { vendorCodes }),
+            ),
+        );
+        return res.map((data) => data.data).flat();
     }
 }

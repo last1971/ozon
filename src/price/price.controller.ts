@@ -8,6 +8,7 @@ import { UpdatePricesDto } from './dto/update.price.dto';
 import { YandexPriceService } from '../yandex.price/yandex.price.service';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
 import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
+import { WbPriceService } from '../wb.price/wb.price.service';
 @ApiTags('price')
 @Controller('api/price')
 export class PriceController {
@@ -15,11 +16,13 @@ export class PriceController {
     constructor(
         private service: PriceService,
         @Inject(forwardRef(() => YandexPriceService)) private yandexPriceService: YandexPriceService,
+        private wb: WbPriceService,
         @Inject(GOOD_SERVICE) private goodService: IGood,
     ) {
         this.services = new Map<string, IPriceUpdateable>();
         this.services.set('yandex', yandexPriceService);
         this.services.set('ozon', service);
+        this.services.set('wb', wb);
     }
     @ApiOkResponse({
         description: 'Получить информацию о ценах товаров',

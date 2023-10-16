@@ -9,6 +9,7 @@ import { chunk, find } from 'lodash';
 import { DateTime } from 'luxon';
 import { ConfigService } from '@nestjs/config';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
+import { FirebirdTransaction } from 'ts-firebird';
 
 @Injectable()
 export class WbOrderService implements IOrderable {
@@ -49,9 +50,9 @@ export class WbOrderService implements IOrderable {
         });
     }
 
-    createInvoice(posting: PostingDto): Promise<InvoiceDto> {
+    createInvoice(posting: PostingDto, transaction: FirebirdTransaction): Promise<InvoiceDto> {
         const buyerId = this.configService.get<number>('WB_BUYER_ID', 24532);
-        return this.invoiceService.createInvoiceFromPostingDto(buyerId, posting);
+        return this.invoiceService.createInvoiceFromPostingDto(buyerId, posting, transaction);
     }
 
     async listAwaitingDelivering(): Promise<PostingDto[]> {

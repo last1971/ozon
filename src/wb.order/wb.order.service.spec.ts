@@ -90,10 +90,11 @@ describe('WbOrderService', () => {
     });
 
     it('createInvoice', async () => {
-        await service.createInvoice({ in_process_at: '1', posting_number: '1', products: [], status: 'new' });
+        await service.createInvoice({ in_process_at: '1', posting_number: '1', products: [], status: 'new' }, null);
         expect(createInvoiceFromPostingDto.mock.calls[0]).toEqual([
             123456,
             { in_process_at: '1', posting_number: '1', products: [], status: 'new' },
+            null,
         ]);
     });
 

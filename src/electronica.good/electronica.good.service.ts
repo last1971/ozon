@@ -6,6 +6,7 @@ import { GoodPriceDto } from '../good/dto/good.price.dto';
 import { GoodPercentDto } from '../good/dto/good.percent.dto';
 import { ICountUpdateable } from '../interfaces/ICountUpdatebale';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
+import { GoodWbDto } from "../good/dto/good.wb.dto";
 
 @Injectable()
 export class ElectronicaGoodService implements IGood {
@@ -43,6 +44,14 @@ export class ElectronicaGoodService implements IGood {
     }
 
     updatePriceForService(service: IPriceUpdateable, skus: string[]): Promise<any> {
+        return Promise.resolve(undefined);
+    }
+
+    getWbData(ids: string[]): Promise<GoodWbDto[]> {
+        return Promise.resolve([]);
+    }
+
+    setWbData(data: GoodWbDto): Promise<void> {
         return Promise.resolve(undefined);
     }
 }

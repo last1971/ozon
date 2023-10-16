@@ -34,7 +34,7 @@ describe('Trade2006GoodService', () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 Trade2006GoodService,
-                { provide: FIREBIRD, useValue: { query, execute } },
+                { provide: FIREBIRD, useValue: { getTransaction: () => ({ query, execute }) } },
                 { provide: ConfigService, useValue: { get: () => null } },
             ],
         }).compile();
@@ -53,6 +53,7 @@ describe('Trade2006GoodService', () => {
         expect(query.mock.calls[0]).toEqual([
             'SELECT GOODS.GOODSCODE, SHOPSKLAD.QUAN, (SELECT SUM(QUANSHOP) + SUM(QUANSKLAD) from RESERVEDPOS where GOODS.GOODSCODE = RESERVEDPOS.GOODSCODE) AS RES  FROM GOODS JOIN SHOPSKLAD ON GOODS.GOODSCODE = SHOPSKLAD.GOODSCODE WHERE GOODS.GOODSCODE IN (?)',
             ['1'],
+            true,
         ]);
     });
     it('test prices', async () => {
@@ -60,11 +61,12 @@ describe('Trade2006GoodService', () => {
         expect(query.mock.calls[0]).toEqual([
             'select g.goodscode, n.name, ( select sum(t.ost * t.price)/sum(t.ost) from (select price, quan -  COALESCE((select sum(quan) from fifo_t where fifo_t.pr_meta_in_id=pr_meta.id), 0) as ost  from pr_meta where pr_meta.goodscode=g.goodscode and pr_meta.shopincode is not null  and COALESCE((select sum(quan) from fifo_t where fifo_t.pr_meta_in_id=pr_meta.id), 0) < quan) t) as pric from goods g, name n where g.namecode=n.namecode and g.goodscode in (?,?)',
             ['1', '2'],
+            true,
         ]);
     });
     it('test getPerc', async () => {
         await service.getPerc(['3']);
-        expect(query.mock.calls[0]).toEqual(['select * from ozon_perc where goodscode in (?)', ['3']]);
+        expect(query.mock.calls[0]).toEqual(['select * from ozon_perc where goodscode in (?)', ['3'], true]);
     });
     it('test setPerc', async () => {
         await service.setPercents({ offer_id: '123', adv_perc: 10 });
@@ -73,6 +75,7 @@ describe('Trade2006GoodService', () => {
                 ' PIECES)VALUES (?,' +
                 ' ?, ?, ?, ?, ?, ?) MATCHING (GOODSCODE, PIECES)',
             [null, null, null, 10, null, '123', 1],
+            true,
         ]);
     });
 

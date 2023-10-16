@@ -97,8 +97,8 @@ describe('PriceService', () => {
         });
         await service.index({ limit: 0, visibility: ProductVisibility.VISIBLE });
         expect(getPrices.mock.calls[0]).toEqual([{ limit: 0, visibility: 'VISIBLE' }]);
-        expect(prices.mock.calls[0]).toEqual([['1', '2', '3']]);
-        expect(getPerc.mock.calls[0]).toEqual([['1', '2', '3']]);
+        expect(prices.mock.calls[0]).toEqual([['1', '2', '3'], null]);
+        expect(getPerc.mock.calls[0]).toEqual([['1', '2', '3'], null]);
     });
 
     it('test update', async () => {

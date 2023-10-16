@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
 import { IOrderable } from '../interfaces/IOrderable';
 import { PostingDto } from '../posting/dto/posting.dto';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
@@ -6,29 +6,21 @@ import { ProductService } from '../product/product.service';
 import { DateTime } from 'luxon';
 import { ConfigService } from '@nestjs/config';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
+import { FirebirdTransaction } from 'ts-firebird';
 
 @Injectable()
 export class PostingFboService implements IOrderable {
-    private logger = new Logger(PostingFboService.name);
     constructor(
         private productService: ProductService,
         private configService: ConfigService,
         @Inject(INVOICE_SERVICE) private invoiceService: IInvoice,
     ) {}
-    async createInvoice(posting: PostingDto): Promise<InvoiceDto> {
+    async createInvoice(posting: PostingDto, transaction: FirebirdTransaction): Promise<InvoiceDto> {
         const buyerId = this.configService.get<number>('OZON_BUYER_ID', 24416);
-        const transaction = await this.invoiceService.getTransaction();
-        try {
-            for (const product of posting.products) {
-                await this.invoiceService.unPickupOzonFbo(product, posting.analytics_data.warehouse_name, transaction);
-            }
-            await transaction.commit();
-            return this.invoiceService.createInvoiceFromPostingDto(buyerId, posting);
-        } catch (e) {
-            this.logger.error(e.message);
-            await transaction.rollback();
-            return null;
+        for (const product of posting.products) {
+            await this.invoiceService.unPickupOzonFbo(product, posting.analytics_data.warehouse_name, transaction);
         }
+        return this.invoiceService.createInvoiceFromPostingDto(buyerId, posting, transaction);
     }
 
     async list(status: string): Promise<PostingDto[]> {

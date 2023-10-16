@@ -19,9 +19,7 @@ describe('Trade2006InvoiceService', () => {
                 {
                     provide: FIREBIRD,
                     useValue: {
-                        query,
-                        execute,
-                        transaction: async () => ({
+                        getTransaction: () => ({
                             query,
                             execute,
                             commit,
@@ -149,7 +147,11 @@ describe('Trade2006InvoiceService', () => {
     });
     it('Test pickupInvoice', async () => {
         await service.pickupInvoice({ id: 1, date: new Date(), remark: '1', buyerId: 1, status: 3 });
-        expect(execute.mock.calls[0]).toEqual(['UPDATE PODBPOS SET QUANSHOP = QUANSHOPNEED WHERE SCODE = ?', [1]]);
+        expect(execute.mock.calls[0]).toEqual([
+            'UPDATE PODBPOS SET QUANSHOP = QUANSHOPNEED WHERE SCODE = ?',
+            [1],
+            true,
+        ]);
     });
     it('test getByPostingNumbers', async () => {
         query.mockReturnValueOnce([]);
@@ -174,11 +176,10 @@ describe('Trade2006InvoiceService', () => {
     it('test setInvoiceAmount', async () => {
         query.mockReturnValueOnce([{ SUMMAP: 1 }]);
         await service.setInvoiceAmount({ id: 1, status: 1, buyerId: 1, remark: '1', date: new Date() }, 111.11);
-        expect(query.mock.calls[0]).toEqual(['SELECT * FROM REALPRICE WHERE SCODE = ?', [1], true]);
+        expect(query.mock.calls[0]).toEqual(['SELECT * FROM REALPRICE WHERE SCODE = ?', [1]]);
         expect(execute.mock.calls[0]).toEqual([
             'UPDATE REALPRICE SET SUMMAP = ? WHERE REALPRICECODE = ?',
             [111.11, undefined],
-            true,
         ]);
     });
     it('test createTransferOut', async () => {
@@ -197,9 +198,9 @@ describe('Trade2006InvoiceService', () => {
         expect(query.mock.calls[0]).toEqual([
             'SELECT *\n                 FROM S\n                 WHERE PRIM IN' + ' (?)',
             ['2-2'],
-            false,
+            true,
         ]);
-        expect(query.mock.calls[1]).toEqual(['SELECT * FROM REALPRICE WHERE SCODE = ?', [2], false]);
+        expect(query.mock.calls[1]).toEqual(['SELECT * FROM REALPRICE WHERE SCODE = ?', [2]]);
         expect(execute.mock.calls).toHaveLength(4);
     });
     it('createInvoiceFromPostingDto', async () => {
@@ -233,7 +234,7 @@ describe('Trade2006InvoiceService', () => {
     it('getByBuyerAndStatus', async () => {
         query.mockResolvedValueOnce([]);
         await service.getByBuyerAndStatus(1, 2);
-        expect(query.mock.calls[0]).toEqual(['SELECT * FROM S WHERE POKUPATCODE = ? AND STATUS = ?', [1, 2]]);
+        expect(query.mock.calls[0]).toEqual(['SELECT * FROM S WHERE POKUPATCODE = ? AND STATUS = ?', [1, 2], true]);
     });
     it('updateByCommissions', async () => {
         get.mockReturnValueOnce(1).mockReturnValueOnce(2);
@@ -252,11 +253,7 @@ describe('Trade2006InvoiceService', () => {
         );
         expect(execute.mock.calls).toHaveLength(7);
         expect(commit.mock.calls).toHaveLength(1);
-        expect(execute.mock.calls[0]).toEqual([
-            'UPDATE REALPRICE SET SUMMAP = ? WHERE REALPRICECODE = ?',
-            [120, '1'],
-            false,
-        ]);
+        expect(execute.mock.calls[0]).toEqual(['UPDATE REALPRICE SET SUMMAP = ? WHERE REALPRICECODE = ?', [120, '1']]);
         expect(execute.mock.calls[1][0]).toEqual(
             'UPDATE OR INSERT INTO SCHET (MONEYSCHET, NS, DATA, POKUPATCODE, SCODE) VALUES (?, ?, ?, ?, ?) MATCHING (SCODE)',
         );
