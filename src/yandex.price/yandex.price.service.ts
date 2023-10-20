@@ -13,7 +13,7 @@ import { UpdateOfferDto } from './dto/update.offer.dto';
 import { VaultService } from 'vault-module/lib/vault.service';
 import { UpdateBusinessOfferPriceDto } from './dto/update.business.offer.price.dto';
 import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
-import { Cron } from '@nestjs/schedule';
+import { Cron, Timeout } from '@nestjs/schedule';
 import Excel from 'exceljs';
 @Injectable()
 export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
@@ -104,13 +104,14 @@ export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
         response
             .map((value) => value.result.offerMappings)
             .flat()
+            .filter((value) => !!value.offer.cofinancePrice)
             .forEach((value) => {
                 res.set(value.offer.offerId, [value.offer.cofinancePrice.value, value.offer.basicPrice.discountBase]);
             });
         return res;
     }
 
-    // @Timeout(0)
+    @Timeout(0)
     async createAction(filename: string = 'public/test.xlsx'): Promise<void> {
         const workbook = new Excel.Workbook();
         await workbook.xlsx.readFile(filename);
@@ -125,6 +126,7 @@ export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
         worksheet.eachRow((row: Excel.Row, rowNumber) => {
             if (
                 rowNumber > 7 &&
+                discountPrices.get(row.getCell(3).value.toString()) &&
                 parseInt(row.getCell(10).value.toString()) >= discountPrices.get(row.getCell(3).value.toString())[0]
             ) {
                 row.getCell(11).value = discountPrices.get(row.getCell(3).value.toString())[1];
