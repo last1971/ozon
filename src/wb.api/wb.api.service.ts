@@ -17,7 +17,7 @@ export class WbApiService {
         const wb = await this.vaultService.get('wildberries');
         let response: Observable<AxiosResponse>;
         const headers = {
-            Authorization: `${wb.API_TOKEN as string}`,
+            Authorization: `${(method === 'statistics' ? wb.STATISTICS_TOKEN : wb.API_TOKEN) as string}`,
             Accept: 'application/json',
             'Content-Type': 'application/json',
         };
@@ -29,7 +29,10 @@ export class WbApiService {
                 response = this.httpService.put(wb.URL + name, options, { headers });
                 break;
             default:
-                response = this.httpService.get(wb.URL + name, { headers, params: options });
+                response = this.httpService.get((method === 'statistics' ? wb.STATISTICS_URL : wb.URL) + name, {
+                    headers,
+                    params: options,
+                });
         }
         return firstValueFrom(
             response.pipe(map((res) => res.data)).pipe(

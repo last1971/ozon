@@ -104,6 +104,7 @@ export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
         response
             .map((value) => value.result.offerMappings)
             .flat()
+            .filter((value) => !!value.offer.cofinancePrice)
             .forEach((value) => {
                 res.set(value.offer.offerId, [value.offer.cofinancePrice.value, value.offer.basicPrice.discountBase]);
             });
@@ -125,6 +126,7 @@ export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
         worksheet.eachRow((row: Excel.Row, rowNumber) => {
             if (
                 rowNumber > 7 &&
+                discountPrices.get(row.getCell(3).value.toString()) &&
                 parseInt(row.getCell(10).value.toString()) >= discountPrices.get(row.getCell(3).value.toString())[0]
             ) {
                 row.getCell(11).value = discountPrices.get(row.getCell(3).value.toString())[1];

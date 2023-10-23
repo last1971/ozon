@@ -4,6 +4,7 @@ import { ResultDto } from '../helpers/result.dto';
 import { TransactionFilterDto } from '../posting/dto/transaction.filter.dto';
 import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { YandexOrderService } from '../yandex.order/yandex.order.service';
+import { WbOrderService } from '../wb.order/wb.order.service';
 
 @ApiTags('order')
 @Controller('api/order')
@@ -11,6 +12,7 @@ export class OrderController {
     constructor(
         private readonly orderService: OrderService,
         private yandexOrderService: YandexOrderService,
+        private wbOrder: WbOrderService,
     ) {}
     @ApiOkResponse({
         description: 'Синхронизировать заказы',
@@ -32,5 +34,9 @@ export class OrderController {
     @Post('yandex-transaction')
     async updateYandexTransactions(): Promise<ResultDto> {
         return this.yandexOrderService.updateTransactions();
+    }
+    @Post('wb-transaction')
+    async updateWbTransactions(@Body() request: TransactionFilterDto): Promise<ResultDto> {
+        return this.wbOrder.updateTransactions(request);
     }
 }
