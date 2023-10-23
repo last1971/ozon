@@ -5,4 +5,5 @@ export class WbOrderDto {
     price: number;
     article: string;
     convertedPrice: number;
+    rid: string;
 }

@@ -10,6 +10,10 @@ import { DateTime } from 'luxon';
 import { ConfigService } from '@nestjs/config';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { FirebirdTransaction } from 'ts-firebird';
+import { TransactionFilterDto } from '../posting/dto/transaction.filter.dto';
+import { ResultDto } from '../helpers/result.dto';
+import { min } from 'lodash';
+import { WbTransactionDto } from './dto/wb.transaction.dto';
 
 @Injectable()
 export class WbOrderService implements IOrderable {
@@ -89,5 +93,43 @@ export class WbOrderService implements IOrderable {
                 ],
             }),
         );
+    }
+
+    async getTransactions(data: TransactionFilterDto, rrdid = 0): Promise<Array<WbTransactionDto>> {
+        const transactions: WbTransactionDto[] = await this.api.method(
+            '/api/v1/supplier/reportDetailByPeriod',
+            'statistics',
+            {
+                dateFrom: data.date.from,
+                dateTo: data.date.to,
+                rrdid,
+            },
+        );
+        return transactions;
+        // if (!transactions) return [];
+        // return transactions.concat(await this.getTransactions(data, last(transactions).rrd_id));
+    }
+    async updateTransactions(data: TransactionFilterDto): Promise<ResultDto> {
+        const transactions = await this.getTransactions(data);
+        const dateFrom = min(
+            transactions
+                .map((t) => t.order_dt)
+                .filter((date) => !!date)
+                .map((date) => DateTime.fromISO(date).toUnixInteger()),
+        );
+        const orders = await this.list(dateFrom);
+        const sridToNumber = new Map(orders.map((order) => [order.rid, order.id.toString()]));
+        const commissions = new Map<string, number>();
+        transactions.forEach((t) => {
+            const number = sridToNumber.get(t.srid);
+            if (!number) throw Error(t.srid);
+            let amount = commissions.get(number);
+            if (!amount) {
+                amount = 0;
+            }
+            amount += t.ppvz_for_pay - t.delivery_rub;
+            commissions.set(number, amount);
+        });
+        return this.invoiceService.updateByCommissions(commissions, null);
     }
 }
