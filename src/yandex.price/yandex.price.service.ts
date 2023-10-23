@@ -13,7 +13,7 @@ import { UpdateOfferDto } from './dto/update.offer.dto';
 import { VaultService } from 'vault-module/lib/vault.service';
 import { UpdateBusinessOfferPriceDto } from './dto/update.business.offer.price.dto';
 import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
-import { Cron, Timeout } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import Excel from 'exceljs';
 @Injectable()
 export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
@@ -111,7 +111,7 @@ export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
         return res;
     }
 
-    @Timeout(0)
+    // @Timeout(0)
     async createAction(filename: string = 'public/test.xlsx'): Promise<void> {
         const workbook = new Excel.Workbook();
         await workbook.xlsx.readFile(filename);
