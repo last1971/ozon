@@ -160,7 +160,7 @@ describe('WbOrderService', () => {
         method
             .mockResolvedValueOnce([
                 {
-                    order_dt: '2023-10-11T00:00:00.000',
+                    order_dt: new Date(1665522000 * 1000).toISOString(),
                     srid: '123',
                     delivery_rub: undefined,
                     ppvz_for_pay: undefined,
