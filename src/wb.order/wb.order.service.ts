@@ -14,6 +14,7 @@ import { TransactionFilterDto } from '../posting/dto/transaction.filter.dto';
 import { ResultDto } from '../helpers/result.dto';
 import { min } from 'lodash';
 import { WbTransactionDto } from './dto/wb.transaction.dto';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 @Injectable()
 export class WbOrderService implements IOrderable {
@@ -21,6 +22,7 @@ export class WbOrderService implements IOrderable {
         private api: WbApiService,
         @Inject(INVOICE_SERVICE) private invoiceService: IInvoice,
         private configService: ConfigService,
+        private eventEmitter: EventEmitter2,
     ) {}
 
     async list(dateFrom = 0, initialNext = 0, limit = 1000): Promise<WbOrderDto[]> {
@@ -56,6 +58,7 @@ export class WbOrderService implements IOrderable {
 
     createInvoice(posting: PostingDto, transaction: FirebirdTransaction): Promise<InvoiceDto> {
         const buyerId = this.configService.get<number>('WB_BUYER_ID', 24532);
+        this.eventEmitter.emit('wb.order.created', posting);
         return this.invoiceService.createInvoiceFromPostingDto(buyerId, posting, transaction);
     }
 
