@@ -3,12 +3,14 @@ import { WbOrderService } from './wb.order.service';
 import { INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { WbApiService } from '../wb.api/wb.api.service';
 import { ConfigService } from '@nestjs/config';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 describe('WbOrderService', () => {
     let service: WbOrderService;
     const createInvoiceFromPostingDto = jest.fn();
     const method = jest.fn();
     const updateByCommissions = jest.fn();
+    const emit = jest.fn();
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
@@ -25,6 +27,10 @@ describe('WbOrderService', () => {
                 {
                     provide: ConfigService,
                     useValue: { get: () => 123456 },
+                },
+                {
+                    provide: EventEmitter2,
+                    useValue: { emit },
                 },
             ],
         }).compile();
@@ -99,6 +105,10 @@ describe('WbOrderService', () => {
             123456,
             { in_process_at: '1', posting_number: '1', products: [], status: 'new' },
             null,
+        ]);
+        expect(emit.mock.calls[0]).toEqual([
+            'wb.order.created',
+            { in_process_at: '1', posting_number: '1', products: [], status: 'new' },
         ]);
     });
 

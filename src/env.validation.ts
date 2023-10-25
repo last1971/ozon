@@ -48,6 +48,21 @@ class EnvironmentVariables {
     @IsString()
     VAULT_PASS: string;
 
+    @IsString()
+    MAIL_HOST: string;
+
+    @IsString()
+    MAIL_USER: string;
+
+    @IsString()
+    MAIL_PASSWORD: string;
+
+    @IsString()
+    MAIL_FROM: string;
+
+    @IsString()
+    MAIL_ADMIN: string;
+
     @IsNumber()
     PERC_MAX: number;
 
