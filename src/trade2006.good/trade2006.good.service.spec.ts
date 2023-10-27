@@ -7,7 +7,7 @@ import { IPriceUpdateable } from '../interfaces/i.price.updateable';
 
 describe('Trade2006GoodService', () => {
     let service: Trade2006GoodService;
-    const query = jest.fn().mockReturnValue([{ GOODSCODE: 1, QUAN: 2, RES: 1 }]);
+    const query = jest.fn().mockReturnValue([{ GOODSCODE: 1, QUAN: 2, RES: 1, PIECES: 1 }]);
     const execute = jest.fn();
     const getProductsWithCoeffs = jest.fn().mockResolvedValueOnce([
         {
@@ -107,6 +107,7 @@ describe('Trade2006GoodService', () => {
             new Map([
                 ['1', 1],
                 ['2', 0],
+                ['1-1', 1],
             ]),
         ]);
     });
