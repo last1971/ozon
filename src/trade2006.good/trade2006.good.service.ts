@@ -178,9 +178,10 @@ export class Trade2006GoodService implements IGood {
         const goods = await this.getQuantities(goodIds);
         const fullSkus = skus;
         for (const percent of await this.getPerc(goodIds)) {
-            const sku = percent.offer_id + '-' + percent.pieces;
-            if (percent.pieces > 1 && !fullSkus.includes(sku)) {
+            const sku = percent.offer_id.toString() + '-' + percent.pieces.toString();
+            if (!fullSkus.includes(sku)) {
                 fullSkus.push(sku);
+                if (percent.pieces === 1) fullSkus.push(percent.offer_id.toString());
             }
         }
         const updateGoods: Map<string, number> = new Map();
