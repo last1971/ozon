@@ -131,7 +131,7 @@ export class WbOrderService implements IOrderable {
                 amount = 0;
             }
             amount += t.ppvz_for_pay - t.delivery_rub;
-            commissions.set(number, amount);
+            if (amount > 0) commissions.set(number, amount);
         });
         return this.invoiceService.updateByCommissions(commissions, null);
     }
