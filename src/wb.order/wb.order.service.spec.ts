@@ -190,6 +190,12 @@ describe('WbOrderService', () => {
                     ppvz_for_pay: 100,
                     rrd_id: 2,
                 },
+                {
+                    order_dt: '2022-10-12',
+                    srid: '124',
+                    delivery_rub: 0,
+                    rrd_id: 2,
+                },
             ])
             .mockResolvedValueOnce({
                 orders: [
@@ -203,7 +209,7 @@ describe('WbOrderService', () => {
                         rid: '123',
                     },
                     {
-                        id: 12345,
+                        id: 12346,
                         createdAt: '22-11-1111',
                         skus: [],
                         price: 200,

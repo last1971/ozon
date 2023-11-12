@@ -15,7 +15,6 @@ import { ResultDto } from '../helpers/result.dto';
 import { min } from 'lodash';
 import { WbTransactionDto } from './dto/wb.transaction.dto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-
 @Injectable()
 export class WbOrderService implements IOrderable {
     constructor(
@@ -130,9 +129,16 @@ export class WbOrderService implements IOrderable {
             if (!amount) {
                 amount = 0;
             }
-            amount += t.ppvz_for_pay - t.delivery_rub;
-            if (amount > 0) commissions.set(number, amount);
+            const ppvzForPay = t.ppvz_for_pay ?? 0;
+            const deliveryRub = t.delivery_rub ?? 0;
+            amount += ppvzForPay - deliveryRub;
+            commissions.set(number, amount);
         });
+        for (const key of commissions.keys()) {
+            if (commissions.get(key) === 0) {
+                commissions.delete(key);
+            }
+        }
         return this.invoiceService.updateByCommissions(commissions, null);
     }
 }
