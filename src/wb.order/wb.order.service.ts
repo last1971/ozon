@@ -15,6 +15,7 @@ import { ResultDto } from '../helpers/result.dto';
 import { min } from 'lodash';
 import { WbTransactionDto } from './dto/wb.transaction.dto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Timeout } from '@nestjs/schedule';
 @Injectable()
 export class WbOrderService implements IOrderable {
     constructor(
@@ -30,6 +31,18 @@ export class WbOrderService implements IOrderable {
             orders.push(...(await this.list(dateFrom, next, limit)));
         }
         return orders;
+    }
+
+    @Timeout(0)
+    async test() {
+        /*
+        const res1 = await this.api.method('/api/v1/supplier/orders', 'statistics', { dateFrom: '2023-09-01' });
+        const orders = res1.filter((r) => r.isCancel).map((r) => r.srid);
+        const res2 = await this.list();
+        const res3 = res2.filter((r) => orders.includes(r.rid));
+        const res4 = await this.orderStatuses(res3.map((order) => order.id));
+        const a=1;
+         */
     }
 
     async listSomeDayAgo(days = 2): Promise<WbOrderDto[]> {

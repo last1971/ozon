@@ -196,17 +196,12 @@ export class Trade2006InvoiceService implements IInvoice {
                 };
             }
             for (const invoice of invoices) {
-                if (invoice.status === 5) {
-                    if (!t) await transaction.rollback(true);
-                    return {
-                        isSuccess: false,
-                        message: `Invoice № ${invoice.number} has wrong status`,
-                    };
+                if (invoice.status === 4) {
+                    const newAmount = transactions.find((dto) => dto.posting_number === invoice.remark).amount;
+                    await this.setInvoiceAmount(invoice, newAmount, transaction);
+                    await this.upsertInvoiceCashFlow(invoice, newAmount, transaction);
+                    await this.createTransferOut(invoice, transaction);
                 }
-                const newAmount = transactions.find((dto) => dto.posting_number === invoice.remark).amount;
-                await this.setInvoiceAmount(invoice, newAmount, transaction);
-                await this.upsertInvoiceCashFlow(invoice, newAmount, transaction);
-                await this.createTransferOut(invoice, transaction);
             }
             await this.bulkSetStatus(invoices, 5, transaction);
             if (!t) await transaction.commit(true);

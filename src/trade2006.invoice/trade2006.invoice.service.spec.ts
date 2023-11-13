@@ -192,7 +192,7 @@ describe('Trade2006InvoiceService', () => {
         ]);
     });
     it('test updateByTransactions', async () => {
-        query.mockReturnValue([{ SCODE: 2, PRIM: '2-2' }]);
+        query.mockReturnValue([{ SCODE: 2, PRIM: '2-2', STATUS: 4 }]);
         await service.updateByTransactions([{ posting_number: '2-2', amount: 111.11 }]);
         expect(query.mock.calls).toHaveLength(2);
         expect(query.mock.calls[0]).toEqual([
