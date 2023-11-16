@@ -276,4 +276,8 @@ describe('Trade2006InvoiceService', () => {
         expect(commit.mock.calls).toHaveLength(1);
         expect(rollback.mock.calls).toHaveLength(0);
     });
+    it('updatePrim', async () => {
+        await service.updatePrim('1', '2');
+        expect(execute.mock.calls[0]).toEqual(['UPDATE S SET PRIM = ?, STATUS = 1 WHERE PRIM = ?', ['2', '1'], true]);
+    });
 });

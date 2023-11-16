@@ -71,6 +71,11 @@ export class Trade2006InvoiceService implements IInvoice {
         return res.length > 0;
     }
 
+    async updatePrim(prim: string, newPrim: string, t: FirebirdTransaction = null): Promise<void> {
+        const transaction = t ?? (await this.pool.getTransaction());
+        await transaction.execute('UPDATE S SET PRIM = ?, STATUS = 1 WHERE PRIM = ?', [newPrim, prim], !t);
+    }
+
     async getByPosting(posting: PostingDto, t: FirebirdTransaction = null): Promise<InvoiceDto> {
         const transaction = t ?? (await this.pool.getTransaction());
         const res = await transaction.query('SELECT * FROM S WHERE PRIM = ?', [posting.posting_number], !t);

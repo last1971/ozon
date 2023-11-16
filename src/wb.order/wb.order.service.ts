@@ -15,7 +15,9 @@ import { ResultDto } from '../helpers/result.dto';
 import { min } from 'lodash';
 import { WbTransactionDto } from './dto/wb.transaction.dto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Timeout } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
+import { WbFboOrder } from './dto/wb.fbo.order';
+import { ProductPostingDto } from '../product/dto/product.posting.dto';
 @Injectable()
 export class WbOrderService implements IOrderable {
     constructor(
@@ -33,16 +35,74 @@ export class WbOrderService implements IOrderable {
         return orders;
     }
 
-    @Timeout(0)
-    async test() {
-        /*
-        const res1 = await this.api.method('/api/v1/supplier/orders', 'statistics', { dateFrom: '2023-09-01' });
-        const orders = res1.filter((r) => r.isCancel).map((r) => r.srid);
-        const res2 = await this.list();
-        const res3 = res2.filter((r) => orders.includes(r.rid));
-        const res4 = await this.orderStatuses(res3.map((order) => order.id));
-        const a=1;
-         */
+    async getAllFboOrders(): Promise<WbFboOrder[]> {
+        const date = DateTime.now().minus({ month: 3 });
+        return this.api.method('/api/v1/supplier/orders', 'statistics', {
+            dateFrom: date.toISODate(),
+        });
+    }
+    async getOnlyFboOrders(): Promise<WbFboOrder[]> {
+        const allOrders = await this.getAllFboOrders();
+        const date = DateTime.now().minus({ month: 3 });
+        const fbsOrders = await this.list(date.toUnixInteger());
+        const fbsRids = fbsOrders.map((order) => order.rid);
+        return allOrders.filter((order) => !fbsRids.includes(order.srid));
+    }
+    @Cron('0 */5 * * * *', { name: 'checkFboWbOrders' })
+    async addFboOrders() {
+        const allFboOrders = await this.getOnlyFboOrders();
+        const oldFboOrders: boolean[] = await Promise.all(
+            allFboOrders.map((order) => this.invoiceService.isExists(order.srid, null)),
+        );
+        const newFboOrders = allFboOrders.filter((order, index) => !oldFboOrders[index]);
+        const transaction = await this.invoiceService.getTransaction();
+        const buyerId = this.configService.get<number>('WB_BUYER_ID', 24532);
+        try {
+            for (const order of newFboOrders) {
+                const product: ProductPostingDto = {
+                    price: order.totalPrice.toString(),
+                    offer_id: order.supplierArticle,
+                    quantity: 1,
+                };
+                await this.invoiceService.unPickupOzonFbo(product, 'WBFBO', transaction);
+                const invoice = await this.invoiceService.createInvoiceFromPostingDto(
+                    buyerId,
+                    {
+                        posting_number: order.srid,
+                        status: 'fbo',
+                        in_process_at: order.date,
+                        products: [product],
+                    },
+                    transaction,
+                );
+                await this.invoiceService.pickupInvoice(invoice, transaction);
+            }
+            await transaction.commit(true);
+        } catch (e) {
+            await transaction.rollback(true);
+            console.log(e);
+        }
+    }
+
+    @Cron('0 */5 * * * *', { name: 'checkCanceledWbOrders' })
+    async checkCanceledOrders(): Promise<void> {
+        const allFboOrders = await this.getAllFboOrders();
+        const allCanceledFboOrders = allFboOrders.filter((order) => order.isCancel);
+        const dateFrom = min(
+            allCanceledFboOrders
+                .map((t) => t.date)
+                .filter((date) => !!date)
+                .map((date) => DateTime.fromISO(date).toUnixInteger()),
+        );
+        const orders = await this.list(dateFrom);
+        const prims: string[] = allCanceledFboOrders.map((order) => {
+            const fbs = orders.find((o) => o.rid === order.srid);
+            return fbs ? fbs.id.toString() : order.srid;
+        });
+        for (const prim of prims) {
+            if (await this.invoiceService.isExists(prim, null))
+                await this.invoiceService.updatePrim(prim, prim + ' возврат WBFBO', null);
+        }
     }
 
     async listSomeDayAgo(days = 2): Promise<WbOrderDto[]> {
