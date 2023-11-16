@@ -76,6 +76,24 @@ export const cronConfig: Record<string, CronSetup> = {
             },
         },
     },
+    checkCanceledWbOrders: {
+        production: {
+            enabled: true,
+            settings: {
+                time: CronExpression.EVERY_DAY_AT_MIDNIGHT,
+            },
+        },
+        development: false,
+    },
+    checkFboWbOrders: {
+        production: {
+            enabled: true,
+            settings: {
+                time: CronExpression.EVERY_DAY_AT_NOON,
+            },
+        },
+        development: false,
+    },
     testCase1: {
         production: false,
         development: false,

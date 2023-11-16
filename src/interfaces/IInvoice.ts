@@ -10,6 +10,7 @@ export interface IInvoice {
     getTransaction(): Promise<FirebirdTransaction>;
     create(invoice: InvoiceCreateDto, t: FirebirdTransaction): Promise<InvoiceDto>;
     isExists(remark: string, t: FirebirdTransaction): Promise<boolean>;
+    updatePrim(prim: string, newPrim: string, t: FirebirdTransaction): Promise<void>;
     getByPosting(posting: PostingDto, t: FirebirdTransaction): Promise<InvoiceDto>;
     getByBuyerAndStatus(buyerId: number, status: number, t: FirebirdTransaction): Promise<InvoiceDto[]>;
     updateByCommissions(commissions: Map<string, number>, t: FirebirdTransaction): Promise<ResultDto>;

@@ -4,6 +4,7 @@ import { INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { WbApiService } from '../wb.api/wb.api.service';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { DateTime } from 'luxon';
 
 describe('WbOrderService', () => {
     let service: WbOrderService;
@@ -11,6 +12,13 @@ describe('WbOrderService', () => {
     const method = jest.fn();
     const updateByCommissions = jest.fn();
     const emit = jest.fn();
+    const isExists = jest.fn();
+    const unPickupOzonFbo = jest.fn();
+    const pickupInvoice = jest.fn();
+    const getTransaction = jest.fn();
+    const commit = jest.fn();
+    const updatePrim = jest.fn();
+    getTransaction.mockResolvedValue({ commit });
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
@@ -18,7 +26,15 @@ describe('WbOrderService', () => {
                 WbOrderService,
                 {
                     provide: INVOICE_SERVICE,
-                    useValue: { createInvoiceFromPostingDto, updateByCommissions },
+                    useValue: {
+                        createInvoiceFromPostingDto,
+                        updateByCommissions,
+                        isExists,
+                        unPickupOzonFbo,
+                        pickupInvoice,
+                        getTransaction,
+                        updatePrim,
+                    },
                 },
                 {
                     provide: WbApiService,
@@ -36,6 +52,8 @@ describe('WbOrderService', () => {
         }).compile();
         method.mockClear();
         createInvoiceFromPostingDto.mockClear();
+        commit.mockClear();
+        isExists.mockClear();
 
         service = module.get<WbOrderService>(WbOrderService);
     });
@@ -230,5 +248,81 @@ describe('WbOrderService', () => {
             },
         ]);
         expect(updateByCommissions.mock.calls[0]).toEqual([new Map([['12345', 90]]), null]);
+    });
+    it('getAllFboOrders', async () => {
+        await service.getAllFboOrders();
+        expect(method.mock.calls[0]).toEqual([
+            '/api/v1/supplier/orders',
+            'statistics',
+            { dateFrom: DateTime.now().minus({ month: 3 }).toISODate() },
+        ]);
+    });
+    it('getOnlyFboOrders', async () => {
+        method
+            .mockResolvedValueOnce([{ srid: '1' }, { srid: '2' }, { srid: '3' }])
+            .mockResolvedValueOnce({ orders: [{ rid: '2' }, { rid: '4' }, { rid: '5' }] });
+        const res = await service.getOnlyFboOrders();
+        expect(res).toEqual([{ srid: '1' }, { srid: '3' }]);
+    });
+    it('addFboOrders', async () => {
+        method
+            .mockResolvedValueOnce([
+                { srid: '1' },
+                { srid: '2' },
+                { srid: '3', totalPrice: 112, supplierArticle: '111', date: '2011-11-11' },
+            ])
+            .mockResolvedValueOnce({ orders: [{ rid: '2' }, { rid: '4' }, { rid: '5' }] });
+        isExists.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+        createInvoiceFromPostingDto.mockResolvedValueOnce('invoice');
+        await service.addFboOrders();
+        expect(unPickupOzonFbo.mock.calls[0]).toEqual([
+            {
+                offer_id: '111',
+                price: '112',
+                quantity: 1,
+            },
+            'WBFBO',
+            { commit },
+        ]);
+        expect(createInvoiceFromPostingDto.mock.calls[0]).toEqual([
+            123456,
+            {
+                in_process_at: '2011-11-11',
+                posting_number: '3',
+                products: [
+                    {
+                        offer_id: '111',
+                        price: '112',
+                        quantity: 1,
+                    },
+                ],
+                status: 'fbo',
+            },
+            { commit },
+        ]);
+        expect(pickupInvoice.mock.calls[0]).toEqual(['invoice', { commit }]);
+        expect(commit.mock.calls).toHaveLength(1);
+    });
+    it('checkCanceledOrders', async () => {
+        method
+            .mockResolvedValueOnce([
+                { srid: '1', isCancel: true, date: '2019-11-11' },
+                { srid: '2', isCancel: true, date: '2020-11-11' },
+                { srid: '3', isCancel: false, date: '2021-11-11' },
+                { srid: '4', isCancel: true, date: '2021-11-11' },
+            ])
+            .mockResolvedValueOnce({
+                orders: [
+                    { rid: '2', id: 12 },
+                    { rid: '4', id: 14 },
+                    { rid: '5', id: 15 },
+                ],
+            });
+        isExists.mockResolvedValueOnce(true).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+        await service.checkCanceledOrders();
+        expect(isExists.mock.calls).toHaveLength(3);
+        expect(updatePrim.mock.calls).toHaveLength(2);
+        expect(updatePrim.mock.calls[0]).toEqual(['1', '1 возврат WBFBO', null]);
+        expect(updatePrim.mock.calls[1]).toEqual(['14', '14 возврат WBFBO', null]);
     });
 });
