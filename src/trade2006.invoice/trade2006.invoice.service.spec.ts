@@ -240,8 +240,8 @@ describe('Trade2006InvoiceService', () => {
         get.mockReturnValueOnce(1).mockReturnValueOnce(2);
         query
             .mockResolvedValueOnce([
-                { SCODE: 1, NS: '1', STATUS: 2, POKUPATCODE: 1, DATA: '2020-11-11', PRIM: '120' },
-                { SCODE: 2, NS: '2', STATUS: 2, POKUPATCODE: 2, DATA: '2020-12-12', PRIM: '121' },
+                { SCODE: 1, NS: '1', STATUS: 4, POKUPATCODE: 1, DATA: '2020-11-11', PRIM: '120' },
+                { SCODE: 2, NS: '2', STATUS: 4, POKUPATCODE: 2, DATA: '2020-12-12', PRIM: '121' },
             ])
             .mockResolvedValueOnce([{ REALPRICECODE: '1', SUMMAP: 99 }])
             .mockResolvedValueOnce([{ REALPRICECODE: '2', SUMMAP: 100 }]);

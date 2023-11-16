@@ -148,7 +148,7 @@ export class WbOrderService implements IOrderable {
             commissions.set(number, amount);
         });
         for (const key of commissions.keys()) {
-            if (commissions.get(key) === 0) {
+            if (commissions.get(key) <= 0) {
                 commissions.delete(key);
             }
         }

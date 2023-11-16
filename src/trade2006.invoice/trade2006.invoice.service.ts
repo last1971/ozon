@@ -164,10 +164,12 @@ export class Trade2006InvoiceService implements IInvoice {
         try {
             const invoices = await this.getByPostingNumbers(Array.from(commissions.keys()));
             for (const invoice of invoices) {
-                const newAmount = commissions.get(invoice.remark);
-                await this.setInvoiceAmount(invoice, newAmount, transaction);
-                await this.upsertInvoiceCashFlow(invoice, newAmount, transaction);
-                await this.createTransferOut(invoice, transaction);
+                if (invoice.status === 4) {
+                    const newAmount = commissions.get(invoice.remark);
+                    await this.setInvoiceAmount(invoice, newAmount, transaction);
+                    await this.upsertInvoiceCashFlow(invoice, newAmount, transaction);
+                    await this.createTransferOut(invoice, transaction);
+                }
             }
             await this.bulkSetStatus(invoices, 5, transaction);
             if (!t) await transaction.commit(true);
