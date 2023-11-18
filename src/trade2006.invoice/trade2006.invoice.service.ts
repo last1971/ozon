@@ -17,6 +17,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 @Injectable()
 export class Trade2006InvoiceService implements IInvoice {
     private logger = new Logger(Trade2006InvoiceService.name);
+    private fboErrors: { prim: string; code: string }[] = [];
     constructor(
         @Inject(FIREBIRD) private pool: FirebirdPool,
         private configService: ConfigService,
@@ -266,7 +267,16 @@ export class Trade2006InvoiceService implements IInvoice {
         );
         if (pickups.length === 0) {
             if (!transaction) await workingTransaction.rollback(true);
-            throw new Error(`Have not position on FBO. Warehouse - ${prim}. GOODSCODE - ${code}.`);
+            const message = `Have not position on FBO. Warehouse - ${prim}. GOODSCODE - ${code}.`;
+            if (!this.fboErrors.includes({ prim, code })) {
+                this.fboErrors.push({ prim, code });
+                this.eventEmitter.emit('error.message', 'Check FBO cancels!', message);
+            }
+            throw new Error(message);
+        }
+        if (this.fboErrors.includes({ prim, code })) {
+            const index = this.fboErrors.indexOf({ prim, code });
+            this.fboErrors.splice(index, 1);
         }
         await workingTransaction.execute('UPDATE PODBPOS SET QUANSHOP = ? WHERE PODBPOSCODE = ?', [
             pickups[0].QUANSHOP - quantity,

@@ -78,6 +78,11 @@ export class WbOrderService implements IOrderable {
                 await this.invoiceService.pickupInvoice(invoice, transaction);
             }
             await transaction.commit(true);
+            this.eventEmitter.emit(
+                '',
+                'Добавлены WB FBO заказы',
+                newFboOrders.map((order) => ({ prim: order.srid, offer_id: order.supplierArticle })),
+            );
         } catch (e) {
             await transaction.rollback(true);
             console.log(e);
@@ -95,14 +100,22 @@ export class WbOrderService implements IOrderable {
                 .map((date) => DateTime.fromISO(date).toUnixInteger()),
         );
         const orders = await this.list(dateFrom);
+        const offerIds = new Map<string, string>();
         const prims: string[] = allCanceledFboOrders.map((order) => {
             const fbs = orders.find((o) => o.rid === order.srid);
-            return fbs ? fbs.id.toString() : order.srid;
+            const prim = fbs ? fbs.id.toString() : order.srid;
+            offerIds.set(prim, order.supplierArticle);
+            return prim;
         });
         for (const prim of prims) {
             if (await this.invoiceService.isExists(prim, null))
                 await this.invoiceService.updatePrim(prim, prim + ' возврат WBFBO', null);
         }
+        this.eventEmitter.emit(
+            '',
+            'Отменены WB заказы',
+            prims.map((prim) => ({ prim, offer_id: offerIds.get(prim) })),
+        );
     }
 
     async listSomeDayAgo(days = 2): Promise<WbOrderDto[]> {

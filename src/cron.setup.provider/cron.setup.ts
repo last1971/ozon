@@ -94,6 +94,20 @@ export const cronConfig: Record<string, CronSetup> = {
         },
         development: false,
     },
+    checkHealth: {
+        production: {
+            enabled: true,
+            settings: {
+                time: CronExpression.EVERY_3_HOURS,
+            },
+        },
+        development: {
+            enabled: true,
+            settings: {
+                time: CronExpression.EVERY_5_MINUTES,
+            },
+        },
+    },
     testCase1: {
         production: false,
         development: false,

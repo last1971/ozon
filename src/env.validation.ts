@@ -1,5 +1,5 @@
 import { plainToInstance } from 'class-transformer';
-import { IsEnum, IsIP, IsNumber, IsString, IsUrl, validateSync } from 'class-validator';
+import { IsEmail, IsEnum, IsIP, IsNumber, IsString, IsUrl, validateSync } from 'class-validator';
 
 export enum Environment {
     Development = 'development',
@@ -57,11 +57,14 @@ class EnvironmentVariables {
     @IsString()
     MAIL_PASSWORD: string;
 
-    @IsString()
+    @IsEmail()
     MAIL_FROM: string;
 
-    @IsString()
+    @IsEmail()
     MAIL_ADMIN: string;
+
+    @IsEmail()
+    MAIL_LAST: string;
 
     @IsNumber()
     PERC_MAX: number;
