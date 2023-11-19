@@ -112,9 +112,10 @@ export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
     }
 
     // @Timeout(0)
-    async createAction(filename: string = 'public/test.xlsx'): Promise<void> {
+    async createAction(file: Express.Multer.File /*filename: string = 'public/test.xlsx'*/): Promise<any> {
         const workbook = new Excel.Workbook();
-        await workbook.xlsx.readFile(filename);
+        await workbook.xlsx.load(file.buffer);
+        //await workbook.xlsx.readFile(filename);
         const worksheet = workbook.getWorksheet(10);
         const skus: string[] = [];
         worksheet.eachRow((row: Excel.Row, rowNumber) => {
@@ -133,6 +134,6 @@ export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
                 row.getCell(12).value = discountPrices.get(row.getCell(3).value.toString())[0];
             }
         });
-        await workbook.xlsx.writeFile(filename);
+        return workbook.xlsx.writeBuffer(); //writeFile('public/test.xlsx');
     }
 }

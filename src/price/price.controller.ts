@@ -1,5 +1,17 @@
-import { Body, Controller, forwardRef, Get, Inject, Param, Post, Query } from '@nestjs/common';
-import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import {
+    Body,
+    Controller,
+    forwardRef,
+    Get,
+    Inject,
+    Param,
+    Post,
+    Query,
+    Res,
+    UploadedFile,
+    UseInterceptors,
+} from '@nestjs/common';
+import { ApiBody, ApiConsumes, ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { PriceRequestDto } from './dto/price.request.dto';
 import { PricePresetDto } from './dto/price.preset.dto';
 import { PriceService } from './price.service';
@@ -9,6 +21,8 @@ import { YandexPriceService } from '../yandex.price/yandex.price.service';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
 import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
 import { WbPriceService } from '../wb.price/wb.price.service';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { Response } from 'express';
 @ApiTags('price')
 @Controller('api/price')
 export class PriceController {
@@ -54,5 +68,25 @@ export class PriceController {
     async updatePrices(@Param('service') service: string): Promise<any> {
         const command = this.services.get(service) || this.service;
         return command.updateAllPrices();
+    }
+    @Post('discount')
+    @ApiConsumes('multipart/form-data')
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                file: {
+                    type: 'string',
+                    format: 'binary',
+                },
+            },
+        },
+    })
+    @UseInterceptors(FileInterceptor('file'))
+    async discount(@UploadedFile('file') file: Express.Multer.File, @Res() res: Response): Promise<any> {
+        const buffer = await this.yandexPriceService.createAction(file);
+        res.contentType('xlsx');
+        res.attachment();
+        res.send(buffer);
     }
 }

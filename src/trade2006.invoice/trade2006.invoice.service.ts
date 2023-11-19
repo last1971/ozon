@@ -13,6 +13,7 @@ import { goodCode, goodQuantityCoeff } from '../helpers';
 import { chunk, flatten } from 'lodash';
 import { ProductPostingDto } from '../product/dto/product.posting.dto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { find, remove } from 'lodash';
 
 @Injectable()
 export class Trade2006InvoiceService implements IInvoice {
@@ -268,16 +269,13 @@ export class Trade2006InvoiceService implements IInvoice {
         if (pickups.length === 0) {
             if (!transaction) await workingTransaction.rollback(true);
             const message = `Have not position on FBO. Warehouse - ${prim}. GOODSCODE - ${code}.`;
-            if (!this.fboErrors.includes({ prim, code })) {
+            if (!find(this.fboErrors, { prim, code })) {
                 this.fboErrors.push({ prim, code });
                 this.eventEmitter.emit('error.message', 'Check FBO cancels!', message);
             }
             throw new Error(message);
         }
-        if (this.fboErrors.includes({ prim, code })) {
-            const index = this.fboErrors.indexOf({ prim, code });
-            this.fboErrors.splice(index, 1);
-        }
+        remove(this.fboErrors, { prim, code });
         await workingTransaction.execute('UPDATE PODBPOS SET QUANSHOP = ? WHERE PODBPOSCODE = ?', [
             pickups[0].QUANSHOP - quantity,
             pickups[0].PODBPOSCODE,
