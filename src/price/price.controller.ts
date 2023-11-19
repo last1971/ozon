@@ -99,10 +99,11 @@ export class PriceController {
         @Res() res: Response,
         @Body('service') service: string,
     ): Promise<any> {
-        if (service === 'yandex') {
-            const buffer = await this.yandexPriceService.createAction(file);
+        if (['yandex', 'wb'].includes(service)) {
+            const serviceCommand = this.services.get(service);
+            const buffer = await serviceCommand.createAction(file);
             res.contentType('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
-            res.attachment('yandex-discount.xlsx');
+            res.attachment(service + '-discount.xlsx');
             res.send(buffer);
         }
         throw new HttpException('Bad service', 400);

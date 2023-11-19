@@ -78,11 +78,13 @@ export class WbOrderService implements IOrderable {
                 await this.invoiceService.pickupInvoice(invoice, transaction);
             }
             await transaction.commit(true);
-            this.eventEmitter.emit(
-                '',
-                'Добавлены WB FBO заказы',
-                newFboOrders.map((order) => ({ prim: order.srid, offer_id: order.supplierArticle })),
-            );
+            if (newFboOrders.length > 0) {
+                this.eventEmitter.emit(
+                    'wb.order.content',
+                    'Добавлены WB FBO заказы',
+                    newFboOrders.map((order) => ({ prim: order.srid, offer_id: order.supplierArticle })),
+                );
+            }
         } catch (e) {
             await transaction.rollback(true);
             console.log(e);
@@ -111,11 +113,13 @@ export class WbOrderService implements IOrderable {
             if (await this.invoiceService.isExists(prim, null))
                 await this.invoiceService.updatePrim(prim, prim + ' возврат WBFBO', null);
         }
-        this.eventEmitter.emit(
-            '',
-            'Отменены WB заказы',
-            prims.map((prim) => ({ prim, offer_id: offerIds.get(prim) })),
-        );
+        if (prims.length > 0) {
+            this.eventEmitter.emit(
+                'wb.order.content',
+                'Отменены WB заказы',
+                prims.map((prim) => ({ prim, offer_id: offerIds.get(prim) })),
+            );
+        }
     }
 
     async listSomeDayAgo(days = 2): Promise<WbOrderDto[]> {
