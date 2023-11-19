@@ -3,6 +3,7 @@ import {
     Controller,
     forwardRef,
     Get,
+    HttpException,
     Inject,
     Param,
     Post,
@@ -11,7 +12,7 @@ import {
     UploadedFile,
     UseInterceptors,
 } from '@nestjs/common';
-import { ApiBody, ApiConsumes, ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { ApiBody, ApiConsumes, ApiOkResponse, ApiProduces, ApiTags } from '@nestjs/swagger';
 import { PriceRequestDto } from './dto/price.request.dto';
 import { PricePresetDto } from './dto/price.preset.dto';
 import { PriceService } from './price.service';
@@ -71,6 +72,13 @@ export class PriceController {
     }
     @Post('discount')
     @ApiConsumes('multipart/form-data')
+    @ApiOkResponse({
+        schema: {
+            type: 'string',
+            format: 'binary',
+        },
+    })
+    @ApiProduces('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
     @ApiBody({
         schema: {
             type: 'object',
@@ -79,14 +87,24 @@ export class PriceController {
                     type: 'string',
                     format: 'binary',
                 },
+                service: {
+                    type: 'string',
+                },
             },
         },
     })
     @UseInterceptors(FileInterceptor('file'))
-    async discount(@UploadedFile('file') file: Express.Multer.File, @Res() res: Response): Promise<any> {
-        const buffer = await this.yandexPriceService.createAction(file);
-        res.contentType('xlsx');
-        res.attachment();
-        res.send(buffer);
+    async discount(
+        @UploadedFile('file') file: Express.Multer.File,
+        @Res() res: Response,
+        @Body('service') service: string,
+    ): Promise<any> {
+        if (service === 'yandex') {
+            const buffer = await this.yandexPriceService.createAction(file);
+            res.contentType('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+            res.attachment('yandex-discount.xlsx');
+            res.send(buffer);
+        }
+        throw new HttpException('Bad service', 400);
     }
 }
