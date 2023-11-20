@@ -10,10 +10,9 @@ import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { TransactionDto } from '../posting/dto/transaction.dto';
 import { ResultDto } from '../helpers/result.dto';
 import { goodCode, goodQuantityCoeff } from '../helpers';
-import { chunk, flatten } from 'lodash';
+import { chunk, flatten, find, remove } from 'lodash';
 import { ProductPostingDto } from '../product/dto/product.posting.dto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { find, remove } from 'lodash';
 
 @Injectable()
 export class Trade2006InvoiceService implements IInvoice {
