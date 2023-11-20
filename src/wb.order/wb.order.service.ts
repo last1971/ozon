@@ -110,14 +110,17 @@ export class WbOrderService implements IOrderable {
             return prim;
         });
         for (const prim of prims) {
-            if (await this.invoiceService.isExists(prim, null))
+            if (await this.invoiceService.isExists(prim, null)) {
                 await this.invoiceService.updatePrim(prim, prim + ' возврат WBFBO', null);
+            } else {
+                offerIds.delete(prim);
+            }
         }
-        if (prims.length > 0) {
+        if (offerIds.size > 0) {
             this.eventEmitter.emit(
                 'wb.order.content',
                 'Отменены WB заказы',
-                prims.map((prim) => ({ prim, offer_id: offerIds.get(prim) })),
+                Array.from(offerIds.keys()).map((prim) => ({ prim, offer_id: offerIds.get(prim) })),
             );
         }
     }
