@@ -15,6 +15,7 @@ import { IPriceUpdateable } from '../interfaces/i.price.updateable';
 import { ObtainCoeffsDto } from '../helpers/obtain.coeffs.dto';
 import { IProductCoeffsable } from '../interfaces/i.product.coeffsable';
 import { OzonProductCoeffsAdapter } from './ozon.product.coeffs.adapter';
+import Excel from 'exceljs';
 
 @Injectable()
 export class PriceService implements IPriceUpdateable {
@@ -122,5 +123,9 @@ export class PriceService implements IPriceUpdateable {
 
     async updatePrices(updatePrices: UpdatePriceDto[]): Promise<any> {
         return this.update({ prices: updatePrices });
+    }
+
+    createAction(): Promise<Excel.Buffer> {
+        return Promise.resolve(undefined);
     }
 }

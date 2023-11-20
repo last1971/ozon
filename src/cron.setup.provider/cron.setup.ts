@@ -39,6 +39,15 @@ export const cronConfig: Record<string, CronSetup> = {
         },
         development: false,
     },
+    updateWbPrices: {
+        production: {
+            enabled: true,
+            settings: {
+                time: CronExpression.EVERY_WEEK,
+            },
+        },
+        development: false,
+    },
     checkGoodCount: {
         production: {
             enabled: true,

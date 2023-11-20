@@ -28,6 +28,7 @@ describe('Trade2006GoodService', () => {
         getProductsWithCoeffs,
         updatePrices,
         updateAllPrices: (): Promise<any> => null,
+        createAction: (): Promise<any> => null,
     };
 
     beforeEach(async () => {

@@ -11,6 +11,8 @@ import { WbApiService } from '../wb.api/wb.api.service';
 import { WbDiscountUpdateDto } from './dto/wb.discount.update.dto';
 import { WbCardService } from '../wb.card/wb.card.service';
 import { find } from 'lodash';
+import Excel from 'exceljs';
+import { Cron } from '@nestjs/schedule';
 
 @Injectable()
 export class WbPriceService implements IPriceUpdateable {
@@ -35,6 +37,7 @@ export class WbPriceService implements IPriceUpdateable {
         return (await this.goodService.getWbData(skus)).map((wbData) => new WbPriceCoeffsAdapter(wbData));
     }
 
+    @Cron('0 5 0 * * 0', { name: 'updateWbPrices' })
     async updateAllPrices(level = 0, args = ''): Promise<any> {
         const cards = await this.cardService.getGoodIds(args);
         await this.goodService.updatePriceForService(this, Array.from(cards.goods.keys()));
@@ -78,5 +81,31 @@ export class WbPriceService implements IPriceUpdateable {
 
     async updateDiscounts(discounts: WbDiscountUpdateDto[]): Promise<any> {
         return this.api.method('/public/api/v1/updateDiscounts', 'post', discounts);
+    }
+
+    async createAction(file: Express.Multer.File): Promise<any> {
+        const workbook = new Excel.Workbook();
+        await workbook.xlsx.load(file.buffer);
+        const worksheet = workbook.getWorksheet(2);
+        const newWorkbook = new Excel.Workbook();
+        const newWorksheet = newWorkbook.addWorksheet(worksheet.name);
+        newWorksheet.state = 'visible';
+        const ids: string[] = [];
+        worksheet.eachRow((row: Excel.Row, rowNumber) => {
+            if (rowNumber !== 1) ids.push(row.getCell(4).value as string);
+        });
+        const discounts: Map<string, number> = new Map(
+            (await this.goodService.getWbData(ids)).map((discount) => [discount.id, discount.minPrice]),
+        );
+        let i = 0;
+        worksheet.eachRow((row: Excel.Row, rowNumber) => {
+            if (
+                rowNumber === 1 ||
+                parseInt(row.getCell(11).value as string) >= discounts.get(row.getCell(4).value as string)
+            ) {
+                newWorksheet.insertRow(i++, row.values);
+            }
+        });
+        return newWorkbook.xlsx.writeBuffer();
     }
 }

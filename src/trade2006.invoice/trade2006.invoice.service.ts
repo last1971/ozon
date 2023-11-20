@@ -13,6 +13,7 @@ import { goodCode, goodQuantityCoeff } from '../helpers';
 import { chunk, flatten, find, remove } from 'lodash';
 import { ProductPostingDto } from '../product/dto/product.posting.dto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { find, remove } from 'lodash';
 
 @Injectable()
 export class Trade2006InvoiceService implements IInvoice {
