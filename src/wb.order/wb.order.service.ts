@@ -213,8 +213,8 @@ export class WbOrderService implements IOrderable {
         const sridToNumber = new Map(orders.map((order) => [order.rid, order.id.toString()]));
         const commissions = new Map<string, number>();
         transactions.forEach((t) => {
-            const number = sridToNumber.get(t.srid);
-            if (!number) throw Error(t.srid);
+            let number = sridToNumber.get(t.srid);
+            if (!number) number = t.srid;
             let amount = commissions.get(number);
             if (!amount) {
                 amount = 0;
