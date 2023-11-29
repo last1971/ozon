@@ -7,6 +7,8 @@ import { DateTime } from 'luxon';
 import { ConfigService } from '@nestjs/config';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { FirebirdTransaction } from 'ts-firebird';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Cron } from '@nestjs/schedule';
 
 @Injectable()
 export class PostingFboService implements IOrderable {
@@ -14,20 +16,26 @@ export class PostingFboService implements IOrderable {
         private productService: ProductService,
         private configService: ConfigService,
         @Inject(INVOICE_SERVICE) private invoiceService: IInvoice,
+        private eventEmitter: EventEmitter2,
     ) {}
     async createInvoice(posting: PostingDto, transaction: FirebirdTransaction): Promise<InvoiceDto> {
         const buyerId = this.configService.get<number>('OZON_BUYER_ID', 24416);
         for (const product of posting.products) {
-            await this.invoiceService.unPickupOzonFbo(product, posting.analytics_data.warehouse_name, transaction);
+            try {
+                await this.invoiceService.unPickupOzonFbo(product, posting.analytics_data.warehouse_name, transaction);
+            } catch (e) {
+                await this.invoiceService.unPickupOzonFbo(product, 'отмена FBO', transaction);
+                this.eventEmitter.emit('error.message', 'FBO cancels clean', posting.analytics_data.warehouse_name);
+            }
         }
         return this.invoiceService.createInvoiceFromPostingDto(buyerId, posting, transaction);
     }
 
-    async list(status: string): Promise<PostingDto[]> {
+    async list(status: string, day = 2): Promise<PostingDto[]> {
         const orders = await this.productService.orderFboList({
             limit: 1000,
             filter: {
-                since: DateTime.now().minus({ day: 2 }).startOf('day').toJSDate(),
+                since: DateTime.now().minus({ day }).startOf('day').toJSDate(),
                 to: DateTime.now().endOf('day').toJSDate(),
                 status,
             },
@@ -37,10 +45,28 @@ export class PostingFboService implements IOrderable {
         });
         return orders.result;
     }
+    async listCanceled(): Promise<PostingDto[]> {
+        return this.list('cancelled', 90);
+    }
     async listAwaitingDelivering(): Promise<PostingDto[]> {
         return this.list('awaiting_deliver');
     }
-    listAwaitingPackaging(): Promise<PostingDto[]> {
+    async listAwaitingPackaging(): Promise<PostingDto[]> {
         return this.list('awaiting_packaging');
+    }
+
+    @Cron('0 */5 * * * *', { name: 'checkCanceledFboOrders' })
+    async checkCanceledOrders(): Promise<void> {
+        const orders = await this.listCanceled();
+        const cancelled = [];
+        for (const order of orders) {
+            if (await this.invoiceService.isExists(order.posting_number, null)) {
+                await this.invoiceService.updatePrim(order.posting_number, order.posting_number + ' отмена FBO', null);
+                cancelled.push({ prim: order.posting_number, offer_id: order.products[0].offer_id });
+            }
+        }
+        if (cancelled.length > 0) {
+            this.eventEmitter.emit('wb.order.content', 'Отменены Ozon FBO заказы', cancelled);
+        }
     }
 }
