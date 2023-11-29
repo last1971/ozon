@@ -4,6 +4,7 @@ import { ProductService } from '../product/product.service';
 import { ConfigService } from '@nestjs/config';
 import { INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { DateTime } from 'luxon';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 describe('PostingFboService', () => {
     let service: PostingFboService;
@@ -25,9 +26,14 @@ describe('PostingFboService', () => {
                     provide: INVOICE_SERVICE,
                     useValue: { createInvoiceFromPostingDto, getTransaction, unPickupOzonFbo },
                 },
+                {
+                    provide: EventEmitter2,
+                    useValue: {},
+                },
             ],
         }).compile();
 
+        orderFboList.mockClear();
         service = module.get<PostingFboService>(PostingFboService);
     });
 
@@ -43,6 +49,22 @@ describe('PostingFboService', () => {
                 filter: {
                     since: DateTime.now().minus({ day: 2 }).startOf('day').toJSDate(),
                     status: 'status',
+                    to: DateTime.now().endOf('day').toJSDate(),
+                },
+                limit: 1000,
+                with: { analytics_data: true },
+            },
+        ]);
+    });
+
+    it('listCanceled', async () => {
+        orderFboList.mockResolvedValueOnce({ result: [] });
+        await service.listCanceled();
+        expect(orderFboList.mock.calls[0]).toEqual([
+            {
+                filter: {
+                    since: DateTime.now().minus({ day: 90 }).startOf('day').toJSDate(),
+                    status: 'cancelled',
                     to: DateTime.now().endOf('day').toJSDate(),
                 },
                 limit: 1000,
