@@ -77,6 +77,7 @@ export class ExtraGoodService {
                 } catch (e) {
                     this.logger.error(e.message, e);
                 }
+            else this.logger.log(`Service ${service[0]} is switched off`);
         }
         this.logger.log(`Update quantity for ${count} goods`);
     }
