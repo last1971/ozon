@@ -8,6 +8,7 @@ import { YandexOfferModule } from '../yandex.offer/yandex.offer.module';
 import { ConfigService } from '@nestjs/config';
 import { WbCardModule } from '../wb.card/wb.card.module';
 import { FirebirdPool } from 'ts-firebird';
+import { ExtraGoodService } from './extra.good.service';
 
 @Module({
     imports: [FirebirdModule, ProductModule, YandexOfferModule, WbCardModule],
@@ -18,8 +19,9 @@ import { FirebirdPool } from 'ts-firebird';
                 new Trade2006GoodService(pool, configService),
             inject: [FIREBIRD, ConfigService],
         },
+        ExtraGoodService,
     ],
-    exports: [GOOD_SERVICE],
+    exports: [GOOD_SERVICE, ExtraGoodService],
     controllers: [GoodController],
 })
 export class GoodModule {}
