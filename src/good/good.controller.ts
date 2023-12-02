@@ -6,6 +6,7 @@ import { ResultDto } from '../helpers/result.dto';
 import { GoodWbDto } from './dto/good.wb.dto';
 import { ExtraGoodService } from './extra.good.service';
 import { GoodServiceEnum } from './good.service.enum';
+import { IsSwitchedDto } from './dto/is.switched.dto';
 import { IsEnum } from 'class-validator';
 
 class UpdateServiceParams {
@@ -16,6 +17,7 @@ class UpdateServiceParams {
     })
     service: GoodServiceEnum;
 }
+
 @ApiTags('good')
 @Controller('api/good')
 export class GoodController {
@@ -34,5 +36,10 @@ export class GoodController {
     @Put('wb')
     async setWb(@Query() dto: GoodWbDto): Promise<void> {
         await this.goodService.setWbData(dto, null);
+    }
+
+    @Post('is-switched')
+    async isSwitched(@Query() isSwitchedDto: IsSwitchedDto): Promise<ResultDto> {
+        return this.extraService.serviceIsSwitchedOn(isSwitchedDto);
     }
 }

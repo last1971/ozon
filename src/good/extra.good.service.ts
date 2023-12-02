@@ -9,6 +9,7 @@ import { GoodServiceEnum } from './good.service.enum';
 import { ResultDto } from '../helpers/result.dto';
 import { Cron } from '@nestjs/schedule';
 import { OnEvent } from '@nestjs/event-emitter';
+import { IsSwitchedDto } from './dto/is.switched.dto';
 
 @Injectable()
 export class ExtraGoodService {
@@ -38,6 +39,16 @@ export class ExtraGoodService {
                       '',
                   )} offers in ${serviceEnum}`
                 : `${serviceEnum} switched off`,
+        };
+    }
+
+    serviceIsSwitchedOn(isSwitchedDto: IsSwitchedDto): ResultDto {
+        this.services.get(isSwitchedDto.service).isSwitchedOn = isSwitchedDto.isSwitchedOn;
+        return {
+            isSuccess: true,
+            message: `Service ${isSwitchedDto.service} ${
+                isSwitchedDto.isSwitchedOn ? 'is switched on' : 'is switched off'
+            }`,
         };
     }
 

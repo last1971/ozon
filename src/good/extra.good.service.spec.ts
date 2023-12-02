@@ -46,4 +46,9 @@ describe('ExtraGoodService', () => {
         await service.reserveCreated(['1', '2']);
         expect(updateCountForSkus.mock.calls).toHaveLength(4);
     });
+
+    it('serviceIsSwitchedOn', () => {
+        const res = service.serviceIsSwitchedOn({ service: GoodServiceEnum.WB, isSwitchedOn: false });
+        expect(res).toEqual({ isSuccess: true, message: 'Service wb is switched off' });
+    });
 });
