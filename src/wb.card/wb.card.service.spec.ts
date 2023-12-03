@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { WbCardService } from './wb.card.service';
 import { WbApiService } from '../wb.api/wb.api.service';
 import { VaultService } from 'vault-module/lib/vault.service';
+import { ConfigService } from '@nestjs/config';
 
 describe('WbCardService', () => {
     let service: WbCardService;
@@ -18,6 +19,7 @@ describe('WbCardService', () => {
                     provide: VaultService,
                     useValue: { get: () => ({ WAREHOUSE_ID: 12345 }) },
                 },
+                { provide: ConfigService, useValue: {} },
             ],
         }).compile();
 

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { OzonApiService } from '../ozon.api/ozon.api.service';
 import { ProductListResultDto } from './dto/product.list.result.dto';
 import { ProductCodeStockDto, ProductCodeUpdateStockResultDto } from './dto/product.code.dto';
@@ -15,10 +15,20 @@ import { GoodCountsDto, ICountUpdateable } from '../interfaces/ICountUpdatebale'
 import { StockType } from './stock.type';
 import { PostingsFboRequestDto } from '../posting.fbo/dto/postings.fbo.request.dto';
 import { PostingDto } from '../posting/dto/posting.dto';
+import { Environment } from '../env.validation';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
-export class ProductService implements ICountUpdateable {
-    constructor(private ozonApiService: OzonApiService) {}
+export class ProductService extends ICountUpdateable implements OnModuleInit {
+    constructor(
+        private ozonApiService: OzonApiService,
+        private configService: ConfigService,
+    ) {
+        super();
+    }
+    async onModuleInit(): Promise<void> {
+        await this.loadSkuList(this.configService.get<Environment>('NODE_ENV') === 'production');
+    }
     async list(last_id = '', limit = 100): Promise<ProductListResultDto> {
         return this.ozonApiService.method('/v2/product/list', { last_id, limit });
     }

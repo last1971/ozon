@@ -4,6 +4,7 @@ import { YandexApiService } from '../yandex.api/yandex.api.service';
 import { StockType } from './dto/stock.item.dto';
 import { VaultService } from 'vault-module/lib/vault.service';
 import { GoodsStatsWarehouseStockType } from './dto/goods.stats.warehouse.stock.dto';
+import { ConfigService } from '@nestjs/config';
 
 describe('YandexOfferService', () => {
     let service: YandexOfferService;
@@ -18,6 +19,7 @@ describe('YandexOfferService', () => {
                     provide: VaultService,
                     useValue: { get: async () => ({ 'electronica-company': 111, 'electronica-fbs-tomsk': '222' }) },
                 },
+                { provide: ConfigService, useValue: {} },
             ],
         }).compile();
 

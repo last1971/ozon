@@ -10,6 +10,7 @@ import { ResultDto } from '../helpers/result.dto';
 import { Cron } from '@nestjs/schedule';
 import { OnEvent } from '@nestjs/event-emitter';
 import { IsSwitchedDto } from './dto/is.switched.dto';
+import { chunk } from 'lodash';
 
 @Injectable()
 export class ExtraGoodService {
@@ -42,13 +43,46 @@ export class ExtraGoodService {
         };
     }
 
-    serviceIsSwitchedOn(isSwitchedDto: IsSwitchedDto): ResultDto {
-        this.services.get(isSwitchedDto.service).isSwitchedOn = isSwitchedDto.isSwitchedOn;
+    async serviceIsSwitchedOn(isSwitchedDto: IsSwitchedDto): Promise<ResultDto> {
+        const service = this.services.get(isSwitchedDto.service);
+        service.isSwitchedOn = isSwitchedDto.isSwitchedOn;
+        let count: number;
+        if (isSwitchedDto.isSwitchedOn) {
+            count = await this.goodService.updateCountForService(service.service, '');
+        } else {
+            count = await this.resetBalances(isSwitchedDto.service);
+        }
         return {
             isSuccess: true,
             message: `Service ${isSwitchedDto.service} ${
-                isSwitchedDto.isSwitchedOn ? 'is switched on' : 'is switched off'
+                isSwitchedDto.isSwitchedOn
+                    ? `is switched on and restore ${count} skus`
+                    : `is switched off and reset ${count} skus`
             }`,
+        };
+    }
+
+    async resetBalances(serviceEnum: GoodServiceEnum): Promise<number> {
+        const service = this.services.get(serviceEnum);
+        let count = 0;
+        if (!service.isSwitchedOn) {
+            const chunkSkuList = chunk(service.service.skuList, 100);
+            for (const skuList of chunkSkuList) {
+                const updateSkus = new Map<string, number>(skuList.map((sku) => [sku, 0]));
+                count += await service.service.updateGoodCounts(updateSkus);
+            }
+        }
+        return count;
+    }
+
+    async loadSkuList(serviceEnum: GoodServiceEnum): Promise<ResultDto> {
+        const service = this.services.get(serviceEnum);
+        if (service.isSwitchedOn) {
+            await service.service.loadSkuList();
+        }
+        return {
+            isSuccess: service.isSwitchedOn,
+            message: `Service ${serviceEnum} ${service.isSwitchedOn ? 'load sku list' : 'is switched off'}`,
         };
     }
 
