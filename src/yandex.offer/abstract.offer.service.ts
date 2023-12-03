@@ -9,15 +9,19 @@ import { GoodsStatsDto } from './dto/goods.stats.dto';
 import { GoodsStatsWarehouseStockType } from './dto/goods.stats.warehouse.stock.dto';
 import { StockType } from './dto/stock.item.dto';
 import { GoodsStatsGoodsDto } from './dto/goods.stats.goods.dto';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
-export abstract class AbstractOfferService implements ICountUpdateable {
+export abstract class AbstractOfferService extends ICountUpdateable {
     protected campaignId: number;
     protected warehouseId: number;
     constructor(
         private yandexApi: YandexApiService,
         protected vaultService: VaultService,
-    ) {}
+        protected configService: ConfigService,
+    ) {
+        super();
+    }
     async updateCount(skus: StockDto[]): Promise<ResultDto> {
         await this.yandexApi.method(`campaigns/${this.campaignId}/offers/stocks`, 'put', { skus });
         return { isSuccess: true };

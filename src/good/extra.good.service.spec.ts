@@ -11,6 +11,8 @@ describe('ExtraGoodService', () => {
     let service: ExtraGoodService;
     const updateCountForService = jest.fn();
     const updateCountForSkus = jest.fn();
+    const loadSkuList = jest.fn();
+    const updateGoodCounts = jest.fn();
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
@@ -19,7 +21,7 @@ describe('ExtraGoodService', () => {
                 { provide: YandexOfferService, useValue: { test: 'Yandex' } },
                 { provide: ExpressOfferService, useValue: {} },
                 { provide: ProductService, useValue: {} },
-                { provide: WbCardService, useValue: {} },
+                { provide: WbCardService, useValue: { loadSkuList, skuList: ['111'], updateGoodCounts } },
             ],
         }).compile();
 
@@ -47,8 +49,17 @@ describe('ExtraGoodService', () => {
         expect(updateCountForSkus.mock.calls).toHaveLength(4);
     });
 
-    it('serviceIsSwitchedOn', () => {
-        const res = service.serviceIsSwitchedOn({ service: GoodServiceEnum.WB, isSwitchedOn: false });
-        expect(res).toEqual({ isSuccess: true, message: 'Service wb is switched off' });
+    it('serviceIsSwitchedOn', async () => {
+        updateGoodCounts.mockResolvedValueOnce(1);
+        const res = await service.serviceIsSwitchedOn({ service: GoodServiceEnum.WB, isSwitchedOn: false });
+        expect(res).toEqual({ isSuccess: true, message: 'Service wb is switched off and reset 1 skus' });
+        expect(updateGoodCounts.mock.calls[0]).toEqual([new Map<string, number>([['111', 0]])]);
+    });
+
+    it('loadSkuList', async () => {
+        await service.loadSkuList(GoodServiceEnum.WB);
+        await service.serviceIsSwitchedOn({ service: GoodServiceEnum.YANDEX, isSwitchedOn: false });
+        await service.loadSkuList(GoodServiceEnum.YANDEX);
+        expect(loadSkuList.mock.calls).toHaveLength(1);
     });
 });

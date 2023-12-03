@@ -3,6 +3,7 @@ import { ProductService } from './product.service';
 import { OzonApiService } from '../ozon.api/ozon.api.service';
 import { ProductVisibility } from './product.visibility';
 import { StockType } from './stock.type';
+import { ConfigService } from '@nestjs/config';
 
 describe('ProductService', () => {
     let service: ProductService;
@@ -11,7 +12,11 @@ describe('ProductService', () => {
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
-            providers: [ProductService, { provide: OzonApiService, useValue: { method } }],
+            providers: [
+                ProductService,
+                { provide: OzonApiService, useValue: { method } },
+                { provide: ConfigService, useValue: {} },
+            ],
         }).compile();
         method.mockClear();
         service = module.get<ProductService>(ProductService);

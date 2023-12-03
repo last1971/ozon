@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { AbstractOfferService } from './abstract.offer.service';
+import { Environment } from '../env.validation';
 
 @Injectable()
 export class ExpressOfferService extends AbstractOfferService implements OnModuleInit {
@@ -7,5 +8,6 @@ export class ExpressOfferService extends AbstractOfferService implements OnModul
         const yandex = await this.vaultService.get('yandex-seller');
         this.campaignId = parseInt(yandex['electronica-express'] as string);
         this.warehouseId = parseInt(yandex['electronica-express-tomsk'] as string);
+        await this.loadSkuList(this.configService.get<Environment>('NODE_ENV') === 'production');
     }
 }

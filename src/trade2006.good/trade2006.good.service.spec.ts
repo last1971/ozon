@@ -87,7 +87,9 @@ describe('Trade2006GoodService', () => {
     it('test updateCountForService', async () => {
         const updateGoodCounts = jest.fn().mockResolvedValueOnce(1);
         const getGoodIds = jest.fn().mockResolvedValueOnce({ goods: new Map([['1', 5]]) });
-        const countUpdateable: ICountUpdateable = { updateGoodCounts, getGoodIds };
+        const loadSkuList = async () => {};
+        const skuList = [];
+        const countUpdateable: ICountUpdateable = { updateGoodCounts, getGoodIds, loadSkuList, skuList };
         const res = await service.updateCountForService(countUpdateable, '4');
         expect(res).toEqual(1);
         expect(updateGoodCounts.mock.calls[0]).toEqual([new Map([['1', 1]])]);
@@ -101,7 +103,9 @@ describe('Trade2006GoodService', () => {
                 ['2', 6],
             ]),
         });
-        const countUpdateable: ICountUpdateable = { updateGoodCounts, getGoodIds };
+        const loadSkuList = async () => {};
+        const skuList = [];
+        const countUpdateable: ICountUpdateable = { updateGoodCounts, getGoodIds, loadSkuList, skuList };
         const res = await service.updateCountForSkus(countUpdateable, ['1', '2']);
         expect(res).toEqual(2);
         expect(updateGoodCounts.mock.calls[0]).toEqual([

@@ -5,17 +5,23 @@ import { VaultService } from 'vault-module/lib/vault.service';
 import { barCodeSkuPairs } from '../helpers';
 import { WbCardDto } from './dto/wb.card.dto';
 import { chunk } from 'lodash';
+import { Environment } from '../env.validation';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
-export class WbCardService implements ICountUpdateable, OnModuleInit {
+export class WbCardService extends ICountUpdateable implements OnModuleInit {
     private warehouseId: number;
     constructor(
         private api: WbApiService,
         private vault: VaultService,
-    ) {}
+        private configService: ConfigService,
+    ) {
+        super();
+    }
     async onModuleInit(): Promise<any> {
         const wb = await this.vault.get('wildberries');
         this.warehouseId = wb.WAREHOUSE_ID as number;
+        await this.loadSkuList(this.configService.get<Environment>('NODE_ENV') === 'production');
     }
     async getGoodIds(args: any): Promise<GoodCountsDto<number>> {
         const res = await this.api.method(

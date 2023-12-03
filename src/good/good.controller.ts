@@ -42,4 +42,9 @@ export class GoodController {
     async isSwitched(@Query() isSwitchedDto: IsSwitchedDto): Promise<ResultDto> {
         return this.extraService.serviceIsSwitchedOn(isSwitchedDto);
     }
+
+    @Post('load-sku-list/:service')
+    async loadSkuList(@Param() params: UpdateServiceParams): Promise<ResultDto> {
+        return this.extraService.loadSkuList(params.service);
+    }
 }
