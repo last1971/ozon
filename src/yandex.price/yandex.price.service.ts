@@ -116,21 +116,25 @@ export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
         await workbook.xlsx.load(file.buffer);
         const worksheet = workbook.getWorksheet(10);
         const skus: string[] = [];
+        let i = 11;
         worksheet.eachRow((row: Excel.Row, rowNumber) => {
-            if (rowNumber > 7) {
+            if (rowNumber > 8) {
                 skus.push(row.getCell(3).value.toString());
+            } else if (rowNumber === 7) {
+                for (i = 9; i <= row.cellCount; i++) {
+                    if (row.getCell(i).value === 'Максимальная цена для участия в акции') break;
+                }
             }
         });
         const discountPrices = await this.getDisountPrices(skus);
         worksheet.eachRow((row: Excel.Row, rowNumber) => {
-            const i = row.cellCount;
             if (
                 rowNumber > 8 &&
                 discountPrices.get(row.getCell(3).value.toString()) &&
                 parseInt(row.getCell(i).value.toString()) >= discountPrices.get(row.getCell(3).value.toString())[0]
             ) {
-                row.getCell(i + 1).value = discountPrices.get(row.getCell(3).value.toString())[1];
-                row.getCell(i + 2).value = discountPrices.get(row.getCell(3).value.toString())[0];
+                row.getCell(row.cellCount + 1).value = discountPrices.get(row.getCell(3).value.toString())[1];
+                row.getCell(row.cellCount + 1).value = discountPrices.get(row.getCell(3).value.toString())[0];
             }
         });
         return workbook.xlsx.writeBuffer();
