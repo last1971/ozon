@@ -123,12 +123,12 @@ export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
         });
         const discountPrices = await this.getDisountPrices(skus);
         worksheet.eachRow((row: Excel.Row, rowNumber) => {
+            const i = row.cellCount;
             if (
-                rowNumber > 7 &&
+                rowNumber > 8 &&
                 discountPrices.get(row.getCell(3).value.toString()) &&
-                parseInt(row.getCell(10).value.toString()) >= discountPrices.get(row.getCell(3).value.toString())[0]
+                parseInt(row.getCell(i).value.toString()) >= discountPrices.get(row.getCell(3).value.toString())[0]
             ) {
-                const i = row.cellCount;
                 row.getCell(i + 1).value = discountPrices.get(row.getCell(3).value.toString())[1];
                 row.getCell(i + 2).value = discountPrices.get(row.getCell(3).value.toString())[0];
             }
