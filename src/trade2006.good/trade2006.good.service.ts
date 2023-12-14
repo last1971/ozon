@@ -251,7 +251,10 @@ export class Trade2006GoodService implements IGood {
                 const t = await this.pool.getTransaction();
                 const codes = part.map((good) => good.GOODSCODE);
                 return t.execute(
-                    `UPDATE GOODSCOUNTCHANGE SET CHANGED=0 WHERE GOODSCODE IN (${'?'.repeat(codes.length).split('').join()})`,
+                    `UPDATE GOODSCOUNTCHANGE SET CHANGED=0 WHERE GOODSCODE IN (${'?'
+                        .repeat(codes.length)
+                        .split('')
+                        .join()})`,
                     codes,
                     true,
                 );
