@@ -10,7 +10,7 @@ import { WbPriceUpdateDto } from './dto/wb.price.update.dto';
 import { WbApiService } from '../wb.api/wb.api.service';
 import { WbDiscountUpdateDto } from './dto/wb.discount.update.dto';
 import { WbCardService } from '../wb.card/wb.card.service';
-import { find } from 'lodash';
+import { find, first } from 'lodash';
 import Excel from 'exceljs';
 import { Cron } from '@nestjs/schedule';
 
@@ -86,7 +86,7 @@ export class WbPriceService implements IPriceUpdateable {
     async createAction(file: Express.Multer.File): Promise<any> {
         const workbook = new Excel.Workbook();
         await workbook.xlsx.load(file.buffer);
-        const worksheet = workbook.getWorksheet(2);
+        const worksheet: Excel.Worksheet = first(workbook.worksheets);
         const newWorkbook = new Excel.Workbook();
         const newWorksheet = newWorkbook.addWorksheet(worksheet.name);
         newWorksheet.state = 'visible';
@@ -97,7 +97,7 @@ export class WbPriceService implements IPriceUpdateable {
         const discounts: Map<string, number> = new Map(
             (await this.goodService.getWbData(ids)).map((discount) => [discount.id, discount.minPrice]),
         );
-        let i = 0;
+        let i = 1;
         worksheet.eachRow((row: Excel.Row, rowNumber) => {
             if (
                 rowNumber === 1 ||
