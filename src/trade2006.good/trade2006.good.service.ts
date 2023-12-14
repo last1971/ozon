@@ -20,12 +20,15 @@ import { UpdatePriceDto } from '../price/dto/update.price.dto';
 import { ConfigService } from '@nestjs/config';
 import { GoodWbDto } from '../good/dto/good.wb.dto';
 import { chunk, flatten, snakeCase, toUpper } from 'lodash';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Cron } from '@nestjs/schedule';
 
 @Injectable()
 export class Trade2006GoodService implements IGood {
     constructor(
         @Inject(FIREBIRD) private pool: FirebirdPool,
         private configService: ConfigService,
+        private eventEmitter: EventEmitter2,
     ) {}
 
     async in(codes: string[], t: FirebirdTransaction = null): Promise<GoodDto[]> {
@@ -232,5 +235,27 @@ export class Trade2006GoodService implements IGood {
             }
         });
         return updatePrices.length > 0 ? service.updatePrices(updatePrices) : null;
+    }
+
+    @Cron('0 0 9-19 * * 1-6', { name: 'checkGoodCount' })
+    async checkCounts(): Promise<void> {
+        const t = await this.pool.getTransaction();
+        const res = await t.query('SELECT GOODSCODE FROM GOODSCOUNTCHANGE WHERE CHANGED=1', [], true);
+        if (res.length === 0) return;
+        this.eventEmitter.emit(
+            'counts.changed',
+            res.map((r) => r.GOODSCODE),
+        );
+        await Promise.all(
+            chunk(res, 50).map(async (part: any) => {
+                const t = await this.pool.getTransaction();
+                const codes = part.map((good) => good.GOODSCODE);
+                return t.execute(
+                    `UPDATE GOODSCOUNTCHANGE SET CHANGED=0 WHERE GOODSCODE IN (${'?'.repeat(codes.length).split('').join()})`,
+                    codes,
+                    true,
+                );
+            }),
+        );
     }
 }

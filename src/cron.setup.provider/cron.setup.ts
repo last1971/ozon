@@ -52,13 +52,27 @@ export const cronConfig: Record<string, CronSetup> = {
         production: {
             enabled: true,
             settings: {
-                time: CronExpression.EVERY_HOUR,
+                time: CronExpression.EVERY_MINUTE,
             },
         },
         development: {
             enabled: false,
             settings: {
-                time: CronExpression.EVERY_5_MINUTES,
+                time: CronExpression.EVERY_MINUTE,
+            },
+        },
+    },
+    controlCheckGoodCount: {
+        production: {
+            enabled: true,
+            settings: {
+                time: CronExpression.EVERY_6_HOURS,
+            },
+        },
+        development: {
+            enabled: false,
+            settings: {
+                time: CronExpression.EVERY_MINUTE,
             },
         },
     },
@@ -72,7 +86,7 @@ export const cronConfig: Record<string, CronSetup> = {
         development: {
             enabled: false,
             settings: {
-                time: CronExpression.EVERY_MINUTE,
+                time: CronExpression.EVERY_5_MINUTES,
             },
         },
     },

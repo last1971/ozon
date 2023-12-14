@@ -9,15 +9,16 @@ import { ConfigService } from '@nestjs/config';
 import { WbCardModule } from '../wb.card/wb.card.module';
 import { FirebirdPool } from 'ts-firebird';
 import { ExtraGoodService } from './extra.good.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 @Module({
     imports: [FirebirdModule, ProductModule, YandexOfferModule, WbCardModule],
     providers: [
         {
             provide: GOOD_SERVICE,
-            useFactory: (pool: FirebirdPool, configService: ConfigService) =>
-                new Trade2006GoodService(pool, configService),
-            inject: [FIREBIRD, ConfigService],
+            useFactory: (pool: FirebirdPool, configService: ConfigService, eventEmitter: EventEmitter2) =>
+                new Trade2006GoodService(pool, configService, eventEmitter),
+            inject: [FIREBIRD, ConfigService, EventEmitter2],
         },
         ExtraGoodService,
     ],

@@ -4,6 +4,7 @@ import { FIREBIRD } from '../firebird/firebird.module';
 import { ICountUpdateable } from '../interfaces/ICountUpdatebale';
 import { ConfigService } from '@nestjs/config';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 describe('Trade2006GoodService', () => {
     let service: Trade2006GoodService;
@@ -30,6 +31,7 @@ describe('Trade2006GoodService', () => {
         updateAllPrices: (): Promise<any> => null,
         createAction: (): Promise<any> => null,
     };
+    const emit = jest.fn();
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
@@ -37,10 +39,16 @@ describe('Trade2006GoodService', () => {
                 Trade2006GoodService,
                 { provide: FIREBIRD, useValue: { getTransaction: () => ({ query, execute }) } },
                 { provide: ConfigService, useValue: { get: () => null } },
+                {
+                    provide: EventEmitter2,
+                    useValue: { emit },
+                },
             ],
         }).compile();
 
+        emit.mockClear();
         query.mockClear();
+        execute.mockClear();
         service = module.get<Trade2006GoodService>(Trade2006GoodService);
     });
 
@@ -139,6 +147,18 @@ describe('Trade2006GoodService', () => {
                     sum_pack: 0,
                 },
             ],
+        ]);
+    });
+
+    it('checkCounts', async () => {
+        query.mockResolvedValueOnce([{ GOODSCODE: '111' }, { GOODSCODE: '222' }]);
+        await service.checkCounts();
+        expect(query.mock.calls[0]).toEqual(['SELECT GOODSCODE FROM GOODSCOUNTCHANGE WHERE CHANGED=1', [], true]);
+        expect(emit.mock.calls[0]).toEqual(['counts.changed', ['111', '222']]);
+        expect(execute.mock.calls[0]).toEqual([
+            'UPDATE GOODSCOUNTCHANGE SET CHANGED=0 WHERE GOODSCODE IN (?,?)',
+            ['111', '222'],
+            true,
         ]);
     });
 });

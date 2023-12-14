@@ -7,10 +7,11 @@ import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
 import { ICountUpdateable } from '../interfaces/ICountUpdatebale';
 import { GoodServiceEnum } from './good.service.enum';
 import { ResultDto } from '../helpers/result.dto';
-import { Cron } from '@nestjs/schedule';
 import { OnEvent } from '@nestjs/event-emitter';
 import { IsSwitchedDto } from './dto/is.switched.dto';
 import { chunk } from 'lodash';
+import { goodQuantityCoeff, productQuantity } from '../helpers';
+import { Cron } from '@nestjs/schedule';
 
 @Injectable()
 export class ExtraGoodService {
@@ -86,7 +87,7 @@ export class ExtraGoodService {
         };
     }
 
-    @Cron('0 0 9-19 * * 1-6', { name: 'checkGoodCount' })
+    @Cron('0 0 9-19 * * 1-6', { name: 'controlCheckGoodCount' })
     async checkGoodCount(): Promise<void> {
         for (const service of this.services) {
             if (service[1].isSwitchedOn) {
@@ -100,7 +101,8 @@ export class ExtraGoodService {
         }
     }
 
-    @OnEvent('reserve.created', { async: true })
+    // Logic was changed on countsChanged method
+    // @OnEvent('reserve.created', { async: true })
     async reserveCreated(skus: string[]): Promise<void> {
         this.logger.log('Sku - ' + skus.join() + ' was reserved');
         let count: number = 0;
@@ -114,5 +116,25 @@ export class ExtraGoodService {
             else this.logger.log(`Service ${service[0]} is switched off`);
         }
         this.logger.log(`Update quantity for ${count} goods`);
+    }
+
+    @OnEvent('counts.changed', { async: true })
+    async countsChanged(skus: string[]): Promise<void> {
+        const goods = await this.goodService.in(skus, null);
+        this.logger.log('Skus - ' + skus.join() + ' was changed');
+        for (const key of this.services.keys()) {
+            const service = this.services.get(key);
+            const forChange = new Map<string, number>();
+            goods.forEach((good) => {
+                const filtredSkus = service.service.skuList.filter((sku) => sku.includes(good.code));
+                filtredSkus.forEach((fs) => {
+                    const coeff = goodQuantityCoeff({ offer_id: fs });
+                    forChange.set(fs, productQuantity(good.quantity - (good.reserve ?? 0), coeff));
+                });
+            });
+            if (forChange.size > 0) {
+                this.logger.log(`Update ${await service.service.updateGoodCounts(forChange)} skus in ${key}`);
+            }
+        }
     }
 }

@@ -13,20 +13,22 @@ describe('ExtraGoodService', () => {
     const updateCountForSkus = jest.fn();
     const loadSkuList = jest.fn();
     const updateGoodCounts = jest.fn();
+    const mockIn = jest.fn();
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 ExtraGoodService,
-                { provide: GOOD_SERVICE, useValue: { updateCountForService, updateCountForSkus } },
-                { provide: YandexOfferService, useValue: { test: 'Yandex' } },
-                { provide: ExpressOfferService, useValue: {} },
-                { provide: ProductService, useValue: {} },
+                { provide: GOOD_SERVICE, useValue: { updateCountForService, updateCountForSkus, in: mockIn } },
+                { provide: YandexOfferService, useValue: { test: 'Yandex', skuList: [] } },
+                { provide: ExpressOfferService, useValue: { skuList: [] } },
+                { provide: ProductService, useValue: { skuList: ['222'], updateGoodCounts } },
                 { provide: WbCardService, useValue: { loadSkuList, skuList: ['111'], updateGoodCounts } },
             ],
         }).compile();
 
         updateCountForService.mockClear();
         updateCountForSkus.mockClear();
+        updateGoodCounts.mockClear();
         service = module.get<ExtraGoodService>(ExtraGoodService);
     });
 
@@ -36,7 +38,7 @@ describe('ExtraGoodService', () => {
 
     it('updateService', async () => {
         await service.updateService(GoodServiceEnum.YANDEX);
-        expect(updateCountForService.mock.calls[0]).toEqual([{ test: 'Yandex' }, '']);
+        expect(updateCountForService.mock.calls[0]).toEqual([{ skuList: [], test: 'Yandex' }, '']);
     });
 
     it('test checkGoodCount', async () => {
@@ -61,5 +63,16 @@ describe('ExtraGoodService', () => {
         await service.serviceIsSwitchedOn({ service: GoodServiceEnum.YANDEX, isSwitchedOn: false });
         await service.loadSkuList(GoodServiceEnum.YANDEX);
         expect(loadSkuList.mock.calls).toHaveLength(1);
+    });
+
+    it('countsChanged', async () => {
+        mockIn.mockResolvedValueOnce([
+            { code: '111', quantity: 10, reserve: 1 },
+            { code: '222', quantity: 2, reserve: null },
+        ]);
+        await service.countsChanged(['111', '222']);
+        expect(mockIn.mock.calls[0]).toEqual([['111', '222'], null]);
+        expect(updateGoodCounts.mock.calls[0]).toEqual([new Map([['222', 2]])]);
+        expect(updateGoodCounts.mock.calls[1]).toEqual([new Map([['111', 9]])]);
     });
 });
