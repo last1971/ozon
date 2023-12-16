@@ -154,7 +154,7 @@ describe('Trade2006GoodService', () => {
         query.mockResolvedValueOnce([{ GOODSCODE: '111' }, { GOODSCODE: '222' }]);
         await service.checkCounts();
         expect(query.mock.calls[0]).toEqual(['SELECT GOODSCODE FROM GOODSCOUNTCHANGE WHERE CHANGED=1', [], true]);
-        expect(emit.mock.calls[0]).toEqual(['counts.changed', ['111', '222']]);
+        expect(emit.mock.calls[0]).toEqual(['counts.changed', [{ code: 1, quantity: 2, reserve: 1 }]]);
         expect(execute.mock.calls[0]).toEqual([
             'UPDATE GOODSCOUNTCHANGE SET CHANGED=0 WHERE GOODSCODE IN (?,?)',
             ['111', '222'],

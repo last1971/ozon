@@ -66,12 +66,10 @@ describe('ExtraGoodService', () => {
     });
 
     it('countsChanged', async () => {
-        mockIn.mockResolvedValueOnce([
+        await service.countsChanged([
             { code: '111', quantity: 10, reserve: 1 },
             { code: '222', quantity: 2, reserve: null },
         ]);
-        await service.countsChanged(['111', '222']);
-        expect(mockIn.mock.calls[0]).toEqual([['111', '222'], null]);
         expect(updateGoodCounts.mock.calls[0]).toEqual([new Map([['222', 2]])]);
         expect(updateGoodCounts.mock.calls[1]).toEqual([new Map([['111', 9]])]);
     });

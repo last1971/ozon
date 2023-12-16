@@ -244,7 +244,10 @@ export class Trade2006GoodService implements IGood {
         if (res.length === 0) return;
         this.eventEmitter.emit(
             'counts.changed',
-            res.map((r) => r.GOODSCODE),
+            await this.in(
+                res.map((r) => r.GOODSCODE),
+                null,
+            ),
         );
         await Promise.all(
             chunk(res, 50).map(async (part: any) => {

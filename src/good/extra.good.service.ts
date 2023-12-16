@@ -12,6 +12,7 @@ import { IsSwitchedDto } from './dto/is.switched.dto';
 import { chunk } from 'lodash';
 import { goodQuantityCoeff, productQuantity } from '../helpers';
 import { Cron } from '@nestjs/schedule';
+import { GoodDto } from "./dto/good.dto";
 
 @Injectable()
 export class ExtraGoodService {
@@ -119,9 +120,8 @@ export class ExtraGoodService {
     }
 
     @OnEvent('counts.changed', { async: true })
-    async countsChanged(skus: string[]): Promise<void> {
-        const goods = await this.goodService.in(skus, null);
-        this.logger.log('Skus - ' + skus.join() + ' was changed');
+    async countsChanged(goods: GoodDto[]): Promise<void> {
+        this.logger.log('Skus - ' + goods.map((good) => good.code).join() + ' was changed');
         for (const key of this.services.keys()) {
             const service = this.services.get(key);
             if (!service.isSwitchedOn) continue;
