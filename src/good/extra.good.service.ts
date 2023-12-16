@@ -124,6 +124,7 @@ export class ExtraGoodService {
         this.logger.log('Skus - ' + skus.join() + ' was changed');
         for (const key of this.services.keys()) {
             const service = this.services.get(key);
+            if (!service.isSwitchedOn) continue;
             const forChange = new Map<string, number>();
             goods.forEach((good) => {
                 const filtredSkus = service.service.skuList.filter((sku) => sku.includes(good.code));

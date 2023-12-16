@@ -9,6 +9,7 @@ export abstract class ICountUpdateable {
     async loadSkuList(load = true): Promise<void> {
         if (!load) return;
         let args = '';
+        this.skuList = [];
         do {
             const res = await this.getGoodIds(args);
             args = res.nextArgs;
