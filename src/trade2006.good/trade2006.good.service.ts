@@ -19,12 +19,15 @@ import { IProductCoeffsable } from '../interfaces/i.product.coeffsable';
 import { UpdatePriceDto } from '../price/dto/update.price.dto';
 import { ConfigService } from '@nestjs/config';
 import { GoodWbDto } from '../good/dto/good.wb.dto';
-import { chunk, flatten, snakeCase, toUpper } from 'lodash';
-import { EventEmitter2 } from '@nestjs/event-emitter';
+import { chunk, find, flatten, remove, snakeCase, toUpper } from 'lodash';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
+import { DateTime } from 'luxon';
 
 @Injectable()
 export class Trade2006GoodService implements IGood {
+    private halfStoreMessages: string[] = [];
+    private boundCheckMessages: string[] = [];
     constructor(
         @Inject(FIREBIRD) private pool: FirebirdPool,
         private configService: ConfigService,
@@ -35,14 +38,16 @@ export class Trade2006GoodService implements IGood {
         if (codes.length === 0) return [];
         const transaction = t ?? (await this.pool.getTransaction());
         const response: any[] = await transaction.query(
-            `SELECT GOODS.GOODSCODE, SHOPSKLAD.QUAN, (SELECT SUM(QUANSHOP) + SUM(QUANSKLAD) from RESERVEDPOS where GOODS.GOODSCODE = RESERVEDPOS.GOODSCODE) AS RES  FROM GOODS JOIN SHOPSKLAD ON GOODS.GOODSCODE = SHOPSKLAD.GOODSCODE WHERE GOODS.GOODSCODE IN (${'?'
+            `SELECT GOODS.GOODSCODE, SHOPSKLAD.QUAN, (SELECT SUM(QUANSHOP) + SUM(QUANSKLAD) from RESERVEDPOS where GOODS.GOODSCODE = RESERVEDPOS.GOODSCODE) AS RES, NAME.NAME AS NAME  FROM GOODS JOIN SHOPSKLAD ON GOODS.GOODSCODE = SHOPSKLAD.GOODSCODE JOIN NAME ON GOODS.NAMECODE = NAME.NAMECODE WHERE GOODS.GOODSCODE IN (${'?'
                 .repeat(codes.length)
                 .split('')
                 .join()})`,
             codes,
             !t,
         );
-        return response.map((item): GoodDto => ({ code: item.GOODSCODE, quantity: item.QUAN, reserve: item.RES }));
+        return response.map(
+            (item): GoodDto => ({ code: item.GOODSCODE, quantity: item.QUAN, reserve: item.RES, name: item.NAME }),
+        );
     }
 
     async prices(codes: string[], t: FirebirdTransaction = null): Promise<GoodPriceDto[]> {
@@ -263,5 +268,40 @@ export class Trade2006GoodService implements IGood {
                 );
             }),
         );
+    }
+    @OnEvent('counts.changed', { async: true })
+    async checkBounds(goods: GoodDto[]): Promise<void> {
+        const t = await this.pool.getTransaction();
+        const bounds = await t.query(
+            'select goodscode, sum(quan) as amount, count(quan) as quan, ' +
+                '(select bound_quan_shop from bound_quan where bound_quan.goodscode=pr_meta.goodscode) as bound ' +
+                'from pr_meta ' +
+                'where (shopoutcode is not null or podbposcode is not null or realpricefcode is not null) ' +
+                `and data >= ?  and data <= ? and goodscode in (${'?'
+                    .repeat(goods.length)
+                    .split('')
+                    .join()}) group by goodscode`,
+            [DateTime.now().minus({ month: 1 }).toJSDate(), new Date(), ...goods.map((good) => good.code)],
+        );
+        bounds.forEach((bound) => {
+            const good: GoodDto = find(goods, { code: bound.GOODSCODE });
+            const quantity = good.quantity - (good.reserve ?? 0);
+            if (quantity < bound.AMOUNT / 2 && bound.QUAN > 1) {
+                if (!this.halfStoreMessages.includes(good.code)) {
+                    this.eventEmitter.emit('half.store', good, bound);
+                    this.halfStoreMessages.push(good.code);
+                }
+            } else {
+                remove(this.halfStoreMessages, (code) => code === good.code);
+            }
+            if (bound.BOUND !== null && quantity <= bound.BOUND) {
+                if (!this.boundCheckMessages.includes(good.code)) {
+                    this.eventEmitter.emit('bound.check', good, bound);
+                    this.boundCheckMessages.push(good.code);
+                }
+            } else {
+                remove(this.boundCheckMessages, (code) => code === good.code);
+            }
+        });
     }
 }

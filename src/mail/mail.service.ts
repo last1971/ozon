@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
 import { PostingDto } from '../posting/dto/posting.dto';
 import { Cron } from '@nestjs/schedule';
+import { GoodDto } from "../good/dto/good.dto";
 
 @Injectable()
 export class MailService {
@@ -59,6 +60,26 @@ export class MailService {
             subject,
             template: 'error_message', // `.hbs` extension is appended automatically
             context: { message },
+        });
+    }
+
+    // @OnEvent('bound.check', { async: true })
+    async boundCheck(good: GoodDto, bound: any): Promise<boolean> {
+        return this.send({
+            to: this.configService.get<string>('MAIL_NICK'),
+            subject: 'Ниже порога',
+            template: 'bound_check', // `.hbs` extension is appended automatically
+            context: { good, bound },
+        });
+    }
+
+    @OnEvent('half.store', { async: true })
+    async halfStore(good: GoodDto, bound: any): Promise<boolean> {
+        return this.send({
+            to: this.configService.get<string>('MAIL_LAST'),
+            subject: 'Заканчивается товар',
+            template: 'half_store', // `.hbs` extension is appended automatically
+            context: { good, bound },
         });
     }
 }

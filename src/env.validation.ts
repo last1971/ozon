@@ -66,6 +66,9 @@ class EnvironmentVariables {
     @IsEmail()
     MAIL_LAST: string;
 
+    @IsEmail()
+    MAIL_NICK: string;
+
     @IsNumber()
     PERC_MAX: number;
 

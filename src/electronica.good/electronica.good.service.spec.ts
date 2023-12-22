@@ -29,8 +29,8 @@ describe('ElectronicaGoodService', () => {
     it('test', async () => {
         const response = await service.in(['1', '2']);
         expect(response).toEqual([
-            { code: 1, quantity: 1, reserve: 0 },
-            { code: 2, quantity: 0, reserve: 0 },
+            { code: 1, name: '', quantity: 1, reserve: 0 },
+            { code: 2, name: '', quantity: 0, reserve: 0 },
         ]);
     });
 });

@@ -67,8 +67,8 @@ describe('ExtraGoodService', () => {
 
     it('countsChanged', async () => {
         await service.countsChanged([
-            { code: '111', quantity: 10, reserve: 1 },
-            { code: '222', quantity: 2, reserve: null },
+            { code: '111', quantity: 10, reserve: 1, name: '111' },
+            { code: '222', quantity: 2, reserve: null, name: '222' },
         ]);
         expect(updateGoodCounts.mock.calls[0]).toEqual([new Map([['222', 2]])]);
         expect(updateGoodCounts.mock.calls[1]).toEqual([new Map([['111', 9]])]);
