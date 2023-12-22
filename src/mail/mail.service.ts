@@ -4,7 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
 import { PostingDto } from '../posting/dto/posting.dto';
 import { Cron } from '@nestjs/schedule';
-import { GoodDto } from "../good/dto/good.dto";
+import { GoodDto } from '../good/dto/good.dto';
 
 @Injectable()
 export class MailService {

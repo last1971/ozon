@@ -6,7 +6,7 @@ import { GoodPriceDto } from '../good/dto/good.price.dto';
 import { GoodPercentDto } from '../good/dto/good.percent.dto';
 import { ICountUpdateable } from '../interfaces/ICountUpdatebale';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
-import { GoodWbDto } from "../good/dto/good.wb.dto";
+import { GoodWbDto } from '../good/dto/good.wb.dto';
 
 @Injectable()
 export class ElectronicaGoodService implements IGood {
@@ -21,7 +21,12 @@ export class ElectronicaGoodService implements IGood {
             filterValues: ['[' + codes.join() + ']'],
         });
         return response.data.map(
-            (good: any): GoodDto => ({ code: good.GOODSCODE, quantity: good.retailStore?.QUAN || 0, reserve: 0, name: '' }),
+            (good: any): GoodDto => ({
+                code: good.GOODSCODE,
+                quantity: good.retailStore?.QUAN || 0,
+                reserve: 0,
+                name: '',
+            }),
         );
     }
     async prices(codes: string[]): Promise<GoodPriceDto[]> {
