@@ -282,6 +282,7 @@ export class Trade2006GoodService implements IGood {
                     .split('')
                     .join()}) group by goodscode`,
             [DateTime.now().minus({ month: 1 }).toJSDate(), new Date(), ...goods.map((good) => good.code)],
+            true,
         );
         bounds.forEach((bound) => {
             const good: GoodDto = find(goods, { code: bound.GOODSCODE });
