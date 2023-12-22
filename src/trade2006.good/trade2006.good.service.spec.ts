@@ -60,7 +60,7 @@ describe('Trade2006GoodService', () => {
         const res = await service.in(['1']);
         expect(res).toEqual([{ code: 1, quantity: 2, reserve: 1 }]);
         expect(query.mock.calls[0]).toEqual([
-            'SELECT GOODS.GOODSCODE, SHOPSKLAD.QUAN, (SELECT SUM(QUANSHOP) + SUM(QUANSKLAD) from RESERVEDPOS where GOODS.GOODSCODE = RESERVEDPOS.GOODSCODE) AS RES  FROM GOODS JOIN SHOPSKLAD ON GOODS.GOODSCODE = SHOPSKLAD.GOODSCODE WHERE GOODS.GOODSCODE IN (?)',
+            'SELECT GOODS.GOODSCODE, SHOPSKLAD.QUAN, (SELECT SUM(QUANSHOP) + SUM(QUANSKLAD) from RESERVEDPOS where GOODS.GOODSCODE = RESERVEDPOS.GOODSCODE) AS RES, NAME.NAME AS NAME  FROM GOODS JOIN SHOPSKLAD ON GOODS.GOODSCODE = SHOPSKLAD.GOODSCODE JOIN NAME ON GOODS.NAMECODE = NAME.NAMECODE WHERE GOODS.GOODSCODE IN (?)',
             ['1'],
             true,
         ]);
@@ -160,5 +160,40 @@ describe('Trade2006GoodService', () => {
             ['111', '222'],
             true,
         ]);
+    });
+
+    it('checkBounds', async () => {
+        query
+            .mockResolvedValueOnce([
+                { QUAN: 1, AMOUNT: 1, BOUND: null, GOODSCODE: '1' },
+                { QUAN: 2, AMOUNT: 10, BOUND: 5, GOODSCODE: '2' },
+            ])
+            .mockResolvedValueOnce([
+                { QUAN: 1, AMOUNT: 1, BOUND: null, GOODSCODE: '1' },
+                { QUAN: 2, AMOUNT: 10, BOUND: 5, GOODSCODE: '2' },
+            ]);
+        await service.checkBounds([
+            { code: '1', name: '111', quantity: 1, reserve: 1 },
+            { code: '2', name: '222', quantity: 2, reserve: null },
+        ]);
+        expect(query.mock.calls[0][0]).toEqual(
+            'select goodscode, sum(quan) as amount, count(quan) as quan, (select bound_quan_shop from bound_quan' +
+                ' where bound_quan.goodscode=pr_meta.goodscode) as bound from pr_meta where (shopoutcode is not null or podbposcode is not null or realpricefcode is not null) and data >= ?  and data <= ? and goodscode in (?,?) group by goodscode',
+        );
+        expect(emit.mock.calls[0]).toEqual([
+            'half.store',
+            { code: '2', name: '222', quantity: 2, reserve: null },
+            { QUAN: 2, AMOUNT: 10, BOUND: 5, GOODSCODE: '2' },
+        ]);
+        expect(emit.mock.calls[1]).toEqual([
+            'bound.check',
+            { code: '2', name: '222', quantity: 2, reserve: null },
+            { QUAN: 2, AMOUNT: 10, BOUND: 5, GOODSCODE: '2' },
+        ]);
+        await service.checkBounds([
+            { code: '1', name: '111', quantity: 1, reserve: 1 },
+            { code: '2', name: '222', quantity: 2, reserve: null },
+        ]);
+        expect(emit.mock.calls).toHaveLength(2);
     });
 });
