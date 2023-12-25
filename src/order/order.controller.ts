@@ -1,11 +1,11 @@
-import { Body, Controller, Get, Post, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { Body, Controller, Get, Post, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { OrderService } from './order.service';
 import { ResultDto } from '../helpers/result.dto';
-import { TransactionFilterDate, TransactionFilterDto } from "../posting/dto/transaction.filter.dto";
-import { ApiBody, ApiConsumes, ApiOkResponse, ApiProduces, ApiTags } from "@nestjs/swagger";
+import { TransactionFilterDate, TransactionFilterDto } from '../posting/dto/transaction.filter.dto';
+import { ApiBody, ApiConsumes, ApiOkResponse, ApiProduces, ApiTags } from '@nestjs/swagger';
 import { YandexOrderService } from '../yandex.order/yandex.order.service';
 import { WbOrderService } from '../wb.order/wb.order.service';
-import { FileInterceptor } from "@nestjs/platform-express";
+import { FileInterceptor } from '@nestjs/platform-express';
 
 @ApiTags('order')
 @Controller('api/order')
@@ -58,7 +58,7 @@ export class OrderController {
                 },
                 to: {
                     type: 'date',
-                }
+                },
             },
         },
     })
