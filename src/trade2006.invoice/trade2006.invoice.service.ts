@@ -34,7 +34,7 @@ export class Trade2006InvoiceService implements IInvoice {
             const staffId = this.configService.get<number>('STAFF_ID', 25);
             const number =
                 ((
-                    await transaction.query('SELECT MAX(NS) FROM S WHERE FIRM_ID = ? AND DATA > ?', [
+                    await transaction.query('SELECT MAX(NS) FROM S WHERE FIRM_ID = ? AND DATA >= ?', [
                         firmId,
                         DateTime.now().startOf('year').toISODate(),
                     ])
