@@ -3,6 +3,7 @@ import { Trade2006InvoiceService } from './trade2006.invoice.service';
 import { FIREBIRD } from '../firebird/firebird.module';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { DateTime } from 'luxon';
 
 describe('Trade2006InvoiceService', () => {
     let service: Trade2006InvoiceService;
@@ -82,8 +83,8 @@ describe('Trade2006InvoiceService', () => {
         });
         expect(res).toBeTruthy();
         expect(query.mock.calls[0]).toEqual([
-            'SELECT MAX(NS) FROM S WHERE FIRM_ID = ? AND DATA > ?',
-            [1, '2023-01-01'],
+            'SELECT MAX(NS) FROM S WHERE FIRM_ID = ? AND DATA >= ?',
+            [1, DateTime.now().startOf('year').toISODate()],
         ]);
         expect(query.mock.calls[1]).toEqual(['SELECT GEN_ID(SCODE_GEN, 0) from rdb$database', []]);
         expect(execute.mock.calls).toHaveLength(3);
