@@ -124,7 +124,12 @@ export const cronConfig: Record<string, CronSetup> = {
                 time: CronExpression.EVERY_DAY_AT_NOON,
             },
         },
-        development: false,
+        development: {
+            enabled: false,
+            settings: {
+                time: CronExpression.EVERY_MINUTE,
+            },
+        },
     },
     checkHealth: {
         production: {
