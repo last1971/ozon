@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { flatten, Injectable, OnModuleInit } from '@nestjs/common';
 import { GoodCountsDto, ICountUpdateable } from '../interfaces/ICountUpdatebale';
 import { WbApiService } from '../wb.api/wb.api.service';
 import { VaultService } from 'vault-module/lib/vault.service';
@@ -72,11 +72,16 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit {
     }
 
     async updateGoodCounts(goods: Map<string, number>): Promise<number> {
-        const res = await this.api.method('/content/v1/cards/filter', 'post', {
-            vendorCodes: Array.from(goods.keys()),
-        });
+        const parts = await Promise.all(
+            chunk(Array.from(goods.keys()), 100).map((codes) =>
+                this.api.method('/content/v1/cards/filter', 'post', {
+                    vendorCodes: codes,
+                }),
+            ),
+        );
+        const data = flatten(parts.map((part) => part.data));
         const skus = new Map<string, string>();
-        [...barCodeSkuPairs(res.data)].forEach((barCode) => {
+        [...barCodeSkuPairs(data)].forEach((barCode) => {
             skus.set(barCode[1], barCode[0]);
         });
         const stocks = [...goods]
