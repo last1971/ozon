@@ -24,6 +24,16 @@ export class OrderController {
         return { isSuccess: true };
     }
     @ApiOkResponse({
+        description: 'Синхронизировать WB FBO заказы',
+        type: ResultDto,
+    })
+    @Get('update-wbfbo')
+    async updateWbFboOrder(): Promise<ResultDto> {
+        await this.wbOrder.checkCanceledOrders();
+        await this.wbOrder.addFboOrders();
+        return { isSuccess: true };
+    }
+    @ApiOkResponse({
         description: 'Обновить оплаты и закрыть счета',
         type: ResultDto,
     })
