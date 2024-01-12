@@ -62,6 +62,8 @@ describe('Test helpers', () => {
             {
                 nmID: 1,
                 vendorCode: '1',
+                subjectID: 111,
+                subjectName: 'OneOneOne',
                 sizes: [
                     {
                         skus: ['1-1', '1-2'],
@@ -71,6 +73,8 @@ describe('Test helpers', () => {
             {
                 nmID: 1,
                 vendorCode: '2',
+                subjectID: 111,
+                subjectName: 'OneOneOne',
                 sizes: [
                     {
                         skus: ['2-1', '2-2'],
