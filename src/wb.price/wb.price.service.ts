@@ -13,6 +13,7 @@ import { WbCardService } from '../wb.card/wb.card.service';
 import { find, first } from 'lodash';
 import Excel from 'exceljs';
 import { Cron } from '@nestjs/schedule';
+import { GoodWbDto } from '../good/dto/good.wb.dto';
 
 @Injectable()
 export class WbPriceService implements IPriceUpdateable {
@@ -107,5 +108,26 @@ export class WbPriceService implements IPriceUpdateable {
             }
         });
         return newWorkbook.xlsx.writeBuffer();
+    }
+
+    // @Timeout(0)
+    async initialWbCategories(): Promise<void> {
+        const cards = await this.cardService.getAllWbCards();
+        // const hz = find(cards, { subjectID: 1192 });
+        const wbDatas = await this.goodService.getWbData(cards.map((card) => card.vendorCode));
+        for (const card of cards) {
+            await this.goodService.updateWbCategory(card);
+            const wbData: GoodWbDto = find(wbDatas, { id: card.vendorCode }) || { commission: 25, tariff: 60 };
+            await this.goodService.setWbData(
+                {
+                    id: card.vendorCode,
+                    commission: wbData.commission,
+                    tariff: wbData.tariff,
+                    wbCategoriesId: card.subjectID,
+                },
+                null,
+            );
+        }
+        this.logger.log('Wb categories init');
     }
 }

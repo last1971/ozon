@@ -5,6 +5,7 @@ import { ICountUpdateable } from './ICountUpdatebale';
 import { IPriceUpdateable } from './i.price.updateable';
 import { GoodWbDto } from '../good/dto/good.wb.dto';
 import { FirebirdTransaction } from 'ts-firebird';
+import { WbCardDto } from '../wb.card/dto/wb.card.dto';
 
 export interface IGood {
     in(codes: string[], t: FirebirdTransaction): Promise<GoodDto[]>;
@@ -17,5 +18,6 @@ export interface IGood {
     updateCountForService(service: ICountUpdateable, args: any): Promise<number>;
     updateCountForSkus(service: ICountUpdateable, skus: string[]): Promise<number>;
     updatePriceForService(service: IPriceUpdateable, skus: string[]): Promise<any>;
+    updateWbCategory(wbCard: WbCardDto): Promise<void>;
 }
 export const GOOD_SERVICE = 'GOOD_SERVICE';

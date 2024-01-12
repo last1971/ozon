@@ -3,6 +3,8 @@ export class WbCardSizeDto {
 }
 export class WbCardDto {
     nmID: number;
+    subjectID: number;
+    subjectName: string;
     vendorCode: string;
     sizes: WbCardSizeDto[];
 }

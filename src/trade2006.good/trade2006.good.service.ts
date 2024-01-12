@@ -23,6 +23,7 @@ import { chunk, find, flatten, remove, snakeCase, toUpper } from 'lodash';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import { DateTime } from 'luxon';
+import { WbCardDto } from '../wb.card/dto/wb.card.dto';
 
 @Injectable()
 export class Trade2006GoodService implements IGood {
@@ -136,9 +137,9 @@ export class Trade2006GoodService implements IGood {
                 chunk(ids, 50).map(async (part: string[]) => {
                     const t = await this.pool.getTransaction();
                     return t.query(
-                        `SELECT *
-                 FROM WILDBERRIES
-                 WHERE ID IN (${'?'.repeat(part.length).split('').join()})`,
+                        `SELECT W.ID, W.TARIFF, W.MIN_PRICE, WC.COMMISSION
+                 FROM WILDBERRIES W JOIN WB_CATEGORIES WC on WC.ID = W.WB_CATEGORIES_ID
+                 WHERE W.ID IN (${'?'.repeat(part.length).split('').join()})`,
                         part,
                         true,
                     );
@@ -304,5 +305,14 @@ export class Trade2006GoodService implements IGood {
                 remove(this.boundCheckMessages, (code) => code === good.code);
             }
         });
+    }
+
+    async updateWbCategory(wbCard: WbCardDto): Promise<void> {
+        const t = await this.pool.getTransaction();
+        await t.execute(
+            'UPDATE OR INSERT INTO WB_CATEGORIES (ID, COMMISSION, NAME) VALUES (?, ?, ?) MATCHING (ID)',
+            [wbCard.subjectID, 25, wbCard.subjectName],
+            true,
+        );
     }
 }

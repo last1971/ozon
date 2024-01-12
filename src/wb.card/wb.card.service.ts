@@ -7,6 +7,7 @@ import { WbCardDto } from './dto/wb.card.dto';
 import { chunk } from 'lodash';
 import { Environment } from '../env.validation';
 import { ConfigService } from '@nestjs/config';
+import { WbCardAnswerDto } from './dto/wb.card.answer.dto';
 
 @Injectable()
 export class WbCardService extends ICountUpdateable implements OnModuleInit {
@@ -22,6 +23,41 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit {
         const wb = await this.vault.get('wildberries');
         this.warehouseId = wb.WAREHOUSE_ID as number;
         await this.loadSkuList(this.configService.get<Environment>('NODE_ENV') === 'production');
+    }
+    async getWbCards(args: any): Promise<WbCardAnswerDto> {
+        return this.api.method(
+            '/content/v2/get/cards/list',
+            'post',
+            args
+                ? args
+                : {
+                      settings: {
+                          cursor: {
+                              limit: 1000,
+                          },
+                          filter: {
+                              withPhoto: -1,
+                          },
+                      },
+                  },
+        );
+    }
+    async getAllWbCards(): Promise<WbCardDto[]> {
+        const ret: WbCardDto[] = [];
+        let cycle = true;
+        let args: any = null;
+        while (cycle) {
+            const { cards, cursor } = await this.getWbCards(args);
+            ret.push(...cards);
+            const { updatedAt, nmID, total } = cursor;
+            args = {
+                limit: 1000,
+                updatedAt,
+                nmID,
+            };
+            cycle = total === 1000;
+        }
+        return ret;
     }
     async getGoodIds(args: any): Promise<GoodCountsDto<number>> {
         const res = await this.api.method(
