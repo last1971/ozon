@@ -7,10 +7,13 @@ import { GoodPercentDto } from '../good/dto/good.percent.dto';
 import { ICountUpdateable } from '../interfaces/ICountUpdatebale';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
 import { GoodWbDto } from '../good/dto/good.wb.dto';
-
 @Injectable()
 export class ElectronicaGoodService implements IGood {
     constructor(private api: ElectronicaApiService) {}
+
+    updateWbCategory(): Promise<void> {
+        throw new Error('Method not implemented.');
+    }
     async in(codes: string[]): Promise<GoodDto[]> {
         const response = await this.api.method('/api/good', {
             page: 1,

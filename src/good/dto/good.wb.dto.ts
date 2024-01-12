@@ -1,4 +1,4 @@
-import { IsNumber, IsNumberString, IsOptional, IsString } from 'class-validator';
+import { IsNumberString, IsOptional, IsString } from 'class-validator';
 import { ApiProperty } from '@nestjs/swagger';
 
 export class GoodWbDto {
@@ -24,7 +24,14 @@ export class GoodWbDto {
         description: 'Минимальная цена',
         required: false,
     })
-    @IsNumber()
+    @IsNumberString()
     @IsOptional()
     minPrice?: number;
+    @ApiProperty({
+        description: 'Код категории',
+        required: false,
+    })
+    @IsNumberString()
+    @IsOptional()
+    wbCategoriesId?: number;
 }
