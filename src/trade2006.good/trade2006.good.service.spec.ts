@@ -196,4 +196,36 @@ describe('Trade2006GoodService', () => {
         ]);
         expect(emit.mock.calls).toHaveLength(2);
     });
+
+    it('getWbData', async () => {
+        await service.getWbData(['1', '3']);
+        expect(query.mock.calls[0]).toEqual([
+            'SELECT W.ID, W.TARIFF, W.MIN_PRICE, WC.COMMISSION\n                 FROM WILDBERRIES W JOIN' +
+                ' WB_CATEGORIES WC on WC.ID = W.WB_CATEGORIES_ID\n                 WHERE W.ID IN (?,?)',
+            ['1', '3'],
+            true,
+        ]);
+    });
+
+    it('setWbData', async () => {
+        await service.setWbData({
+            commission: 1,
+            id: '3',
+            tariff: 5,
+            wbCategoriesId: 7,
+        });
+        expect(execute.mock.calls[0]).toEqual([
+            'UPDATE OR INSERT INTO WILDBERRIES (COMMISSION,ID,TARIFF,WB_CATEGORIES_ID) VALUES (?,?,?,?) MATCHING (ID)',
+            [1, '3', 5, 7],
+            true,
+        ]);
+    });
+    it('updateWbCategory', async () => {
+        await service.updateWbCategory({ nmID: 1, sizes: [], subjectID: 2, subjectName: '3', vendorCode: '4' });
+        expect(execute.mock.calls[0]).toEqual([
+            'UPDATE OR INSERT INTO WB_CATEGORIES (ID, COMMISSION, NAME) VALUES (?, ?, ?) MATCHING (ID)',
+            [2, 25, '3'],
+            true,
+        ]);
+    });
 });
