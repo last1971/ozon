@@ -17,7 +17,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 @Injectable()
 export class Trade2006InvoiceService implements IInvoice {
     private logger = new Logger(Trade2006InvoiceService.name);
-    private fboErrors: { prim: string; code: string }[] = [];
+    // private fboErrors: { prim: string; code: string }[] = [];
     constructor(
         @Inject(FIREBIRD) private pool: FirebirdPool,
         private configService: ConfigService,
@@ -256,7 +256,7 @@ export class Trade2006InvoiceService implements IInvoice {
         product: ProductPostingDto,
         prim: string,
         transaction: FirebirdTransaction = null,
-    ): Promise<void> {
+    ): Promise<boolean> {
         const workingTransaction = transaction || (await this.getTransaction());
         const code = goodCode(product);
         const quantity = product.quantity * goodQuantityCoeff(product);
@@ -268,17 +268,45 @@ export class Trade2006InvoiceService implements IInvoice {
         if (pickups.length === 0) {
             if (!transaction) await workingTransaction.rollback(true);
             const message = `Have not position on FBO. Warehouse - ${prim}. GOODSCODE - ${code}.`;
-            if (!find(this.fboErrors, { prim, code })) {
-                this.fboErrors.push({ prim, code });
-                this.eventEmitter.emit('error.message', 'Check FBO cancels!', message);
-            }
-            throw new Error(message);
+            // if (!find(this.fboErrors, { prim, code })) {
+            //    this.fboErrors.push({ prim, code });
+            this.eventEmitter.emit('error.message', 'Check FBO cancels!', message);
+            // }
+            // throw new Error(message);
+            return false;
         }
-        remove(this.fboErrors, { prim, code });
+        // remove(this.fboErrors, { prim, code });
         await workingTransaction.execute('UPDATE PODBPOS SET QUANSHOP = ? WHERE PODBPOSCODE = ?', [
             pickups[0].QUANSHOP - quantity,
             pickups[0].PODBPOSCODE,
         ]);
         if (!transaction) await workingTransaction.commit(true);
+        return true;
+    }
+
+    async getLastIncomingPrice(id: string, transaction: FirebirdTransaction = null): Promise<number> {
+        const workingTransaction = transaction || (await this.getTransaction());
+        const res = await workingTransaction.query(
+            'select first 1 * from trueprih where goodscode = ? and for_shop=1 order by data desc',
+            [id],
+            !transaction,
+        );
+        return res ? res[0].PRICE : 0.01;
+    }
+
+    async deltaGood(
+        id: string,
+        quantity: number,
+        prim: string,
+        transaction: FirebirdTransaction = null,
+    ): Promise<void> {
+        const workingTransaction = transaction || (await this.getTransaction());
+        const price = await this.getLastIncomingPrice(id, workingTransaction);
+        await workingTransaction.execute(
+            'execute procedure deltaquanshopsklad4 ?, ?, ?, ?, ?, null, 1',
+            [id, Trade2006InvoiceService.name, -quantity, prim, price],
+            !transaction,
+        );
+        this.eventEmitter.emit('error.message', `Delta ${id} code with quantity: ${quantity} for ${prim}`);
     }
 }

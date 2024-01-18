@@ -89,6 +89,7 @@ describe('PostingFboService', () => {
                 warehouse_name: 'CENTER',
             },
         };
+        unPickupOzonFbo.mockResolvedValueOnce(true);
         await service.createInvoice(posting, null);
         expect(unPickupOzonFbo.mock.calls[0]).toEqual([
             { offer_id: '444', price: '1.11', quantity: 2 },

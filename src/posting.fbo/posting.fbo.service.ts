@@ -9,6 +9,7 @@ import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { FirebirdTransaction } from 'ts-firebird';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
+import { goodCode, goodQuantityCoeff } from '../helpers';
 
 @Injectable()
 export class PostingFboService implements IOrderable {
@@ -21,12 +22,28 @@ export class PostingFboService implements IOrderable {
     async createInvoice(posting: PostingDto, transaction: FirebirdTransaction): Promise<InvoiceDto> {
         const buyerId = this.configService.get<number>('OZON_BUYER_ID', 24416);
         for (const product of posting.products) {
-            try {
-                await this.invoiceService.unPickupOzonFbo(product, posting.analytics_data.warehouse_name, transaction);
-            } catch (e) {
-                await this.invoiceService.unPickupOzonFbo(product, 'отмена FBO', transaction);
-                this.eventEmitter.emit('error.message', 'FBO cancels clean', posting.analytics_data.warehouse_name);
+            let res = await this.invoiceService.unPickupOzonFbo(
+                product,
+                posting.analytics_data.warehouse_name,
+                transaction,
+            );
+            if (!res) {
+                res = await this.invoiceService.unPickupOzonFbo(product, 'отмена FBO', transaction);
+                if (res)
+                    this.eventEmitter.emit('error.message', 'FBO cancels clean', posting.analytics_data.warehouse_name);
             }
+            if (!res) {
+                const id = goodCode(product);
+                const quantity = product.quantity * goodQuantityCoeff(product);
+                await this.invoiceService.deltaGood(id, quantity, posting.analytics_data.warehouse_name, transaction);
+            }
+            // try {
+            //    await this.invoiceService.unPickupOzonFbo(product, posting.analytics_data.warehouse_name,
+            //    transaction);
+            // } catch (e) {
+            //    await this.invoiceService.unPickupOzonFbo(product, 'отмена FBO', transaction);
+            //    this.eventEmitter.emit('error.message', 'FBO cancels clean', posting.analytics_data.warehouse_name);
+            //}
         }
         return this.invoiceService.createInvoiceFromPostingDto(buyerId, posting, transaction);
     }

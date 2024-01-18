@@ -17,6 +17,7 @@ export interface IInvoice {
     updateByTransactions(transactions: TransactionDto[], t: FirebirdTransaction): Promise<ResultDto>;
     pickupInvoice(invoice: InvoiceDto, t: FirebirdTransaction): Promise<void>;
     createInvoiceFromPostingDto(buyerId: number, posting: PostingDto, t: FirebirdTransaction): Promise<InvoiceDto>;
-    unPickupOzonFbo(product: ProductPostingDto, prim: string, transaction: FirebirdTransaction): Promise<void>;
+    unPickupOzonFbo(product: ProductPostingDto, prim: string, transaction: FirebirdTransaction): Promise<boolean>;
+    deltaGood(id: string, quantity: number, prim: string, transaction: FirebirdTransaction): Promise<void>;
 }
 export const INVOICE_SERVICE = 'INVOICE_SERVICE';
