@@ -30,8 +30,7 @@ export class OrderController {
     @Get('update-wbfbo')
     async updateWbFboOrder(): Promise<ResultDto> {
         await this.wbOrder.checkCanceledOrders();
-        await this.wbOrder.addFboOrders();
-        return { isSuccess: true };
+        return { isSuccess: await this.wbOrder.addFboOrders() };
     }
     @ApiOkResponse({
         description: 'Обновить оплаты и закрыть счета',

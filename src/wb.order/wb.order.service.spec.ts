@@ -79,6 +79,7 @@ describe('WbOrderService', () => {
             orders: [
                 { id: 1, supplierStatus: 'new' },
                 { id: 2, supplierStatus: 'complete' },
+                { id: 3, supplierStatus: 'new', wbStatus: 'declined_by_client' },
             ],
         });
         const res = await service.listByStatus(
@@ -100,6 +101,15 @@ describe('WbOrderService', () => {
                     article: '22-1',
                     convertedPrice: 2.01,
                     rid: '321',
+                },
+                {
+                    id: 3,
+                    createdAt: '3',
+                    skus: ['1-3'],
+                    price: 2.01,
+                    article: '33-1',
+                    convertedPrice: 2.01,
+                    rid: '3211',
                 },
             ],
             'new',
@@ -272,6 +282,7 @@ describe('WbOrderService', () => {
                 { srid: '3', totalPrice: 112, supplierArticle: '111', date: '2011-11-11' },
             ])
             .mockResolvedValueOnce({ orders: [{ rid: '2' }, { rid: '4' }, { rid: '5' }] });
+        unPickupOzonFbo.mockResolvedValueOnce(true);
         isExists.mockResolvedValueOnce(true).mockResolvedValueOnce(false);
         createInvoiceFromPostingDto.mockResolvedValueOnce('invoice');
         await service.addFboOrders();

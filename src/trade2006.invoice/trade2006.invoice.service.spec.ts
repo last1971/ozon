@@ -267,7 +267,8 @@ describe('Trade2006InvoiceService', () => {
     });
     it('unPickupOzonFbo', async () => {
         query.mockResolvedValueOnce([{ PODBPOSCODE: '789', QUANSHOP: 5 }]);
-        await service.unPickupOzonFbo({ offer_id: '123', price: '456', quantity: 2 }, '12345');
+        const res = await service.unPickupOzonFbo({ offer_id: '123', price: '456', quantity: 2 }, '12345');
+        expect(res).toEqual(true);
         expect(query.mock.calls[0]).toEqual([
             'SELECT PODBPOSCODE, QUANSHOP FROM PODBPOS WHERE GOODSCODE = ? AND QUANSHOP >= ? AND SCODE IN (SELECT' +
                 ' SCODE FROM S WHERE S.STATUS = 1 AND S.PRIM CONTAINING ?)',
@@ -280,5 +281,22 @@ describe('Trade2006InvoiceService', () => {
     it('updatePrim', async () => {
         await service.updatePrim('1', '2');
         expect(execute.mock.calls[0]).toEqual(['UPDATE S SET PRIM = ?, STATUS = 1 WHERE PRIM = ?', ['2', '1'], true]);
+    });
+    it('getLastIncomingPrice', async () => {
+        await service.getLastIncomingPrice('111', null);
+        expect(query.mock.calls[0]).toEqual([
+            'select first 1 * from trueprih where goodscode = ? and for_shop=1 order by data desc',
+            ['111'],
+            true,
+        ]);
+    });
+    it('deltaGood', async () => {
+        query.mockResolvedValueOnce([{ PRICE: 10.01 }]);
+        await service.deltaGood('111', 10, 'TEST', null);
+        expect(execute.mock.calls[0]).toEqual([
+            'execute procedure deltaquanshopsklad4 ?, ?, ?, ?, ?, null, 1',
+            ['111', 'Trade2006InvoiceService', -10, 'TEST', 10.01],
+            true,
+        ]);
     });
 });
