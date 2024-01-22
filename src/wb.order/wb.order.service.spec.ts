@@ -280,6 +280,7 @@ describe('WbOrderService', () => {
                 { srid: '1' },
                 { srid: '2' },
                 { srid: '3', totalPrice: 112, supplierArticle: '111', date: '2011-11-11' },
+                { srid: '6', totalPrice: 112, supplierArticle: '111', date: '2011-11-11', isCancel: true },
             ])
             .mockResolvedValueOnce({ orders: [{ rid: '2' }, { rid: '4' }, { rid: '5' }] });
         unPickupOzonFbo.mockResolvedValueOnce(true);

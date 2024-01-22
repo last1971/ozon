@@ -15,7 +15,7 @@ import { ResultDto } from '../helpers/result.dto';
 import { min } from 'lodash';
 import { WbTransactionDto } from './dto/wb.transaction.dto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Cron } from '@nestjs/schedule';
+import { Cron } from "@nestjs/schedule";
 import { WbFboOrder } from './dto/wb.fbo.order';
 import { ProductPostingDto } from '../product/dto/product.posting.dto';
 import { goodCode, goodQuantityCoeff } from '../helpers';
@@ -55,7 +55,7 @@ export class WbOrderService implements IOrderable {
         const oldFboOrders: boolean[] = await Promise.all(
             allFboOrders.map((order) => this.invoiceService.isExists(order.srid, null)),
         );
-        const newFboOrders = allFboOrders.filter((order, index) => !oldFboOrders[index]);
+        const newFboOrders = allFboOrders.filter((order, index) => !oldFboOrders[index] && !order.isCancel);
         const transaction = await this.invoiceService.getTransaction();
         const buyerId = this.configService.get<number>('WB_BUYER_ID', 24532);
         try {
