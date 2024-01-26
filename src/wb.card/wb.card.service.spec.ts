@@ -120,4 +120,38 @@ describe('WbCardService', () => {
             },
         ]);
     });
+    it('getWbCards', async () => {
+        method.mockResolvedValueOnce({
+            cards: [],
+            cursor: { total: 0 },
+        });
+        await service.getWbCards('');
+        expect(method.mock.calls[0]).toEqual([
+            '/content/v2/get/cards/list',
+            'post',
+            {
+                settings: {
+                    cursor: {
+                        limit: 1000,
+                    },
+                    filter: {
+                        withPhoto: -1,
+                    },
+                },
+            },
+        ]);
+    });
+    it('getAllWbCards', async () => {
+        method
+            .mockResolvedValueOnce({
+                cards: [1, 2, 3],
+                cursor: { total: 1000 },
+            })
+            .mockResolvedValueOnce({
+                cards: [4, 5, 6],
+                cursor: { total: 3 },
+            });
+        const res = await service.getAllWbCards();
+        expect(res).toEqual([1, 2, 3, 4, 5, 6]);
+    });
 });

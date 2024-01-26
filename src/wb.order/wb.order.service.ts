@@ -10,14 +10,15 @@ import { DateTime } from 'luxon';
 import { ConfigService } from '@nestjs/config';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { FirebirdTransaction } from 'ts-firebird';
-import { TransactionFilterDto } from '../posting/dto/transaction.filter.dto';
+import { TransactionFilterDate } from '../posting/dto/transaction.filter.dto';
 import { ResultDto } from '../helpers/result.dto';
-import { min } from 'lodash';
+import { first, min } from 'lodash';
 import { WbTransactionDto } from './dto/wb.transaction.dto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Cron } from "@nestjs/schedule";
 import { WbFboOrder } from './dto/wb.fbo.order';
 import { ProductPostingDto } from '../product/dto/product.posting.dto';
+import Excel from 'exceljs';
 import { goodCode, goodQuantityCoeff } from '../helpers';
 @Injectable()
 export class WbOrderService implements IOrderable {
@@ -202,13 +203,13 @@ export class WbOrderService implements IOrderable {
         );
     }
 
-    async getTransactions(data: TransactionFilterDto, rrdid = 0): Promise<Array<WbTransactionDto>> {
+    async getTransactions(data: TransactionFilterDate, rrdid = 0): Promise<Array<WbTransactionDto>> {
         const transactions: WbTransactionDto[] = await this.api.method(
             '/api/v1/supplier/reportDetailByPeriod',
             'statistics',
             {
-                dateFrom: data.date.from,
-                dateTo: data.date.to,
+                dateFrom: data.from,
+                dateTo: data.to,
                 rrdid,
             },
         );
@@ -216,8 +217,27 @@ export class WbOrderService implements IOrderable {
         // if (!transactions) return [];
         // return transactions.concat(await this.getTransactions(data, last(transactions).rrd_id));
     }
-    async updateTransactions(data: TransactionFilterDto): Promise<ResultDto> {
-        const transactions = await this.getTransactions(data);
+
+    async getTransactionsFromFile(file: Express.Multer.File): Promise<Array<WbTransactionDto>> {
+        const workbook = new Excel.Workbook();
+        await workbook.xlsx.load(file.buffer);
+        const worksheet: Excel.Worksheet = first(workbook.worksheets);
+        const ret: WbTransactionDto[] = [];
+        worksheet.eachRow((row: Excel.Row, rowNumber) => {
+            if (rowNumber !== 1) {
+                ret.push({
+                    ppvz_for_pay: row.getCell(32).value as number,
+                    delivery_rub: row.getCell(35).value as number,
+                    order_dt: row.getCell(12).value as string,
+                    rrd_id: null,
+                    srid: row.getCell(52).value as string,
+                });
+            }
+        });
+        return ret;
+    }
+    async updateTransactions(data: TransactionFilterDate, file: Express.Multer.File): Promise<ResultDto> {
+        const transactions = file ? await this.getTransactionsFromFile(file) : await this.getTransactions(data);
         const dateFrom = min(
             transactions
                 .map((t) => t.order_dt)

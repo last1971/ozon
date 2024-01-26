@@ -1,6 +1,6 @@
 import { ApiProperty } from '@nestjs/swagger';
 
-class TransactionFilterDate {
+export class TransactionFilterDate {
     @ApiProperty({ required: true, type: Date })
     from: Date;
     @ApiProperty({ required: true, type: Date })
