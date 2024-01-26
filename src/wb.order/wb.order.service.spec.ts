@@ -171,7 +171,7 @@ describe('WbOrderService', () => {
 
     it('getTransactions', async () => {
         const date = new Date();
-        await service.getTransactions({ date: { from: date, to: date }, transaction_type: 'type' });
+        await service.getTransactions({ from: date, to: date });
         expect(method.mock.calls[0]).toEqual([
             '/api/v1/supplier/reportDetailByPeriod',
             'statistics',
@@ -237,7 +237,7 @@ describe('WbOrderService', () => {
                     },
                 ],
             });
-        await service.updateTransactions({ date: { from: date, to: date }, transaction_type: 'type' });
+        await service.updateTransactions({ from: date, to: date }, null);
         expect(method.mock.calls[1]).toEqual([
             '/api/v3/orders',
             'get',
