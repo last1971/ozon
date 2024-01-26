@@ -15,10 +15,11 @@ import { ResultDto } from '../helpers/result.dto';
 import { first, min } from 'lodash';
 import { WbTransactionDto } from './dto/wb.transaction.dto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Cron } from '@nestjs/schedule';
+import { Cron } from "@nestjs/schedule";
 import { WbFboOrder } from './dto/wb.fbo.order';
 import { ProductPostingDto } from '../product/dto/product.posting.dto';
 import Excel from 'exceljs';
+import { goodCode, goodQuantityCoeff } from '../helpers';
 @Injectable()
 export class WbOrderService implements IOrderable {
     constructor(
@@ -50,12 +51,12 @@ export class WbOrderService implements IOrderable {
         return allOrders.filter((order) => !fbsRids.includes(order.srid));
     }
     @Cron('0 */5 * * * *', { name: 'checkFboWbOrders' })
-    async addFboOrders() {
+    async addFboOrders(): Promise<boolean> {
         const allFboOrders = await this.getOnlyFboOrders();
         const oldFboOrders: boolean[] = await Promise.all(
             allFboOrders.map((order) => this.invoiceService.isExists(order.srid, null)),
         );
-        const newFboOrders = allFboOrders.filter((order, index) => !oldFboOrders[index]);
+        const newFboOrders = allFboOrders.filter((order, index) => !oldFboOrders[index] && !order.isCancel);
         const transaction = await this.invoiceService.getTransaction();
         const buyerId = this.configService.get<number>('WB_BUYER_ID', 24532);
         try {
@@ -65,7 +66,12 @@ export class WbOrderService implements IOrderable {
                     offer_id: order.supplierArticle,
                     quantity: 1,
                 };
-                await this.invoiceService.unPickupOzonFbo(product, 'WBFBO', transaction);
+                const res = await this.invoiceService.unPickupOzonFbo(product, 'WBFBO', transaction);
+                if (!res) {
+                    const id = goodCode(product);
+                    const quantity = product.quantity * goodQuantityCoeff(product);
+                    await this.invoiceService.deltaGood(id, quantity, 'WBFBO', transaction);
+                }
                 const invoice = await this.invoiceService.createInvoiceFromPostingDto(
                     buyerId,
                     {
@@ -86,9 +92,11 @@ export class WbOrderService implements IOrderable {
                     newFboOrders.map((order) => ({ prim: order.srid, offer_id: order.supplierArticle })),
                 );
             }
+            return true;
         } catch (e) {
             await transaction.rollback(true);
             console.log(e);
+            return false;
         }
     }
 
@@ -126,7 +134,7 @@ export class WbOrderService implements IOrderable {
         }
     }
 
-    async listSomeDayAgo(days = 2): Promise<WbOrderDto[]> {
+    async listSomeDayAgo(days = 3): Promise<WbOrderDto[]> {
         const dateFrom = DateTime.now().minus({ days }).toUnixInteger();
         return this.list(dateFrom);
     }
@@ -143,7 +151,11 @@ export class WbOrderService implements IOrderable {
                     this.orderStatuses(chunkOrders.map((order) => order.id)),
                 ),
             )
-        ).flat();
+        )
+            .flat()
+            .filter((status: any) => {
+                return !['canceled_by_client', 'declined_by_client'].includes(status.wbStatus);
+            });
         return orders.filter((order) => {
             return !!find(statuses, { id: order.id, supplierStatus: status });
         });
