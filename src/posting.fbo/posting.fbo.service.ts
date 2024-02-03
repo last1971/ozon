@@ -37,13 +37,6 @@ export class PostingFboService implements IOrderable {
                 const quantity = product.quantity * goodQuantityCoeff(product);
                 await this.invoiceService.deltaGood(id, quantity, posting.analytics_data.warehouse_name, transaction);
             }
-            // try {
-            //    await this.invoiceService.unPickupOzonFbo(product, posting.analytics_data.warehouse_name,
-            //    transaction);
-            // } catch (e) {
-            //    await this.invoiceService.unPickupOzonFbo(product, 'отмена FBO', transaction);
-            //    this.eventEmitter.emit('error.message', 'FBO cancels clean', posting.analytics_data.warehouse_name);
-            //}
         }
         return this.invoiceService.createInvoiceFromPostingDto(buyerId, posting, transaction);
     }

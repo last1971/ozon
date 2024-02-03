@@ -187,6 +187,11 @@ describe('Trade2006InvoiceService', () => {
         get.mockReturnValueOnce(1);
         await service.createTransferOut({ id: 1, status: 1, buyerId: 1, remark: '1', date: new Date() });
         expect(execute.mock.calls[0]).toEqual([
+            'UPDATE S SET PRIM = ?, STATUS = 1 WHERE PRIM = ?',
+            ['1 закрыт', '1'],
+            false,
+        ]);
+        expect(execute.mock.calls[1]).toEqual([
             'EXECUTE PROCEDURE CREATESF9 (?, ?, ?, ?, ?)',
             [null, 1, 1, null, 0],
             true,
@@ -195,14 +200,19 @@ describe('Trade2006InvoiceService', () => {
     it('test updateByTransactions', async () => {
         query.mockReturnValue([{ SCODE: 2, PRIM: '2-2', STATUS: 4 }]);
         await service.updateByTransactions([{ posting_number: '2-2', amount: 111.11 }]);
-        expect(query.mock.calls).toHaveLength(2);
+        expect(query.mock.calls).toHaveLength(3);
         expect(query.mock.calls[0]).toEqual([
             'SELECT *\n                 FROM S\n                 WHERE PRIM IN' + ' (?)',
             ['2-2'],
             true,
         ]);
-        expect(query.mock.calls[1]).toEqual(['SELECT * FROM REALPRICE WHERE SCODE = ?', [2]]);
-        expect(execute.mock.calls).toHaveLength(4);
+        expect(query.mock.calls[1]).toEqual([
+            'SELECT *\n                 FROM S\n                 WHERE PRIM IN' + ' (?)',
+            ['2-2'],
+            true,
+        ]);
+        expect(query.mock.calls[2]).toEqual(['SELECT * FROM REALPRICE WHERE SCODE = ?', [2]]);
+        expect(execute.mock.calls).toHaveLength(5);
     });
     it('createInvoiceFromPostingDto', async () => {
         const date = new Date();
@@ -252,18 +262,23 @@ describe('Trade2006InvoiceService', () => {
                 ['121', 121],
             ]),
         );
-        expect(execute.mock.calls).toHaveLength(7);
+        expect(execute.mock.calls).toHaveLength(9);
         expect(commit.mock.calls).toHaveLength(1);
         expect(execute.mock.calls[0]).toEqual(['UPDATE REALPRICE SET SUMMAP = ? WHERE REALPRICECODE = ?', [120, '1']]);
         expect(execute.mock.calls[1][0]).toEqual(
             'UPDATE OR INSERT INTO SCHET (MONEYSCHET, NS, DATA, POKUPATCODE, SCODE) VALUES (?, ?, ?, ?, ?) MATCHING (SCODE)',
         );
         expect(execute.mock.calls[2]).toEqual([
+            'UPDATE S SET PRIM = ?, STATUS = 1 WHERE PRIM = ?',
+            ['120 закрыт', '120'],
+            false,
+        ]);
+        expect(execute.mock.calls[3]).toEqual([
             'EXECUTE PROCEDURE CREATESF9 (?, ?, ?, ?, ?)',
             [null, 1, 2, null, 0],
             false,
         ]);
-        expect(execute.mock.calls[6]).toEqual(['UPDATE S SET STATUS = ? WHERE SCODE IN (?,?)', [5, 1, 2], false]);
+        expect(execute.mock.calls[8]).toEqual(['UPDATE S SET STATUS = ? WHERE SCODE IN (?,?)', [5, 1, 2], false]);
     });
     it('unPickupOzonFbo', async () => {
         query.mockResolvedValueOnce([{ PODBPOSCODE: '789', QUANSHOP: 5 }]);

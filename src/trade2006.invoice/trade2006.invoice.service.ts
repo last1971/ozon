@@ -72,6 +72,7 @@ export class Trade2006InvoiceService implements IInvoice {
         return res.length > 0;
     }
 
+    // возможно добавить передачу статуса в этот метод и переименовать его
     async updatePrim(prim: string, newPrim: string, t: FirebirdTransaction = null): Promise<void> {
         const transaction = t ?? (await this.pool.getTransaction());
         await transaction.execute('UPDATE S SET PRIM = ?, STATUS = 1 WHERE PRIM = ?', [newPrim, prim], !t);
@@ -159,6 +160,7 @@ export class Trade2006InvoiceService implements IInvoice {
     }
     async createTransferOut(invoice: InvoiceDto, transaction: FirebirdTransaction = null): Promise<void> {
         const workingTransaction = transaction ?? (await this.pool.getTransaction());
+        await this.updatePrim(invoice.remark, invoice.remark + ' закрыт', workingTransaction);
         await workingTransaction.execute(
             'EXECUTE PROCEDURE CREATESF9 (?, ?, ?, ?, ?)',
             [null, invoice.id, this.configService.get<number>('STAFF_ID', 25), null, 0],
@@ -203,6 +205,12 @@ export class Trade2006InvoiceService implements IInvoice {
                     message: `Not find ${delta.map((invoice) => invoice.posting_number).toString()}`,
                 };
             }
+            const commissions = new Map<string, number>();
+            invoices.forEach((invoice) => {
+                const newAmount = transactions.find((dto) => dto.posting_number === invoice.remark).amount;
+                commissions.set(invoice.remark, newAmount);
+            });
+            /*
             for (const invoice of invoices) {
                 if (invoice.status === 4) {
                     const newAmount = transactions.find((dto) => dto.posting_number === invoice.remark).amount;
@@ -214,6 +222,9 @@ export class Trade2006InvoiceService implements IInvoice {
             await this.bulkSetStatus(invoices, 5, transaction);
             if (!t) await transaction.commit(true);
             return { isSuccess: true };
+
+             */
+            return this.updateByCommissions(commissions, t);
         } catch (e) {
             this.logger.error(e.message);
             if (!t) await transaction.rollback(true);
@@ -291,7 +302,7 @@ export class Trade2006InvoiceService implements IInvoice {
             [id],
             !transaction,
         );
-        return res ? res[0].PRICE : 0.01;
+        return res ? res[0]?.PRICE : 0.01;
     }
 
     async deltaGood(

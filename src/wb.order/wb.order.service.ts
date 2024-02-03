@@ -5,17 +5,16 @@ import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { WbApiService } from '../wb.api/wb.api.service';
 import { WbOrderDto } from './dto/wb.order.dto';
 import { WbOrderStatusDto } from './dto/wb.order.status.dto';
-import { chunk, find } from 'lodash';
 import { DateTime } from 'luxon';
 import { ConfigService } from '@nestjs/config';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { FirebirdTransaction } from 'ts-firebird';
 import { TransactionFilterDate } from '../posting/dto/transaction.filter.dto';
 import { ResultDto } from '../helpers/result.dto';
-import { first, min } from 'lodash';
+import { first, min, chunk, find, filter } from 'lodash';
 import { WbTransactionDto } from './dto/wb.transaction.dto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Cron } from "@nestjs/schedule";
+import { Cron } from '@nestjs/schedule';
 import { WbFboOrder } from './dto/wb.fbo.order';
 import { ProductPostingDto } from '../product/dto/product.posting.dto';
 import Excel from 'exceljs';
@@ -262,6 +261,50 @@ export class WbOrderService implements IOrderable {
         for (const key of commissions.keys()) {
             if (commissions.get(key) <= 0) {
                 commissions.delete(key);
+            }
+        }
+        return this.invoiceService.updateByCommissions(commissions, null);
+    }
+
+    async getSales(dateFrom: string): Promise<any> {
+        return this.api.method('/api/v1/supplier/sales', 'statistics', { dateFrom });
+    }
+
+    // @Timeout(0)
+    // Not test
+    async closeSales(
+        dateFrom: string = '2023-10-01',
+        dateTo: string = '2024-01-24',
+        saleIds: string[] = [],
+    ): Promise<any> {
+        const sales = await this.getSales(dateFrom);
+        const transactions = await this.getTransactions({ from: new Date(dateFrom), to: new Date(dateTo) });
+        const orders = await this.list(DateTime.fromISO(dateFrom).toUnixInteger());
+        const commissions = new Map<string, number>();
+        const notFind = [];
+        for (const sale of saleIds) {
+            let ret = find(sales, { srid: sale });
+            const order = find(orders, { id: parseInt(sale) });
+            if (!ret) {
+                ret = find(sales, { srid: order?.rid });
+            }
+            if (!ret) {
+                notFind.push({ sale, srid: order?.rid });
+            } else {
+                const { srid } = ret;
+                const transaction = filter(transactions, { srid });
+                const amount = transaction.reduce(
+                    (amount, t: any) =>
+                        amount +
+                        (t.ppvz_for_pay ?? 0) -
+                        (t.delivery_rub ?? 0) -
+                        (t.additional_payment ?? 0) -
+                        (t.penalty ?? 0),
+                    0,
+                );
+                if (amount) {
+                    commissions.set(sale, amount);
+                }
             }
         }
         return this.invoiceService.updateByCommissions(commissions, null);
