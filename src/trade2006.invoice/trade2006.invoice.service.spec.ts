@@ -187,11 +187,6 @@ describe('Trade2006InvoiceService', () => {
         get.mockReturnValueOnce(1);
         await service.createTransferOut({ id: 1, status: 1, buyerId: 1, remark: '1', date: new Date() });
         expect(execute.mock.calls[0]).toEqual([
-            'UPDATE S SET PRIM = ?, STATUS = 1 WHERE PRIM = ?',
-            ['1 закрыт', '1'],
-            false,
-        ]);
-        expect(execute.mock.calls[1]).toEqual([
             'EXECUTE PROCEDURE CREATESF9 (?, ?, ?, ?, ?)',
             [null, 1, 1, null, 0],
             true,
@@ -269,13 +264,13 @@ describe('Trade2006InvoiceService', () => {
             'UPDATE OR INSERT INTO SCHET (MONEYSCHET, NS, DATA, POKUPATCODE, SCODE) VALUES (?, ?, ?, ?, ?) MATCHING (SCODE)',
         );
         expect(execute.mock.calls[2]).toEqual([
-            'UPDATE S SET PRIM = ?, STATUS = 1 WHERE PRIM = ?',
-            ['120 закрыт', '120'],
+            'EXECUTE PROCEDURE CREATESF9 (?, ?, ?, ?, ?)',
+            [null, 1, 2, null, 0],
             false,
         ]);
         expect(execute.mock.calls[3]).toEqual([
-            'EXECUTE PROCEDURE CREATESF9 (?, ?, ?, ?, ?)',
-            [null, 1, 2, null, 0],
+            'UPDATE S SET PRIM = ?, STATUS = 1 WHERE PRIM = ?',
+            ['120 закрыт', '120'],
             false,
         ]);
         expect(execute.mock.calls[8]).toEqual(['UPDATE S SET STATUS = ? WHERE SCODE IN (?,?)', [5, 1, 2], false]);

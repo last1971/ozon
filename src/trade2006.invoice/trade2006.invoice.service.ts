@@ -160,7 +160,6 @@ export class Trade2006InvoiceService implements IInvoice {
     }
     async createTransferOut(invoice: InvoiceDto, transaction: FirebirdTransaction = null): Promise<void> {
         const workingTransaction = transaction ?? (await this.pool.getTransaction());
-        await this.updatePrim(invoice.remark, invoice.remark + ' закрыт', workingTransaction);
         await workingTransaction.execute(
             'EXECUTE PROCEDURE CREATESF9 (?, ?, ?, ?, ?)',
             [null, invoice.id, this.configService.get<number>('STAFF_ID', 25), null, 0],
@@ -177,6 +176,7 @@ export class Trade2006InvoiceService implements IInvoice {
                     await this.setInvoiceAmount(invoice, newAmount, transaction);
                     await this.upsertInvoiceCashFlow(invoice, newAmount, transaction);
                     await this.createTransferOut(invoice, transaction);
+                    await this.updatePrim(invoice.remark, invoice.remark + ' закрыт', transaction);
                 }
             }
             await this.bulkSetStatus(invoices, 5, transaction);
