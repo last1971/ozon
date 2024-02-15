@@ -274,7 +274,7 @@ export class WbOrderService implements IOrderable {
     // Not test
     async closeSales(
         dateFrom: string = '2023-10-01',
-        dateTo: string = '2024-01-24',
+        dateTo: string = '2024-01-28',
         saleIds: string[] = [],
     ): Promise<any> {
         const sales = await this.getSales(dateFrom);
@@ -307,6 +307,7 @@ export class WbOrderService implements IOrderable {
                 }
             }
         }
+        console.log('Finished...');
         return this.invoiceService.updateByCommissions(commissions, null);
     }
 }
