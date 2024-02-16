@@ -60,6 +60,7 @@ export class WbOrderService implements IOrderable {
         const buyerId = this.configService.get<number>('WB_BUYER_ID', 24532);
         try {
             for (const order of newFboOrders) {
+                if (order.supplierArticle === 'wh-service-podmena') continue;
                 const product: ProductPostingDto = {
                     price: order.totalPrice.toString(),
                     offer_id: order.supplierArticle,
