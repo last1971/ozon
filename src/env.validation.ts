@@ -36,6 +36,9 @@ class EnvironmentVariables {
     @IsString()
     FB_ENCD: string;
 
+    @IsNumber()
+    FB_MAX_POOL: number;
+
     @IsUrl()
     VAULT_URL: string;
 

@@ -21,7 +21,7 @@ export const FIREBIRD = 'FIREBIRD';
                     encoding: configService.get<SupportedCharacterSet>('FB_ENCD', 'UTF8'),
                     retryConnectionInterval: 1000, // reconnect interval in case of connection drop
                 };
-                return new FirebirdPool(5, options);
+                return new FirebirdPool(configService.get<number>('FB_MAX_POOL', 5), options);
             },
             inject: [ConfigService],
         },
