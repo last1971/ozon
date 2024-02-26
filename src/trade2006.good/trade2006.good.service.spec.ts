@@ -5,11 +5,13 @@ import { ICountUpdateable } from '../interfaces/ICountUpdatebale';
 import { ConfigService } from '@nestjs/config';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Cache } from '@nestjs/cache-manager';
 
 describe('Trade2006GoodService', () => {
     let service: Trade2006GoodService;
     const query = jest.fn().mockReturnValue([{ GOODSCODE: 1, QUAN: 2, RES: 1, PIECES: 1 }]);
     const execute = jest.fn();
+    const get = jest.fn();
     const getProductsWithCoeffs = jest.fn().mockResolvedValueOnce([
         {
             getSku: () => '1',
@@ -42,6 +44,10 @@ describe('Trade2006GoodService', () => {
                 {
                     provide: EventEmitter2,
                     useValue: { emit },
+                },
+                {
+                    provide: Cache,
+                    useValue: { get },
                 },
             ],
         }).compile();
@@ -152,6 +158,7 @@ describe('Trade2006GoodService', () => {
 
     it('checkCounts', async () => {
         query.mockResolvedValueOnce([{ GOODSCODE: '111' }, { GOODSCODE: '222' }]);
+        get.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
         await service.checkCounts();
         expect(query.mock.calls[0]).toEqual(['SELECT GOODSCODE FROM GOODSCOUNTCHANGE WHERE CHANGED=1', [], true]);
         expect(emit.mock.calls[0]).toEqual(['counts.changed', [{ code: 1, quantity: 2, reserve: 1 }]]);
@@ -160,6 +167,8 @@ describe('Trade2006GoodService', () => {
             ['111', '222'],
             true,
         ]);
+        const res = await service.checkCounts();
+        expect(res).toHaveLength(0);
     });
 
     it('checkBounds', async () => {

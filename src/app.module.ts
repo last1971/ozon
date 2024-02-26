@@ -28,8 +28,12 @@ import { WbApiModule } from './wb.api/wb.api.module';
 import { WbOrderModule } from './wb.order/wb.order.module';
 import { WbPriceModule } from './wb.price/wb.price.module';
 import { MailModule } from './mail/mail.module';
+import { CacheModule } from '@nestjs/cache-manager';
 @Module({
     imports: [
+        CacheModule.register({
+            isGlobal: true,
+        }),
         EventEmitterModule.forRoot(),
         ConfigModule.forRoot({ isGlobal: true, validate: configValidate }),
         ServeStaticModule.forRoot({

@@ -13,6 +13,7 @@ import { goodCode, goodQuantityCoeff } from '../helpers';
 import { chunk, flatten } from 'lodash';
 import { ProductPostingDto } from '../product/dto/product.posting.dto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Cache } from '@nestjs/cache-manager';
 
 @Injectable()
 export class Trade2006InvoiceService implements IInvoice {
@@ -22,6 +23,7 @@ export class Trade2006InvoiceService implements IInvoice {
         @Inject(FIREBIRD) private pool: FirebirdPool,
         private configService: ConfigService,
         private eventEmitter: EventEmitter2,
+        private cacheManager: Cache,
     ) {}
 
     async getTransaction(): Promise<FirebirdTransaction> {
@@ -192,6 +194,7 @@ export class Trade2006InvoiceService implements IInvoice {
         }
     }
     async updateByTransactions(transactions: TransactionDto[], t: FirebirdTransaction = null): Promise<ResultDto> {
+        await this.cacheManager.set('updateByTransactions', true, 0);
         const transaction = t ?? (await this.pool.getTransaction());
         try {
             const invoices = await this.getByPostingNumbers(transactions.map((t) => t.posting_number));
@@ -200,6 +203,7 @@ export class Trade2006InvoiceService implements IInvoice {
                     (dto) => !invoices.find((invoice) => invoice.remark === dto.posting_number),
                 );
                 if (!t) await transaction.rollback(true);
+                await this.cacheManager.set('updateByTransactions', false, 0);
                 return {
                     isSuccess: false,
                     message: `Not find ${delta.map((invoice) => invoice.posting_number).toString()}`,
@@ -224,10 +228,13 @@ export class Trade2006InvoiceService implements IInvoice {
             return { isSuccess: true };
 
              */
-            return this.updateByCommissions(commissions, t);
+            const res = await this.updateByCommissions(commissions, t);
+            await this.cacheManager.set('updateByTransactions', false, 0);
+            return res;
         } catch (e) {
             this.logger.error(e.message);
             if (!t) await transaction.rollback(true);
+            await this.cacheManager.set('updateByTransactions', false, 0);
             return {
                 isSuccess: false,
                 message: e.message,

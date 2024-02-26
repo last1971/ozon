@@ -5,15 +5,20 @@ import { Trade2006InvoiceService } from '../trade2006.invoice/trade2006.invoice.
 import { FIREBIRD, FirebirdModule } from '../firebird/firebird.module';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FirebirdPool } from 'ts-firebird';
+import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
 
 @Module({
     imports: [FirebirdModule],
     providers: [
         {
             provide: INVOICE_SERVICE,
-            useFactory: (configService: ConfigService, pool: FirebirdPool, eventEmitter: EventEmitter2) =>
-                new Trade2006InvoiceService(pool, configService, eventEmitter),
-            inject: [ConfigService, FIREBIRD, EventEmitter2],
+            useFactory: (
+                configService: ConfigService,
+                pool: FirebirdPool,
+                eventEmitter: EventEmitter2,
+                cacheManager: Cache,
+            ) => new Trade2006InvoiceService(pool, configService, eventEmitter, cacheManager),
+            inject: [ConfigService, FIREBIRD, EventEmitter2, CACHE_MANAGER],
         },
     ],
     exports: [INVOICE_SERVICE],

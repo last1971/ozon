@@ -24,6 +24,7 @@ import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import { DateTime } from 'luxon';
 import { WbCardDto } from '../wb.card/dto/wb.card.dto';
+import { Cache } from '@nestjs/cache-manager';
 
 @Injectable()
 export class Trade2006GoodService implements IGood {
@@ -33,6 +34,7 @@ export class Trade2006GoodService implements IGood {
         @Inject(FIREBIRD) private pool: FirebirdPool,
         private configService: ConfigService,
         private eventEmitter: EventEmitter2,
+        private cacheManager: Cache,
     ) {}
 
     async in(codes: string[], t: FirebirdTransaction = null): Promise<GoodDto[]> {
@@ -244,7 +246,9 @@ export class Trade2006GoodService implements IGood {
     }
 
     @Cron('0 0 9-19 * * 1-6', { name: 'checkGoodCount' })
-    async checkCounts(): Promise<void> {
+    async checkCounts(): Promise<any[]> {
+        const updateByTransactions = await this.cacheManager.get('updateByTransactions');
+        if (updateByTransactions) return [];
         const t = await this.pool.getTransaction();
         const res = await t.query('SELECT GOODSCODE FROM GOODSCOUNTCHANGE WHERE CHANGED=1', [], true);
         if (res.length === 0) return;

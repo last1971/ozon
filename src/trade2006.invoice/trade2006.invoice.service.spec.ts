@@ -4,6 +4,7 @@ import { FIREBIRD } from '../firebird/firebird.module';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DateTime } from 'luxon';
+import { Cache } from '@nestjs/cache-manager';
 
 describe('Trade2006InvoiceService', () => {
     let service: Trade2006InvoiceService;
@@ -13,6 +14,7 @@ describe('Trade2006InvoiceService', () => {
     const rollback = jest.fn();
     const get = jest.fn();
     const emit = jest.fn();
+    const set = jest.fn();
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
@@ -35,6 +37,10 @@ describe('Trade2006InvoiceService', () => {
                 {
                     provide: EventEmitter2,
                     useValue: { emit },
+                },
+                {
+                    provide: Cache,
+                    useValue: { set },
                 },
             ],
         }).compile();
@@ -208,6 +214,10 @@ describe('Trade2006InvoiceService', () => {
         ]);
         expect(query.mock.calls[2]).toEqual(['SELECT * FROM REALPRICE WHERE SCODE = ?', [2]]);
         expect(execute.mock.calls).toHaveLength(5);
+        expect(set.mock.calls).toEqual([
+            ['updateByTransactions', true, 0],
+            ['updateByTransactions', false, 0],
+        ]);
     });
     it('createInvoiceFromPostingDto', async () => {
         const date = new Date();
