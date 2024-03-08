@@ -273,11 +273,11 @@ export class WbOrderService implements IOrderable {
 
     // @Timeout(0)
     // Not test
-    async closeSales(
-        dateFrom: string = '2023-10-01',
-        dateTo: string = '2024-01-28',
-        saleIds: string[] = [],
-    ): Promise<any> {
+    async closeSales(dateFrom: string = '2023-10-01', dateTo: string = '2024-02-04'): Promise<any> {
+        const buyerId: number = this.configService.get<number>('WB_BUYER_ID', 24532);
+        const saleIds = (await this.invoiceService.getByDto({ buyerId, dateFrom, dateTo, status: 4 })).map(
+            (invoice) => invoice.remark,
+        );
         const sales = await this.getSales(dateFrom);
         const transactions = await this.getTransactions({ from: new Date(dateFrom), to: new Date(dateTo) });
         const orders = await this.list(DateTime.fromISO(dateFrom).toUnixInteger());

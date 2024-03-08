@@ -5,6 +5,7 @@ import { TransactionDto } from '../posting/dto/transaction.dto';
 import { ResultDto } from '../helpers/result.dto';
 import { FirebirdTransaction } from 'ts-firebird';
 import { ProductPostingDto } from '../product/dto/product.posting.dto';
+import { InvoiceGetDto } from '../invoice/dto/invoice.get.dto';
 
 export interface IInvoice {
     getTransaction(): Promise<FirebirdTransaction>;
@@ -19,5 +20,6 @@ export interface IInvoice {
     createInvoiceFromPostingDto(buyerId: number, posting: PostingDto, t: FirebirdTransaction): Promise<InvoiceDto>;
     unPickupOzonFbo(product: ProductPostingDto, prim: string, transaction: FirebirdTransaction): Promise<boolean>;
     deltaGood(id: string, quantity: number, prim: string, transaction: FirebirdTransaction): Promise<void>;
+    getByDto(invoiceGetDto: InvoiceGetDto): Promise<InvoiceDto[]>;
 }
 export const INVOICE_SERVICE = 'INVOICE_SERVICE';
