@@ -13,8 +13,9 @@ export class WbApiService {
     ) {
         this.logger = new Logger(WbApiService.name);
     }
-    async method(name: string, method: string, options: any): Promise<any> {
+    async method(name: string, method: string, options: any, fullName = false): Promise<any> {
         const wb = await this.vaultService.get('wildberries');
+        const url = fullName ? name : (method === 'statistics' ? wb.STATISTICS_URL : wb.URL) + name;
         let response: Observable<AxiosResponse>;
         const headers = {
             Authorization: `${(method === 'statistics' ? wb.STATISTICS_TOKEN : wb.API_TOKEN) as string}`,
@@ -23,13 +24,13 @@ export class WbApiService {
         };
         switch (method) {
             case 'post':
-                response = this.httpService.post(wb.URL + name, options, { headers });
+                response = this.httpService.post(url, options, { headers });
                 break;
             case 'put':
-                response = this.httpService.put(wb.URL + name, options, { headers });
+                response = this.httpService.put(url, options, { headers });
                 break;
             default:
-                response = this.httpService.get((method === 'statistics' ? wb.STATISTICS_URL : wb.URL) + name, {
+                response = this.httpService.get(url, {
                     headers,
                     params: options,
                 });
