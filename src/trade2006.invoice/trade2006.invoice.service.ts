@@ -14,6 +14,7 @@ import { chunk, flatten } from 'lodash';
 import { ProductPostingDto } from '../product/dto/product.posting.dto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Cache } from '@nestjs/cache-manager';
+import { InvoiceGetDto } from '../invoice/dto/invoice.get.dto';
 
 @Injectable()
 export class Trade2006InvoiceService implements IInvoice {
@@ -110,6 +111,37 @@ export class Trade2006InvoiceService implements IInvoice {
         );
         return InvoiceDto.map(invoices);
     }
+
+    async getByDto(invoiceGetDto: InvoiceGetDto): Promise<InvoiceDto[]> {
+        const t = await this.pool.getTransaction();
+        let sql = 'SELECT * FROM S WHERE 1=1';
+        const params = [];
+        if (invoiceGetDto.dateTo) {
+            sql += ' AND DATA <= ?';
+            params.push(invoiceGetDto.dateTo);
+        }
+        if (invoiceGetDto.dateFrom) {
+            sql += ' AND DATA >= ?';
+            params.push(invoiceGetDto.dateFrom);
+        }
+        if (invoiceGetDto.buyerId) {
+            sql += ' AND POKUPATCODE = ?';
+            params.push(invoiceGetDto.buyerId);
+        }
+        if (invoiceGetDto.status) {
+            sql += ' AND STATUS = ?';
+            params.push(invoiceGetDto.status);
+        }
+        const res = await t.query(sql, params, true);
+        return res.map((invoice) => ({
+            id: invoice.SCODE,
+            buyerId: invoice.POKUPATCODE,
+            date: new Date(invoice.DATA),
+            remark: invoice.PRIM,
+            status: invoice.STATUS,
+        }));
+    }
+
     async getByBuyerAndStatus(buyerId: number, status: number, t: FirebirdTransaction = null): Promise<InvoiceDto[]> {
         const transaction = t ?? (await this.pool.getTransaction());
         const invoices = await transaction.query(

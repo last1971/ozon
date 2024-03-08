@@ -319,4 +319,16 @@ describe('Trade2006InvoiceService', () => {
             true,
         ]);
     });
+    it('getByDto', async () => {
+        query.mockResolvedValueOnce([]);
+        await service.getByDto({
+            status: 1,
+            buyerId: 2,
+        });
+        expect(query.mock.calls[0]).toEqual([
+            'SELECT * FROM S WHERE 1=1 AND POKUPATCODE = ? AND STATUS = ?',
+            [2, 1],
+            true,
+        ]);
+    });
 });
