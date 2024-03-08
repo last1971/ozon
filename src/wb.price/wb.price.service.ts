@@ -53,6 +53,12 @@ export class WbPriceService implements IPriceUpdateable {
     async updatePrices(updatePrices: UpdatePriceDto[]): Promise<any> {
         const skus = updatePrices.map((updatePrice) => updatePrice.offer_id);
         const wbCards = await this.cardService.getCardsByVendorCodes(skus);
+        const data = updatePrices.map((updatePrice) => ({
+            nmID: find(wbCards, { vendorCode: updatePrice.offer_id }).nmID,
+            price: parseInt(updatePrice.old_price),
+            discount: Math.floor((1 - parseInt(updatePrice.price) / parseInt(updatePrice.old_price)) * 100),
+        }));
+        /*
         const prices = updatePrices.map(
             (updatePrice): WbPriceUpdateDto => ({
                 nmId: find(wbCards, { vendorCode: updatePrice.offer_id }).nmID,
@@ -65,21 +71,27 @@ export class WbPriceService implements IPriceUpdateable {
                 discount: Math.floor((1 - parseInt(updatePrice.price) / parseInt(updatePrice.old_price)) * 100),
             }),
         );
+        */
         const wbs = await this.goodService.getWbData(skus);
         wbs.forEach((wb) => {
             wb.minPrice = find(updatePrices, { offer_id: wb.id }).min_price;
         });
         await Promise.all(wbs.map((wb) => this.goodService.setWbData(wb, null)));
+        /*
         return {
             updatePrices: await this.updateWbPrice(prices),
             updateDiscounts: await this.updateDiscounts(discounts),
         };
+         */
+        return this.api.method('https://discounts-prices-api.wb.ru/api/v2/upload/task', 'post', { data }, true);
     }
 
+    // Not using remove
     async updateWbPrice(prices: WbPriceUpdateDto[]): Promise<any> {
         return this.api.method('/public/api/v1/prices', 'post', prices);
     }
 
+    // Not using remove
     async updateDiscounts(discounts: WbDiscountUpdateDto[]): Promise<any> {
         return this.api.method('/public/api/v1/updateDiscounts', 'post', discounts);
     }

@@ -75,5 +75,15 @@ describe('WbApiService', () => {
                 params: { post: 2 },
             },
         ]);
+        res = await service.method('5', 'post', { post: 2 }, true);
+        expect(res).toEqual('post');
+        expect(post.mock.calls).toHaveLength(2);
+        expect(post.mock.calls[1]).toEqual([
+            '5',
+            { post: 2 },
+            {
+                headers: { Authorization: 'token', Accept: 'application/json', 'Content-Type': 'application/json' },
+            },
+        ]);
     });
 });

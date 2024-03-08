@@ -77,7 +77,7 @@ describe('WbPriceService', () => {
         expect(method.mock.calls[0]).toEqual(['/public/api/v1/prices', 'post', [{ nmId: 1, price: 2 }]]);
     });
 
-    it('updateWbPrice', async () => {
+    it('updateWbDiscounts', async () => {
         await service.updateDiscounts([{ nm: 1, discount: 2 }]);
         expect(method.mock.calls[0]).toEqual(['/public/api/v1/updateDiscounts', 'post', [{ nm: 1, discount: 2 }]]);
     });
@@ -104,7 +104,12 @@ describe('WbPriceService', () => {
             },
             null,
         ]);
-        expect(method.mock.calls[0]).toEqual(['/public/api/v1/prices', 'post', [{ nmId: 1, price: 3 }]]);
-        expect(method.mock.calls[1]).toEqual(['/public/api/v1/updateDiscounts', 'post', [{ nm: 1, discount: 33 }]]);
+        expect(method.mock.calls).toHaveLength(1);
+        expect(method.mock.calls[0]).toEqual([
+            'https://discounts-prices-api.wb.ru/api/v2/upload/task',
+            'post',
+            { data: [{ discount: 33, nmID: 1, price: 3 }] },
+            true,
+        ]);
     });
 });
