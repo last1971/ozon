@@ -9,7 +9,6 @@ import { goodCode, goodQuantityCoeff } from '../helpers';
 import { GoodPercentDto } from '../good/dto/good.percent.dto';
 import { UpdatePriceDto, UpdatePricesDto } from './dto/update.price.dto';
 import { toNumber } from 'lodash';
-import { Cron } from '@nestjs/schedule';
 import { ProductVisibility } from '../product/product.visibility';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
 import { ObtainCoeffsDto } from '../helpers/obtain.coeffs.dto';
@@ -82,7 +81,7 @@ export class PriceService implements IPriceUpdateable {
     async update(prices: UpdatePricesDto): Promise<any> {
         return this.product.setPrice(prices);
     }
-    @Cron('0 0 0 * * 0', { name: 'updateOzonPrices' })
+    // @Cron('0 0 0 * * 0', { name: 'updateOzonPrices' })
     async updateAllPrices(level = 0, last_id = '', visibility = ProductVisibility.IN_SALE, limit = 1000): Promise<any> {
         const pricesForObtain = await this.product.getPrices({ limit, last_id, visibility });
         let answer = [];

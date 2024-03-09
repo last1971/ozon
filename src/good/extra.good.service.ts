@@ -12,7 +12,8 @@ import { IsSwitchedDto } from './dto/is.switched.dto';
 import { chunk } from 'lodash';
 import { goodQuantityCoeff, productQuantity } from '../helpers';
 import { Cron } from '@nestjs/schedule';
-import { GoodDto } from "./dto/good.dto";
+import { GoodDto } from './dto/good.dto';
+import { ConfigService } from '@nestjs/config';
 
 @Injectable()
 export class ExtraGoodService {
@@ -24,12 +25,18 @@ export class ExtraGoodService {
         private expressOffer: ExpressOfferService,
         private wbCard: WbCardService,
         @Inject(GOOD_SERVICE) private goodService: IGood,
+        private configService: ConfigService,
     ) {
         this.services = new Map<GoodServiceEnum, { service: ICountUpdateable; isSwitchedOn: boolean }>();
-        this.services.set(GoodServiceEnum.OZON, { service: this.productService, isSwitchedOn: true });
-        this.services.set(GoodServiceEnum.WB, { service: this.wbCard, isSwitchedOn: true });
-        this.services.set(GoodServiceEnum.EXPRESS, { service: this.expressOffer, isSwitchedOn: true });
-        this.services.set(GoodServiceEnum.YANDEX, { service: this.yandexOffer, isSwitchedOn: true });
+        const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
+        if (services.includes(GoodServiceEnum.OZON))
+            this.services.set(GoodServiceEnum.OZON, { service: this.productService, isSwitchedOn: true });
+        if (services.includes(GoodServiceEnum.WB))
+            this.services.set(GoodServiceEnum.WB, { service: this.wbCard, isSwitchedOn: true });
+        if (services.includes(GoodServiceEnum.EXPRESS))
+            this.services.set(GoodServiceEnum.EXPRESS, { service: this.expressOffer, isSwitchedOn: true });
+        if (services.includes(GoodServiceEnum.YANDEX))
+            this.services.set(GoodServiceEnum.YANDEX, { service: this.yandexOffer, isSwitchedOn: true });
     }
 
     async updateService(serviceEnum: GoodServiceEnum): Promise<ResultDto> {

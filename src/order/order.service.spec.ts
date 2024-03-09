@@ -6,6 +6,8 @@ import { PostingService } from '../posting/posting.service';
 import { YandexOrderService } from '../yandex.order/yandex.order.service';
 import { PostingFboService } from '../posting.fbo/posting.fbo.service';
 import { WbOrderService } from '../wb.order/wb.order.service';
+import { ConfigService } from '@nestjs/config';
+import { GoodServiceEnum } from '../good/good.service.enum';
 
 describe('OrderService', () => {
     let service: OrderService;
@@ -22,6 +24,7 @@ describe('OrderService', () => {
             providers: [
                 OrderService,
                 { provide: ProductService, useValue: { getTransactionList } },
+                { provide: ConfigService, useValue: { get: () => Object.values(GoodServiceEnum) } },
                 {
                     provide: INVOICE_SERVICE,
                     useValue: {

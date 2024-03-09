@@ -1,6 +1,6 @@
 export enum GoodServiceEnum {
     OZON = 'ozon',
-    YANDEX = 'ynadex',
+    YANDEX = 'yandex',
     EXPRESS = 'express',
     WB = 'wb',
 }

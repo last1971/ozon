@@ -6,6 +6,7 @@ import { ProductService } from '../product/product.service';
 import { WbCardService } from '../wb.card/wb.card.service';
 import { ExtraGoodService } from './extra.good.service';
 import { GoodServiceEnum } from './good.service.enum';
+import { ConfigService } from '@nestjs/config';
 
 describe('ExtraGoodService', () => {
     let service: ExtraGoodService;
@@ -23,6 +24,7 @@ describe('ExtraGoodService', () => {
                 { provide: ExpressOfferService, useValue: { skuList: [] } },
                 { provide: ProductService, useValue: { skuList: ['222'], updateGoodCounts } },
                 { provide: WbCardService, useValue: { loadSkuList, skuList: ['111'], updateGoodCounts } },
+                { provide: ConfigService, useValue: { get: () => Object.values(GoodServiceEnum) } },
             ],
         }).compile();
 

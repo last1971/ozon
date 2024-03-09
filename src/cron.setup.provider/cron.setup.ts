@@ -21,6 +21,16 @@ export const cronConfig: Record<string, CronSetup> = {
             },
         },
     },
+    updateAllServicePrices: {
+        production: {
+            enabled: true,
+            settings: {
+                time: CronExpression.EVERY_WEEK,
+            },
+        },
+        development: false,
+    },
+    /*
     updateOzonPrices: {
         production: {
             enabled: true,
@@ -48,6 +58,7 @@ export const cronConfig: Record<string, CronSetup> = {
         },
         development: false,
     },
+     */
     checkGoodCount: {
         production: {
             enabled: true,
