@@ -36,22 +36,22 @@ export class WbOrderService implements IOrderable {
         return orders;
     }
 
-    async getAllFboOrders(): Promise<WbFboOrder[]> {
-        const date = DateTime.now().minus({ month: 3 });
+    async getAllFboOrders(day = 2): Promise<WbFboOrder[]> {
+        const date = DateTime.now().minus({ day });
         return this.api.method('/api/v1/supplier/orders', 'statistics', {
             dateFrom: date.toISODate(),
         });
     }
-    async getOnlyFboOrders(): Promise<WbFboOrder[]> {
-        const allOrders = await this.getAllFboOrders();
-        const date = DateTime.now().minus({ month: 3 });
+    async getOnlyFboOrders(day = 2): Promise<WbFboOrder[]> {
+        const allOrders = await this.getAllFboOrders(day);
+        const date = DateTime.now().minus({ day });
         const fbsOrders = await this.list(date.toUnixInteger());
         const fbsRids = fbsOrders.map((order) => order.rid);
         return allOrders.filter((order) => !fbsRids.includes(order.srid));
     }
     @Cron('0 */5 * * * *', { name: 'checkFboWbOrders' })
     async addFboOrders(): Promise<boolean> {
-        const allFboOrders = await this.getOnlyFboOrders();
+        const allFboOrders = await this.getOnlyFboOrders(1);
         const oldFboOrders: boolean[] = await Promise.all(
             allFboOrders.map((order) => this.invoiceService.isExists(order.srid, null)),
         );
@@ -102,7 +102,7 @@ export class WbOrderService implements IOrderable {
 
     @Cron('0 */5 * * * *', { name: 'checkCanceledWbOrders' })
     async checkCanceledOrders(): Promise<void> {
-        const allFboOrders = await this.getAllFboOrders();
+        const allFboOrders = await this.getAllFboOrders(90);
         const allCanceledFboOrders = allFboOrders.filter((order) => order.isCancel);
         const dateFrom = min(
             allCanceledFboOrders

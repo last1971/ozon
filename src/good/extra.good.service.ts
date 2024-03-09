@@ -12,7 +12,7 @@ import { IsSwitchedDto } from './dto/is.switched.dto';
 import { chunk } from 'lodash';
 import { goodQuantityCoeff, productQuantity } from '../helpers';
 import { Cron } from '@nestjs/schedule';
-import { GoodDto } from "./dto/good.dto";
+import { GoodDto } from './dto/good.dto';
 
 @Injectable()
 export class ExtraGoodService {
