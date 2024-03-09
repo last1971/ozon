@@ -12,7 +12,6 @@ import { WbDiscountUpdateDto } from './dto/wb.discount.update.dto';
 import { WbCardService } from '../wb.card/wb.card.service';
 import { find, first } from 'lodash';
 import Excel from 'exceljs';
-import { Cron } from '@nestjs/schedule';
 import { GoodWbDto } from '../good/dto/good.wb.dto';
 
 @Injectable()
@@ -38,7 +37,7 @@ export class WbPriceService implements IPriceUpdateable {
         return (await this.goodService.getWbData(skus)).map((wbData) => new WbPriceCoeffsAdapter(wbData));
     }
 
-    @Cron('0 5 0 * * 0', { name: 'updateWbPrices' })
+    // @Cron('0 5 0 * * 0', { name: 'updateWbPrices' })
     async updateAllPrices(level = 0, args = ''): Promise<any> {
         const cards = await this.cardService.getGoodIds(args);
         await this.goodService.updatePriceForService(this, Array.from(cards.goods.keys()));

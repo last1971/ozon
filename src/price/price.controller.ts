@@ -24,20 +24,25 @@ import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
 import { WbPriceService } from '../wb.price/wb.price.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
+import { GoodServiceEnum } from '../good/good.service.enum';
+import { ConfigService } from '@nestjs/config';
+import { Cron } from '@nestjs/schedule';
 @ApiTags('price')
 @Controller('api/price')
 export class PriceController {
-    private services: Map<string, IPriceUpdateable>;
+    private services: Map<GoodServiceEnum, IPriceUpdateable>;
     constructor(
         private service: PriceService,
         @Inject(forwardRef(() => YandexPriceService)) private yandexPriceService: YandexPriceService,
         private wb: WbPriceService,
         @Inject(GOOD_SERVICE) private goodService: IGood,
+        private configService: ConfigService,
     ) {
-        this.services = new Map<string, IPriceUpdateable>();
-        this.services.set('yandex', yandexPriceService);
-        this.services.set('ozon', service);
-        this.services.set('wb', wb);
+        this.services = new Map<GoodServiceEnum, IPriceUpdateable>();
+        const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
+        if (services.includes(GoodServiceEnum.OZON)) this.services.set(GoodServiceEnum.OZON, service);
+        if (services.includes(GoodServiceEnum.YANDEX)) this.services.set(GoodServiceEnum.YANDEX, yandexPriceService);
+        if (services.includes(GoodServiceEnum.WB)) this.services.set(GoodServiceEnum.WB, wb);
     }
     @ApiOkResponse({
         description: 'Получить информацию о ценах товаров',
@@ -66,7 +71,7 @@ export class PriceController {
         );
     }
     @Post('all/:service')
-    async updatePrices(@Param('service') service: string): Promise<any> {
+    async updatePrices(@Param('service') service: GoodServiceEnum): Promise<any> {
         const command = this.services.get(service) || this.service;
         return command.updateAllPrices();
     }
@@ -89,6 +94,7 @@ export class PriceController {
                 },
                 service: {
                     type: 'string',
+                    enum: [GoodServiceEnum.WB, GoodServiceEnum.YANDEX],
                 },
             },
         },
@@ -97,9 +103,9 @@ export class PriceController {
     async discount(
         @UploadedFile('file') file: Express.Multer.File,
         @Res() res: Response,
-        @Body('service') service: string,
+        @Body('service') service: GoodServiceEnum,
     ): Promise<any> {
-        if (['yandex', 'wb'].includes(service)) {
+        if ([GoodServiceEnum.WB, GoodServiceEnum.YANDEX].includes(service)) {
             const serviceCommand = this.services.get(service);
             const buffer = await serviceCommand.createAction(file);
             res.contentType('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
@@ -107,5 +113,10 @@ export class PriceController {
             res.send(buffer);
         }
         throw new HttpException('Bad service', 400);
+    }
+
+    @Cron('0 0 0 * * 0', { name: 'updateAllServicePrices' })
+    async updateAllPrices(): Promise<void> {
+        await Promise.all(Array.from(this.services.values()).map((service) => service.updateAllPrices()));
     }
 }

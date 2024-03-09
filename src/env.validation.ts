@@ -1,5 +1,6 @@
-import { plainToInstance } from 'class-transformer';
+import { plainToInstance, Transform } from 'class-transformer';
 import { IsEmail, IsEnum, IsIP, IsNumber, IsString, IsUrl, validateSync } from 'class-validator';
+import { GoodServiceEnum } from './good/good.service.enum';
 
 export enum Environment {
     Development = 'development',
@@ -17,6 +18,10 @@ class EnvironmentVariables {
 
     @IsString()
     GOOD_PROVIDER: string;
+
+    @IsEnum(GoodServiceEnum, { each: true })
+    @Transform((strings) => strings.value.split(','))
+    SERVICES: GoodServiceEnum[];
 
     @IsIP()
     FB_HOST: string;

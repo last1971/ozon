@@ -13,7 +13,6 @@ import { UpdateOfferDto } from './dto/update.offer.dto';
 import { VaultService } from 'vault-module/lib/vault.service';
 import { UpdateBusinessOfferPriceDto } from './dto/update.business.offer.price.dto';
 import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
-import { Cron } from '@nestjs/schedule';
 import Excel from 'exceljs';
 @Injectable()
 export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
@@ -82,7 +81,7 @@ export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
         );
         return this.api.method(`businesses/${this.businessId}/offer-prices/updates`, 'post', { offers });
     }
-    @Cron('0 5 0 * * 0', { name: 'updateYandexPrices' })
+    // @Cron('0 5 0 * * 0', { name: 'updateYandexPrices' })
     async updateAllPrices(level = 0, args = ''): Promise<void> {
         const offers = await this.offerService.getShopSkus(args);
         await this.goodService.updatePriceForService(this, Array.from(offers.goods.keys()));
