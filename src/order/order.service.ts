@@ -9,11 +9,13 @@ import { YandexOrderService } from '../yandex.order/yandex.order.service';
 import { IOrderable } from '../interfaces/IOrderable';
 import { PostingFboService } from '../posting.fbo/posting.fbo.service';
 import { WbOrderService } from '../wb.order/wb.order.service';
+import { ConfigService } from '@nestjs/config';
+import { GoodServiceEnum } from '../good/good.service.enum';
 
 @Injectable()
 export class OrderService {
     private logger = new Logger(OrderService.name);
-    private orderServices: IOrderable[];
+    private orderServices: IOrderable[] = [];
     constructor(
         private productService: ProductService,
         @Inject(INVOICE_SERVICE) private invoiceService: IInvoice,
@@ -21,8 +23,15 @@ export class OrderService {
         private yandexOrder: YandexOrderService,
         private postingFboService: PostingFboService,
         private wbOrder: WbOrderService,
+        private configService: ConfigService,
     ) {
-        this.orderServices = [wbOrder, postingFboService, yandexOrder, postingService];
+        const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
+        if (services.includes(GoodServiceEnum.OZON)) {
+            this.orderServices.push(postingFboService);
+            this.orderServices.push(postingService);
+        }
+        if (services.includes(GoodServiceEnum.YANDEX)) this.orderServices.push(yandexOrder);
+        if (services.includes(GoodServiceEnum.WB)) this.orderServices.push(wbOrder);
     }
     async updateTransactions(data: TransactionFilterDto): Promise<ResultDto> {
         /*
