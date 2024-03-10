@@ -69,14 +69,27 @@ export class PostingFboService implements IOrderable {
     async checkCanceledOrders(): Promise<void> {
         const orders = await this.listCanceled();
         const cancelled = [];
-        for (const order of orders) {
-            if (await this.invoiceService.isExists(order.posting_number, null)) {
-                await this.invoiceService.updatePrim(order.posting_number, order.posting_number + ' отмена FBO', null);
-                cancelled.push({ prim: order.posting_number, offer_id: order.products[0].offer_id });
+        const transaction = await this.invoiceService.getTransaction();
+        try {
+            for (const order of orders) {
+                if (await this.invoiceService.isExists(order.posting_number, transaction)) {
+                    const invoice = await this.invoiceService.getByPosting(order, transaction);
+                    await this.invoiceService.pickupInvoice(invoice, transaction);
+                    await this.invoiceService.updatePrim(
+                        order.posting_number,
+                        order.posting_number + ' отмена FBO',
+                        transaction,
+                    );
+                    cancelled.push({ prim: order.posting_number, offer_id: order.products[0].offer_id });
+                }
             }
-        }
-        if (cancelled.length > 0) {
-            this.eventEmitter.emit('wb.order.content', 'Отменены Ozon FBO заказы', cancelled);
+            if (cancelled.length > 0) {
+                this.eventEmitter.emit('wb.order.content', 'Отменены Ozon FBO заказы', cancelled);
+            }
+            await transaction.commit(true);
+        } catch (e) {
+            await transaction.rollback(true);
+            console.error(e);
         }
     }
 }
