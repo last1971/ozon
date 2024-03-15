@@ -15,6 +15,8 @@ import { ProductPostingDto } from '../product/dto/product.posting.dto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Cache } from '@nestjs/cache-manager';
 import { InvoiceGetDto } from '../invoice/dto/invoice.get.dto';
+import { InvoiceLineDto } from '../invoice/dto/invoice.line.dto';
+import { ISOLATION_READ_UNCOMMITTED } from 'node-firebird';
 
 @Injectable()
 export class Trade2006InvoiceService implements IInvoice {
@@ -98,7 +100,7 @@ export class Trade2006InvoiceService implements IInvoice {
         const invoices = flatten(
             await Promise.all(
                 chunk(postingNumbers, 50).map(async (part: string[]) => {
-                    const t = await this.pool.getTransaction();
+                    const t = await this.pool.getTransaction(ISOLATION_READ_UNCOMMITTED);
                     return t.query(
                         `SELECT *
                  FROM S
@@ -358,5 +360,28 @@ export class Trade2006InvoiceService implements IInvoice {
             !transaction,
         );
         this.eventEmitter.emit('error.message', `Delta ${id} code with quantity: ${quantity} for ${prim}`);
+    }
+    async getInvoiceLines(invoice: InvoiceDto, transaction: FirebirdTransaction = null): Promise<InvoiceLineDto[]> {
+        const t = transaction || (await this.getTransaction());
+        const lines = await t.query('SELECT * FROM REALPRICE WHERE SCODE = ?', [invoice.id], !transaction);
+        return lines.map(
+            (line): InvoiceLineDto => ({
+                goodCode: line.GOODSCODE,
+                price: line.PRICE,
+                quantity: line.QUAN,
+            }),
+        );
+    }
+    async unPickupAndDeltaInvoice(invoice: InvoiceDto, transaction: FirebirdTransaction): Promise<void> {
+        await this.bulkSetStatus([invoice], 1, transaction);
+        const lines = await this.getInvoiceLines(invoice, transaction);
+        const product: ProductPostingDto = {
+            price: lines[0].price,
+            offer_id: lines[0].goodCode.toString(),
+            quantity: lines[0].quantity,
+        };
+        const res = await this.unPickupOzonFbo(product, invoice.remark, transaction);
+        if (!res) throw new Error('Not find lines for ' + invoice.remark);
+        await this.deltaGood(product.offer_id, -product.quantity, 'WBFBO Correction', transaction);
     }
 }

@@ -36,14 +36,15 @@ export class WbOrderService implements IOrderable {
         return orders;
     }
 
-    async getAllFboOrders(day = 2): Promise<WbFboOrder[]> {
+    async getAllFboOrders(day = 2, flag = 0): Promise<WbFboOrder[]> {
         const date = DateTime.now().minus({ day });
         return this.api.method('/api/v1/supplier/orders', 'statistics', {
             dateFrom: date.toISODate(),
+            flag,
         });
     }
-    async getOnlyFboOrders(day = 2): Promise<WbFboOrder[]> {
-        const allOrders = await this.getAllFboOrders(day);
+    async getOnlyFboOrders(day = 2, flag = 0): Promise<WbFboOrder[]> {
+        const allOrders = await this.getAllFboOrders(day, flag);
         const date = DateTime.now().minus({ day });
         const fbsOrders = await this.list(date.toUnixInteger());
         const fbsRids = fbsOrders.map((order) => order.rid);
@@ -51,7 +52,7 @@ export class WbOrderService implements IOrderable {
     }
     @Cron('0 */5 * * * *', { name: 'checkFboWbOrders' })
     async addFboOrders(): Promise<boolean> {
-        const allFboOrders = await this.getOnlyFboOrders(1);
+        const allFboOrders = await this.getOnlyFboOrders(1, 1);
         const oldFboOrders: boolean[] = await Promise.all(
             allFboOrders.map((order) => this.invoiceService.isExists(order.srid, null)),
         );
@@ -270,45 +271,52 @@ export class WbOrderService implements IOrderable {
     async getSales(dateFrom: string): Promise<any> {
         return this.api.method('/api/v1/supplier/sales', 'statistics', { dateFrom });
     }
-
     // @Timeout(0)
     // Not test
-    async closeSales(dateFrom: string = '2023-10-01', dateTo: string = '2024-02-04'): Promise<any> {
-        const buyerId: number = this.configService.get<number>('WB_BUYER_ID', 24532);
-        const saleIds = (await this.invoiceService.getByDto({ buyerId, dateFrom, dateTo, status: 4 })).map(
-            (invoice) => invoice.remark,
-        );
-        const sales = await this.getSales(dateFrom);
-        const transactions = await this.getTransactions({ from: new Date(dateFrom), to: new Date(dateTo) });
-        const orders = await this.list(DateTime.fromISO(dateFrom).toUnixInteger());
-        const commissions = new Map<string, number>();
-        const notFind = [];
-        for (const sale of saleIds) {
-            let ret = find(sales, { srid: sale });
-            const order = find(orders, { id: parseInt(sale) });
-            if (!ret) {
-                ret = find(sales, { srid: order?.rid });
-            }
-            if (!ret) {
-                notFind.push({ sale, srid: order?.rid });
-            } else {
-                const { srid } = ret;
-                const transaction = filter(transactions, { srid });
-                const amount = transaction.reduce(
-                    (amount, t: any) =>
-                        amount +
-                        (t.ppvz_for_pay ?? 0) -
-                        (t.delivery_rub ?? 0) -
-                        (t.additional_payment ?? 0) -
-                        (t.penalty ?? 0),
-                    0,
-                );
-                if (amount) {
-                    commissions.set(sale, amount);
+    async closeSales(dateFrom: string = '2024-01-01', dateTo: string = '2024-01-21'): Promise<any> {
+        const transaction = await this.invoiceService.getTransaction();
+        try {
+            const buyerId: number = this.configService.get<number>('WB_BUYER_ID', 24532);
+            const invoices = await this.invoiceService.getByDto({ buyerId, dateFrom, dateTo, status: 4 });
+            const saleIds = invoices.map((invoice) => invoice.remark);
+            const sales = await this.getSales(dateFrom);
+            const transactions = await this.getTransactions({ from: new Date(dateFrom), to: new Date(dateTo) });
+            const orders = await this.list(DateTime.fromISO(dateFrom).toUnixInteger());
+            const commissions = new Map<string, number>();
+            for (const sale of saleIds) {
+                const invoice: InvoiceDto = find(invoices, { remark: sale });
+                let ret = find(sales, { srid: sale });
+                const order = find(orders, { id: parseInt(sale) });
+                if (!ret) {
+                    ret = find(sales, { srid: order?.rid });
+                }
+                if (!ret) {
+                    await this.invoiceService.unPickupAndDeltaInvoice(invoice, transaction);
+                } else {
+                    const { srid } = ret;
+                    const t = filter(transactions, { srid });
+                    const amount = t.reduce(
+                        (amount, t: any) =>
+                            amount +
+                            (t.ppvz_for_pay ?? 0) -
+                            (t.delivery_rub ?? 0) -
+                            (t.additional_payment ?? 0) -
+                            (t.penalty ?? 0),
+                        0,
+                    );
+                    if (amount) {
+                        commissions.set(sale, amount);
+                    } else {
+                        await this.invoiceService.unPickupAndDeltaInvoice(invoice, transaction);
+                    }
                 }
             }
+            if (commissions.size > 0) await this.invoiceService.updateByCommissions(commissions, transaction);
+            await transaction.commit(true);
+            console.log('Finished...');
+        } catch (e) {
+            await transaction.rollback(true);
+            console.log(e);
         }
-        console.log('Finished...');
-        return this.invoiceService.updateByCommissions(commissions, null);
     }
 }

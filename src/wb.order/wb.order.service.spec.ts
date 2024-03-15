@@ -264,7 +264,7 @@ describe('WbOrderService', () => {
         expect(method.mock.calls[0]).toEqual([
             '/api/v1/supplier/orders',
             'statistics',
-            { dateFrom: DateTime.now().minus({ day: 2 }).toISODate() },
+            { dateFrom: DateTime.now().minus({ day: 2 }).toISODate(), flag: 0 },
         ]);
     });
     it('getOnlyFboOrders', async () => {
