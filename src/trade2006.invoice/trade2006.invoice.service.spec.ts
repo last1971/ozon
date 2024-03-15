@@ -331,4 +331,16 @@ describe('Trade2006InvoiceService', () => {
             true,
         ]);
     });
+    it('getInvoiceLines', async () => {
+        query.mockResolvedValueOnce([
+            {
+                GOODSCODE: 1,
+                PRICE: 2,
+                QUAN: 3,
+            },
+        ]);
+        const res = await service.getInvoiceLines({ buyerId: 0, date: null, remark: '', status: 0, id: 1 });
+        expect(res).toEqual([{ goodCode: 1, price: 2, quantity: 3 }]);
+        expect(query.mock.calls[0]).toEqual(['SELECT * FROM REALPRICE WHERE SCODE = ?', [1], true]);
+    });
 });
