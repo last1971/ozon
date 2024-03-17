@@ -8,6 +8,7 @@ import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { ConfigService } from '@nestjs/config';
 import { IOrderable } from '../interfaces/IOrderable';
 import { FirebirdTransaction } from 'ts-firebird';
+import { Cron } from "@nestjs/schedule";
 
 @Injectable()
 export class PostingService implements IOrderable {
@@ -17,23 +18,47 @@ export class PostingService implements IOrderable {
         private configService: ConfigService,
     ) {}
 
-    async list(filter: PostingsRequestDto): Promise<PostingDto[]> {
+    async list(status: string, day = 3): Promise<PostingDto[]> {
+        const filter: PostingsRequestDto = {
+            since: DateTime.now().minus({ day }).startOf('day').toJSDate(),
+            to: DateTime.now().endOf('day').toJSDate(),
+            status,
+        }
         const response = await this.productService.orderList(filter);
         return response.result?.postings || [];
     }
     async listAwaitingPackaging(): Promise<PostingDto[]> {
-        return this.list({
-            since: DateTime.now().minus({ day: 2 }).startOf('day').toJSDate(),
-            to: DateTime.now().endOf('day').toJSDate(),
-            status: 'awaiting_packaging',
-        });
+        return this.list('awaiting_packaging');
     }
     async listAwaitingDelivering(): Promise<PostingDto[]> {
-        return this.list({
-            since: DateTime.now().minus({ day: 2 }).startOf('day').toJSDate(),
-            to: DateTime.now().endOf('day').toJSDate(),
-            status: 'awaiting_deliver',
-        });
+        return this.list('awaiting_deliver');
+    }
+    async listCanceled(): Promise<PostingDto[]> {
+        return this.list('cancelled', 7);
+    }
+    @Cron('0 */5 * * * *', { name: 'checkCanceledOzonOrders' })
+    async checkCancelled(): Promise<void> {
+        const orders = await this.listCanceled();
+        const transaction = await this.invoiceService.getTransaction();
+        try {
+            for (const order of orders) {
+                if (await this.invoiceService.isExists(order.posting_number, transaction)) {
+                    const invoice = await this.invoiceService.getByPosting(order, transaction);
+                    if (invoice.status === 3) {
+                        await this.invoiceService.updatePrim(
+                            order.posting_number,
+                            order.posting_number + ' отмена',
+                            transaction,
+                        );
+                        await this.invoiceService.bulkSetStatus([invoice], 0, transaction)
+                    }
+                }
+            }
+            await transaction.commit(true);
+        } catch (e) {
+            await transaction.rollback(true);
+            console.error(e);
+        }
     }
     async createInvoice(posting: PostingDto, transaction: FirebirdTransaction): Promise<InvoiceDto> {
         const buyerId = this.configService.get<number>('OZON_BUYER_ID', 24416);

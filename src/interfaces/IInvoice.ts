@@ -24,5 +24,6 @@ export interface IInvoice {
     getByDto(invoiceGetDto: InvoiceGetDto): Promise<InvoiceDto[]>;
     getInvoiceLines(invoice: InvoiceDto, transaction: FirebirdTransaction): Promise<InvoiceLineDto[]>;
     unPickupAndDeltaInvoice(invoice: InvoiceDto, transaction: FirebirdTransaction): Promise<void>;
+    bulkSetStatus(invoices: InvoiceDto[], status: number, transaction: FirebirdTransaction): Promise<void>;
 }
 export const INVOICE_SERVICE = 'INVOICE_SERVICE';

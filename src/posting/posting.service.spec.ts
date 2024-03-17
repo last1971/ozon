@@ -9,6 +9,10 @@ describe('PostingService', () => {
     let service: PostingService;
     const create = jest.fn();
     const createInvoiceFromPostingDto = jest.fn();
+    const commit = jest.fn();
+    const getByPosting = jest.fn();
+    const bulkSetStatus = jest.fn();
+    const updatePrim = jest.fn();
     const date = new Date();
     const postings = [
         {
@@ -39,6 +43,10 @@ describe('PostingService', () => {
                         isExists: async (remark: string) => remark === '123',
                         create,
                         createInvoiceFromPostingDto,
+                        getByPosting,
+                        bulkSetStatus,
+                        updatePrim,
+                        getTransaction: () => ({ commit }),
                     },
                 },
                 { provide: ConfigService, useValue: { get: () => 24416 } },
@@ -66,7 +74,7 @@ describe('PostingService', () => {
         await service.listAwaitingPackaging();
         expect(orderList.mock.calls[0]).toEqual([
             {
-                since: DateTime.now().minus({ day: 2 }).startOf('day').toJSDate(),
+                since: DateTime.now().minus({ day: 3 }).startOf('day').toJSDate(),
                 to: DateTime.now().endOf('day').toJSDate(),
                 status: 'awaiting_packaging',
             },
@@ -89,4 +97,10 @@ describe('PostingService', () => {
         await service.createInvoice(posting, null);
         expect(createInvoiceFromPostingDto.mock.calls[0]).toEqual([24416, posting, null]);
     });
+    it('checkCancelled', async () => {
+        getByPosting.mockResolvedValueOnce({ status: 3 });
+        await service.checkCancelled();
+        expect(bulkSetStatus.mock.calls[0]).toEqual([[{ status: 3 }], 0, { commit }]);
+        expect(updatePrim.mock.calls[0]).toEqual(['123', '123 отмена', { commit }]);
+    })
 });
