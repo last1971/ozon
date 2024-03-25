@@ -30,11 +30,11 @@ export class PriceService implements IPriceUpdateable {
             perc_nor: toNumber(this.configService.get<number>('PERC_NOR', 30)),
             perc_max: toNumber(this.configService.get<number>('PERC_MAX', 100)),
             perc_mil: toNumber(this.configService.get<number>('PERC_MIL', 5.5)),
+            min_mil: toNumber(this.configService.get<number>('MIN_MIL', 20)),
             perc_ekv: toNumber(this.configService.get<number>('PERC_EKV', 1.5)),
             sum_obtain: toNumber(this.configService.get<number>('SUM_OBTAIN', 25)),
-            sum_pack:
-                toNumber(this.configService.get<number>('SUM_PACK', 10)) +
-                toNumber(this.configService.get<number>('SUM_LABEL', 2)),
+            sum_pack: toNumber(this.configService.get<number>('SUM_PACK', 10)),
+            sum_label: toNumber(this.configService.get<number>('SUM_LABEL', 2)),
         };
     }
 
@@ -74,6 +74,7 @@ export class PriceService implements IPriceUpdateable {
                     sales_percent: item.commissions.sales_percent_fbs,
                     fbs_direct_flow_trans_max_amount: item.commissions.fbs_direct_flow_trans_max_amount,
                     auto_action_enabled: item.price.auto_action_enabled,
+                    sum_pack: percent.packing_price,
                 };
             }),
         };

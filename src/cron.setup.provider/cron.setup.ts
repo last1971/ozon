@@ -159,7 +159,7 @@ export const cronConfig: Record<string, CronSetup> = {
             },
         },
         development: {
-            enabled: true,
+            enabled: false,
             settings: {
                 time: CronExpression.EVERY_5_MINUTES,
             },

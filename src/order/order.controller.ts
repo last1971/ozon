@@ -8,7 +8,7 @@ import { WbOrderService } from '../wb.order/wb.order.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 
 @ApiTags('order')
-@Controller('api/order')
+@Controller('order')
 export class OrderController {
     constructor(
         private readonly orderService: OrderService,

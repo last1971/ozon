@@ -20,6 +20,22 @@ export class StringToIOfferIdableAdapter implements IOfferIdable {
     }
 }
 
+export const calculatePay = (price: IPriceable, percents: ObtainCoeffsDto, sum: number): number => {
+    const mil = sum * (percents.percMil / 100);
+    return sum
+        - toNumber(percents.sumObtain)
+        - toNumber(percents.sumLabel)
+        - toNumber(price.sum_pack)
+        - toNumber(price.fbs_direct_flow_trans_max_amount)
+        - (mil < percents.minMil ? toNumber(percents.minMil) : 0)
+        - sum * (
+            toNumber(price.sales_percent) +
+            toNumber(price.adv_perc) +
+            (mil < percents.minMil ? 0 : toNumber(percents.percMil)) +
+            toNumber(percents.percEkv)
+        ) /100;
+}
+
 export const calculatePrice = (
     price: IPriceable,
     percents: ObtainCoeffsDto,

@@ -3,7 +3,7 @@ import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { ProductVisibilityInterface, ProductVisibilityValues, ProductVisibilityClass } from './product.visibility';
 
 @ApiTags('product')
-@Controller('api/product')
+@Controller('product')
 export class ProductController {
     @ApiOkResponse({
         description: 'Получить информацию о ценах товаров',

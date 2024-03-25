@@ -19,7 +19,7 @@ class UpdateServiceParams {
 }
 
 @ApiTags('good')
-@Controller('api/good')
+@Controller('good')
 export class GoodController {
     constructor(
         @Inject(GOOD_SERVICE) private goodService: IGood,
