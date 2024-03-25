@@ -65,6 +65,7 @@ describe('PriceService', () => {
 
     it('test preset', async () => {
         await expect(service.preset()).resolves.toEqual({
+            min_mil: 0,
             perc_min: 1,
             perc_nor: 2,
             perc_max: 3,
@@ -72,6 +73,7 @@ describe('PriceService', () => {
             perc_ekv: 1.5,
             sum_obtain: 25,
             sum_pack: 13,
+            sum_label: 0,
         });
     });
 

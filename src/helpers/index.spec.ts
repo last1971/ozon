@@ -1,4 +1,12 @@
-import { barCodeSkuPairs, calculatePrice, goodCode, goodQuantityCoeff, productQuantity, skusToGoodIds } from './index';
+import {
+    barCodeSkuPairs,
+    calculatePay,
+    calculatePrice,
+    goodCode,
+    goodQuantityCoeff,
+    productQuantity,
+    skusToGoodIds,
+} from './index';
 import { AutoAction } from '../price/dto/update.price.dto';
 
 describe('Test helpers', () => {
@@ -53,6 +61,31 @@ describe('Test helpers', () => {
             price_strategy_enabled: AutoAction.DISABLED,
             sum_pack: 0,
         });
+    });
+    it('Test calculatePay', () => {
+        expect(
+            calculatePay(
+                {
+                    adv_perc: 1,
+                    fbs_direct_flow_trans_max_amount: 20,
+                    incoming_price: 100,
+                    min_perc: 10,
+                    offer_id: '123',
+                    old_perc: 100,
+                    perc: 50,
+                    sales_percent: 20,
+                    sum_pack: 0,
+                },
+                {
+                    minMil: 20,
+                    percMil: 5.5,
+                    percEkv: 1,
+                    sumObtain: 25,
+                    sumLabel: 10,
+                },
+                250,
+            ),
+        ).toEqual(120);
     });
     it('skusToGoodIds', () => {
         expect(skusToGoodIds(['1111', '1111-10', '1111-20', '23', '24-2'])).toEqual(['1111', '23', '24']);
