@@ -19,6 +19,7 @@ export const priceStore = defineStore("priceStore", {
             });
             const prices: PriceDto[] = res.data.data;
             const { tariffs } = tariffStore();
+            this.pays = [];
             for (const price of prices) {
                 this.pays.push(
                     (await axios.post("/api/price/calculate-pay", {
