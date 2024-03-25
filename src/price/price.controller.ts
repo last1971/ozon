@@ -12,12 +12,20 @@ import {
     UploadedFile,
     UseInterceptors,
 } from '@nestjs/common';
-import { ApiBody, ApiConsumes, ApiOkResponse, ApiProduces, ApiTags } from '@nestjs/swagger';
+import {
+    ApiBody,
+    ApiConsumes,
+    ApiExtraModels,
+    ApiOkResponse,
+    ApiProduces,
+    ApiTags,
+    getSchemaPath
+} from "@nestjs/swagger";
 import { PriceRequestDto } from './dto/price.request.dto';
 import { PricePresetDto } from './dto/price.preset.dto';
 import { PriceService } from './price.service';
 import { PriceResponseDto } from './dto/price.response.dto';
-import { UpdatePricesDto } from './dto/update.price.dto';
+import { UpdatePriceDto, UpdatePricesDto } from "./dto/update.price.dto";
 import { YandexPriceService } from '../yandex.price/yandex.price.service';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
 import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
@@ -27,8 +35,11 @@ import { Response } from 'express';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
+import { IPriceable } from "../interfaces/i.priceable";
+import { ObtainCoeffsDto } from "../helpers/obtain.coeffs.dto";
+import { calculatePay, calculatePrice } from "../helpers";
 @ApiTags('price')
-@Controller('api/price')
+@Controller('price')
 export class PriceController {
     private services: Map<GoodServiceEnum, IPriceUpdateable>;
     constructor(
@@ -74,6 +85,77 @@ export class PriceController {
     async updatePrices(@Param('service') service: GoodServiceEnum): Promise<any> {
         const command = this.services.get(service) || this.service;
         return command.updateAllPrices();
+    }
+    @Post('calculate')
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                price: {
+                    type: 'object',
+                    properties: {
+                        offer_id: { type: 'string' },
+                        incoming_price: { type: 'number' },
+                        fbs_direct_flow_trans_max_amount: { type: 'number' },
+                        sales_percent: { type: 'number' },
+                        min_perc: { type: 'number' },
+                        perc: { type: 'number' },
+                        old_perc: { type: 'number' },
+                        adv_perc: { type: 'number' },
+                        sum_pack: { type: 'number' },
+                    }
+                },
+                percents: {
+                    type: 'object',
+                    properties: {
+                        minMil: { type: 'number' },
+                        percMil: { type: 'number' },
+                        percEkv: { type: 'number' },
+                        sumObtain: { type: 'number' },
+                        sumLabel: { type: 'number' },
+                    }
+                }
+            }
+        }
+    })
+    async calulate(@Body() body: { price: IPriceable, percents: ObtainCoeffsDto }): Promise<UpdatePriceDto> {
+        return calculatePrice(body.price, body.percents);
+    }
+    @Post('calculate-pay')
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                price: {
+                    type: 'object',
+                    properties: {
+                        offer_id: { type: 'string' },
+                        incoming_price: { type: 'number' },
+                        fbs_direct_flow_trans_max_amount: { type: 'number' },
+                        sales_percent: { type: 'number' },
+                        min_perc: { type: 'number' },
+                        perc: { type: 'number' },
+                        old_perc: { type: 'number' },
+                        adv_perc: { type: 'number' },
+                        sum_pack: { type: 'number' },
+                    }
+                },
+                percents: {
+                    type: 'object',
+                    properties: {
+                        minMil: { type: 'number' },
+                        percMil: { type: 'number' },
+                        percEkv: { type: 'number' },
+                        sumObtain: { type: 'number' },
+                        sumLabel: { type: 'number' },
+                    }
+                },
+                sums: { type: 'array', items: { type: 'number'} }
+            }
+        }
+    })
+    async calulatePay(@Body() body: { price: IPriceable, percents: ObtainCoeffsDto, sums: number[] }): Promise<number[]> {
+        return body.sums.map((sum) =>calculatePay(body.price, body.percents, sum));
     }
     @Post('discount')
     @ApiConsumes('multipart/form-data')

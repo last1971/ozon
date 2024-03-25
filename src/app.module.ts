@@ -37,8 +37,9 @@ import { CacheModule } from '@nestjs/cache-manager';
         EventEmitterModule.forRoot(),
         ConfigModule.forRoot({ isGlobal: true, validate: configValidate }),
         ServeStaticModule.forRoot({
-            rootPath: join(__dirname, '..', 'public'),
-            renderPath: '/price-admin/*',
+            // serveRoot: 'admin',
+            rootPath: join(__dirname, '..', 'admin-panel/dist'),
+            // renderPath: 'dist/admin-panel/*',
         }),
         ScheduleModule.forRoot(),
         OzonApiModule,

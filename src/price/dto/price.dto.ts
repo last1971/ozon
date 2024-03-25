@@ -33,4 +33,6 @@ export class PriceDto {
     fbs_direct_flow_trans_max_amount: number;
     @ApiProperty({ description: 'автоприменение акций у товара' })
     auto_action_enabled: boolean;
+    @ApiProperty({ description: 'Стоимость упаковки' })
+    sum_pack:number;
 }

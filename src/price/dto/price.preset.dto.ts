@@ -11,8 +11,12 @@ export class PricePresetDto {
     perc_ekv: number;
     @ApiProperty({ description: '% доставка  до базы' })
     perc_mil: number;
+    @ApiProperty({ description: 'минимальная доставка до базы' })
+    min_mil: number;
     @ApiProperty({ description: 'сумма за обработку' })
     sum_obtain: number;
     @ApiProperty({ description: 'сумма за упаковку' })
     sum_pack: number;
+    @ApiProperty({ description: 'сумма за этикетку' })
+    sum_label: number;
 }
