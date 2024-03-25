@@ -54,4 +54,4 @@ jobs:
             pm2 restart ozon --update-env
             cd ~/ozon/admin-panel
             npm install 
-            nmp run build
+            npm run build
