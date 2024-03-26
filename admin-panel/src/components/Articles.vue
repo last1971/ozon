@@ -2,6 +2,7 @@
     import { articulesStore } from "@/stores/articules";
     import { ref } from "vue";
     import { priceStore } from "@/stores/prices";
+    import { storeToRefs } from "pinia";
     function addArticule() {
       articulesStore().push('');
     }
@@ -12,6 +13,7 @@
         await priceStore().get()
     }
     const articules = ref(articulesStore().articules)
+    const { isLoadingPrices } = storeToRefs(priceStore())
 </script>
 
 <template>
@@ -34,6 +36,7 @@
                 icon="mdi-send"
                 class="float-right"
                 @click="getPrices"
+                :loading="isLoadingPrices"
             ></v-btn>
         </v-col>
     </v-row>

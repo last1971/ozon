@@ -9,17 +9,24 @@ const url = import.meta.env.VITE_URL;
 export const priceStore = defineStore("priceStore", {
     state: () => ({
         prices: [] as PriceDto[],
-        pays: [] as string[][]
+        pays: [] as string[][],
+        isLoadingPrices: false,
+        isLoadingPrice: [] as boolean[],
+        successSave: false,
+        failSave: false,
+        failMessage: '' as string,
     }),
     actions: {
         async get(): Promise<void> {
-            console.log(url);
+            this.isLoadingPrices = true;
+            this.prices = [];
+            this.pays = [];
+            this.isLoadingPrice = [];
             const res = await axios.get("/api/price", {
                 params: { offer_id: articulesStore().articules, limit: articulesStore().articules.length }
             });
             const prices: PriceDto[] = res.data.data;
             const { tariffs } = tariffStore();
-            this.pays = [];
             for (const price of prices) {
                 this.pays.push(
                     (await axios.post("/api/price/calculate-pay", {
@@ -34,10 +41,13 @@ export const priceStore = defineStore("priceStore", {
                         sums: [price.marketing_seller_price, price.old_price, price.price, price.min_price]
                     })).data
                 );
+                this.isLoadingPrice.push(false);
             }
             this.$patch({ prices });
+            this.isLoadingPrices = false;
         },
         async getInd(index: number): Promise<void> {
+            this.isLoadingPrice[index] = true;
             const price = this.prices[index];
             const { tariffs } = tariffStore();
             let res = await axios.post( "/api/price/calculate", {
@@ -65,8 +75,10 @@ export const priceStore = defineStore("priceStore", {
                 sums: [price.marketing_seller_price, price.old_price, price.price, price.min_price]
             })
             this.pays[index] = res.data;
+            this.isLoadingPrice[index] = false;
         },
         async save(index: number): Promise<void> {
+            this.isLoadingPrice[index] = true;
             const {
                 offer_id,
                 min_perc,
@@ -75,12 +87,30 @@ export const priceStore = defineStore("priceStore", {
                 adv_perc,
                 sum_pack,
             } = this.prices[index];
-            await axios.post('/api/good/percent', {},{ params: {
-                offer_id, min_perc, perc, old_perc, adv_perc, packing_price: sum_pack,
-            }});
-            await axios.post('/api/price', {
-                prices:[{ offer_id, min_price: '0', price: '0', old_price: '0'}]
-            });
+            try {
+                await axios.post('/api/good/percent', {}, {
+                    params: {
+                        offer_id, min_perc, perc, old_perc, adv_perc, packing_price: sum_pack,
+                    }
+                });
+                const res = await axios.post<any[]>('/api/price', {
+                    prices: [{ offer_id, min_price: '0', price: '0', old_price: '0' }]
+                });
+                if (!res.data[0].result[0].updated) {
+                    throw new Error(res.data[0].result[0].errors.toString())
+                }
+                if (res.data[1].offerUpdate.status !== 'OK') {
+                    throw new Error(res.data.toString())
+                }
+                if (res.data[2].status === 'NotOk') {
+                    throw new Error(res.data[2].error.service_message);
+                }
+                this.successSave = true;
+            } catch (e: any) {
+                this.failMessage = e.message;
+                this.failSave = true;
+            }
+            this.isLoadingPrice[index] = false;
         }
     }
 });

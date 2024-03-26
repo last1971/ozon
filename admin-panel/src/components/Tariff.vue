@@ -2,12 +2,13 @@
 
 import { tariffStore } from "@/stores/tariffStore";
 import { onMounted } from "vue";
+import { storeToRefs } from "pinia";
 
 const tariff = tariffStore();
 onMounted(async () => {
     await reloadTrarif();
 });
-
+const { isLoading } = storeToRefs(tariffStore())
 async function reloadTrarif() {
     await tariff.get();
 }
@@ -17,7 +18,12 @@ async function reloadTrarif() {
 <template>
     <v-table hover>
         <template v-slot:top>
-            <v-btn prepend-icon="mdi-reload" @click="reloadTrarif">
+            <v-btn
+                prepend-icon="mdi-reload"
+                @click="reloadTrarif"
+                :disabled="isLoading"
+                :loading="isLoading"
+            >
                 Обновить
             </v-btn>
         </template>

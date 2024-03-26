@@ -8,6 +8,7 @@ async function bootstrap() {
     const app = await NestFactory.create(AppModule);
     app.useGlobalPipes(new ValidationPipe({ transform: true })); //, transformOptions: { enableImplicitConversion: true }
     app.enableCors();
+    app.setGlobalPrefix('api');
     const config = new DocumentBuilder()
         .setTitle('Ozon example')
         .setDescription('The Ozon API description')
@@ -15,8 +16,7 @@ async function bootstrap() {
         .addTag('ozon')
         .build();
     const document = SwaggerModule.createDocument(app, config);
-    SwaggerModule.setup('api', app, document);
-    app.setGlobalPrefix('api');
+    SwaggerModule.setup('docs', app, document);
     await app.listen(app.get(ConfigService).get<number>('APP_PORT', 3002));
 }
 bootstrap();

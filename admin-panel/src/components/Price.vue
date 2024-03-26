@@ -6,20 +6,24 @@ import { watch } from "vue";
 import { debounce } from "lodash";
 
 const props = defineProps<{ value: PriceDto, ind: number }>();
-const { pays } = storeToRefs(priceStore())
+const { pays, isLoadingPrice } = storeToRefs(priceStore())
 watch(
     () => props.value.old_perc + props.value.min_perc + props.value.perc + props.value.adv_perc + props.value.sum_pack,
     debounce(async ()=> {
         await priceStore().getInd(props.ind);
-    }, 3000)
+    }, 2000),
 )
 </script>
 
 <template>
     <div>
     <v-table>
-        <template v-slot:top>
-            <v-btn prepend-icon="mdi-content-save" @click="priceStore().save(props.ind)">
+        <template v-slot:bottom>
+            <v-btn
+                prepend-icon="mdi-content-save"
+                @click="priceStore().save(props.ind)"
+                :loading="isLoadingPrice[props.ind]"
+            >
                 Сохранить
             </v-btn>
         </template>
