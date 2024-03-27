@@ -59,6 +59,7 @@ export class WbOrderService implements IOrderable {
         const newFboOrders = allFboOrders.filter((order, index) => !oldFboOrders[index] && !order.isCancel);
         const transaction = await this.invoiceService.getTransaction();
         const buyerId = this.configService.get<number>('WB_BUYER_ID', 24532);
+        const addFboOrders: WbFboOrder[] = [];
         try {
             for (const order of newFboOrders) {
                 if (order.supplierArticle === 'wh-service-podmena') continue;
@@ -86,9 +87,10 @@ export class WbOrderService implements IOrderable {
                     transaction,
                 );
                 await this.invoiceService.pickupInvoice(invoice, transaction);
+                addFboOrders.push(order);
             }
             await transaction.commit(true);
-            if (newFboOrders.length > 0) {
+            if (addFboOrders.length > 0) {
                 this.eventEmitter.emit(
                     'wb.order.content',
                     'Добавлены WB FBO заказы',
