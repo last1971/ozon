@@ -18,7 +18,7 @@ import { Cron } from '@nestjs/schedule';
 import { WbFboOrder } from './dto/wb.fbo.order';
 import { ProductPostingDto } from '../product/dto/product.posting.dto';
 import Excel from 'exceljs';
-import { goodCode, goodQuantityCoeff } from '../helpers';
+
 @Injectable()
 export class WbOrderService implements IOrderable {
     constructor(
@@ -52,7 +52,7 @@ export class WbOrderService implements IOrderable {
     }
     @Cron('0 */5 * * * *', { name: 'checkFboWbOrders' })
     async addFboOrders(): Promise<boolean> {
-        const allFboOrders = await this.getOnlyFboOrders(1, 1);
+        const allFboOrders = await this.getOnlyFboOrders(7);
         const oldFboOrders: boolean[] = await Promise.all(
             allFboOrders.map((order) => this.invoiceService.isExists(order.srid, null)),
         );
@@ -69,9 +69,11 @@ export class WbOrderService implements IOrderable {
                 };
                 const res = await this.invoiceService.unPickupOzonFbo(product, 'WBFBO', transaction);
                 if (!res) {
-                    const id = goodCode(product);
-                    const quantity = product.quantity * goodQuantityCoeff(product);
-                    await this.invoiceService.deltaGood(id, quantity, 'WBFBO', transaction);
+                    continue;
+                    // Ощущуение что много левых
+                    // const id = goodCode(product);
+                    // const quantity = product.quantity * goodQuantityCoeff(product);
+                    // await this.invoiceService.deltaGood(id, quantity, 'WBFBO', transaction);
                 }
                 const invoice = await this.invoiceService.createInvoiceFromPostingDto(
                     buyerId,
