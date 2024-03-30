@@ -8,6 +8,7 @@ import { chunk } from 'lodash';
 import { Environment } from '../env.validation';
 import { ConfigService } from '@nestjs/config';
 import { WbCardAnswerDto } from './dto/wb.card.answer.dto';
+import { GoodServiceEnum } from '../good/good.service.enum';
 
 @Injectable()
 export class WbCardService extends ICountUpdateable implements OnModuleInit {
@@ -22,7 +23,10 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit {
     async onModuleInit(): Promise<any> {
         const wb = await this.vault.get('wildberries');
         this.warehouseId = wb.WAREHOUSE_ID as number;
-        await this.loadSkuList(this.configService.get<Environment>('NODE_ENV') === 'production');
+        const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
+        await this.loadSkuList(
+            this.configService.get<Environment>('NODE_ENV') === 'production' && services.includes(GoodServiceEnum.WB),
+        );
     }
     async getWbCards(args: any): Promise<WbCardAnswerDto> {
         return this.api.method(
