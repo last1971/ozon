@@ -1,4 +1,4 @@
-import { flatten, Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, OnModuleInit } from '@nestjs/common';
 import { GoodCountsDto, ICountUpdateable } from '../interfaces/ICountUpdatebale';
 import { WbApiService } from '../wb.api/wb.api.service';
 import { VaultService } from 'vault-module/lib/vault.service';
@@ -13,12 +13,14 @@ import { GoodServiceEnum } from '../good/good.service.enum';
 @Injectable()
 export class WbCardService extends ICountUpdateable implements OnModuleInit {
     private warehouseId: number;
+    private skuBarcodePair: Map<string, string>;
     constructor(
         private api: WbApiService,
         private vault: VaultService,
         private configService: ConfigService,
     ) {
         super();
+        this.skuBarcodePair = new Map<string, string>();
     }
     async onModuleInit(): Promise<any> {
         const wb = await this.vault.get('wildberries');
@@ -65,12 +67,12 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit {
     }
     async getGoodIds(args: any): Promise<GoodCountsDto<number>> {
         const res = await this.api.method(
-            '/content/v1/cards/cursor/list',
+            '/content/v2/get/cards/list',
             'post',
             args
                 ? args
                 : {
-                      sort: {
+                      settings: {
                           cursor: {
                               limit: 1000,
                           },
@@ -80,8 +82,11 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit {
                       },
                   },
         );
-        const { cards, cursor } = res.data;
+        const { cards, cursor } = res;
         const barcodes = barCodeSkuPairs(cards);
+        for (const [key, value] of barcodes) {
+            this.skuBarcodePair.set(value, key);
+        }
         const quantities = await this.api.method('/api/v3/stocks/' + this.warehouseId, 'post', {
             skus: Array.from(barcodes.keys()),
         });
@@ -97,7 +102,7 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit {
                 total < 1000
                     ? null
                     : {
-                          sort: {
+                          settings: {
                               cursor: {
                                   limit: 1000,
                                   updatedAt,
@@ -112,22 +117,10 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit {
     }
 
     async updateGoodCounts(goods: Map<string, number>): Promise<number> {
-        const parts = await Promise.all(
-            chunk(Array.from(goods.keys()), 100).map((codes) =>
-                this.api.method('/content/v1/cards/filter', 'post', {
-                    vendorCodes: codes,
-                }),
-            ),
-        );
-        const data = flatten(parts.map((part) => part.data));
-        const skus = new Map<string, string>();
-        [...barCodeSkuPairs(data)].forEach((barCode) => {
-            skus.set(barCode[1], barCode[0]);
-        });
         const stocks = [...goods]
-            .filter((good) => skus.get(good[0]))
+            .filter((good) => this.skuBarcodePair.get(good[0]))
             .map((good) => ({
-                sku: skus.get(good[0]),
+                sku: this.skuBarcodePair.get(good[0]),
                 amount: good[1],
             }));
         if (stocks && stocks.length) {

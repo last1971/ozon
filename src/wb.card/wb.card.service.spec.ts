@@ -34,30 +34,28 @@ describe('WbCardService', () => {
     it('getGoodIds', async () => {
         method
             .mockResolvedValueOnce({
-                data: {
-                    cards: [
-                        {
-                            nmID: 1,
-                            vendorCode: '1',
-                            sizes: [
-                                {
-                                    skus: ['1-1'],
-                                },
-                            ],
-                        },
-                    ],
-                    cursor: { total: 1 },
-                },
+                cards: [
+                    {
+                        nmID: 1,
+                        vendorCode: '1',
+                        sizes: [
+                            {
+                                skus: ['1-1'],
+                            },
+                        ],
+                    },
+                ],
+                cursor: { total: 1 },
             })
             .mockResolvedValueOnce({ stocks: [{ sku: '1-1', amount: 10 }] });
         const res = await service.getGoodIds('');
         expect(res).toEqual({ goods: new Map([['1', 10]]), nextArgs: null });
         expect(method.mock.calls).toHaveLength(2);
         expect(method.mock.calls[0]).toEqual([
-            '/content/v1/cards/cursor/list',
+            '/content/v2/get/cards/list',
             'post',
             {
-                sort: {
+                settings: {
                     cursor: {
                         limit: 1000,
                     },
@@ -71,6 +69,23 @@ describe('WbCardService', () => {
     });
 
     it('updateGoodCounts', async () => {
+        method
+            .mockResolvedValueOnce({
+                cards: [
+                    {
+                        nmID: 1,
+                        vendorCode: '1',
+                        sizes: [
+                            {
+                                skus: ['1-1'],
+                            },
+                        ],
+                    },
+                ],
+                cursor: { total: 1 },
+            })
+            .mockResolvedValueOnce({ stocks: [{ sku: '1-1', amount: 10 }] });
+        await service.getGoodIds('');
         method.mockResolvedValueOnce({
             data: [
                 {
@@ -100,23 +115,13 @@ describe('WbCardService', () => {
                 ['3', 3],
             ]),
         );
-        expect(res).toEqual(2);
-        expect(method.mock.calls).toHaveLength(2);
-        expect(method.mock.calls[0]).toEqual([
-            '/content/v1/cards/filter',
-            'post',
-            {
-                vendorCodes: ['1', '2', '3'],
-            },
-        ]);
-        expect(method.mock.calls[1]).toEqual([
+        expect(res).toEqual(1);
+        expect(method.mock.calls).toHaveLength(3);
+        expect(method.mock.calls[2]).toEqual([
             '/api/v3/stocks/undefined',
             'put',
             {
-                stocks: [
-                    { amount: 1, sku: '1-1' },
-                    { amount: 2, sku: '1-2' },
-                ],
+                stocks: [{ amount: 1, sku: '1-1' }],
             },
         ]);
     });
