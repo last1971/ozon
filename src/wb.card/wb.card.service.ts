@@ -4,7 +4,6 @@ import { WbApiService } from '../wb.api/wb.api.service';
 import { VaultService } from 'vault-module/lib/vault.service';
 import { barCodeSkuPairs } from '../helpers';
 import { WbCardDto } from './dto/wb.card.dto';
-import { chunk } from 'lodash';
 import { Environment } from '../env.validation';
 import { ConfigService } from '@nestjs/config';
 import { WbCardAnswerDto } from './dto/wb.card.answer.dto';
@@ -14,6 +13,7 @@ import { GoodServiceEnum } from '../good/good.service.enum';
 export class WbCardService extends ICountUpdateable implements OnModuleInit {
     private warehouseId: number;
     private skuBarcodePair: Map<string, string>;
+    private skuNmIDPair: Map<string, string>;
     constructor(
         private api: WbApiService,
         private vault: VaultService,
@@ -21,6 +21,7 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit {
     ) {
         super();
         this.skuBarcodePair = new Map<string, string>();
+        this.skuNmIDPair = new Map<string, string>();
     }
     async onModuleInit(): Promise<any> {
         const wb = await this.vault.get('wildberries');
@@ -29,6 +30,9 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit {
         await this.loadSkuList(
             this.configService.get<Environment>('NODE_ENV') === 'production' && services.includes(GoodServiceEnum.WB),
         );
+    }
+    public getNmID(sku: string): string {
+        return this.skuNmIDPair.get(sku);
     }
     async getWbCards(args: any): Promise<WbCardAnswerDto> {
         return this.api.method(
@@ -87,6 +91,9 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit {
         for (const [key, value] of barcodes) {
             this.skuBarcodePair.set(value, key);
         }
+        cards.forEach((card) => {
+            this.skuNmIDPair.set(card.vendorCode, card.nmID);
+        });
         const quantities = await this.api.method('/api/v3/stocks/' + this.warehouseId, 'post', {
             skus: Array.from(barcodes.keys()),
         });
@@ -128,14 +135,5 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit {
             return stocks.length;
         }
         return 0;
-    }
-
-    async getCardsByVendorCodes(vendorChunkCodes: string[]): Promise<WbCardDto[]> {
-        const res = await Promise.all(
-            chunk(vendorChunkCodes, 100).map((vendorCodes) =>
-                this.api.method('/content/v1/cards/filter', 'post', { vendorCodes }),
-            ),
-        );
-        return res.map((data) => data.data).flat();
     }
 }

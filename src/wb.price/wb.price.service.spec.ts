@@ -12,8 +12,8 @@ describe('WbPriceService', () => {
     const getGoodIds = jest.fn();
     const updatePriceForService = jest.fn();
     const method = jest.fn();
-    const getCardsByVendorCodes = jest.fn();
     const setWbData = jest.fn();
+    const getNmID = jest.fn();
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
@@ -33,7 +33,7 @@ describe('WbPriceService', () => {
                 },
                 {
                     provide: WbCardService,
-                    useValue: { getGoodIds, getCardsByVendorCodes },
+                    useValue: { getGoodIds, getNmID },
                 },
             ],
         }).compile();
@@ -83,14 +83,8 @@ describe('WbPriceService', () => {
     });
 
     it('updatePrices', async () => {
-        getCardsByVendorCodes.mockResolvedValueOnce([
-            {
-                nmID: 1,
-                vendorCode: '123',
-                sizes: [],
-            },
-        ]);
         getWbData.mockResolvedValueOnce([{ id: '123', commission: 2, tariff: 3 }]);
+        getNmID.mockReturnValueOnce(1);
         await service.updatePrices([
             { offer_id: '123', price: '2', old_price: '3', min_price: '1', incoming_price: 0.5, currency_code: 'RUB' },
         ]);

@@ -51,12 +51,16 @@ export class WbPriceService implements IPriceUpdateable {
 
     async updatePrices(updatePrices: UpdatePriceDto[]): Promise<any> {
         const skus = updatePrices.map((updatePrice) => updatePrice.offer_id);
-        const wbCards = await this.cardService.getCardsByVendorCodes(skus);
-        const data = updatePrices.map((updatePrice) => ({
-            nmID: find(wbCards, { vendorCode: updatePrice.offer_id }).nmID,
-            price: parseInt(updatePrice.old_price),
-            discount: Math.floor((1 - parseInt(updatePrice.price) / parseInt(updatePrice.old_price)) * 100),
-        }));
+        // const wbCards = await this.cardService.getCardsByVendorCodes(skus);
+        const data = updatePrices.map((updatePrice) => {
+            const nmID = this.cardService.getNmID(updatePrice.offer_id);
+            return {
+                nmID,
+                // find(wbCards, { vendorCode: updatePrice.offer_id }).nmID,
+                price: parseInt(updatePrice.old_price),
+                discount: Math.floor((1 - parseInt(updatePrice.price) / parseInt(updatePrice.old_price)) * 100),
+            };
+        });
         /*
         const prices = updatePrices.map(
             (updatePrice): WbPriceUpdateDto => ({
@@ -124,11 +128,10 @@ export class WbPriceService implements IPriceUpdateable {
     // @Timeout(0)
     async initialWbCategories(): Promise<void> {
         const cards = await this.cardService.getAllWbCards();
-        // const hz = find(cards, { subjectID: 1192 });
         const wbDatas = await this.goodService.getWbData(cards.map((card) => card.vendorCode));
         for (const card of cards) {
             await this.goodService.updateWbCategory(card);
-            const wbData: GoodWbDto = find(wbDatas, { id: card.vendorCode }) || { commission: 25, tariff: 60 };
+            const wbData: GoodWbDto = find(wbDatas, { id: card.vendorCode }) || { commission: 23, tariff: 50 };
             await this.goodService.setWbData(
                 {
                     id: card.vendorCode,
