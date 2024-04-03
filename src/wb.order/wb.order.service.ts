@@ -94,7 +94,7 @@ export class WbOrderService implements IOrderable {
                 this.eventEmitter.emit(
                     'wb.order.content',
                     'Добавлены WB FBO заказы',
-                    newFboOrders.map((order) => ({ prim: order.srid, offer_id: order.supplierArticle })),
+                    addFboOrders.map((order) => ({ prim: order.srid, offer_id: order.supplierArticle })),
                 );
             }
             return true;
