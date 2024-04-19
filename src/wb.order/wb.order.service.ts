@@ -231,11 +231,11 @@ export class WbOrderService implements IOrderable {
         worksheet.eachRow((row: Excel.Row, rowNumber) => {
             if (rowNumber !== 1) {
                 ret.push({
-                    ppvz_for_pay: row.getCell(32).value as number,
-                    delivery_rub: row.getCell(35).value as number,
+                    ppvz_for_pay: row.getCell(33).value as number,
+                    delivery_rub: row.getCell(36).value as number,
                     order_dt: row.getCell(12).value as string,
                     rrd_id: null,
-                    srid: row.getCell(52).value as string,
+                    srid: row.getCell(53).value as string,
                 });
             }
         });
