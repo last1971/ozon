@@ -57,7 +57,7 @@ describe('WbCardService', () => {
             {
                 settings: {
                     cursor: {
-                        limit: 1000,
+                        limit: 100,
                     },
                     filter: {
                         withPhoto: -1,
@@ -137,7 +137,7 @@ describe('WbCardService', () => {
             {
                 settings: {
                     cursor: {
-                        limit: 1000,
+                        limit: 100,
                     },
                     filter: {
                         withPhoto: -1,
@@ -150,7 +150,7 @@ describe('WbCardService', () => {
         method
             .mockResolvedValueOnce({
                 cards: [1, 2, 3],
-                cursor: { total: 1000 },
+                cursor: { total: 100 },
             })
             .mockResolvedValueOnce({
                 cards: [4, 5, 6],

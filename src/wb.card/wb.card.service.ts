@@ -43,7 +43,7 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit {
                 : {
                       settings: {
                           cursor: {
-                              limit: 1000,
+                              limit: 100,
                           },
                           filter: {
                               withPhoto: -1,
@@ -61,11 +61,11 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit {
             ret.push(...cards);
             const { updatedAt, nmID, total } = cursor;
             args = {
-                limit: 1000,
+                limit: 100,
                 updatedAt,
                 nmID,
             };
-            cycle = total === 1000;
+            cycle = total === 100;
         }
         return ret;
     }
@@ -78,7 +78,7 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit {
                 : {
                       settings: {
                           cursor: {
-                              limit: 1000,
+                              limit: 100,
                           },
                           filter: {
                               withPhoto: -1,
@@ -106,12 +106,12 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit {
         return {
             goods,
             nextArgs:
-                total < 1000
+                total < 100
                     ? null
                     : {
                           settings: {
                               cursor: {
-                                  limit: 1000,
+                                  limit: 100,
                                   updatedAt,
                                   nmID,
                               },
