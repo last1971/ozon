@@ -30,6 +30,15 @@ export const cronConfig: Record<string, CronSetup> = {
         },
         development: false,
     },
+    clearOldFormed: {
+        production: {
+            enabled: true,
+            settings: {
+                time: CronExpression.EVERY_WEEK,
+            },
+        },
+        development: false,
+    },
     /*
     updateOzonPrices: {
         production: {
