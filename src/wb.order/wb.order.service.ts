@@ -277,7 +277,7 @@ export class WbOrderService implements IOrderable {
     }
     // @Timeout(0)
     // Not test
-    async closeSales(dateFrom: string = '2024-01-01', dateTo: string = '2024-01-21'): Promise<any> {
+    async closeSales(dateFrom: string = '2024-03-01', dateTo: string = '2024-04-01'): Promise<any> {
         const transaction = await this.invoiceService.getTransaction();
         try {
             const buyerId: number = this.configService.get<number>('WB_BUYER_ID', 24532);

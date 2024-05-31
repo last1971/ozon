@@ -17,6 +17,7 @@ import { Cache } from '@nestjs/cache-manager';
 import { InvoiceGetDto } from '../invoice/dto/invoice.get.dto';
 import { InvoiceLineDto } from '../invoice/dto/invoice.line.dto';
 import { ISOLATION_READ_UNCOMMITTED } from 'node-firebird';
+import { Cron } from '@nestjs/schedule';
 
 @Injectable()
 export class Trade2006InvoiceService implements IInvoice {
@@ -142,6 +143,16 @@ export class Trade2006InvoiceService implements IInvoice {
             remark: invoice.PRIM,
             status: invoice.STATUS,
         }));
+    }
+
+    @Cron('0 0 * * * 0', { name: 'clearOldFormed' })
+    async clearOldFormed(): Promise<void> {
+        const transaction = await this.pool.getTransaction();
+        await transaction.execute(
+            'UPDATE S SET STATUS = 5 WHERE NOT EXISTS (SELECT 1 FROM PODBPOS P WHERE P.SCODE = S.SCODE) AND S.STATUS < 2 AND S.DATA < ?',
+            [DateTime.now().minus({ month: 2 }).toISODate()],
+            true,
+        );
     }
 
     async getByBuyerAndStatus(buyerId: number, status: number, t: FirebirdTransaction = null): Promise<InvoiceDto[]> {
