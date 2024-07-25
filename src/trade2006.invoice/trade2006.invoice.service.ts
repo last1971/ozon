@@ -242,7 +242,33 @@ export class Trade2006InvoiceService implements IInvoice {
         await this.cacheManager.set('updateByTransactions', true, 0);
         const transaction = t ?? (await this.pool.getTransaction());
         try {
-            const invoices = await this.getByPostingNumbers(transactions.map((t) => t.posting_number));
+            const invoices: InvoiceDto[] = await this.getByPostingNumbers(transactions.map((t) => t.posting_number));
+            let res: ResultDto;
+            if (invoices.length === 0) {
+                res = {
+                    isSuccess: false,
+                    message: `Nothing to do`,
+                };
+            } else if (invoices.length > transactions.length) {
+                res = {
+                    isSuccess: false,
+                    message: `Invoices more than transactions`,
+                };
+            } else {
+                const commissions = new Map<string, number>();
+                invoices.forEach((invoice) => {
+                    const newAmount = transactions.find((dto) => dto.posting_number === invoice.remark).amount;
+                    commissions.set(invoice.remark, newAmount);
+                });
+                res = await this.updateByCommissions(commissions, t);
+                if (invoices.length < transactions.length) {
+                    const delta = transactions.filter(
+                        (dto) => !invoices.find((invoice) => invoice.remark === dto.posting_number),
+                    );
+                    res.message = `Not find ${delta.map((invoice) => invoice.posting_number).toString()}`;
+                }
+            }
+            /*
             if (invoices.length !== transactions.length) {
                 const delta = transactions.filter(
                     (dto) => !invoices.find((invoice) => invoice.remark === dto.posting_number),
@@ -254,27 +280,10 @@ export class Trade2006InvoiceService implements IInvoice {
                     message: `Not find ${delta.map((invoice) => invoice.posting_number).toString()}`,
                 };
             }
-            const commissions = new Map<string, number>();
-            invoices.forEach((invoice) => {
-                const newAmount = transactions.find((dto) => dto.posting_number === invoice.remark).amount;
-                commissions.set(invoice.remark, newAmount);
-            });
-            /*
-            for (const invoice of invoices) {
-                if (invoice.status === 4) {
-                    const newAmount = transactions.find((dto) => dto.posting_number === invoice.remark).amount;
-                    await this.setInvoiceAmount(invoice, newAmount, transaction);
-                    await this.upsertInvoiceCashFlow(invoice, newAmount, transaction);
-                    await this.createTransferOut(invoice, transaction);
-                }
-            }
-            await this.bulkSetStatus(invoices, 5, transaction);
-            if (!t) await transaction.commit(true);
-            return { isSuccess: true };
 
-             */
-            const res = await this.updateByCommissions(commissions, t);
+            */
             await this.cacheManager.set('updateByTransactions', false, 0);
+            if (!t) await transaction.commit(true);
             return res;
         } catch (e) {
             this.logger.error(e.message);

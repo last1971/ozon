@@ -8,7 +8,7 @@ import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { ConfigService } from '@nestjs/config';
 import { IOrderable } from '../interfaces/IOrderable';
 import { FirebirdTransaction } from 'ts-firebird';
-import { Cron } from "@nestjs/schedule";
+import { Cron } from '@nestjs/schedule';
 
 @Injectable()
 export class PostingService implements IOrderable {
@@ -23,7 +23,7 @@ export class PostingService implements IOrderable {
             since: DateTime.now().minus({ day }).startOf('day').toJSDate(),
             to: DateTime.now().endOf('day').toJSDate(),
             status,
-        }
+        };
         const response = await this.productService.orderList(filter);
         return response.result?.postings || [];
     }
@@ -50,7 +50,7 @@ export class PostingService implements IOrderable {
                             order.posting_number + ' отмена',
                             transaction,
                         );
-                        await this.invoiceService.bulkSetStatus([invoice], 0, transaction)
+                        await this.invoiceService.bulkSetStatus([invoice], 0, transaction);
                     }
                 }
             }

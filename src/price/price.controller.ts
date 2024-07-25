@@ -12,20 +12,12 @@ import {
     UploadedFile,
     UseInterceptors,
 } from '@nestjs/common';
-import {
-    ApiBody,
-    ApiConsumes,
-    ApiExtraModels,
-    ApiOkResponse,
-    ApiProduces,
-    ApiTags,
-    getSchemaPath
-} from "@nestjs/swagger";
+import { ApiBody, ApiConsumes, ApiOkResponse, ApiProduces, ApiTags } from '@nestjs/swagger';
 import { PriceRequestDto } from './dto/price.request.dto';
 import { PricePresetDto } from './dto/price.preset.dto';
 import { PriceService } from './price.service';
 import { PriceResponseDto } from './dto/price.response.dto';
-import { UpdatePriceDto, UpdatePricesDto } from "./dto/update.price.dto";
+import { UpdatePriceDto, UpdatePricesDto } from './dto/update.price.dto';
 import { YandexPriceService } from '../yandex.price/yandex.price.service';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
 import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
@@ -35,9 +27,9 @@ import { Response } from 'express';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
-import { IPriceable } from "../interfaces/i.priceable";
-import { ObtainCoeffsDto } from "../helpers/obtain.coeffs.dto";
-import { calculatePay, calculatePrice } from "../helpers";
+import { IPriceable } from '../interfaces/i.priceable';
+import { ObtainCoeffsDto } from '../helpers/obtain.coeffs.dto';
+import { calculatePay, calculatePrice } from '../helpers';
 @ApiTags('price')
 @Controller('price')
 export class PriceController {
@@ -103,7 +95,7 @@ export class PriceController {
                         old_perc: { type: 'number' },
                         adv_perc: { type: 'number' },
                         sum_pack: { type: 'number' },
-                    }
+                    },
                 },
                 percents: {
                     type: 'object',
@@ -113,12 +105,12 @@ export class PriceController {
                         percEkv: { type: 'number' },
                         sumObtain: { type: 'number' },
                         sumLabel: { type: 'number' },
-                    }
-                }
-            }
-        }
+                    },
+                },
+            },
+        },
     })
-    async calulate(@Body() body: { price: IPriceable, percents: ObtainCoeffsDto }): Promise<UpdatePriceDto> {
+    async calulate(@Body() body: { price: IPriceable; percents: ObtainCoeffsDto }): Promise<UpdatePriceDto> {
         return calculatePrice(body.price, body.percents);
     }
     @Post('calculate-pay')
@@ -138,7 +130,7 @@ export class PriceController {
                         old_perc: { type: 'number' },
                         adv_perc: { type: 'number' },
                         sum_pack: { type: 'number' },
-                    }
+                    },
                 },
                 percents: {
                     type: 'object',
@@ -148,14 +140,16 @@ export class PriceController {
                         percEkv: { type: 'number' },
                         sumObtain: { type: 'number' },
                         sumLabel: { type: 'number' },
-                    }
+                    },
                 },
-                sums: { type: 'array', items: { type: 'number'} }
-            }
-        }
+                sums: { type: 'array', items: { type: 'number' } },
+            },
+        },
     })
-    async calulatePay(@Body() body: { price: IPriceable, percents: ObtainCoeffsDto, sums: number[] }): Promise<number[]> {
-        return body.sums.map((sum) =>calculatePay(body.price, body.percents, sum));
+    async calulatePay(
+        @Body() body: { price: IPriceable; percents: ObtainCoeffsDto; sums: number[] },
+    ): Promise<number[]> {
+        return body.sums.map((sum) => calculatePay(body.price, body.percents, sum));
     }
     @Post('discount')
     @ApiConsumes('multipart/form-data')
