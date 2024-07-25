@@ -34,7 +34,7 @@ export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
             minMil: this.configService.get<number>('YANDEX_MIN_MIL', 40),
             percMil: toNumber(this.configService.get<number>('PERC_MIL', 5.5)),
             percEkv: this.configService.get<number>('YANDEX_PERC_EKV', 1),
-            sumObtain: toNumber(this.configService.get<number>('SUM_OBTAIN', 25)),
+            sumObtain: toNumber(this.configService.get<number>('YANDEX_SUM_PACK', 25)),
             sumLabel: toNumber(this.configService.get<number>('SUM_LABEL', 13)),
         };
     }
