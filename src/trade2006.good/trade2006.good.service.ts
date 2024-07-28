@@ -25,6 +25,7 @@ import { Cron } from '@nestjs/schedule';
 import { DateTime } from 'luxon';
 import { WbCardDto } from '../wb.card/dto/wb.card.dto';
 import { Cache } from '@nestjs/cache-manager';
+import { WbCommissionDto } from '../wb.card/dto/wb.commission.dto';
 
 @Injectable()
 export class Trade2006GoodService implements IGood {
@@ -315,8 +316,20 @@ export class Trade2006GoodService implements IGood {
         const t = await this.pool.getTransaction();
         await t.execute(
             'UPDATE OR INSERT INTO WB_CATEGORIES (ID, COMMISSION, NAME) VALUES (?, ?, ?) MATCHING (ID)',
-            [wbCard.subjectID, 25, wbCard.subjectName],
+            [wbCard.subjectID, wbCard.kgvpMarketplace ?? 25, wbCard.subjectName],
             true,
         );
+    }
+
+    async getWbCategoryByName(name: string): Promise<WbCommissionDto> {
+        const t = await this.pool.getTransaction();
+        const res = await t.query('SELECT * FROM WB_CATEGORIES WHERE NAME = ?', [name], true);
+        return res.length > 0
+            ? {
+                  id: res[0].ID,
+                  name: res[0].NAME,
+                  commission: res[0].COMMISSION,
+              }
+            : null;
     }
 }

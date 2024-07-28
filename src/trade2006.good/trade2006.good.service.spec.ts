@@ -237,4 +237,8 @@ describe('Trade2006GoodService', () => {
             true,
         ]);
     });
+    it('getWbCategoryByName', async () => {
+        await service.getWbCategoryByName('test');
+        expect(query.mock.calls[0]).toEqual(['SELECT * FROM WB_CATEGORIES WHERE NAME = ?', ['test'], true]);
+    });
 });

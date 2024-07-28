@@ -112,6 +112,15 @@ class EnvironmentVariables {
 
     @IsNumber()
     YANDEX_PERC_EKV: number;
+
+    @IsNumber()
+    WB_OBTAIN: number;
+
+    @IsNumber()
+    WB_EKV: number;
+
+    @IsNumber()
+    WB_EXT_PERC: number;
 }
 
 export function configValidate(config: Record<string, unknown>) {

@@ -13,6 +13,7 @@ import { WbCardService } from '../wb.card/wb.card.service';
 import { find, first } from 'lodash';
 import Excel from 'exceljs';
 import { GoodWbDto } from '../good/dto/good.wb.dto';
+import { WbCardDto } from '../wb.card/dto/wb.card.dto';
 
 @Injectable()
 export class WbPriceService implements IPriceUpdateable {
@@ -34,7 +35,9 @@ export class WbPriceService implements IPriceUpdateable {
     }
 
     async getProductsWithCoeffs(skus: string[]): Promise<IProductCoeffsable[]> {
-        return (await this.goodService.getWbData(skus)).map((wbData) => new WbPriceCoeffsAdapter(wbData));
+        return (await this.goodService.getWbData(skus)).map(
+            (wbData) => new WbPriceCoeffsAdapter(wbData, this.configService.get<number>('WB_EXT_PERC', 0)),
+        );
     }
 
     // @Cron('0 5 0 * * 0', { name: 'updateWbPrices' })
@@ -143,5 +146,17 @@ export class WbPriceService implements IPriceUpdateable {
             );
         }
         this.logger.log('Wb categories init');
+    }
+
+    async updateWbSaleCoeffs(): Promise<any> {
+        const data = await this.api.method(
+            'https://common-api.wildberries.ru/api/v1/tariffs/commission',
+            'get',
+            {},
+            true,
+        );
+        for (const card of data.report) {
+            await this.goodService.updateWbCategory(card as WbCardDto);
+        }
     }
 }

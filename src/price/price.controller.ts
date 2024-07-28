@@ -30,6 +30,7 @@ import { Cron } from '@nestjs/schedule';
 import { IPriceable } from '../interfaces/i.priceable';
 import { ObtainCoeffsDto } from '../helpers/obtain.coeffs.dto';
 import { calculatePay, calculatePrice } from '../helpers';
+import { WbCommissionDto } from '../wb.card/dto/wb.commission.dto';
 @ApiTags('price')
 @Controller('price')
 export class PriceController {
@@ -194,5 +195,15 @@ export class PriceController {
     @Cron('0 0 0 * * 0', { name: 'updateAllServicePrices' })
     async updateAllPrices(): Promise<void> {
         await Promise.all(Array.from(this.services.values()).map((service) => service.updateAllPrices()));
+    }
+
+    @Post('wb-coefficients')
+    async updateWbCoeffs(): Promise<any> {
+        await this.wb.updateWbSaleCoeffs();
+    }
+
+    @Get('wb-coefficients')
+    async getWbCoeff(@Query('name') name: string): Promise<WbCommissionDto> {
+        return this.goodService.getWbCategoryByName(name);
     }
 }
