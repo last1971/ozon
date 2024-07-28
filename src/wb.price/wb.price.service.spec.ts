@@ -14,6 +14,7 @@ describe('WbPriceService', () => {
     const method = jest.fn();
     const setWbData = jest.fn();
     const getNmID = jest.fn();
+    const updateWbCategory = jest.fn();
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
@@ -25,7 +26,7 @@ describe('WbPriceService', () => {
                 },
                 {
                     provide: GOOD_SERVICE,
-                    useValue: { getWbData, updatePriceForService, setWbData },
+                    useValue: { getWbData, updatePriceForService, setWbData, updateWbCategory },
                 },
                 {
                     provide: WbApiService,
@@ -61,7 +62,7 @@ describe('WbPriceService', () => {
     it('getProductsWithCoeffs', async () => {
         getWbData.mockResolvedValueOnce([{ id: '1', commission: 2, tariff: 3 }]);
         const res = await service.getProductsWithCoeffs(['1']);
-        expect(res).toEqual([new WbPriceCoeffsAdapter({ id: '1', commission: 2, tariff: 3 })]);
+        expect(res).toEqual([new WbPriceCoeffsAdapter({ id: '1', commission: 2, tariff: 3 }, 0)]);
     });
 
     it('updateAllPrices', async () => {
@@ -104,6 +105,54 @@ describe('WbPriceService', () => {
             'post',
             { data: [{ discount: 33, nmID: 1, price: 3 }] },
             true,
+        ]);
+    });
+
+    it('updateWbSaleCoeffs', async () => {
+        method.mockResolvedValueOnce({
+            report: [
+                {
+                    kgvpMarketplace: 16.5,
+                    kgvpSupplier: 13.5,
+                    kgvpSupplierExpress: 11.5,
+                    paidStorageKgvp: 16.5,
+                    parentID: 760,
+                    parentName: 'Автомобильные товары',
+                    subjectID: 2442,
+                    subjectName: 'Защита радиатора',
+                },
+                {
+                    kgvpMarketplace: 18.5,
+                    kgvpSupplier: 15.5,
+                    kgvpSupplierExpress: 13.5,
+                    paidStorageKgvp: 18.5,
+                    parentID: 6249,
+                    parentName: 'Товары для курения',
+                    subjectID: 5325,
+                    subjectName: 'Ершики для кальянов',
+                },
+            ],
+        });
+        await service.updateWbSaleCoeffs();
+        expect(method.mock.calls).toHaveLength(1);
+        expect(method.mock.calls[0]).toEqual([
+            'https://common-api.wildberries.ru/api/v1/tariffs/commission',
+            'get',
+            {},
+            true,
+        ]);
+        expect(updateWbCategory.mock.calls).toHaveLength(2);
+        expect(updateWbCategory.mock.calls[0]).toEqual([
+            {
+                kgvpMarketplace: 16.5,
+                kgvpSupplier: 13.5,
+                kgvpSupplierExpress: 11.5,
+                paidStorageKgvp: 16.5,
+                parentID: 760,
+                parentName: 'Автомобильные товары',
+                subjectID: 2442,
+                subjectName: 'Защита радиатора',
+            },
         ]);
     });
 });

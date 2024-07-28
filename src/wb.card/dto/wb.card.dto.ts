@@ -6,5 +6,6 @@ export class WbCardDto {
     subjectID: number;
     subjectName: string;
     vendorCode: string;
+    kgvpMarketplace?: number;
     sizes: WbCardSizeDto[];
 }

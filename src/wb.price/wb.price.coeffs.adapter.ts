@@ -2,10 +2,13 @@ import { IProductCoeffsable } from '../interfaces/i.product.coeffsable';
 import { GoodWbDto } from '../good/dto/good.wb.dto';
 
 export class WbPriceCoeffsAdapter implements IProductCoeffsable {
-    constructor(private goodWbDto: GoodWbDto) {}
+    constructor(
+        private goodWbDto: GoodWbDto,
+        private wbExtPerc: number,
+    ) {}
 
     getSalesPercent(): number {
-        return this.goodWbDto.commission;
+        return this.goodWbDto.commission + this.wbExtPerc;
     }
 
     getSku(): string {
