@@ -9,9 +9,13 @@ import { ConfigService } from '@nestjs/config';
 import { IOrderable } from '../interfaces/IOrderable';
 import { FirebirdTransaction } from 'ts-firebird';
 import { Cron } from '@nestjs/schedule';
+import { ISuppliable } from '../interfaces/i.suppliable';
+import * as console from 'node:console';
+import { SupplyDto } from '../supply/dto/supply.dto';
+import { GoodServiceEnum } from "../good/good.service.enum";
 
 @Injectable()
-export class PostingService implements IOrderable {
+export class PostingService implements IOrderable, ISuppliable {
     constructor(
         private productService: ProductService,
         @Inject(INVOICE_SERVICE) private invoiceService: IInvoice,
@@ -63,5 +67,16 @@ export class PostingService implements IOrderable {
     async createInvoice(posting: PostingDto, transaction: FirebirdTransaction): Promise<InvoiceDto> {
         const buyerId = this.configService.get<number>('OZON_BUYER_ID', 24416);
         return this.invoiceService.createInvoiceFromPostingDto(buyerId, posting, transaction);
+    }
+
+    async getSupplies(): Promise<SupplyDto[]> {
+        return [
+            {
+                id: 'ozon-fbs',
+                remark: 'Ozon-FBS',
+                goodService: GoodServiceEnum.OZON,
+                isMarketplace: true,
+            },
+        ];
     }
 }

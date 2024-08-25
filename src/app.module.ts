@@ -29,6 +29,8 @@ import { WbOrderModule } from './wb.order/wb.order.module';
 import { WbPriceModule } from './wb.price/wb.price.module';
 import { MailModule } from './mail/mail.module';
 import { CacheModule } from '@nestjs/cache-manager';
+import { WbSupplyModule } from './wb.supply/wb.supply.module';
+import { SupplyModule } from './supply/supply.module';
 @Module({
     imports: [
         CacheModule.register({
@@ -78,6 +80,8 @@ import { CacheModule } from '@nestjs/cache-manager';
         WbOrderModule,
         WbPriceModule,
         MailModule,
+        WbSupplyModule,
+        SupplyModule,
     ],
     controllers: [AppController],
     providers: [AppService, CronSetupProviderService],
