@@ -10,7 +10,7 @@ import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { TransactionDto } from '../posting/dto/transaction.dto';
 import { ResultDto } from '../helpers/result.dto';
 import { goodCode, goodQuantityCoeff } from '../helpers';
-import { chunk, flatten } from 'lodash';
+import { chunk, flatten, toNumber } from 'lodash';
 import { ProductPostingDto } from '../product/dto/product.posting.dto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Cache } from '@nestjs/cache-manager';
@@ -18,9 +18,14 @@ import { InvoiceGetDto } from '../invoice/dto/invoice.get.dto';
 import { InvoiceLineDto } from '../invoice/dto/invoice.line.dto';
 import { ISOLATION_READ_UNCOMMITTED } from 'node-firebird';
 import { Cron } from '@nestjs/schedule';
+import { ISuppliable } from '../interfaces/i.suppliable';
+import { SupplyDto } from '../supply/dto/supply.dto';
+import { GoodServiceEnum } from '../good/good.service.enum';
+import { SupplyPositionDto } from '../supply/dto/supply.position.dto';
+import { IProductable } from '../interfaces/i.productable';
 
 @Injectable()
-export class Trade2006InvoiceService implements IInvoice {
+export class Trade2006InvoiceService implements IInvoice, ISuppliable {
     private logger = new Logger(Trade2006InvoiceService.name);
     // private fboErrors: { prim: string; code: string }[] = [];
     constructor(
@@ -382,13 +387,18 @@ export class Trade2006InvoiceService implements IInvoice {
         this.eventEmitter.emit('error.message', `Delta ${id} code with quantity: ${quantity} for ${prim}`);
     }
     async getInvoiceLines(invoice: InvoiceDto, transaction: FirebirdTransaction = null): Promise<InvoiceLineDto[]> {
+        return this.getInvoiceLinesByInvoiceId(invoice.id, transaction);
+    }
+
+    async getInvoiceLinesByInvoiceId(id: number, transaction: FirebirdTransaction = null): Promise<InvoiceLineDto[]> {
         const t = transaction || (await this.getTransaction());
-        const lines = await t.query('SELECT * FROM REALPRICE WHERE SCODE = ?', [invoice.id], !transaction);
+        const lines = await t.query('SELECT * FROM REALPRICE WHERE SCODE = ?', [id], !transaction);
         return lines.map(
             (line): InvoiceLineDto => ({
                 goodCode: line.GOODSCODE,
                 price: line.PRICE,
                 quantity: line.QUAN,
+                whereOrdered: line.WHERE_ORDERED,
             }),
         );
     }
@@ -403,5 +413,41 @@ export class Trade2006InvoiceService implements IInvoice {
         const res = await this.unPickupOzonFbo(product, invoice.remark, transaction);
         if (!res) throw new Error('Not find lines for ' + invoice.remark);
         await this.deltaGood(product.offer_id, -product.quantity, 'WBFBO Correction', transaction);
+    }
+
+    async getPrimContaining(search: string, transaction: FirebirdTransaction = null): Promise<InvoiceDto[]> {
+        const t = transaction || (await this.getTransaction());
+        const invoices = await t.query('SELECT * FROM S WHERE PRIM CONTAINING ?', [search], !transaction);
+        return InvoiceDto.map(invoices);
+    }
+
+    async getSupplies(): Promise<SupplyDto[]> {
+        const invoices = await this.getPrimContaining('FORFBO');
+        const buyerId = this.configService.get<number>('OZON_BUYER_ID', 24416);
+        return invoices.map(
+            (invoice): SupplyDto => ({
+                id: invoice.id.toString(),
+                isMarketplace: false,
+                remark: invoice.remark,
+                goodService: buyerId === invoice.buyerId ? GoodServiceEnum.OZON : GoodServiceEnum.WB,
+            }),
+        );
+    }
+
+    async getSupplyPositions(id: string, productable: IProductable): Promise<SupplyPositionDto[]> {
+        const lines = await this.getInvoiceLinesByInvoiceId(toNumber(id));
+        const ret: SupplyPositionDto[] = [];
+        for (const line of lines) {
+            const { goodCode, whereOrdered } = line;
+            const sku = whereOrdered ? `${goodCode}-${whereOrdered}` : goodCode;
+            const product = await productable.getProductInfoBySku(sku);
+            ret.push({
+                supplyId: id,
+                barCode: product.barCode,
+                remark: product.remark,
+                quantity: toNumber(line.quantity),
+            });
+        }
+        return ret;
     }
 }

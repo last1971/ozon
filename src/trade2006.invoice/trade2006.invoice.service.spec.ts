@@ -343,4 +343,10 @@ describe('Trade2006InvoiceService', () => {
         expect(res).toEqual([{ goodCode: 1, price: 2, quantity: 3 }]);
         expect(query.mock.calls[0]).toEqual(['SELECT * FROM REALPRICE WHERE SCODE = ?', [1], true]);
     });
+
+    it('getPrimContaining', async () => {
+        query.mockResolvedValueOnce([]);
+        await service.getPrimContaining('test');
+        expect(query.mock.calls[0]).toEqual(['SELECT * FROM S WHERE PRIM CONTAINING ?', ['test'], true]);
+    })
 });

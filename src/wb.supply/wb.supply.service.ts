@@ -4,12 +4,19 @@ import { WbSupplyDto } from './dto/wb.supply.dto';
 import { ISuppliable } from '../interfaces/i.suppliable';
 import { SupplyDto } from '../supply/dto/supply.dto';
 import { GoodServiceEnum } from '../good/good.service.enum';
+import { SupplyPositionDto } from 'src/supply/dto/supply.position.dto';
 
 @Injectable()
 export class WbSupplyService implements ISuppliable {
     private next: number = 0;
     private supplies: WbSupplyDto[] = [];
-    constructor(private api: WbApiService) {}
+
+    constructor(private api: WbApiService) {
+    }
+
+    getSupplyPositions(id: string): Promise<SupplyPositionDto[]> {
+        throw new Error('Method not implemented.');
+    }
 
     async list(next = 0): Promise<WbSupplyDto[]> {
         const res = await this.api.method(
@@ -24,6 +31,7 @@ export class WbSupplyService implements ISuppliable {
 
     async updateSupplies(): Promise<void> {
         let supplies: WbSupplyDto[];
+        this.supplies = [];
         do {
             supplies = await this.list(this.next);
             this.supplies = this.supplies.concat(supplies);

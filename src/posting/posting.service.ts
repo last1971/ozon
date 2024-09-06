@@ -12,7 +12,8 @@ import { Cron } from '@nestjs/schedule';
 import { ISuppliable } from '../interfaces/i.suppliable';
 import * as console from 'node:console';
 import { SupplyDto } from '../supply/dto/supply.dto';
-import { GoodServiceEnum } from "../good/good.service.enum";
+import { GoodServiceEnum } from '../good/good.service.enum';
+import { SupplyPositionDto } from 'src/supply/dto/supply.position.dto';
 
 @Injectable()
 export class PostingService implements IOrderable, ISuppliable {
@@ -21,6 +22,10 @@ export class PostingService implements IOrderable, ISuppliable {
         @Inject(INVOICE_SERVICE) private invoiceService: IInvoice,
         private configService: ConfigService,
     ) {}
+
+    getSupplyPositions(id: string): Promise<SupplyPositionDto[]> {
+        throw new Error('Method not implemented.');
+    }
 
     async list(status: string, day = 3): Promise<PostingDto[]> {
         const filter: PostingsRequestDto = {
