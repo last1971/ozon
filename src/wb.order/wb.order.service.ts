@@ -14,7 +14,7 @@ import { ResultDto } from '../helpers/result.dto';
 import { first, min, chunk, find, filter } from 'lodash';
 import { WbTransactionDto } from './dto/wb.transaction.dto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Cron } from '@nestjs/schedule';
+import { Cron, Timeout } from "@nestjs/schedule";
 import { WbFboOrder } from './dto/wb.fbo.order';
 import { ProductPostingDto } from '../product/dto/product.posting.dto';
 import Excel from 'exceljs';
@@ -210,7 +210,7 @@ export class WbOrderService implements IOrderable {
 
     async getTransactions(data: TransactionFilterDate, rrdid = 0): Promise<Array<WbTransactionDto>> {
         const transactions: WbTransactionDto[] = await this.api.method(
-            '/api/v1/supplier/reportDetailByPeriod',
+            '/api/v5/supplier/reportDetailByPeriod',
             'statistics',
             {
                 dateFrom: data.from,
@@ -277,7 +277,7 @@ export class WbOrderService implements IOrderable {
     }
     // @Timeout(0)
     // Not test
-    async closeSales(dateFrom: string = '2024-03-01', dateTo: string = '2024-04-01'): Promise<any> {
+    async closeSales(dateFrom: string = '2024-05-14', dateTo: string = '2024-06-01'): Promise<any> {
         const transaction = await this.invoiceService.getTransaction();
         try {
             const buyerId: number = this.configService.get<number>('WB_BUYER_ID', 24532);
