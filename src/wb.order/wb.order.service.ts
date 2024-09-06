@@ -235,7 +235,7 @@ export class WbOrderService implements IOrderable {
                     delivery_rub: row.getCell(36).value as number,
                     order_dt: row.getCell(12).value as string,
                     rrd_id: null,
-                    srid: row.getCell(53).value as string,
+                    srid: row.getCell(56).value as string,
                 });
             }
         });
