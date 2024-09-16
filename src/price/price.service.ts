@@ -43,6 +43,7 @@ export class PriceService implements IPriceUpdateable {
         const codes = products.items.map((item) => goodCode(item));
         const goods = await this.goodService.prices(codes, null);
         const percents = await this.goodService.getPerc(codes, null);
+        const percDirectFlow = 1 + this.configService.get<number>('PERC_DIRECT_FLOW', 0)/100;
         return {
             last_id: products.last_id,
             data: products.items.map((item) => {
@@ -72,7 +73,11 @@ export class PriceService implements IPriceUpdateable {
                     old_perc: percent.old_perc,
                     adv_perc: percent.adv_perc,
                     sales_percent: item.commissions.sales_percent_fbs,
-                    fbs_direct_flow_trans_max_amount: item.commissions.fbs_direct_flow_trans_max_amount,
+                    fbs_direct_flow_trans_max_amount:
+                        (item.commissions.fbs_direct_flow_trans_max_amount
+                        +
+                        item.commissions.fbs_direct_flow_trans_min_amount)
+                        / 2 * percDirectFlow,
                     auto_action_enabled: item.price.auto_action_enabled,
                     sum_pack: percent.packing_price,
                 };
@@ -113,12 +118,13 @@ export class PriceService implements IPriceUpdateable {
     }
 
     async getProductsWithCoeffs(skus: string[]): Promise<IProductCoeffsable[]> {
+        const percDirectFlow = 1 + this.configService.get<number>('PERC_DIRECT_FLOW', 0)/100;
         const response = await this.product.getPrices({
             offer_id: skus,
             limit: 1000,
             visibility: ProductVisibility.IN_SALE,
         });
-        return response.items.map((product) => new OzonProductCoeffsAdapter(product));
+        return response.items.map((product) => new OzonProductCoeffsAdapter(product, percDirectFlow));
     }
 
     async updatePrices(updatePrices: UpdatePriceDto[]): Promise<any> {
