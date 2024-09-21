@@ -98,10 +98,12 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit {
             skus: Array.from(barcodes.keys()),
         });
         const goods = new Map<string, number>();
-        quantities.stocks.forEach((stock) => {
-            const sku = barcodes.get(stock.sku);
-            goods.set(sku, stock.amount);
-        });
+        if (quantities?.stocks) {
+            quantities.stocks.forEach((stock) => {
+                const sku = barcodes.get(stock.sku);
+                goods.set(sku, stock.amount);
+            });
+        }
         const { updatedAt, nmID, total } = cursor;
         return {
             goods,
