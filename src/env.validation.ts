@@ -93,6 +93,9 @@ class EnvironmentVariables {
     PERC_EKV: number;
 
     @IsNumber()
+    PERC_DIRECT_FLOW: number;
+
+    @IsNumber()
     MIN_MIL: number;
 
     @IsNumber()

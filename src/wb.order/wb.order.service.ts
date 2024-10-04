@@ -231,11 +231,13 @@ export class WbOrderService implements IOrderable {
         worksheet.eachRow((row: Excel.Row, rowNumber) => {
             if (rowNumber !== 1) {
                 ret.push({
-                    ppvz_for_pay: row.getCell(33).value as number,
-                    delivery_rub: row.getCell(36).value as number,
+                    ppvz_for_pay: row.getCell(34).value as number,
+                    delivery_rub: row.getCell(37).value as number,
+                    additional_payment: row.getCell(42).value as number,
+                    penalty: row.getCell(41).value as number,
                     order_dt: row.getCell(12).value as string,
                     rrd_id: null,
-                    srid: row.getCell(56).value as string,
+                    srid: row.getCell(57).value as string,
                 });
             }
         });
@@ -261,7 +263,10 @@ export class WbOrderService implements IOrderable {
             }
             const ppvzForPay = t.ppvz_for_pay ?? 0;
             const deliveryRub = t.delivery_rub ?? 0;
-            amount += ppvzForPay - deliveryRub;
+            amount += ppvzForPay
+                - deliveryRub
+                + (t.additional_payment ?? 0)
+                - (t.penalty ?? 0);
             commissions.set(number, amount);
         });
         for (const key of commissions.keys()) {
@@ -303,7 +308,7 @@ export class WbOrderService implements IOrderable {
                         (amount, t: any) =>
                             amount +
                             (t.ppvz_for_pay ?? 0) -
-                            (t.delivery_rub ?? 0) -
+                            (t.delivery_rub ?? 0) +
                             (t.additional_payment ?? 0) -
                             (t.penalty ?? 0),
                         0,

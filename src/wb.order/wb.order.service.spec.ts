@@ -183,7 +183,7 @@ describe('WbOrderService', () => {
         const date = new Date();
         await service.getTransactions({ from: date, to: date });
         expect(method.mock.calls[0]).toEqual([
-            '/api/v1/supplier/reportDetailByPeriod',
+            '/api/v5/supplier/reportDetailByPeriod',
             'statistics',
             {
                 dateFrom: date,
