@@ -20,13 +20,13 @@ const secondDisabled = ref<boolean>(true);
 const firstTime = ref<string>('');
 const secondTime = ref<string>('');
 
-async function update(remark, data, text: string): Promise<boolean> {
+async function update(remark: string, data: any, text: string): Promise<boolean> {
     let result = true;
     try {
         await axios.put(`/api/invoice/update/${remark}`, data);
         snackbarMessage.value = text;
         snackbarColor.value = 'success';
-    } catch (e) {
+    } catch (e: any) {
        if (e.status === 400) {
            snackbarMessage.value = 'Такого заказа нет в базе данных';
            snackbarColor.value = 'warning';
