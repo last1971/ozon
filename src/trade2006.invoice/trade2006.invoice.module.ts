@@ -5,5 +5,6 @@ import { FirebirdModule } from '../firebird/firebird.module';
 @Module({
     imports: [FirebirdModule],
     providers: [Trade2006InvoiceService],
+    exports: [Trade2006InvoiceService],
 })
 export class Trade2006InvoiceModule {}

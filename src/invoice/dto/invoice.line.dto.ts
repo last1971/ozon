@@ -3,4 +3,5 @@ export class InvoiceLineDto {
     quantity: number;
     price: string;
     originalCode?: string;
+    whereOrdered?: string;
 }

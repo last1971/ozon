@@ -6,10 +6,13 @@ import { FIREBIRD, FirebirdModule } from '../firebird/firebird.module';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FirebirdPool } from 'ts-firebird';
 import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
+import { InvoiceController } from './invoice.controller';
+import { IsRemarkValid } from "../validators/is.remark.valid";
 
 @Module({
     imports: [FirebirdModule],
     providers: [
+        IsRemarkValid,
         {
             provide: INVOICE_SERVICE,
             useFactory: (
@@ -22,5 +25,6 @@ import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
         },
     ],
     exports: [INVOICE_SERVICE],
+    controllers: [InvoiceController],
 })
 export class InvoiceModule {}

@@ -5,6 +5,7 @@ import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DateTime } from 'luxon';
 import { Cache } from '@nestjs/cache-manager';
+import { InvoiceUpdateDto } from "../invoice/dto/invoice.update.dto";
 
 describe('Trade2006InvoiceService', () => {
     let service: Trade2006InvoiceService;
@@ -342,5 +343,25 @@ describe('Trade2006InvoiceService', () => {
         const res = await service.getInvoiceLines({ buyerId: 0, date: null, remark: '', status: 0, id: 1 });
         expect(res).toEqual([{ goodCode: 1, price: 2, quantity: 3 }]);
         expect(query.mock.calls[0]).toEqual(['SELECT * FROM REALPRICE WHERE SCODE = ?', [1], true]);
+    });
+
+    it('getPrimContaining', async () => {
+        query.mockResolvedValueOnce([]);
+        await service.getPrimContaining('test');
+        expect(query.mock.calls[0]).toEqual(['SELECT * FROM S WHERE PRIM CONTAINING ?', ['test'], true]);
+    })
+
+    it('update', async () => {
+        const dto: InvoiceUpdateDto = {
+            IGK: '1234567890',
+            START_PICKUP: '2020-01-01 00:01:00',
+        };
+        const res = await service.update('OOO', dto);
+        expect(res).toEqual(true);
+        expect(execute.mock.calls[0]).toEqual([
+            'UPDATE S SET IGK = ?, START_PICKUP = ? WHERE PRIM = ?',
+            ['1234567890', '2020-01-01 00:01:00', 'OOO'],
+            true,
+        ]);
     });
 });
