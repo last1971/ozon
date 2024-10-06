@@ -7,6 +7,7 @@ import { FirebirdTransaction } from 'ts-firebird';
 import { ProductPostingDto } from '../product/dto/product.posting.dto';
 import { InvoiceGetDto } from '../invoice/dto/invoice.get.dto';
 import { InvoiceLineDto } from '../invoice/dto/invoice.line.dto';
+import { InvoiceUpdateDto } from "../invoice/dto/invoice.update.dto";
 
 export interface IInvoice {
     getTransaction(): Promise<FirebirdTransaction>;
@@ -25,5 +26,6 @@ export interface IInvoice {
     getInvoiceLines(invoice: InvoiceDto, transaction: FirebirdTransaction): Promise<InvoiceLineDto[]>;
     unPickupAndDeltaInvoice(invoice: InvoiceDto, transaction: FirebirdTransaction): Promise<void>;
     bulkSetStatus(invoices: InvoiceDto[], status: number, transaction: FirebirdTransaction): Promise<void>;
+    update(remark: string, invoiceUpdateDto: InvoiceUpdateDto): Promise<boolean>;
 }
 export const INVOICE_SERVICE = 'INVOICE_SERVICE';

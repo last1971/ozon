@@ -3,6 +3,7 @@ import Tariff from "@/components/Tariff.vue";
 import Articles from "@/components/Articles.vue";
 import Prices from "@/components/Prices.vue";
 import { ref } from "vue";
+import ScanFbs from "@/components/ScanFbs.vue";
 const tab = ref('prices');
 </script>
 
@@ -13,6 +14,7 @@ const tab = ref('prices');
             v-model="tab"
         >
             <v-tab value="prices">Цены</v-tab>
+            <v-tab value="scan-fbs">Скан FBS</v-tab>
             <v-tab value="wb-marketplace">WB маркетплейс</v-tab>
         </v-tabs>
 
@@ -26,8 +28,12 @@ const tab = ref('prices');
                     <Prices class="pa-2" />
                 </v-tabs-window-item>
 
+                <v-tabs-window-item value="scan-fbs">
+                    <scan-fbs class="pa-2"/>
+                </v-tabs-window-item>
+
                 <v-tabs-window-item value="wb-marketplace">
-                    Two
+                    3
                 </v-tabs-window-item>
             </v-tabs-window>
         </v-card-text>

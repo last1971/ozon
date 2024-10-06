@@ -3,12 +3,14 @@ import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ValidationPipe } from '@nestjs/common';
+import { useContainer } from "class-validator";
 
 async function bootstrap() {
     const app = await NestFactory.create(AppModule);
     app.useGlobalPipes(new ValidationPipe({ transform: true })); //, transformOptions: { enableImplicitConversion: true }
     app.enableCors();
     app.setGlobalPrefix('api');
+    useContainer(app.select(AppModule), { fallbackOnErrors: true });
     const config = new DocumentBuilder()
         .setTitle('Ozon example')
         .setDescription('The Ozon API description')

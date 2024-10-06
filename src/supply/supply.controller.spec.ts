@@ -3,6 +3,7 @@ import { SupplyController } from './supply.controller';
 import { WbSupplyService } from '../wb.supply/wb.supply.service';
 import request from 'supertest';
 import { INestApplication } from '@nestjs/common';
+import { Trade2006InvoiceService } from "../trade2006.invoice/trade2006.invoice.service";
 
 describe('SupplyController', () => {
     let controller: SupplyController;
@@ -16,6 +17,10 @@ describe('SupplyController', () => {
                     provide: WbSupplyService,
                     useValue: { getSupplies: jest.fn().mockReturnValue([{ id: 1, name: 'Supply1' }]) },
                 },
+                {
+                    provide: Trade2006InvoiceService,
+                    useValue: { getSupplies: jest.fn().mockReturnValue([{ id: 2, name: 'Supply2' }]) },
+                }
             ],
         }).compile();
 
@@ -29,12 +34,8 @@ describe('SupplyController', () => {
         expect(controller).toBeDefined();
     });
 
-    it('should return supplies for WB', async () => {
-        const response = await request(app.getHttpServer()).get('/supply/list/wb').expect(200);
-        expect(response.body).toEqual([{ id: 1, name: 'Supply1' }]);
-    });
-    it('should not return supplies for OZON', async () => {
-        const response = await request(app.getHttpServer()).get('/supply/list/ozon').expect(200);
-        expect(response.body).toEqual([]);
+    it('should return supplies', async () => {
+        const response = await request(app.getHttpServer()).get('/supply/list').expect(200);
+        expect(response.body).toEqual([{ id: 1, name: 'Supply1' }, { id: 2, name: 'Supply2' }]);
     });
 });
