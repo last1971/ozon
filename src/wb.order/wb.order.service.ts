@@ -168,7 +168,7 @@ export class WbOrderService implements IOrderable {
 
     createInvoice(posting: PostingDto, transaction: FirebirdTransaction): Promise<InvoiceDto> {
         const buyerId = this.configService.get<number>('WB_BUYER_ID', 24532);
-        this.eventEmitter.emit('wb.order.created', posting);
+        // this.eventEmitter.emit('wb.order.created', posting);
         return this.invoiceService.createInvoiceFromPostingDto(buyerId, posting, transaction);
     }
 
