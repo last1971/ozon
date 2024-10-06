@@ -1,4 +1,4 @@
-import { Body, Controller, Inject, Param, Put, UsePipes, ValidationPipe } from "@nestjs/common";
+import { Body, Controller, Inject, Param, Put } from "@nestjs/common";
 import { IInvoice, INVOICE_SERVICE } from "../interfaces/IInvoice";
 import { ApiTags } from "@nestjs/swagger";
 import { RemarkDto } from "./dto/remark.dto";

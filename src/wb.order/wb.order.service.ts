@@ -14,7 +14,7 @@ import { ResultDto } from '../helpers/result.dto';
 import { first, min, chunk, find, filter } from 'lodash';
 import { WbTransactionDto } from './dto/wb.transaction.dto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Cron, Timeout } from "@nestjs/schedule";
+import { Cron } from "@nestjs/schedule";
 import { WbFboOrder } from './dto/wb.fbo.order';
 import { ProductPostingDto } from '../product/dto/product.posting.dto';
 import Excel from 'exceljs';

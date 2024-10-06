@@ -23,7 +23,7 @@ const secondTime = ref<string>('');
 async function update(remark, data, text: string): Promise<boolean> {
     let result = true;
     try {
-        const res = await axios.put(`/api/invoice/update/${remark}`, data);
+        await axios.put(`/api/invoice/update/${remark}`, data);
         snackbarMessage.value = text;
         snackbarColor.value = 'success';
     } catch (e) {

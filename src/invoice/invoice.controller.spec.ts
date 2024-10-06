@@ -1,7 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { InvoiceController } from './invoice.controller';
 import { IsRemarkValid } from "../validators/is.remark.valid";
-import { IInvoice, INVOICE_SERVICE } from "../interfaces/IInvoice";
+import { INVOICE_SERVICE } from "../interfaces/IInvoice";
 
 describe('InvoiceController', () => {
     let controller: InvoiceController;
