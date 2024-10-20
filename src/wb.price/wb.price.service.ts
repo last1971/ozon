@@ -110,8 +110,16 @@ export class WbPriceService implements IPriceUpdateable {
         const newWorksheet = newWorkbook.addWorksheet(worksheet.name);
         newWorksheet.state = 'visible';
         const ids: string[] = [];
+        const targetColumns: { [key: string]: number } = {}; // Словарь для хранения имен и индексов столбцов
+        const columnNamesToFind = ['Артикул поставщика', 'Плановая цена для акции']; // Замените на нужные имена столбцов
+        // Определяем номера столбцов по их именам (из заголовка в первой строке)
+        worksheet.getRow(1).eachCell((cell, colNumber) => {
+            if (columnNamesToFind.includes(cell.value as string)) {
+                targetColumns[cell.value as string] = colNumber;
+            }
+        });
         worksheet.eachRow((row: Excel.Row, rowNumber) => {
-            if (rowNumber !== 1) ids.push(row.getCell(4).value as string);
+            if (rowNumber !== 1) ids.push(row.getCell(targetColumns['Артикул поставщика']).value as string);
         });
         const discounts: Map<string, number> = new Map(
             (await this.goodService.getWbData(ids)).map((discount) => [discount.id, discount.minPrice]),
@@ -119,8 +127,11 @@ export class WbPriceService implements IPriceUpdateable {
         let i = 1;
         worksheet.eachRow((row: Excel.Row, rowNumber) => {
             if (
-                rowNumber === 1 ||
-                parseInt(row.getCell(11).value as string) >= discounts.get(row.getCell(4).value as string)
+                rowNumber === 1
+                ||
+                parseInt(row.getCell(targetColumns['Плановая цена для акции']).value as string)
+                >=
+                discounts.get(row.getCell(targetColumns['Артикул поставщика']).value as string)
             ) {
                 newWorksheet.insertRow(i++, row.values);
             }
