@@ -328,4 +328,8 @@ export class WbOrderService implements IOrderable {
             console.log(e);
         }
     }
+
+    async listCanceled(): Promise<PostingDto[]> {
+        return [];
+    }
 }

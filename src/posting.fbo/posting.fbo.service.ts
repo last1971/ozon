@@ -53,7 +53,10 @@ export class PostingFboService implements IOrderable {
                 analytics_data: true,
             },
         });
-        return orders.result;
+        return orders.result.map(order => ({
+            ...order,
+            isFbo: true
+        }));
     }
     async listCanceled(): Promise<PostingDto[]> {
         return this.list('cancelled', 90);
@@ -65,7 +68,8 @@ export class PostingFboService implements IOrderable {
         return this.list('awaiting_packaging');
     }
 
-    @Cron('0 */5 * * * *', { name: 'checkCanceledFboOrders' })
+    // deprecated remove method and checkCanceledFboOrders
+    // @Cron('0 */5 * * * *', { name: 'checkCanceledFboOrders' })
     async checkCanceledOrders(): Promise<void> {
         const orders = await this.listCanceled();
         const cancelled = [];

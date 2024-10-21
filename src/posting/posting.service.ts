@@ -45,7 +45,8 @@ export class PostingService implements IOrderable, ISuppliable {
     async listCanceled(): Promise<PostingDto[]> {
         return this.list('cancelled', 7);
     }
-    @Cron('0 */5 * * * *', { name: 'checkCanceledOzonOrders' })
+    // deprecated remove method and checkCanceledOzonOrders
+    // @Cron('0 */5 * * * *', { name: 'checkCanceledOzonOrders' })
     async checkCancelled(): Promise<void> {
         const orders = await this.listCanceled();
         const transaction = await this.invoiceService.getTransaction();

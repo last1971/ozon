@@ -91,4 +91,8 @@ export class YandexOrderService implements IOrderable, OnModuleInit {
         });
         return this.invoiceService.updateByCommissions(commissions, null);
     }
+
+    async listCanceled(): Promise<PostingDto[]> {
+        return [];
+    }
 }

@@ -11,6 +11,8 @@ import { PostingFboService } from '../posting.fbo/posting.fbo.service';
 import { WbOrderService } from '../wb.order/wb.order.service';
 import { ConfigService } from '@nestjs/config';
 import { GoodServiceEnum } from '../good/good.service.enum';
+import { FirebirdTransaction } from "ts-firebird";
+import { PostingDto } from "../posting/dto/posting.dto";
 
 @Injectable()
 export class OrderService {
@@ -52,26 +54,65 @@ export class OrderService {
         for (const service of this.orderServices) {
             const transaction = await this.invoiceService.getTransaction();
             try {
-                const packagingPostings = await service.listAwaitingPackaging();
-                for (const posting of packagingPostings) {
-                    if (!(await this.invoiceService.isExists(posting.posting_number, transaction))) {
-                        await service.createInvoice(posting, transaction);
-                    }
-                }
-                const deliveringPostings = await service.listAwaitingDelivering();
-                for (const posting of deliveringPostings) {
-                    let invoice = await this.invoiceService.getByPosting(posting, transaction);
-                    if (!invoice) {
-                        invoice = await service.createInvoice(posting, transaction);
-                    }
-                    if (invoice) {
-                        await this.invoiceService.pickupInvoice(invoice, transaction);
-                    }
-                }
+                await this.cancelOrders(service, transaction);
+                await this.packageOrders(service, transaction);
+                await this.deliveryOrders(service, transaction);
                 await transaction.commit(true);
             } catch (e) {
                 await transaction.rollback(true);
                 this.logger.error(e.message + ' IN ' + service.constructor.name);
+            }
+        }
+    }
+
+    async deliveryOrders(service: IOrderable, transaction: FirebirdTransaction): Promise<void> {
+        const deliveringPostings = await service.listAwaitingDelivering();
+        for (const posting of deliveringPostings) {
+            let invoice = await this.invoiceService.getByPosting(posting, transaction);
+            if (!invoice) {
+                invoice = await service.createInvoice(posting, transaction);
+            }
+            if (invoice) {
+                await this.invoiceService.pickupInvoice(invoice, transaction);
+            }
+        }
+    }
+
+    async packageOrders(service: IOrderable, transaction: FirebirdTransaction): Promise<void> {
+        const packagingPostings = await service.listAwaitingPackaging();
+        for (const posting of packagingPostings) {
+            if (!(await this.invoiceService.isExists(posting.posting_number, transaction))) {
+                await service.createInvoice(posting, transaction);
+            }
+        }
+    }
+
+    async cancelOrders(service: IOrderable, transaction: FirebirdTransaction): Promise<void> {
+        const orders = await service.listCanceled();
+        for (const order of orders) {
+            if (await this.invoiceService.isExists(order.posting_number, transaction)) {
+                await this.cancelOrder(order, transaction);
+            }
+        }
+    }
+
+    async cancelOrder(order: PostingDto, transaction: FirebirdTransaction): Promise<void> {
+        const invoice = await this.invoiceService.getByPosting(order, transaction);
+        if (order.isFbo) {
+            await this.invoiceService.pickupInvoice(invoice, transaction);
+            await this.invoiceService.updatePrim(
+                order.posting_number,
+                order.posting_number + ' отмена FBO',
+                transaction,
+            );
+        } else {
+            if (invoice.status === 3) {
+                await this.invoiceService.updatePrim(
+                    order.posting_number,
+                    order.posting_number + ' отмена',
+                    transaction,
+                );
+                await this.invoiceService.bulkSetStatus([invoice], 0, transaction);
             }
         }
     }

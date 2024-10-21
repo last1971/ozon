@@ -14,7 +14,13 @@ describe('OrderService', () => {
     const getTransactionList = jest.fn().mockResolvedValue([]);
     const updateByTransactions = jest.fn();
     const createInvoice = jest.fn().mockResolvedValue(1);
-    const getByPosting = jest.fn().mockResolvedValueOnce(null).mockResolvedValueOnce(2);
+    const getByPosting = jest.fn()
+        .mockResolvedValueOnce({
+            posting_number: '111',
+        })
+        .mockResolvedValueOnce(null)
+        .mockResolvedValueOnce(2);
+    const updatePrim = jest.fn();
     const pickupInvoice = jest.fn();
     const commit = jest.fn();
     const getTransaction = () => ({ commit });
@@ -32,7 +38,8 @@ describe('OrderService', () => {
                         updateByTransactions,
                         getByPosting,
                         pickupInvoice,
-                        isExists: async (remark: string) => remark === '123',
+                        updatePrim,
+                        isExists: async (remark: string) => remark === '123' || remark === '111',
                     },
                 },
                 {
@@ -41,6 +48,7 @@ describe('OrderService', () => {
                         createInvoice,
                         listAwaitingPackaging: () => [],
                         listAwaitingDelivering: () => [],
+                        listCanceled: () => [],
                     },
                 },
                 {
@@ -49,6 +57,7 @@ describe('OrderService', () => {
                         createInvoice,
                         listAwaitingPackaging: () => [],
                         listAwaitingDelivering: () => [],
+                        listCanceled: () => [],
                     },
                 },
                 {
@@ -57,6 +66,7 @@ describe('OrderService', () => {
                         createInvoice,
                         listAwaitingPackaging: () => [],
                         listAwaitingDelivering: () => [],
+                        listCanceled: () => [],
                     },
                 },
                 {
@@ -89,6 +99,15 @@ describe('OrderService', () => {
                                 status: 'awaiting_packaging',
                                 in_process_at: date,
                                 products: [],
+                            },
+                        ],
+                        listCanceled: () => [
+                            {
+                                posting_number: '111',
+                                status: 'canceled',
+                                in_process_at: date,
+                                products: [{ price: '1.11', offer_id: '444', quantity: 2 }],
+                                isFbo: true,
                             },
                         ],
                     },
@@ -145,8 +164,14 @@ describe('OrderService', () => {
             { commit },
         ]);
         expect(pickupInvoice.mock.calls).toEqual([
+            [{ posting_number: '111'}, { commit }],
             [1, { commit }],
             [2, { commit }],
+        ]);
+        expect(updatePrim.mock.calls[0]).toEqual([
+           '111',
+           '111 отмена FBO',
+            { commit },
         ]);
         expect(commit.mock.calls).toHaveLength(4);
     });
