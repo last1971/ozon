@@ -17,6 +17,16 @@ export enum YandexOrderSubStatus {
     STARTED = 'STARTED',
     READY_TO_SHIP = 'READY_TO_SHIP',
 }
+
+export enum YandexOrderStatus {
+    CANCELLED = 'CANCELLED',
+    DELIVERED = 'DELIVERED',
+    DELIVERY = 'DELIVERY',
+    PICKUP = 'PICKUP',
+    PROCESSING = 'PROCESSING',
+    UNPAID = 'UNPAID',
+}
+
 @Injectable()
 export class YandexOrderService implements IOrderable, OnModuleInit {
     private campaignId: number;
@@ -30,11 +40,12 @@ export class YandexOrderService implements IOrderable, OnModuleInit {
         const yandex = await this.vaultService.get('yandex-seller');
         this.campaignId = yandex['electronica-company'] as number;
     }
-    async list(subStatus: YandexOrderSubStatus): Promise<PostingDto[]> {
-        const res = await this.yandexApi.method(`campaigns/${this.campaignId}/orders`, 'get', {
-            status: 'PROCESSING',
-            substatus: subStatus,
-        });
+    async list(subStatus: YandexOrderSubStatus, status: YandexOrderStatus = YandexOrderStatus.PROCESSING): Promise<PostingDto[]> {
+        const data: any = { status };
+        if (subStatus) {
+            data.substatus = subStatus;
+        }
+        const res = await this.yandexApi.method(`campaigns/${this.campaignId}/orders`, 'get', data);
         return (res.orders || []).map(
             (order): PostingDto => ({
                 posting_number: order.id,
@@ -93,6 +104,6 @@ export class YandexOrderService implements IOrderable, OnModuleInit {
     }
 
     async listCanceled(): Promise<PostingDto[]> {
-        return [];
+        return this.list(null, YandexOrderStatus.CANCELLED);
     }
 }

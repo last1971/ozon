@@ -8,7 +8,7 @@ import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { ConfigService } from '@nestjs/config';
 import { IOrderable } from '../interfaces/IOrderable';
 import { FirebirdTransaction } from 'ts-firebird';
-import { Cron } from '@nestjs/schedule';
+// import { Cron } from '@nestjs/schedule';
 import { ISuppliable } from '../interfaces/i.suppliable';
 import * as console from 'node:console';
 import { SupplyDto } from '../supply/dto/supply.dto';

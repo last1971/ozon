@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { FirebirdTransaction } from 'ts-firebird';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Cron } from '@nestjs/schedule';
+// import { Cron } from '@nestjs/schedule';
 import { goodCode, goodQuantityCoeff } from '../helpers';
 
 @Injectable()
