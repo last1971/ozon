@@ -8,4 +8,5 @@ export class PostingDto {
     analytics_data?: {
         warehouse_name: string;
     };
+    isFbo?: boolean;
 }

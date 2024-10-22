@@ -8,7 +8,7 @@ import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { ConfigService } from '@nestjs/config';
 import { IOrderable } from '../interfaces/IOrderable';
 import { FirebirdTransaction } from 'ts-firebird';
-import { Cron } from '@nestjs/schedule';
+// import { Cron } from '@nestjs/schedule';
 import { ISuppliable } from '../interfaces/i.suppliable';
 import * as console from 'node:console';
 import { SupplyDto } from '../supply/dto/supply.dto';
@@ -45,7 +45,8 @@ export class PostingService implements IOrderable, ISuppliable {
     async listCanceled(): Promise<PostingDto[]> {
         return this.list('cancelled', 7);
     }
-    @Cron('0 */5 * * * *', { name: 'checkCanceledOzonOrders' })
+    // deprecated remove method and checkCanceledOzonOrders
+    // @Cron('0 */5 * * * *', { name: 'checkCanceledOzonOrders' })
     async checkCancelled(): Promise<void> {
         const orders = await this.listCanceled();
         const transaction = await this.invoiceService.getTransaction();

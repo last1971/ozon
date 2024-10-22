@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { FirebirdTransaction } from 'ts-firebird';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Cron } from '@nestjs/schedule';
+// import { Cron } from '@nestjs/schedule';
 import { goodCode, goodQuantityCoeff } from '../helpers';
 
 @Injectable()
@@ -53,7 +53,10 @@ export class PostingFboService implements IOrderable {
                 analytics_data: true,
             },
         });
-        return orders.result;
+        return orders.result.map(order => ({
+            ...order,
+            isFbo: true
+        }));
     }
     async listCanceled(): Promise<PostingDto[]> {
         return this.list('cancelled', 90);
@@ -65,7 +68,8 @@ export class PostingFboService implements IOrderable {
         return this.list('awaiting_packaging');
     }
 
-    @Cron('0 */5 * * * *', { name: 'checkCanceledFboOrders' })
+    // deprecated remove method and checkCanceledFboOrders
+    // @Cron('0 */5 * * * *', { name: 'checkCanceledFboOrders' })
     async checkCanceledOrders(): Promise<void> {
         const orders = await this.listCanceled();
         const cancelled = [];

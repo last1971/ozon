@@ -6,4 +6,5 @@ export interface IOrderable {
     listAwaitingPackaging(): Promise<PostingDto[]>;
     listAwaitingDelivering(): Promise<PostingDto[]>;
     createInvoice(posting: PostingDto, transaction: FirebirdTransaction): Promise<InvoiceDto>;
+    listCanceled(): Promise<PostingDto[]>;
 }
