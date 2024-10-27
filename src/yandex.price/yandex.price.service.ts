@@ -94,14 +94,17 @@ export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
     }
 
     async getDisountPrices(skus: string[]): Promise<Map<string, number[]>> {
-        const response = await Promise.all(
-            chunk(skus, 200).map((offerIds) =>
-                this.api.method(`businesses/${this.businessId}/offer-mappings`, 'post', { offerIds }),
-            ),
-        );
+        const response = [];
+        for (const offerIds of chunk(skus, 200)) {
+            response.push(await this.api.method(
+                `businesses/${this.businessId}/offer-mappings`,
+                'post',
+                { offerIds }
+            ));
+        }
         const res = new Map<string, number[]>();
         response
-            .map((value) => value.result.offerMappings)
+            .map((value) => value.result?.offerMappings ?? [])
             .flat()
             .filter((value) => !!value.offer.cofinancePrice)
             .forEach((value) => {
