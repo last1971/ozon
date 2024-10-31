@@ -4,7 +4,6 @@ import PDFDocument from 'pdfkit'
 import { ApiProperty } from "@nestjs/swagger";
 import { IsArray, IsEnum, IsNumber, IsString, Min, MinLength, ValidateNested } from "class-validator";
 import { Type } from "class-transformer";
-import * as fs from 'fs';
 import * as path from 'path';
 
 export enum BarcodeType {

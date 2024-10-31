@@ -72,6 +72,7 @@ describe('OrderService', () => {
                 {
                     provide: PostingService,
                     useValue: {
+                        constructor: { name: 'PostingService' },
                         createInvoice,
                         listAwaitingPackaging: () => [
                             {
@@ -174,5 +175,16 @@ describe('OrderService', () => {
             { commit },
         ]);
         expect(commit.mock.calls).toHaveLength(4);
+    });
+
+    it('should return PostingService when name is GoodServiceEnum.PostingService', () => {
+        const result = service.getServiceByName(GoodServiceEnum.OZON);
+        expect(result).toBeDefined();
+        expect(result.constructor.name).toBe('PostingService');
+    });
+
+    it('should return null when name is not a valid GoodServiceEnum value', () => {
+        const result = service.getServiceByName(GoodServiceEnum.EXPRESS);
+        expect(result).toBeNull();
     });
 });
