@@ -1,8 +1,9 @@
 import { Body, Controller, Post, Res } from "@nestjs/common";
 import { GenerateLabelsDto, LabelService } from "./label.service";
-import { ApiBody, ApiOperation, ApiResponse } from "@nestjs/swagger";
+import { ApiBody, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { Response} from 'express';
 
+@ApiTags('label')
 @Controller('label')
 export class LabelController {
     constructor(private readonly labelService: LabelService) {}

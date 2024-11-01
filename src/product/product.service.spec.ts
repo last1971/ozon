@@ -4,6 +4,7 @@ import { OzonApiService } from '../ozon.api/ozon.api.service';
 import { ProductVisibility } from './product.visibility';
 import { StockType } from './stock.type';
 import { ConfigService } from '@nestjs/config';
+import { ProductFilterDto } from "./dto/product.filter.dto";
 
 describe('ProductService', () => {
     let service: ProductService;
@@ -28,8 +29,17 @@ describe('ProductService', () => {
 
     it('test list', async () => {
         await service.list();
-        expect(method.mock.calls[0]).toEqual(['/v2/product/list', { last_id: '', limit: 100 }]);
+        expect(method.mock.calls[0]).toEqual([
+            '/v2/product/list',
+            { filter: new ProductFilterDto(), last_id: '', limit: 100 }
+        ]);
     });
+
+    it('test listInfo', async () => {
+        await service.infoList(['123', '123-5']);
+        expect(method.mock.calls[0]).toEqual(['/v2/product/info/list', { offer_id: ['123', '123-5'] }]);
+    });
+
     it('test updateCount', async () => {
         await service.updateCount([{ offer_id: '1', product_id: 1, stock: 1 }]);
         expect(method.mock.calls[0]).toEqual([

@@ -1,19 +1,22 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
-import { ProductService } from '../product/product.service';
-import { YandexOfferService } from '../yandex.offer/yandex.offer.service';
-import { ExpressOfferService } from '../yandex.offer/express.offer.service';
-import { WbCardService } from '../wb.card/wb.card.service';
-import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
-import { ICountUpdateable } from '../interfaces/ICountUpdatebale';
-import { GoodServiceEnum } from './good.service.enum';
-import { ResultDto } from '../helpers/result.dto';
-import { OnEvent } from '@nestjs/event-emitter';
-import { IsSwitchedDto } from './dto/is.switched.dto';
-import { chunk } from 'lodash';
-import { goodQuantityCoeff, productQuantity } from '../helpers';
-import { Cron } from '@nestjs/schedule';
-import { GoodDto } from './dto/good.dto';
-import { ConfigService } from '@nestjs/config';
+import { Inject, Injectable, Logger } from "@nestjs/common";
+import { ProductService } from "../product/product.service";
+import { YandexOfferService } from "../yandex.offer/yandex.offer.service";
+import { ExpressOfferService } from "../yandex.offer/express.offer.service";
+import { WbCardService } from "../wb.card/wb.card.service";
+import { GOOD_SERVICE, IGood } from "../interfaces/IGood";
+import { ICountUpdateable } from "../interfaces/ICountUpdatebale";
+import { GoodServiceEnum } from "./good.service.enum";
+import { ResultDto } from "../helpers/result.dto";
+import { OnEvent } from "@nestjs/event-emitter";
+import { IsSwitchedDto } from "./dto/is.switched.dto";
+import { chunk } from "lodash";
+import { goodQuantityCoeff, productQuantity } from "../helpers";
+import { Cron } from "@nestjs/schedule";
+import { GoodDto } from "./dto/good.dto";
+import { ConfigService } from "@nestjs/config";
+import { ProductVisibility } from "../product/product.visibility";
+import { ProductListResultDto } from "../product/dto/product.list.result.dto";
+import { ProductInfoDto } from "../product/dto/product.info.dto";
 
 @Injectable()
 export class ExtraGoodService {
@@ -144,5 +147,9 @@ export class ExtraGoodService {
                 this.logger.log(`Update ${await service.service.updateGoodCounts(forChange)} skus in ${key}`);
             }
         }
+    }
+
+    async getProductInfo(offer_id: string[]): Promise<ProductInfoDto[]> {
+        return this.productService.infoList(offer_id);
     }
 }
