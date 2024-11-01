@@ -74,7 +74,7 @@ describe('PostingService', () => {
         await service.listAwaitingPackaging();
         expect(orderList.mock.calls[0]).toEqual([
             {
-                since: DateTime.now().minus({ day: 3 }).startOf('day').toJSDate(),
+                since: DateTime.now().minus({ day: 5 }).startOf('day').toJSDate(),
                 to: DateTime.now().endOf('day').toJSDate(),
                 status: 'awaiting_packaging',
             },

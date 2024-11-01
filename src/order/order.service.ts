@@ -13,11 +13,18 @@ import { ConfigService } from '@nestjs/config';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { FirebirdTransaction } from "ts-firebird";
 import { PostingDto } from "../posting/dto/posting.dto";
+import { find } from 'lodash';
 
 @Injectable()
 export class OrderService {
     private logger = new Logger(OrderService.name);
     private orderServices: IOrderable[] = [];
+    private serviceNames: any = {
+        [GoodServiceEnum.OZON]: 'PostingService',
+        [GoodServiceEnum.YANDEX]: 'YandexOrderService',
+        [GoodServiceEnum.WB]: 'WbOrderService',
+    };
+
     constructor(
         private productService: ProductService,
         @Inject(INVOICE_SERVICE) private invoiceService: IInvoice,
@@ -35,6 +42,11 @@ export class OrderService {
         if (services.includes(GoodServiceEnum.YANDEX)) this.orderServices.push(yandexOrder);
         if (services.includes(GoodServiceEnum.WB)) this.orderServices.push(wbOrder);
     }
+
+    getServiceByName(name: GoodServiceEnum): IOrderable | null {
+        return find(this.orderServices, (service) => service.constructor.name === this.serviceNames[name]) || null;
+    }
+
     async updateTransactions(data: TransactionFilterDto): Promise<ResultDto> {
         /*
         {

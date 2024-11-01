@@ -17,6 +17,9 @@ import { PostingsFboRequestDto } from '../posting.fbo/dto/postings.fbo.request.d
 import { PostingDto } from '../posting/dto/posting.dto';
 import { Environment } from '../env.validation';
 import { ConfigService } from '@nestjs/config';
+import { ProductFilterDto } from "./dto/product.filter.dto";
+import { ProductInfoDto } from "./dto/product.info.dto";
+import { GoodServiceEnum } from "../good/good.service.enum";
 
 @Injectable()
 export class ProductService extends ICountUpdateable implements OnModuleInit {
@@ -29,8 +32,19 @@ export class ProductService extends ICountUpdateable implements OnModuleInit {
     async onModuleInit(): Promise<void> {
         await this.loadSkuList(this.configService.get<Environment>('NODE_ENV') === 'production');
     }
-    async list(last_id = '', limit = 100): Promise<ProductListResultDto> {
-        return this.ozonApiService.method('/v2/product/list', { last_id, limit });
+    async list(last_id = '', limit = 100, filter: ProductFilterDto = new ProductFilterDto()): Promise<ProductListResultDto> {
+        return this.ozonApiService.method('/v2/product/list', { filter, last_id, limit });
+    }
+    async infoList(offer_id: string[]): Promise<ProductInfoDto[]> {
+        const res = await this.ozonApiService.method('/v2/product/info/list', { offer_id });
+        return res?.result?.items.map((item: any): ProductInfoDto => ({
+            sku: item.offer_id,
+            barCode: item.barcode,
+            remark: item.name,
+            primaryImage: item.primary_image,
+            id: item.id,
+            goodService: GoodServiceEnum.OZON,
+        }));
     }
     async listWithCount(last_id = '', limit = 100): Promise<ProductListResultDto> {
         return this.ozonApiService.method('/v3/product/info/stocks', { filter: {}, limit, last_id });
@@ -96,4 +110,6 @@ export class ProductService extends ICountUpdateable implements OnModuleInit {
         const response = result.result || [];
         return response.length;
     }
+
+
 }

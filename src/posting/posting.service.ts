@@ -37,7 +37,7 @@ export class PostingService implements IOrderable, ISuppliable {
         return response.result?.postings || [];
     }
     async listAwaitingPackaging(): Promise<PostingDto[]> {
-        return this.list('awaiting_packaging');
+        return this.list('awaiting_packaging', 5);
     }
     async listAwaitingDelivering(): Promise<PostingDto[]> {
         return this.list('awaiting_deliver');

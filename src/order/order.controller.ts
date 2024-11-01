@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Post, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { Body, Controller, Get, Param, ParseEnumPipe, Post, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { OrderService } from './order.service';
 import { ResultDto } from '../helpers/result.dto';
 import { TransactionFilterDate, TransactionFilterDto } from '../posting/dto/transaction.filter.dto';
@@ -6,6 +6,7 @@ import { ApiBody, ApiConsumes, ApiOkResponse, ApiProduces, ApiTags } from '@nest
 import { YandexOrderService } from '../yandex.order/yandex.order.service';
 import { WbOrderService } from '../wb.order/wb.order.service';
 import { FileInterceptor } from '@nestjs/platform-express';
+import { GoodServiceEnum } from "../good/good.service.enum";
 
 @ApiTags('order')
 @Controller('order')
@@ -78,5 +79,13 @@ export class OrderController {
         @Body() request: TransactionFilterDate,
     ): Promise<ResultDto> {
         return this.wbOrder.updateTransactions(request, file);
+    }
+
+    @ApiOkResponse({
+        description: ' счета',
+    })
+    @Get('awaiting-packaging/:service')
+    async getAwaitingPackaging(@Param('service', new ParseEnumPipe(GoodServiceEnum)) service: GoodServiceEnum): Promise<any> {
+        return this.orderService.getServiceByName(service).listAwaitingPackaging();
     }
 }
