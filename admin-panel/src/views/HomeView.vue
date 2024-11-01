@@ -15,7 +15,7 @@ const tab = ref('prices');
         >
             <v-tab value="prices">Цены</v-tab>
             <v-tab value="scan-fbs">Скан FBS</v-tab>
-            <v-tab value="wb-marketplace">WB маркетплейс</v-tab>
+            <v-tab value="ozon-fbs-labels">OZON FBS этикетки</v-tab>
         </v-tabs>
 
         <v-card-text>
@@ -32,7 +32,7 @@ const tab = ref('prices');
                     <scan-fbs class="pa-2"/>
                 </v-tabs-window-item>
 
-                <v-tabs-window-item value="wb-marketplace">
+                <v-tabs-window-item value="ozon-fbs-labels">
                     3
                 </v-tabs-window-item>
             </v-tabs-window>
