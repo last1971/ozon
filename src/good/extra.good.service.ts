@@ -14,8 +14,8 @@ import { goodQuantityCoeff, productQuantity } from "../helpers";
 import { Cron } from "@nestjs/schedule";
 import { GoodDto } from "./dto/good.dto";
 import { ConfigService } from "@nestjs/config";
-import { ProductVisibility } from "../product/product.visibility";
-import { ProductListResultDto } from "../product/dto/product.list.result.dto";
+// import { ProductVisibility } from "../product/product.visibility";
+// import { ProductListResultDto } from "../product/dto/product.list.result.dto";
 import { ProductInfoDto } from "../product/dto/product.info.dto";
 
 @Injectable()

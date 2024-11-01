@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Param, Post, Put, Query } from "@nestjs/common";
+import { Body, Controller, Inject, Param, Post, Put, Query } from "@nestjs/common";
 import { ApiBody, ApiOperation, ApiProperty, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
 import { GoodPercentDto } from './dto/good.percent.dto';
