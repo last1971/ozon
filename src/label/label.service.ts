@@ -2,7 +2,18 @@ import { Injectable } from '@nestjs/common';
 import * as bwipjs from 'bwip-js';
 import PDFDocument from 'pdfkit'
 import { ApiProperty } from "@nestjs/swagger";
-import { IsArray, IsEnum, IsNumber, IsString, Min, MinLength, ValidateNested } from "class-validator";
+import {
+    IsArray,
+    IsEnum,
+    IsInt,
+    IsNumber,
+    IsString,
+    Length,
+    Max,
+    Min,
+    MinLength,
+    ValidateNested
+} from "class-validator";
 import { Type } from "class-transformer";
 import * as path from 'path';
 
@@ -35,6 +46,31 @@ export class SizeDto {
     height: number;
 }
 
+export class GenerateBarcodeDto {
+    @ApiProperty({ description: 'Тип штрихкода', enum: BarcodeType })
+    @IsEnum(BarcodeType)
+    bcid: BarcodeType;
+
+    @ApiProperty({ description: 'Текст для штрихкода', example: '1234567890' })
+    @IsString()
+    @Length(1, 50)
+    text: string;
+
+    @ApiProperty({ description: 'Высота штрихкода', example: 10 })
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    @Max(50)
+    height: number;
+
+    @ApiProperty({ description: 'Ширина штрихкода', example: 30 })
+    @Type(() => Number)
+    @IsInt()
+    @Min(1)
+    @Max(100)
+    width: number;
+}
+
 export class GenerateLabelsDto {
     @ApiProperty({ type: [LabelDto], description: 'Array of labels data' })
     @IsArray()
@@ -55,6 +91,18 @@ export class GenerateLabelsDto {
 @Injectable()
 export class LabelService {
     private pointSize = 2.83465;
+
+    async generateBarcode(barcodeDto: GenerateBarcodeDto): Promise<Buffer> {
+        const { bcid, text, height, width } = barcodeDto;
+        return bwipjs.toBuffer({
+            bcid,
+            text,
+            scale: 10, // Увеличенный scale для повышения четкости штрихкода
+            height,
+            width,
+            includetext: true,
+        });
+    }
 
     async generateLabels(generateLabelsDto: GenerateLabelsDto): Promise<Buffer> {
         const { labelsData, size, barcodeType } = generateLabelsDto;
