@@ -99,7 +99,7 @@ export const labelStore = defineStore("labelStore", {
                             quantity: product.quantity,  // количество из заказа
                         };
                     })
-                    .filter(product => product !== null)  // Убираем товары, которых нет
+                    .filter((product): product is ItemFbsDto => product !== null)  // Убираем товары, которых нет
             );
         },
     },
