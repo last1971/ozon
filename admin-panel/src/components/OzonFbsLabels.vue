@@ -20,6 +20,8 @@ const headers = ref([
     { title: 'Заказ', key: 'order' }                          // Информация о заказе
 ]);
 
+const barcodeType = ref('code128');
+
 const items = ref<ItemFbsDto[]>([]);
 
 const selectedRows = ref<string[]>([]);
@@ -38,7 +40,7 @@ const updateData = async () => {
 };
 
 const getLabels = async () => {
-    await store.getLabels(selectedRows.value)
+    await store.getLabels(selectedRows.value, barcodeType.value)
 };
 
 // Асинхронная загрузка данных при инициализации
@@ -60,14 +62,26 @@ onMounted(async () => {
         <template v-slot:top>
             <div class="d-flex justify-center justify-space-between">
                 <!-- Кнопка для обновления данных -->
-                <v-btn @click="updateData" :loading="store.isLoading" class="w-50 pa-2 mr-2">
+                <v-btn @click="updateData" :loading="store.isLoading" class="w-33 pa-2 mr-2">
                     Обновить данные
                 </v-btn>
 
                 <!-- Кнопка для pdf -->
-                <v-btn @click="getLabels" :loading="store.isLoading" class="w-50 pa-2">
+                <v-btn @click="getLabels"
+                       :loading="store.isLoading"
+                       class="w-33 pa-2 mr-2"
+                       :disabled="!selectedRows.length"
+                >
                     Печать этикеток
                 </v-btn>
+                <div class="w-33">
+                <v-combobox
+                    label="Тип"
+                    :items="['code39', 'code128']"
+                    v-model="barcodeType"
+                    density="compact"
+                ></v-combobox>
+                </div>
             </div>
         </template>
         <!-- Слот для отображения изображения товара -->
