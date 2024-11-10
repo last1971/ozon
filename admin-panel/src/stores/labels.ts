@@ -35,7 +35,7 @@ export const labelStore = defineStore("labelStore", {
                 this.isLoading = false;
             }
         },
-        async getLabels(ids: string[]) {
+        async getLabels(ids: string[], barcodeType: string) {
             const data = this.ozonFbsLabels.filter(label => ids.includes(label.id));
             const orders = new Map<string, ItemFbsDto[]>();
             data.forEach(item => {
@@ -50,7 +50,8 @@ export const labelStore = defineStore("labelStore", {
                 labelsData.push({ code: order[0], description: `\nЗаказ OZON FBS ${order[0]}` });
                 order[1].forEach((item) => {
                     labelsData.push(
-                        ...Array(item.quantity).fill({ code: item.barcode, description: item.name }),
+                        ...Array(item.quantity)
+                            .fill({ code: item.barcode, description: `Арт: ${item.sku} / ${item.name}` }),
                     );
                 })
             }
@@ -59,7 +60,7 @@ export const labelStore = defineStore("labelStore", {
                 {
                     labelsData,
                     size: { width: 43, height: 25 },
-                    barcodeType: 'code39',
+                    barcodeType,
                 },
                 { responseType: "arraybuffer" },
             );
