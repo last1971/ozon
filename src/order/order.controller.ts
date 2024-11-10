@@ -7,6 +7,7 @@ import { YandexOrderService } from '../yandex.order/yandex.order.service';
 import { WbOrderService } from '../wb.order/wb.order.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { GoodServiceEnum } from "../good/good.service.enum";
+import { PostingDto } from "../posting/dto/posting.dto";
 
 @ApiTags('order')
 @Controller('order')
@@ -82,10 +83,12 @@ export class OrderController {
     }
 
     @ApiOkResponse({
-        description: ' счета',
+        description: 'Заказы ожидающие сборки',
+        type: PostingDto,
+        isArray: true, // указывает, что возвращается массив объектов
     })
     @Get('awaiting-packaging/:service')
-    async getAwaitingPackaging(@Param('service', new ParseEnumPipe(GoodServiceEnum)) service: GoodServiceEnum): Promise<any> {
+    async getAwaitingPackaging(@Param('service', new ParseEnumPipe(GoodServiceEnum)) service: GoodServiceEnum): Promise<PostingDto[]> {
         return this.orderService.getServiceByName(service).listAwaitingPackaging();
     }
 }

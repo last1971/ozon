@@ -4,6 +4,7 @@ import Articles from "@/components/Articles.vue";
 import Prices from "@/components/Prices.vue";
 import { ref } from "vue";
 import ScanFbs from "@/components/ScanFbs.vue";
+import OzonFbsLabels from "@/components/OzonFbsLabels.vue";
 const tab = ref('prices');
 </script>
 
@@ -33,7 +34,7 @@ const tab = ref('prices');
                 </v-tabs-window-item>
 
                 <v-tabs-window-item value="ozon-fbs-labels">
-                    3
+                    <ozon-fbs-labels class="pa-2"/>
                 </v-tabs-window-item>
             </v-tabs-window>
         </v-card-text>
