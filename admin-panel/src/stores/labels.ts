@@ -3,6 +3,7 @@ import { postingStore } from "@/stores/postings";
 import { goodStore } from "@/stores/goods";
 import type { ItemFbsDto } from "@/contracts/item.fbs.dto";
 import axios from "@/axios.config";
+import type { SizeDto } from "@/contracts/size.dto";
 
 export const labelStore = defineStore("labelStore", {
     state: () => ({
@@ -35,7 +36,7 @@ export const labelStore = defineStore("labelStore", {
                 this.isLoading = false;
             }
         },
-        async getLabels(ids: string[], barcodeType: string) {
+        async getLabels(ids: string[], barcodeType: string, size: SizeDto) {
             const data = this.ozonFbsLabels.filter(label => ids.includes(label.id));
             const orders = new Map<string, ItemFbsDto[]>();
             data.forEach(item => {
@@ -59,7 +60,7 @@ export const labelStore = defineStore("labelStore", {
                 "/api/label/list",
                 {
                     labelsData,
-                    size: { width: 43, height: 25 },
+                    size,
                     barcodeType,
                 },
                 { responseType: "arraybuffer" },

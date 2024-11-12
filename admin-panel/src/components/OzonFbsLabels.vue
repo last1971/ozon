@@ -3,6 +3,7 @@ import { ref, onMounted } from "vue";
 import type { ItemFbsDto } from "@/contracts/item.fbs.dto";
 import { labelStore } from "@/stores/labels";
 import { postingStore } from "@/stores/postings";
+import type { SizeDto } from "@/contracts/size.dto";
 // import type { GoodInfoDto } from "@/contracts/good.info.dto";
 
 const store = labelStore();
@@ -22,6 +23,21 @@ const headers = ref([
 
 const barcodeType = ref('code128');
 
+const labelTypes: SizeDto[] = [
+    {
+        name: '43 x 25',
+        width: 43,
+        height: 25,
+    },
+    {
+        name: '58 x 40',
+        width: 58,
+        height: 40,
+    },
+];
+
+const labelType = ref(labelTypes[0]);
+
 const items = ref<ItemFbsDto[]>([]);
 
 const selectedRows = ref<string[]>([]);
@@ -36,11 +52,12 @@ const getRowProps = (row: { item: ItemFbsDto }) => {
 
 const updateData = async () => {
     posting.clearAwaitingDelivery();
+    selectedRows.value = [];
     await store.fetchAndCombineData();
 };
 
 const getLabels = async () => {
-    await store.getLabels(selectedRows.value, barcodeType.value)
+    await store.getLabels(selectedRows.value, barcodeType.value, labelType.value)
 };
 
 // Асинхронная загрузка данных при инициализации
@@ -62,36 +79,57 @@ onMounted(async () => {
         <template v-slot:top>
             <div class="d-flex justify-center justify-space-between">
                 <!-- Кнопка для обновления данных -->
-                <v-btn @click="updateData" :loading="store.isLoading" class="w-33 pa-2 mr-2">
+                <v-btn @click="updateData" :loading="store.isLoading" class="w-25 pa-2 mr-2">
                     Обновить данные
                 </v-btn>
 
                 <!-- Кнопка для pdf -->
                 <v-btn @click="getLabels"
                        :loading="store.isLoading"
-                       class="w-33 pa-2 mr-2"
+                       class="w-25 pa-2 mr-2"
                        :disabled="!selectedRows.length"
                 >
                     Печать этикеток
                 </v-btn>
-                <div class="w-33">
-                <v-combobox
-                    label="Тип"
-                    :items="['code39', 'code128']"
-                    v-model="barcodeType"
-                    density="compact"
-                ></v-combobox>
+                <div class="w-25 mr-2">
+                    <v-combobox
+                        label="Тип"
+                        :items="['code39', 'code128']"
+                        v-model="barcodeType"
+                        density="compact"
+                    ></v-combobox>
+                </div>
+                <div class="w-25">
+                    <v-combobox
+                        label="Размер"
+                        :items="labelTypes"
+                        item-title="name"
+                        v-model="labelType"
+                        density="compact"
+                    ></v-combobox>
                 </div>
             </div>
         </template>
         <!-- Слот для отображения изображения товара -->
         <template #item.image="{ item }">
-            <img :src="item.image" alt="Картинка" style="width: 50px; height: 50px;" />
+            <v-hover v-slot="{ isHovering, props }">
+                    <img
+                        :src="item.image"
+                        alt="Картинка"
+                        :style="{
+                            width: '50px',
+                            height: '50px',
+                            transition: 'transform 0.3s ease',
+                            transform: isHovering ? 'scale(3)' : 'scale(1)'
+                        }"
+                        v-bind="props"
+                    />
+            </v-hover>
         </template>
 
         <!-- Слот для отображения изображения штрихкода -->
         <template #item.barcode="{ item }">
-            <img :src="`${url}/api/label/generate?bcid=code39&text=${item.barcode}&height=10&width=30`" alt="Штрихкод"
+            <img :src="`${url}/api/label/generate?bcid=${barcodeType}&text=${item.barcode}&height=10&width=30`" alt="Штрихкод"
                  style="width: 200px; height: 60px;" />
         </template>
     </v-data-table>

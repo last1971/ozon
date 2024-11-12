@@ -20,6 +20,7 @@ import * as path from 'path';
 export enum BarcodeType {
     CODE128 = 'code128',
     CODE39 = 'code39',
+    QRCODE = 'qrcode',
 }
 
 export class LabelDto {
