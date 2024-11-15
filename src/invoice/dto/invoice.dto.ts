@@ -1,7 +1,17 @@
 import { InvoiceCreateDto } from './invoice.create.dto';
+import { ApiProperty } from "@nestjs/swagger";
 export class InvoiceDto extends InvoiceCreateDto {
+    @ApiProperty({ description: 'Идентификатор счета', example: 123 })
     id: number;
+
+    @ApiProperty({
+        description: 'Номер счета (может отсутствовать)',
+        example: 456,
+        required: false,
+    })
     number?: number;
+
+    @ApiProperty({ description: 'Статус счета', example: 1 })
     status: number;
 
     static map(invoices: any[]): InvoiceDto[] {

@@ -6,6 +6,7 @@ import axios from "../axios.config";
 // Переменные для полей ввода и времени
 const firstInput = ref<string>('');
 const secondInput = ref<string>('');
+const invoice = ref<any>(null);
 
 const snackbar = ref(false); // Переменная для показа snackbar
 const snackbarMessage = ref(''); // Сообщение для показа
@@ -24,9 +25,10 @@ async function update(remark: string, data: any, text: string): Promise<boolean>
     let result = true;
     snackbarTimeout.value = 5000;
     try {
-        await axios.put(`/api/invoice/update/${remark}`, data);
+        const res = await axios.put(`/api/invoice/update/${remark}`, data);
         snackbarMessage.value = text;
         snackbarColor.value = 'success';
+        const invoice = res.data.invoice;
     } catch (e: any) {
        if (e.status === 400) {
            snackbarMessage.value = 'Такого заказа нет в базе данных';
