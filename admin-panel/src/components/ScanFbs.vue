@@ -22,6 +22,7 @@ const secondTime = ref<string>('');
 
 async function update(remark: string, data: any, text: string): Promise<boolean> {
     let result = true;
+    snackbarTimeout.value = 5000;
     try {
         await axios.put(`/api/invoice/update/${remark}`, data);
         snackbarMessage.value = text;
@@ -31,7 +32,9 @@ async function update(remark: string, data: any, text: string): Promise<boolean>
            snackbarMessage.value = 'Такого заказа нет в базе данных';
            snackbarColor.value = 'warning';
        } else {
-           snackbarMessage.value = 'Система не работает, сообщить ВВ'
+           snackbarTimeout.value = 60000;
+           snackbarMessage.value =
+               `Система не работает, сообщить ВВ, код: ${e.status}, ошибка: ${e.response.data.message.join(', ')}`;
            snackbarColor.value = 'error';
        }
         result = false;
