@@ -20,6 +20,7 @@
     "test:e2e": "jest --config ./test/jest-e2e.json"
   },
   "dependencies": {
+    "@napi-rs/canvas": "^0.1.61",
     "@nestjs-modules/mailer": "^2.0.2",
     "@nestjs/axios": "^3.0.3",
     "@nestjs/cache-manager": "^2.2.2",
@@ -39,11 +40,13 @@
     "class-validator": "^0.14.1",
     "exceljs": "^4.4.0",
     "handlebars": "^4.7.8",
+    "jimp": "^1.6.0",
     "node-firebird": "^1.1.9",
     "nodemailer": "^6.9.15",
     "pdfkit": "^0.15.0",
     "reflect-metadata": "^0.2.2",
-    "rxjs": "^7.8.1"
+    "rxjs": "^7.8.1",
+    "sharp": "^0.33.5"
   },
   "devDependencies": {
     "@nestjs/cli": "^10.4.5",

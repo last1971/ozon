@@ -16,11 +16,13 @@ import {
 } from "class-validator";
 import { Type } from "class-transformer";
 import * as path from 'path';
+import { createCanvas } from "@napi-rs/canvas";
 
 export enum BarcodeType {
     CODE128 = 'code128',
     CODE39 = 'code39',
     QRCODE = 'qrcode',
+    TEXT = 'text',
 }
 
 export class LabelDto {
@@ -95,7 +97,9 @@ export class LabelService {
 
     async generateBarcode(barcodeDto: GenerateBarcodeDto): Promise<Buffer> {
         const { bcid, text, height, width } = barcodeDto;
-        return bwipjs.toBuffer({
+        return bcid === BarcodeType.TEXT
+        ? this.generateImageWithText(text, height, width)
+        : bwipjs.toBuffer({
             bcid,
             text,
             scale: 10, // Увеличенный scale для повышения четкости штрихкода
@@ -105,13 +109,40 @@ export class LabelService {
         });
     }
 
+    async generateImageWithText(text: string, h: number, w: number): Promise<Buffer> {
+        const height = Math.round(h * this.pointSize);
+        const width = Math.round(w * this.pointSize);
+
+        // Создаем холст
+        const canvas = createCanvas(width, height);
+        const ctx = canvas.getContext('2d');
+
+        // Устанавливаем фон
+        ctx.fillStyle = '#ffffff'; // Белый фон
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+
+        const fontSize = Math.ceil(height / 7);
+
+        // Настроим шрифт
+        ctx.font = `${fontSize}px sans-serif`; // Используем стандартный шрифт sans-serif, или укажите путь к своему шрифту
+        ctx.fillStyle = '#000000'; // Цвет текста
+        ctx.textAlign = 'center'; // Выравнивание текста по центру
+        ctx.textBaseline = 'middle'; // Вертикальное выравнивание по центру
+
+        // Рисуем текст на изображении
+        ctx.fillText(text, canvas.width / 2, canvas.height / 2);
+
+        // Возвращаем изображение в виде Buffer
+        return canvas.toBuffer('image/png');
+    }
+
     async generateLabels(generateLabelsDto: GenerateLabelsDto): Promise<Buffer> {
         const { labelsData, size, barcodeType } = generateLabelsDto;
 
         // Определение размеров и отступов для штрих-кода и текста
         const margin = Math.ceil(size.width * 0.05);
-        const barcodeHeight = Math.ceil(size.height * 0.70); // Высота штрих-кода — 50% от высоты этикетки
-        const barcodeWidth = Math.ceil(size.width * 0.95);   // Ширина штрих-кода — 90% от ширины этикетки
+        const barcodeHeight = Math.ceil(size.height * 0.60); // Высота штрих-кода — 60% от высоты этикетки
+        const barcodeWidth = Math.ceil(size.width * 0.95);   // Ширина штрих-кода — 95% от ширины этикетки
         const textYPosition = barcodeHeight;
 
         const doc = new PDFDocument({
@@ -135,39 +166,58 @@ export class LabelService {
             for (let i = 0; i < labelsData.length; i++) {
                 const label = labelsData[i];
 
-                // Генерация штрих-кода
-                const barcode = await bwipjs.toBuffer({
-                    bcid: barcodeType,
-                    text: label.code,
-                    scale: 10, // Увеличенный scale для повышения четкости штрихкода
-                    height: barcodeHeight,
-                    width: barcodeWidth,
-                    includetext: true,
-                });
+                if (barcodeType === BarcodeType.TEXT) {
+                    // Печать текста вместо штрих-кода
+                    const fontSize = Math.max(10, Math.min(20, Math.ceil(size.width * 0.2)));
+                    const maxTextHeight = fontSize * 6 * 1.2;
 
-                // Добавление штрих-кода и текста на PDF
-                doc.image(
-                    barcode,
-                    margin,
-                    0,
-                    { width: barcodeWidth * this.pointSize, height: barcodeHeight * this.pointSize }
-                );
+                    doc.fontSize(fontSize)
+                        .text(
+                            `${label.code} / ${label.description}`,
+                            margin,
+                            margin,
+                            {
+                                width: (size.width * this.pointSize) - 2 * margin,
+                                height: maxTextHeight,
+                                align: 'center',
+                                ellipsis: true, // Добавление многоточия при переполнении
+                            },
+                        );
+                } else {
 
-                const fontSize = Math.max(5, Math.min(12, Math.ceil(size.width * 0.1)));
-                const maxTextHeight = fontSize * 3 * 1.2;
-                doc.fontSize(fontSize)
-                    .text(
-                        label.description,
+                    // Генерация штрих-кода
+                    const barcode = await bwipjs.toBuffer({
+                        bcid: barcodeType,
+                        text: label.code,
+                        scale: 10, // Увеличенный scale для повышения четкости штрихкода
+                        height: barcodeHeight,
+                        width: barcodeWidth,
+                        includetext: true,
+                    });
+
+                    // Добавление штрих-кода и текста на PDF
+                    doc.image(
+                        barcode,
                         margin,
-                        textYPosition * this.pointSize,
-                        {
-                            width: barcodeWidth * this.pointSize, // Ограничение ширины для авто-переноса
-                            align: 'left',
-                            height: maxTextHeight, // Ограничение высоты до 3 строк
-                            ellipsis: true, // Добавление многоточия, если текст не помещается
-                        },
+                        0,
+                        { width: barcodeWidth * this.pointSize, height: barcodeHeight * this.pointSize }
                     );
 
+                    const fontSize = Math.max(8, Math.min(16, Math.ceil(size.width * 0.1)));
+                    const maxTextHeight = fontSize * 3 * 1.2;
+                    doc.fontSize(fontSize)
+                        .text(
+                            label.description,
+                            margin,
+                            textYPosition * this.pointSize,
+                            {
+                                width: barcodeWidth * this.pointSize, // Ограничение ширины для авто-переноса
+                                align: 'left',
+                                height: maxTextHeight, // Ограничение высоты до 3 строк
+                                ellipsis: true, // Добавление многоточия, если текст не помещается
+                            },
+                        );
+                }
                 if (i < labelsData.length - 1) {
                     doc.addPage(); // Переход на новую страницу для следующей этикетки
                 }

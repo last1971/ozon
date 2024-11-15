@@ -94,7 +94,7 @@ onMounted(async () => {
                 <div class="w-25 mr-2">
                     <v-combobox
                         label="Тип"
-                        :items="['code39', 'code128']"
+                        :items="['code39', 'code128', 'qrcode', 'text']"
                         v-model="barcodeType"
                         density="compact"
                     ></v-combobox>
