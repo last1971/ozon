@@ -15,6 +15,7 @@ export interface IInvoice {
     isExists(remark: string, t: FirebirdTransaction): Promise<boolean>;
     updatePrim(prim: string, newPrim: string, t: FirebirdTransaction): Promise<void>;
     getByPosting(posting: PostingDto, t: FirebirdTransaction): Promise<InvoiceDto>;
+    getByPostingNumbers(postingNumbers: string[]): Promise<InvoiceDto[]>;
     getByBuyerAndStatus(buyerId: number, status: number, t: FirebirdTransaction): Promise<InvoiceDto[]>;
     updateByCommissions(commissions: Map<string, number>, t: FirebirdTransaction): Promise<ResultDto>;
     updateByTransactions(transactions: TransactionDto[], t: FirebirdTransaction): Promise<ResultDto>;
@@ -26,6 +27,6 @@ export interface IInvoice {
     getInvoiceLines(invoice: InvoiceDto, transaction: FirebirdTransaction): Promise<InvoiceLineDto[]>;
     unPickupAndDeltaInvoice(invoice: InvoiceDto, transaction: FirebirdTransaction): Promise<void>;
     bulkSetStatus(invoices: InvoiceDto[], status: number, transaction: FirebirdTransaction): Promise<void>;
-    update(remark: string, invoiceUpdateDto: InvoiceUpdateDto): Promise<boolean>;
+    update(invoice: InvoiceDto, invoiceUpdateDto: InvoiceUpdateDto): Promise<boolean>;
 }
 export const INVOICE_SERVICE = 'INVOICE_SERVICE';

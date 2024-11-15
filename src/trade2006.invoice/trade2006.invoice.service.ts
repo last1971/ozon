@@ -78,7 +78,7 @@ export class Trade2006InvoiceService implements IInvoice, ISuppliable {
         }
     }
 
-    async update(remark: string, invoiceUpdateDto: InvoiceUpdateDto): Promise<boolean> {
+    async update(invoice: InvoiceDto, invoiceUpdateDto: InvoiceUpdateDto): Promise<boolean> {
         const transaction = await this.pool.getTransaction();
 
         const fieldsToUpdate = Object.entries(invoiceUpdateDto) // Перебираем все пары ключ-значение
@@ -93,8 +93,8 @@ export class Trade2006InvoiceService implements IInvoice, ISuppliable {
         // Строим SQL-запрос динамически
         const setClauses = fieldsToUpdate.map(f => `${f.field} = ?`).join(', ');
         const values = fieldsToUpdate.map(f => f.value);
-        const updateQuery = `UPDATE S SET ${setClauses} WHERE PRIM = ?`;
-        values.push(remark); // Добавляем значение PRIM для WHERE
+        const updateQuery = `UPDATE S SET ${setClauses} WHERE SCODE = ?`;
+        values.push(invoice.id); // Добавляем значение SCODE для WHERE
         await transaction.execute(updateQuery, values, true);
         return true;
     }
@@ -411,7 +411,6 @@ export class Trade2006InvoiceService implements IInvoice, ISuppliable {
     async getInvoiceLines(invoice: InvoiceDto, transaction: FirebirdTransaction = null): Promise<InvoiceLineDto[]> {
         return this.getInvoiceLinesByInvoiceId(invoice.id, transaction);
     }
-
     async getInvoiceLinesByInvoiceId(id: number, transaction: FirebirdTransaction = null): Promise<InvoiceLineDto[]> {
         const t = transaction || (await this.getTransaction());
         const lines = await t.query('SELECT * FROM REALPRICE WHERE SCODE = ?', [id], !transaction);

@@ -13,7 +13,8 @@ export class InvoiceController {
 
     @Put('update/:remark')
     async update(@Param() remarkDto: RemarkDto, @Body() invoiceUpdateDto: InvoiceUpdateDto): Promise<boolean> {
-        const { remark } = remarkDto;
-        return this.invoiceService.update(remark, invoiceUpdateDto);
+        const { invoice } = remarkDto;
+        console.log(invoice);
+        return this.invoiceService.update(invoice, invoiceUpdateDto);
     }
 }

@@ -6,6 +6,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DateTime } from 'luxon';
 import { Cache } from '@nestjs/cache-manager';
 import { InvoiceUpdateDto } from "../invoice/dto/invoice.update.dto";
+import { InvoiceDto } from "../invoice/dto/invoice.dto";
 
 describe('Trade2006InvoiceService', () => {
     let service: Trade2006InvoiceService;
@@ -356,11 +357,13 @@ describe('Trade2006InvoiceService', () => {
             IGK: '1234567890',
             START_PICKUP: '2020-01-01 00:01:00',
         };
-        const res = await service.update('OOO', dto);
+        const invoice = new InvoiceDto();
+        invoice.id = 123;
+        const res = await service.update(invoice, dto);
         expect(res).toEqual(true);
         expect(execute.mock.calls[0]).toEqual([
-            'UPDATE S SET IGK = ?, START_PICKUP = ? WHERE PRIM = ?',
-            ['1234567890', '2020-01-01 00:01:00', 'OOO'],
+            'UPDATE S SET IGK = ?, START_PICKUP = ? WHERE SCODE = ?',
+            ['1234567890', '2020-01-01 00:01:00', 123],
             true,
         ]);
     });
