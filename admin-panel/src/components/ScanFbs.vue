@@ -28,7 +28,7 @@ async function update(remark: string, data: any, text: string): Promise<boolean>
         const res = await axios.put(`/api/invoice/update/${remark}`, data);
         snackbarMessage.value = text;
         snackbarColor.value = 'success';
-        const invoice = res.data.invoice;
+        invoice.value = res.data.invoice;
     } catch (e: any) {
        if (e.status === 400) {
            snackbarMessage.value = 'Такого заказа нет в базе данных';
