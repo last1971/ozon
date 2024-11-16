@@ -14,6 +14,7 @@ import * as console from 'node:console';
 import { SupplyDto } from '../supply/dto/supply.dto';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { SupplyPositionDto } from 'src/supply/dto/supply.position.dto';
+import { OzonApiService } from "../ozon.api/ozon.api.service";
 
 @Injectable()
 export class PostingService implements IOrderable, ISuppliable {
@@ -21,7 +22,12 @@ export class PostingService implements IOrderable, ISuppliable {
         private productService: ProductService,
         @Inject(INVOICE_SERVICE) private invoiceService: IInvoice,
         private configService: ConfigService,
+        private ozonApiService: OzonApiService,
     ) {}
+
+    isFbo(): boolean {
+        return false;
+    }
 
     getSupplyPositions(id: string): Promise<SupplyPositionDto[]> {
         throw new Error('Method not implemented.');
@@ -71,7 +77,7 @@ export class PostingService implements IOrderable, ISuppliable {
         }
     }
     async createInvoice(posting: PostingDto, transaction: FirebirdTransaction): Promise<InvoiceDto> {
-        const buyerId = this.configService.get<number>('OZON_BUYER_ID', 24416);
+        const buyerId = this.getBuyerId();
         return this.invoiceService.createInvoiceFromPostingDto(buyerId, posting, transaction);
     }
 
@@ -84,5 +90,14 @@ export class PostingService implements IOrderable, ISuppliable {
                 isMarketplace: true,
             },
         ];
+    }
+
+    async getByPostingNumber(postingNumber: string): Promise<PostingDto> {
+        const res = await this.ozonApiService.method('/v3/posting/fbs/get', { posting_number: postingNumber });
+        return res.result;
+    }
+
+    getBuyerId(): number {
+        return this.configService.get<number>('OZON_BUYER_ID', 24416);
     }
 }

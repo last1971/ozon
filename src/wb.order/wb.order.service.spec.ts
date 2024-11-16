@@ -5,6 +5,7 @@ import { WbApiService } from '../wb.api/wb.api.service';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DateTime } from 'luxon';
+import { WbOrderDto } from "./dto/wb.order.dto";
 
 describe('WbOrderService', () => {
     let service: WbOrderService;
@@ -116,13 +117,16 @@ describe('WbOrderService', () => {
         );
         expect(res).toEqual([
             {
-                id: 1,
-                createdAt: '1',
-                skus: ['1-1'],
-                price: 1.01,
-                rid: '123',
-                article: '11-1',
-                convertedPrice: 1.01,
+                in_process_at: '1',
+                posting_number: '1',
+                products: [
+                    {
+                        offer_id: '11-1',
+                        price: '0.0101',
+                        quantity: 1,
+                    },
+                ],
+                status: 'new',
             },
         ]);
     });
@@ -336,5 +340,32 @@ describe('WbOrderService', () => {
         expect(updatePrim.mock.calls).toHaveLength(2);
         expect(updatePrim.mock.calls[0]).toEqual(['1', '1 возврат WBFBO', null]);
         expect(updatePrim.mock.calls[1]).toEqual(['14', '14 возврат WBFBO', null]);
+    });
+    it('transformToPostingDto', async () => {
+        const order: WbOrderDto = {
+            price: 0,
+            rid: '',
+            skus: [],
+            id: 123,
+            convertedPrice: 1000,
+            article: 'article1',
+            createdAt: new Date().toString(),
+        };
+        const status = 'new';
+        service.transformToPostingDto(order, status);
+
+        // Проверяем, что в Map добавился объект
+        const storedPostingDto = Reflect.get(service, 'postingDtos').get(order.id.toString());
+
+        expect(storedPostingDto).toEqual({
+            posting_number: order.id.toString(),
+            status: status,
+            in_process_at: order.createdAt,
+            products: [{
+                price: (order.convertedPrice / 100).toString(),
+                offer_id: order.article,
+                quantity: 1,
+            }],
+        });
     });
 });

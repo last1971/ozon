@@ -4,6 +4,7 @@ import { INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { ConfigService } from '@nestjs/config';
 import { ProductService } from '../product/product.service';
 import { DateTime } from 'luxon';
+import { OzonApiService } from "../ozon.api/ozon.api.service";
 
 describe('PostingService', () => {
     let service: PostingService;
@@ -54,6 +55,10 @@ describe('PostingService', () => {
                     provide: ProductService,
                     useValue: { orderList },
                 },
+                {
+                    provide: OzonApiService,
+                    useValue: {},
+                }
             ],
         }).compile();
 

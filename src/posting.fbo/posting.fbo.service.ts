@@ -19,8 +19,13 @@ export class PostingFboService implements IOrderable {
         @Inject(INVOICE_SERVICE) private invoiceService: IInvoice,
         private eventEmitter: EventEmitter2,
     ) {}
+
+    isFbo(): boolean {
+        return true;
+    }
+
     async createInvoice(posting: PostingDto, transaction: FirebirdTransaction): Promise<InvoiceDto> {
-        const buyerId = this.configService.get<number>('OZON_BUYER_ID', 24416);
+        const buyerId = this.getBuyerId();
         for (const product of posting.products) {
             let res = await this.invoiceService.unPickupOzonFbo(
                 product,
@@ -95,5 +100,13 @@ export class PostingFboService implements IOrderable {
             await transaction.rollback(true);
             console.error(e);
         }
+    }
+
+    async getByPostingNumber(postingNumber: string): Promise<PostingDto> {
+        return Promise.resolve(undefined);
+    }
+
+    getBuyerId(): number {
+        return this.configService.get<number>('OZON_BUYER_ID', 24416);
     }
 }

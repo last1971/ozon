@@ -21,12 +21,20 @@ import Excel from 'exceljs';
 
 @Injectable()
 export class WbOrderService implements IOrderable {
+
+    private postingDtos: Map<string, PostingDto>;
     constructor(
         private api: WbApiService,
         @Inject(INVOICE_SERVICE) private invoiceService: IInvoice,
         private configService: ConfigService,
         private eventEmitter: EventEmitter2,
-    ) {}
+    ) {
+        this.postingDtos = new Map<string, PostingDto>();
+    }
+
+    isFbo(): boolean {
+        return false;
+    }
 
     async list(dateFrom = 0, initialNext = 0, limit = 1000): Promise<WbOrderDto[]> {
         const { orders, next } = await this.api.method('/api/v3/orders', 'get', { next: initialNext, limit, dateFrom });
@@ -58,7 +66,7 @@ export class WbOrderService implements IOrderable {
         );
         const newFboOrders = allFboOrders.filter((order, index) => !oldFboOrders[index] && !order.isCancel);
         const transaction = await this.invoiceService.getTransaction();
-        const buyerId = this.configService.get<number>('WB_BUYER_ID', 24532);
+        const buyerId = this.getBuyerId();
         const addFboOrders: WbFboOrder[] = [];
         try {
             for (const order of newFboOrders) {
@@ -149,7 +157,24 @@ export class WbOrderService implements IOrderable {
         return res.orders;
     }
 
-    async listByStatus(orders: WbOrderDto[], status: string): Promise<WbOrderDto[]> {
+    public transformToPostingDto(order: WbOrderDto, status: string): PostingDto {
+        const res = {
+            posting_number: order.id.toString(),
+            status: status,
+            in_process_at: order.createdAt,
+            products: [
+                {
+                    price: (order.convertedPrice / 100).toString(),
+                    offer_id: order.article,
+                    quantity: 1,
+                },
+            ],
+        };
+        this.postingDtos.set(res.posting_number, res);
+        return res;
+    }
+
+    async listByStatus(orders: WbOrderDto[], status: string): Promise<PostingDto[]> {
         const statuses: WbOrderStatusDto[] = (
             await Promise.all(
                 chunk(orders, 1000).map((chunkOrders: WbOrderDto[]) =>
@@ -161,55 +186,29 @@ export class WbOrderService implements IOrderable {
             .filter((status: any) => {
                 return !['canceled_by_client', 'declined_by_client'].includes(status.wbStatus);
             });
-        return orders.filter((order) => {
-            return !!find(statuses, { id: order.id, supplierStatus: status });
-        });
+        return orders
+            .filter((order) => !!find(statuses, { id: order.id, supplierStatus: status }))
+            .map((order) => this.transformToPostingDto(order, status));
     }
 
     createInvoice(posting: PostingDto, transaction: FirebirdTransaction): Promise<InvoiceDto> {
-        const buyerId = this.configService.get<number>('WB_BUYER_ID', 24532);
+        const buyerId = this.getBuyerId();
         // this.eventEmitter.emit('wb.order.created', posting);
         return this.invoiceService.createInvoiceFromPostingDto(buyerId, posting, transaction);
     }
 
     async listAwaitingDelivering(): Promise<PostingDto[]> {
         const orders = await this.listSomeDayAgo();
-        return (await this.listByStatus(orders, 'complete')).map(
-            (order): PostingDto => ({
-                posting_number: order.id.toString(),
-                status: 'complete',
-                in_process_at: order.createdAt,
-                products: [
-                    {
-                        price: (order.convertedPrice / 100).toString(),
-                        offer_id: order.article,
-                        quantity: 1,
-                    },
-                ],
-            }),
-        );
+        return this.listByStatus(orders, 'complete');
     }
 
     async listAwaitingPackaging(): Promise<PostingDto[]> {
         const orders = await this.listSomeDayAgo();
-        return (await this.listByStatus(orders, 'new')).map(
-            (order): PostingDto => ({
-                posting_number: order.id.toString(),
-                status: 'new',
-                in_process_at: order.createdAt,
-                products: [
-                    {
-                        price: (order.convertedPrice / 100).toString(),
-                        offer_id: order.article,
-                        quantity: 1,
-                    },
-                ],
-            }),
-        );
+        return this.listByStatus(orders, 'new');
     }
 
     async getTransactions(data: TransactionFilterDate, rrdid = 0): Promise<Array<WbTransactionDto>> {
-        const transactions: WbTransactionDto[] = await this.api.method(
+        return this.api.method(
             '/api/v5/supplier/reportDetailByPeriod',
             'statistics',
             {
@@ -218,7 +217,7 @@ export class WbOrderService implements IOrderable {
                 rrdid,
             },
         );
-        return transactions;
+        // return transactions;
         // if (!transactions) return [];
         // return transactions.concat(await this.getTransactions(data, last(transactions).rrd_id));
     }
@@ -285,7 +284,7 @@ export class WbOrderService implements IOrderable {
     async closeSales(dateFrom: string = '2024-05-14', dateTo: string = '2024-06-01'): Promise<any> {
         const transaction = await this.invoiceService.getTransaction();
         try {
-            const buyerId: number = this.configService.get<number>('WB_BUYER_ID', 24532);
+            const buyerId: number = this.getBuyerId();
             const invoices = await this.invoiceService.getByDto({ buyerId, dateFrom, dateTo, status: 4 });
             const saleIds = invoices.map((invoice) => invoice.remark);
             const sales = await this.getSales(dateFrom);
@@ -331,5 +330,18 @@ export class WbOrderService implements IOrderable {
 
     async listCanceled(): Promise<PostingDto[]> {
         return [];
+    }
+
+    async getByPostingNumber(postingNumber: string): Promise<PostingDto> {
+        let res = this.postingDtos.get(postingNumber);
+        if (!res) {
+            await this.listAwaitingPackaging();
+            res = this.postingDtos.get(postingNumber);
+        }
+        return res;
+    }
+
+    getBuyerId(): number {
+        return this.configService.get<number>('WB_BUYER_ID', 24532);
     }
 }

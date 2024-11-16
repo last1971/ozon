@@ -47,6 +47,13 @@ export class OrderService {
         return find(this.orderServices, (service) => service.constructor.name === this.serviceNames[name]) || null;
     }
 
+    getServiceByBuyerId(buyerId: number, isFbs = true): IOrderable | null {
+        return find(
+            this.orderServices,
+            (service: IOrderable) => service.getBuyerId() === buyerId && service.isFbo() !== isFbs,
+        );
+    }
+
     async updateTransactions(data: TransactionFilterDto): Promise<ResultDto> {
         /*
         {
@@ -127,5 +134,9 @@ export class OrderService {
                 await this.invoiceService.bulkSetStatus([invoice], 0, transaction);
             }
         }
+    }
+
+    async getByPostingNumber(postingNumber: string, buyerId: number): Promise<PostingDto | null> {
+        return this.getServiceByBuyerId(buyerId)?.getByPostingNumber(postingNumber);
     }
 }

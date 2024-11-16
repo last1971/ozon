@@ -40,6 +40,11 @@ export class YandexOrderService implements IOrderable, OnModuleInit {
         const yandex = await this.vaultService.get('yandex-seller');
         this.campaignId = yandex['electronica-company'] as number;
     }
+
+    isFbo(): boolean {
+        return false;
+    }
+
     async list(subStatus: YandexOrderSubStatus, status: YandexOrderStatus = YandexOrderStatus.PROCESSING): Promise<PostingDto[]> {
         const data: any = { status };
         if (subStatus) {
@@ -68,7 +73,7 @@ export class YandexOrderService implements IOrderable, OnModuleInit {
         return this.list(YandexOrderSubStatus.READY_TO_SHIP);
     }
     async createInvoice(posting: PostingDto, transaction: FirebirdTransaction): Promise<InvoiceDto> {
-        const buyerId = this.configService.get<number>('YANDEX_BUYER_ID', 24465);
+        const buyerId = this.getBuyerId();
         return this.invoiceService.createInvoiceFromPostingDto(buyerId, posting, transaction);
     }
     async statsOrder(request: StatsOrderRequestDto, page_token: string = ''): Promise<OrderStatsDto[]> {
@@ -86,7 +91,7 @@ export class YandexOrderService implements IOrderable, OnModuleInit {
         return orders;
     }
     async updateTransactions(): Promise<ResultDto> {
-        const buyerId = this.configService.get<number>('YANDEX_BUYER_ID', 24465);
+        const buyerId = this.getBuyerId();
         const invoices = await this.invoiceService.getByBuyerAndStatus(buyerId, 4, null);
         const orders = await this.statsOrder({
             statuses: ['DELIVERED'],
@@ -105,5 +110,13 @@ export class YandexOrderService implements IOrderable, OnModuleInit {
 
     async listCanceled(): Promise<PostingDto[]> {
         return this.list(null, YandexOrderStatus.CANCELLED);
+    }
+
+    async getByPostingNumber(postingNumber: string): Promise<PostingDto> {
+        return Promise.resolve(undefined);
+    }
+
+    getBuyerId(): number {
+        return this.configService.get<number>('YANDEX_BUYER_ID', 24465);
     }
 }

@@ -1,8 +1,27 @@
-import { Body, Controller, Get, Param, ParseEnumPipe, Post, UploadedFile, UseInterceptors } from "@nestjs/common";
+import {
+    Body,
+    Controller,
+    Get,
+    Param,
+    ParseEnumPipe,
+    ParseIntPipe,
+    Post,
+    UploadedFile,
+    UseInterceptors
+} from "@nestjs/common";
 import { OrderService } from './order.service';
 import { ResultDto } from '../helpers/result.dto';
 import { TransactionFilterDate, TransactionFilterDto } from '../posting/dto/transaction.filter.dto';
-import { ApiBody, ApiConsumes, ApiOkResponse, ApiProduces, ApiTags } from '@nestjs/swagger';
+import {
+    ApiBody,
+    ApiConsumes,
+    ApiOkResponse,
+    ApiOperation,
+    ApiParam,
+    ApiProduces,
+    ApiTags,
+    getSchemaPath
+} from "@nestjs/swagger";
 import { YandexOrderService } from '../yandex.order/yandex.order.service';
 import { WbOrderService } from '../wb.order/wb.order.service';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -90,5 +109,33 @@ export class OrderController {
     @Get('awaiting-packaging/:service')
     async getAwaitingPackaging(@Param('service', new ParseEnumPipe(GoodServiceEnum)) service: GoodServiceEnum): Promise<PostingDto[]> {
         return this.orderService.getServiceByName(service).listAwaitingPackaging();
+    }
+
+    @Get(':buyerId/:postingNumber')
+    @ApiOperation({ summary: 'Получить информацию о составе заказа по его номеру и id покупателя' })
+    @ApiParam({
+        name: 'buyerId',
+        description: 'Идентификатор покупателя, должен быть числовым значением',
+        type: 'number',
+    })
+    @ApiParam({
+        name: 'postingNumber',
+        description: 'Номер размещения заказа',
+        type: 'string',
+    })
+    @ApiOkResponse({
+        description: 'Данные размещения заказа',
+        schema: {
+            oneOf: [
+                { $ref: getSchemaPath(PostingDto) }, // Используем описание из PostingDto для успешного ответа
+                { type: 'null' }, // Ответ может быть null
+            ],
+        },
+    })
+    async getByPostingNumber(
+        @Param('buyerId', ParseIntPipe) buyerId: number,
+        @Param('postingNumber') postingNumber: string
+    ): Promise<PostingDto | null> {
+        return this.orderService.getByPostingNumber(postingNumber, buyerId);
     }
 }
