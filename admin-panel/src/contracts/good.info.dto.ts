@@ -4,6 +4,7 @@ export interface GoodInfoDto {
     remark: string;
     primaryImage?: string;
     id: string;
-    quantity: number;
     goodService: string;
 }
+
+//quantity: number;

@@ -38,7 +38,7 @@ const labelTypes: SizeDto[] = [
 
 const labelType = ref(labelTypes[0]);
 
-const items = ref<ItemFbsDto[]>([]);
+// const items = ref<ItemFbsDto[]>([]);
 
 const selectedRows = ref<string[]>([]);
 

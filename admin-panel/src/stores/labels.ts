@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import { postingStore } from "@/stores/postings";
-import { goodStore } from "@/stores/goods";
+import { GoodServiceEnum, goodStore } from "@/stores/goods";
 import type { ItemFbsDto } from "@/contracts/item.fbs.dto";
 import axios from "@/axios.config";
 import type { SizeDto } from "@/contracts/size.dto";
@@ -25,14 +25,15 @@ export const labelStore = defineStore("labelStore", {
             ) || [];
 
             // Определяем, какие SKU отсутствуют в goodStore
+            const goodInfos = goods.goodInfos.get(GoodServiceEnum.OZON) || [];
             const missingSkus = skus.filter(
-                sku => !goods.goodInfos.some(good => good.sku === sku)
+                sku => !goodInfos.some(good => good.sku === sku)
             );
 
             // Если есть недостающие товары, загружаем их
             if (missingSkus.length) {
                 this.isLoading = true;
-                await goods.getGoodInfoBySkus(missingSkus);
+                await goods.getGoodInfoBySkus(missingSkus, GoodServiceEnum.OZON);
                 this.isLoading = false;
             }
         },
@@ -80,7 +81,7 @@ export const labelStore = defineStore("labelStore", {
         ozonFbsLabels(): ItemFbsDto[] {
             const postings = postingStore();
             const goods = goodStore();
-            const { goodInfos } = goods;
+            const goodInfos = goods.goodInfos.get(GoodServiceEnum.OZON) || [];
             return postings.awaitingDelivery.flatMap(order =>
                 order.products
                     .map(product => {

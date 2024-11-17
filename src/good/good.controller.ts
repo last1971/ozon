@@ -1,5 +1,5 @@
-import { Body, Controller, Inject, Param, Post, Put, Query } from "@nestjs/common";
-import { ApiBody, ApiOperation, ApiProperty, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { Body, Controller, Inject, Param, ParseEnumPipe, Post, Put, Query } from "@nestjs/common";
+import { ApiBody, ApiOperation, ApiParam, ApiProperty, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
 import { GoodPercentDto } from './dto/good.percent.dto';
 import { ResultDto } from '../helpers/result.dto';
@@ -49,8 +49,13 @@ export class GoodController {
         return this.extraService.loadSkuList(params.service);
     }
 
-    @Post('info')
+    @Post('info/:service')
     @ApiOperation({ summary: 'Получить информацию о продуктах по списку SKU' })
+    @ApiParam({
+        name: 'service',
+        enum: GoodServiceEnum, // Укажите enum для автоподстановки
+        description: 'Название сервиса',
+    })
     @ApiBody({
         description: 'Список SKU для получения информации о продуктах',
         schema: {
@@ -72,7 +77,10 @@ export class GoodController {
         description: 'Информация о продуктах',
         type: [ProductInfoDto],
     })
-    async getInfo(@Body('skus') skus: string[]): Promise<ProductInfoDto[]> {
-        return this.extraService.getProductInfo(skus);
+    async getInfo(
+        @Param('service', new ParseEnumPipe(GoodServiceEnum)) service: GoodServiceEnum,
+        @Body('skus') skus: string[]
+    ): Promise<ProductInfoDto[]> {
+        return this.extraService.getProductInfo(skus, service);
     }
 }

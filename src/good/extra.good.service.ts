@@ -149,7 +149,7 @@ export class ExtraGoodService {
         }
     }
 
-    async getProductInfo(offer_id: string[]): Promise<ProductInfoDto[]> {
-        return this.productService.infoList(offer_id);
+    async getProductInfo(offer_id: string[], service: GoodServiceEnum): Promise<ProductInfoDto[]> {
+        return this.services.get(service).service.infoList(offer_id);
     }
 }
