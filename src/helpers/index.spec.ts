@@ -102,6 +102,8 @@ describe('Test helpers', () => {
                         skus: ['1-1', '1-2'],
                     },
                 ],
+                title: 'hz1',
+                photos: [],
             },
             {
                 nmID: 1,
@@ -116,6 +118,8 @@ describe('Test helpers', () => {
                         skus: ['3-1', '3-2'],
                     },
                 ],
+                title: 'hz2',
+                photos: [],
             },
         ]);
         expect(res).toEqual(

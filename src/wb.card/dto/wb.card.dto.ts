@@ -8,4 +8,6 @@ export class WbCardDto {
     vendorCode: string;
     kgvpMarketplace?: number;
     sizes: WbCardSizeDto[];
+    photos: any[];
+    title: string;
 }

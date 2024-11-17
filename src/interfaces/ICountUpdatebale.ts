@@ -1,3 +1,5 @@
+import { ProductInfoDto } from "../product/dto/product.info.dto";
+
 export class GoodCountsDto<T> {
     goods: Map<string, T>;
     nextArgs: any;
@@ -5,6 +7,7 @@ export class GoodCountsDto<T> {
 export abstract class ICountUpdateable {
     abstract getGoodIds(args: any): Promise<GoodCountsDto<number>>;
     abstract updateGoodCounts(goods: Map<string, number>): Promise<number>;
+    abstract infoList(offer_id: string[]): Promise<ProductInfoDto[]>;
     skuList: string[] = [];
     async loadSkuList(load = true): Promise<void> {
         if (!load) return;

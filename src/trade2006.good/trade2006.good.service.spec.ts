@@ -101,9 +101,10 @@ describe('Trade2006GoodService', () => {
     it('test updateCountForService', async () => {
         const updateGoodCounts = jest.fn().mockResolvedValueOnce(1);
         const getGoodIds = jest.fn().mockResolvedValueOnce({ goods: new Map([['1', 5]]) });
+        const infoList = jest.fn();
         const loadSkuList = async () => {};
         const skuList = [];
-        const countUpdateable: ICountUpdateable = { updateGoodCounts, getGoodIds, loadSkuList, skuList };
+        const countUpdateable: ICountUpdateable = { updateGoodCounts, getGoodIds, loadSkuList, skuList, infoList };
         const res = await service.updateCountForService(countUpdateable, '4');
         expect(res).toEqual(1);
         expect(updateGoodCounts.mock.calls[0]).toEqual([new Map([['1', 1]])]);
@@ -118,8 +119,9 @@ describe('Trade2006GoodService', () => {
             ]),
         });
         const loadSkuList = async () => {};
+        const infoList = jest.fn();
         const skuList = [];
-        const countUpdateable: ICountUpdateable = { updateGoodCounts, getGoodIds, loadSkuList, skuList };
+        const countUpdateable: ICountUpdateable = { updateGoodCounts, getGoodIds, loadSkuList, skuList, infoList };
         const res = await service.updateCountForSkus(countUpdateable, ['1', '2']);
         expect(res).toEqual(2);
         expect(updateGoodCounts.mock.calls[0]).toEqual([
@@ -230,7 +232,15 @@ describe('Trade2006GoodService', () => {
         ]);
     });
     it('updateWbCategory', async () => {
-        await service.updateWbCategory({ nmID: 1, sizes: [], subjectID: 2, subjectName: '3', vendorCode: '4' });
+        await service.updateWbCategory({
+            nmID: 1,
+            sizes: [],
+            subjectID: 2,
+            subjectName: '3',
+            vendorCode: '4',
+            photos: [],
+            title: 'test'
+        });
         expect(execute.mock.calls[0]).toEqual([
             'UPDATE OR INSERT INTO WB_CATEGORIES (ID, COMMISSION, NAME) VALUES (?, ?, ?) MATCHING (ID)',
             [2, 25, '3'],

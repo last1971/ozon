@@ -1,7 +1,11 @@
-import { GoodCountsDto, ICountUpdateable } from './ICountUpdatebale';
+import { ProductInfoDto } from 'src/product/dto/product.info.dto';
+import { GoodCountsDto, ICountUpdateable } from "./ICountUpdatebale";
 
-describe('ICountUpdateble', () => {
+describe("ICountUpdateble", () => {
     class TestUpdateble extends ICountUpdateable {
+        infoList(offer_id: string[]): Promise<ProductInfoDto[]> {
+            throw new Error('Method not implemented.');
+        }
         async getGoodIds(args: any): Promise<GoodCountsDto<number>> {
             if (args === '') {
                 return {

@@ -43,6 +43,7 @@ describe('WbCardService', () => {
                                 skus: ['1-1'],
                             },
                         ],
+                        photos:[{ big: 'test.jpg' }],
                     },
                 ],
                 cursor: { total: 1 },
@@ -80,6 +81,7 @@ describe('WbCardService', () => {
                                 skus: ['1-1'],
                             },
                         ],
+                        photos:[{ big: 'test.jpg' }],
                     },
                 ],
                 cursor: { total: 1 },
@@ -96,6 +98,7 @@ describe('WbCardService', () => {
                             skus: ['1-1'],
                         },
                     ],
+                    photos:[{ big: 'test.jpg' }],
                 },
                 {
                     nmID: 2,
@@ -105,6 +108,7 @@ describe('WbCardService', () => {
                             skus: ['1-2'],
                         },
                     ],
+                    photos:[{ big: 'test.jpg' }],
                 },
             ],
         });
@@ -147,16 +151,36 @@ describe('WbCardService', () => {
         ]);
     });
     it('getAllWbCards', async () => {
+        const testCard = {
+                nmID: 1,
+                vendorCode: '1',
+                sizes: [
+                    {
+                        skus: ['1-1'],
+                    },
+                ],
+                photos:[{ big: 'test.jpg' }],
+                title: 'test-name'
+            };
         method
             .mockResolvedValueOnce({
-                cards: [1, 2, 3],
+                cards: [testCard],
                 cursor: { total: 100 },
             })
             .mockResolvedValueOnce({
-                cards: [4, 5, 6],
+                cards: [testCard, testCard],
                 cursor: { total: 3 },
             });
         const res = await service.getAllWbCards();
-        expect(res).toEqual([1, 2, 3, 4, 5, 6]);
+        const productInfos = Reflect.get(service, 'productInfos').get('1');
+        expect(productInfos).toEqual({
+            barCode: '1-1',
+            goodService: 'wb',
+            id: '1',
+            primaryImage: 'test.jpg',
+            remark: 'test-name',
+            sku: '1',
+        });
+        expect(res).toEqual([testCard, testCard, testCard]);
     });
 });
