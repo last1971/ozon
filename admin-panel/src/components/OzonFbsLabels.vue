@@ -4,6 +4,8 @@ import type { ItemFbsDto } from "@/contracts/item.fbs.dto";
 import { labelStore } from "@/stores/labels";
 import { postingStore } from "@/stores/postings";
 import type { SizeDto } from "@/contracts/size.dto";
+import ProductImage from "@/components/ProductImage.vue";
+import BarcodeImage from "@/components/BarcodeImage.vue";
 // import type { GoodInfoDto } from "@/contracts/good.info.dto";
 
 const store = labelStore();
@@ -112,25 +114,12 @@ onMounted(async () => {
         </template>
         <!-- Слот для отображения изображения товара -->
         <template #item.image="{ item }">
-            <v-hover v-slot="{ isHovering, props }">
-                    <img
-                        :src="item.image"
-                        alt="Картинка"
-                        :style="{
-                            width: '50px',
-                            height: '50px',
-                            transition: 'transform 0.3s ease',
-                            transform: isHovering ? 'scale(3)' : 'scale(1)'
-                        }"
-                        v-bind="props"
-                    />
-            </v-hover>
+            <product-image :image="item.image" :alt="item.name" />
         </template>
 
         <!-- Слот для отображения изображения штрихкода -->
         <template #item.barcode="{ item }">
-            <img :src="`${url}/api/label/generate?bcid=${barcodeType}&text=${item.barcode}&height=10&width=30`" alt="Штрихкод"
-                 style="width: 200px; height: 60px;" />
+           <barcode-image :barcode-type="barcodeType" :url="url" :barcode="item.barcode" />
         </template>
     </v-data-table>
 </template>
