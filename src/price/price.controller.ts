@@ -69,9 +69,14 @@ export class PriceController {
     })
     @Post()
     async update(@Body() prices: UpdatePricesDto): Promise<any> {
-        const skus = prices.prices.map((price) => price.offer_id);
+        const skus: string[] = [];
+        const pricesMap = new Map<string, UpdatePriceDto>();
+        prices.prices.forEach((price) => {
+            skus.push(price.offer_id);
+            pricesMap.set(price.offer_id, price);
+        });
         return Promise.all(
-            Array.from(this.services.values()).map((service) => this.goodService.updatePriceForService(service, skus)),
+            Array.from(this.services.values()).map((service) => this.goodService.updatePriceForService(service, skus, pricesMap)),
         );
     }
     @Post('all/:service')

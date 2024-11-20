@@ -4,7 +4,7 @@ import { articulesStore } from "@/stores/articules";
 import { tariffStore } from "@/stores/tariffStore";
 import type { PriceDto } from "@/contracts/price.dto";
 
-const url = import.meta.env.VITE_URL;
+// const url = import.meta.env.VITE_URL;
 
 export const priceStore = defineStore("priceStore", {
     state: () => ({
@@ -77,7 +77,7 @@ export const priceStore = defineStore("priceStore", {
             this.pays[index] = res.data;
             this.isLoadingPrice[index] = false;
         },
-        async save(index: number): Promise<void> {
+        async save(index: number, edit: boolean): Promise<void> {
             this.isLoadingPrice[index] = true;
             const {
                 offer_id,
@@ -86,6 +86,7 @@ export const priceStore = defineStore("priceStore", {
                 old_perc,
                 adv_perc,
                 sum_pack,
+                incoming_price,
             } = this.prices[index];
             try {
                 await axios.post('/api/good/percent', {}, {
@@ -94,7 +95,7 @@ export const priceStore = defineStore("priceStore", {
                     }
                 });
                 const res = await axios.post<any[]>('/api/price', {
-                    prices: [{ offer_id, min_price: '0', price: '0', old_price: '0' }]
+                    prices: [{ offer_id, min_price: '0', price: '0', old_price: '0', incoming_price: edit ? incoming_price : 0 }]
                 });
                 if (!res.data[0].result[0].updated) {
                     throw new Error(res.data[0].result[0].errors.toString())

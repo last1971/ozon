@@ -15,7 +15,7 @@
 </script>
 
 <template>
-    <v-container>
+    <v-container fluid class="pa-0">
         <v-card elevated v-for="(price, ind) in prices" :key="price.offer_id">
             <price :value="price" :ind="ind" class="pa-2"/>
             <v-divider :thickness="5"></v-divider>

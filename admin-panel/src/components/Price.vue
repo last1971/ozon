@@ -2,13 +2,20 @@
 import type { PriceDto } from "@/contracts/price.dto";
 import { storeToRefs } from "pinia";
 import { priceStore } from "@/stores/prices";
-import { watch } from "vue";
+import { ref, watch } from "vue";
 import { debounce } from "lodash";
 
 const props = defineProps<{ value: PriceDto, ind: number }>();
 const { pays, isLoadingPrice } = storeToRefs(priceStore())
+const edit = ref(false)
+
+const updateIncomingPrice = (newValue: string) => {
+    props.value.incoming_price = parseFloat(newValue) || 0; // Преобразование строки в число
+};
+
 watch(
-    () => props.value.old_perc + props.value.min_perc + props.value.perc + props.value.adv_perc + props.value.sum_pack,
+    () => props.value.old_perc + props.value.min_perc + props.value.perc + props.value.adv_perc +
+        props.value.sum_pack + props.value.incoming_price,
     debounce(async ()=> {
         await priceStore().getInd(props.ind);
     }, 2000),
@@ -19,13 +26,21 @@ watch(
     <div>
     <v-table>
         <template v-slot:bottom>
-            <v-btn
-                prepend-icon="mdi-content-save"
-                @click="priceStore().save(props.ind)"
-                :loading="isLoadingPrice[props.ind]"
-            >
-                Сохранить
-            </v-btn>
+            <v-row class="d-flex align-center justify-center">
+                <v-col cols="6">
+                    <v-switch class="mt-4" label="своя цена" v-model="edit"/>
+                </v-col>
+                <v-col cols="6">
+                    <v-btn
+                        block
+                        prepend-icon="mdi-content-save"
+                        @click="priceStore().save(props.ind, edit)"
+                        :loading="isLoadingPrice[props.ind]"
+                    >
+                        Сохранить
+                    </v-btn>
+                </v-col>
+            </v-row>
         </template>
         <thead>
             <tr>
@@ -47,7 +62,17 @@ watch(
                 <td>{{ Math.ceil(value.marketing_price) }} ₽</td>
                 <td>{{ Math.ceil(value.marketing_seller_price) }} ₽</td>
                 <td>{{ Math.ceil(parseInt(pays[ind][0])) }} ₽</td>
-                <td>{{ Math.ceil(value.incoming_price) }} ₽</td>
+                <td v-if="edit">
+                    <v-text-field
+                        :model-value="value.incoming_price"
+                        @update:modelValue="updateIncomingPrice"
+                        suffix="₽"
+                        variant="underlined"
+                    />
+                </td>
+                <td v-else>
+                    {{ Math.ceil(value.incoming_price) }} ₽
+                </td>
                 <td>{{ Math.ceil(parseInt(pays[ind][0]) - value.incoming_price) }} ₽
                     /
                     {{ Math.ceil((parseInt(pays[ind][0]) - value.incoming_price) / value.incoming_price * 100) }} %

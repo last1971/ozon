@@ -58,7 +58,7 @@ export class WbPriceService implements IPriceUpdateable {
         const data = updatePrices.map((updatePrice) => {
             const nmID = this.cardService.getNmID(updatePrice.offer_id);
             return {
-                nmID,
+                nmID: parseInt(nmID),
                 // find(wbCards, { vendorCode: updatePrice.offer_id }).nmID,
                 price: parseInt(updatePrice.old_price),
                 discount: Math.floor((1 - parseInt(updatePrice.price) / parseInt(updatePrice.old_price)) * 100),

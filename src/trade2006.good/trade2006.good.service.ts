@@ -205,7 +205,7 @@ export class Trade2006GoodService implements IGood {
         return service.updateGoodCounts(updateGoods);
     }
 
-    async updatePriceForService(service: IPriceUpdateable, skus: string[]): Promise<any> {
+    async updatePriceForService(service: IPriceUpdateable, skus: string[], prices?: Map<string, UpdatePriceDto>): Promise<any> {
         const codes = skus.map((item) => goodCode({ offer_id: item }));
         const goods = await this.prices(codes);
         const percents = await this.getPerc(codes);
@@ -214,7 +214,9 @@ export class Trade2006GoodService implements IGood {
         products.forEach((product) => {
             const gCode = goodCode({ offer_id: product.getSku() });
             const gCoeff = goodQuantityCoeff({ offer_id: product.getSku() });
-            const incoming_price = goods.find((g) => g.code.toString() === gCode).price * gCoeff;
+            const incoming_price = prices?.get(product.getSku()).incoming_price
+                ? prices.get(product.getSku()).incoming_price
+                : goods.find((g) => g.code.toString() === gCode).price * gCoeff;
             if (incoming_price !== 0) {
                 const { min_perc, perc, old_perc, adv_perc, packing_price } = percents.find(
                     (p) => p.offer_id.toString() === gCode && p.pieces === gCoeff,
