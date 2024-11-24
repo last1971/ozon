@@ -1,7 +1,41 @@
 <script setup lang="ts">
-import { ref } from "vue";
+import { computed, ref } from "vue";
 import axios from "../axios.config";
+import ProductImage from "@/components/ProductImage.vue";
+import BarcodeImage from "@/components/BarcodeImage.vue";
+import { GoodServiceEnum, goodStore } from "@/stores/goods";
+import { find } from "lodash";
+import type { GoodInfoDto } from "@/contracts/good.info.dto";
 
+const url = import.meta.env.VITE_URL;
+
+const products = ref<any[]>([]);
+const goods = goodStore();
+
+const extractQuantity = (sku: string) => {
+    const parts = sku.split('-'); // Разделяем строку по символу '-'
+    return parts.length > 1 ? parseInt(parts[1], 10) : 1; // Если есть количество, возвращаем его, иначе 1
+}
+
+const lines = computed(
+    () => products.value.map((a) => {
+        const good: GoodInfoDto | undefined = find(goods.goodInfos.get(GoodServiceEnum.OZON), { sku: a.offer_id });
+        return {
+            offer_id: a.offer_id,
+            quantity: a.quantity,
+            name: good?.remark || '',
+            barcode: good?.barCode || '',
+            image: good?.primaryImage || '',
+        }
+    }),
+);
+
+const headers = ref([
+    { title: 'Картинка', key: 'image', sortable: false },     // Колонка с картинкой товара
+    { title: 'Штрихкод', key: 'barcode', sortable: false },   // Колонка с картинкой штрихкода
+    { title: 'Название', key: 'name' },                       // Название товара
+    { title: 'Количество', key: 'quantity' },                       // Название товара
+]);
 
 // Переменные для полей ввода и времени
 const firstInput = ref<string>('');
@@ -29,16 +63,20 @@ async function update(remark: string, data: any, text: string): Promise<boolean>
         snackbarMessage.value = text;
         snackbarColor.value = 'success';
         invoice.value = res.data.invoice;
+        const order = await axios.get(`/api/order/${invoice.value.buyerId}/${remark}`);
+        products.value = order.data.products;
+        await goods.getGoodInfoBySkus(products.value.map((v) => v.offer_id ), GoodServiceEnum.OZON)
     } catch (e: any) {
-       if (e.status === 400) {
-           snackbarMessage.value = 'Такого заказа нет в базе данных';
-           snackbarColor.value = 'warning';
-       } else {
-           snackbarTimeout.value = 60000;
-           snackbarMessage.value =
+        products.value = [];
+        if (e.status === 400) {
+            snackbarMessage.value = 'Такого заказа нет в базе данных';
+            snackbarColor.value = 'warning';
+        } else {
+            snackbarTimeout.value = 60000;
+            snackbarMessage.value =
                `Система не работает, сообщить ВВ, код: ${e.status}, ошибка: ${e.response.data.message.join(', ')}`;
-           snackbarColor.value = 'error';
-       }
+            snackbarColor.value = 'error';
+        }
         result = false;
     }
     snackbar.value = true;
@@ -83,11 +121,12 @@ async function onSecondInput() {
     if (secondInput.value) {
         secondDisabled.value = true;
         secondTime.value = getCurrentTime();
-        await update(
+        const res = await update(
             firstInput.value,
             { FINISH_PICKUP: secondTime.value, IGK: secondInput.value },
             'Сборка завершена'
         );
+        if (res) resetFields();
     }
 }
 
@@ -117,74 +156,134 @@ function resetFields() {
     secondDisabled.value = true;
     firstTime.value = '';
     secondTime.value = '';
+    products.value = [];
 }
 </script>
 
 <template>
     <v-container>
-        <!-- Первое текстовое поле ввода -->
-        <div style="display: flex; align-items: center;">
-            <!-- Поле ввода -->
-            <v-text-field
-                v-model="firstInput"
-                label="Введите номер заказа"
-                :disabled="firstDisabled"
-                @input="onFirstInput"
-                outlined
-                dense
-                style="flex: 1;"
-            ></v-text-field>
+        <v-row align="center">
+            <!-- Первое текстовое поле ввода -->
+            <v-col cols="2">
+                <v-text-field
+                    v-model="firstInput"
+                    label="Введите номер заказа"
+                    :disabled="firstDisabled"
+                    @input="onFirstInput"
+                    outlined
+                ></v-text-field>
+            </v-col>
 
-            <!-- Кнопка рядом с полем ввода -->
-            <v-btn
-                icon
-                @click="unlockFirstInput"
-                class="clickable"
-                :disabled="!firstDisabled"
-                style="margin-left: 10px; margin-top: -20px;"
-            >
-                <v-icon>mdi-lock-open</v-icon>
-            </v-btn>
-        </div>
+            <!-- Кнопка разблокировки первого поля -->
+            <v-col cols="auto">
+                <v-btn
+                    icon
+                    @click="unlockFirstInput"
+                    :disabled="!firstDisabled"
+                    class="mb-4"
+                >
+                    <v-icon>mdi-lock-open</v-icon>
+                </v-btn>
+            </v-col>
 
-        <!-- Первое задизабленное поле с временем -->
-        <v-text-field
-            v-model="firstTime"
-            label="Время начала сборки"
-            :disabled="true"
-        ></v-text-field>
+            <!-- Задизабленное поле с временем -->
+            <v-col cols="2">
+                <v-text-field
+                    v-model="firstTime"
+                    label="Время начала сборки"
+                    :disabled="true"
+                ></v-text-field>
+            </v-col>
 
-        <!-- Второе текстовое поле ввода -->
-        <div style="display: flex; align-items: center;">
-            <v-text-field
-                v-model="secondInput"
-                label="Введите штрих код"
-                :disabled="secondDisabled"
-                @keyup.enter="onSecondInput"
-                outlined
-                dense
-                style="flex: 1;"
-            ></v-text-field>
-            <!-- Кнопка рядом с полем ввода -->
-            <v-btn
-                icon
-                @click="unlockSecondInput"
-                class="clickable"
-                :disabled="!secondDisabled"
-                style="margin-left: 10px; margin-top: -20px;"
-            >
-                <v-icon>mdi-lock-open</v-icon>
-            </v-btn>
-        </div>
-        <!-- Второе задизабленное поле с временем -->
-        <v-text-field
-            v-model="secondTime"
-            label="Время окончания сборки"
-            :disabled="true"
-        ></v-text-field>
+            <!-- Второе текстовое поле ввода -->
+            <v-col cols="2">
+                <v-text-field
+                    v-model="secondInput"
+                    label="Введите штрих код"
+                    :disabled="secondDisabled"
+                    @keyup.enter="onSecondInput"
+                    outlined
+                ></v-text-field>
+            </v-col>
 
-        <!-- Кнопка для сброса всех данных -->
-        <v-btn @click="resetFields">Новый ввод</v-btn>
+            <!-- Кнопка разблокировки второго поля -->
+            <v-col cols="auto">
+                <v-btn
+                    icon
+                    @click="unlockSecondInput"
+                    :disabled="!secondDisabled"
+                    class="mb-4"
+                >
+                    <v-icon>mdi-lock-open</v-icon>
+                </v-btn>
+            </v-col>
+
+            <!-- Задизабленное поле с временем окончания -->
+            <v-col cols="2">
+                <v-text-field
+                    v-model="secondTime"
+                    label="Время окончания сборки"
+                    :disabled="true"
+                ></v-text-field>
+            </v-col>
+
+            <!-- Кнопка сброса всех данных -->
+            <v-col cols="2">
+                <v-btn block class="mb-4" @click="resetFields">Новый ввод</v-btn>
+            </v-col>
+        </v-row>
+
+        <v-data-table
+            :headers="headers"
+            :items="lines"
+            class="w-100"
+            hide-default-footer
+        >
+            <!-- Слот для отображения изображения товара -->
+            <template #item.image="{ item }">
+                <product-image :image="item.image" :alt="item.name" />
+            </template>
+
+            <!-- Слот для отображения изображения штрихкода -->
+            <template #item.barcode="{ item }">
+                <barcode-image barcode-type="code128" :url="url" :barcode="item.barcode" />
+            </template>
+
+            <template #item.name="{ item }">
+                <v-row>
+                    {{ item.name }}
+                </v-row>
+                <v-row>
+                    <v-col>
+                        {{ item.offer_id }}
+                    </v-col>
+                    <v-col>
+                        *
+                    </v-col>
+                    <v-col>
+                        {{ item.quantity }}
+                    </v-col>
+                </v-row>
+            </template>
+
+            <template #item.quantity="{ item }">
+                <div
+                    style="
+            font-weight: bold;
+            font-size: 2rem;
+            text-align: center;
+            width: 100%;
+            height: 100%;
+            display: flex;
+            align-items: center;
+            justify-content: center;"
+                >
+                    {{ extractQuantity(item.offer_id) * item.quantity }}
+                </div>
+            </template>
+
+        </v-data-table>
+
         <v-snackbar
             v-model="snackbar"
             :timeout="snackbarTimeout"
