@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, nextTick, ref } from "vue";
 import axios from "../axios.config";
 import ProductImage from "@/components/ProductImage.vue";
 import BarcodeImage from "@/components/BarcodeImage.vue";
@@ -54,6 +54,10 @@ const secondDisabled = ref<boolean>(true);
 // Переменные для времени
 const firstTime = ref<string>('');
 const secondTime = ref<string>('');
+
+// Refs для фокусировки
+const firstInputRef = ref<any>(null);
+const secondInputRef = ref<any>(null);
 
 async function update(remark: string, data: any, text: string): Promise<boolean> {
     let result = true;
@@ -110,8 +114,10 @@ async function onFirstInput() {
         );
         if (res) {
             secondDisabled.value = false;
+            await setFocus(secondInputRef);
         } else {
             firstDisabled.value = false;
+            await setFocus(firstInputRef);
         }
     }
 }
@@ -126,30 +132,32 @@ async function onSecondInput() {
             { FINISH_PICKUP: secondTime.value, IGK: secondInput.value },
             'Сборка завершена'
         );
-        if (res) resetFields();
+        if (res) await resetFields();
     }
 }
 
 // Функция для разблокировки первого поля
-function unlockFirstInput() {
+async function unlockFirstInput() {
     if (firstDisabled.value) {
         firstDisabled.value = false;
         firstInput.value = '';
         firstTime.value = '';
+        await setFocus(firstInputRef);
     }
 }
 
 // Функция для разблокировки второго поля
-function unlockSecondInput() {
+async function unlockSecondInput() {
     if (secondDisabled.value) {
         secondDisabled.value = false;
         secondInput.value = '';
         secondTime.value = '';
+        await setFocus(secondInputRef);
     }
 }
 
 // Функция для сброса всех полей
-function resetFields() {
+async function resetFields() {
     firstInput.value = '';
     secondInput.value = '';
     firstDisabled.value = false;
@@ -157,6 +165,16 @@ function resetFields() {
     firstTime.value = '';
     secondTime.value = '';
     products.value = [];
+    await setFocus(firstInputRef);
+}
+
+async function setFocus(ref: any) {
+    await nextTick();
+    // Переводим фокус на первое поле
+    if (ref.value?.$el) {
+        const inputElement: HTMLInputElement = ref.value.$el.querySelector('input');
+        if (inputElement) inputElement.focus();
+    }
 }
 </script>
 
@@ -171,6 +189,8 @@ function resetFields() {
                     :disabled="firstDisabled"
                     @input="onFirstInput"
                     outlined
+                    ref="firstInputRef"
+                    focused
                 ></v-text-field>
             </v-col>
 
@@ -203,6 +223,7 @@ function resetFields() {
                     :disabled="secondDisabled"
                     @keyup.enter="onSecondInput"
                     outlined
+                    ref="secondInputRef"
                 ></v-text-field>
             </v-col>
 
@@ -301,7 +322,5 @@ function resetFields() {
 </template>
 
 <style scoped>
-.clickable {
-    cursor: pointer;
-}
+
 </style>
