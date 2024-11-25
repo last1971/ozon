@@ -207,6 +207,11 @@ export class WbOrderService implements IOrderable {
         return this.listByStatus(orders, 'new');
     }
 
+    async listInProgress(): Promise<PostingDto[]> {
+        const orders = await this.listSomeDayAgo();
+        return this.listByStatus(orders, 'confirm');
+    }
+
     async getTransactions(data: TransactionFilterDate, rrdid = 0): Promise<Array<WbTransactionDto>> {
         return this.api.method(
             '/api/v5/supplier/reportDetailByPeriod',
@@ -336,6 +341,10 @@ export class WbOrderService implements IOrderable {
         let res = this.postingDtos.get(postingNumber);
         if (!res) {
             await this.listAwaitingPackaging();
+            res = this.postingDtos.get(postingNumber);
+        }
+        if (!res) {
+            await this.listInProgress();
             res = this.postingDtos.get(postingNumber);
         }
         return res;

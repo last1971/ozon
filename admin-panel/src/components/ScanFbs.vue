@@ -19,7 +19,7 @@ const extractQuantity = (sku: string) => {
 
 const lines = computed(
     () => products.value.map((a) => {
-        const good: GoodInfoDto | undefined = find(goods.goodInfos.get(GoodServiceEnum.OZON), { sku: a.offer_id });
+        const good: GoodInfoDto | undefined = find(goods.goodInfos.get(service.value), { sku: a.offer_id });
         return {
             offer_id: a.offer_id,
             quantity: a.quantity,
@@ -28,6 +28,10 @@ const lines = computed(
             image: good?.primaryImage || '',
         }
     }),
+);
+
+const service = computed(
+    () => invoice.value.buyerId === 24532 ? GoodServiceEnum.WB : GoodServiceEnum.OZON
 );
 
 const headers = ref([
@@ -64,12 +68,18 @@ async function update(remark: string, data: any, text: string): Promise<boolean>
     snackbarTimeout.value = 5000;
     try {
         const res = await axios.put(`/api/invoice/update/${remark}`, data);
-        snackbarMessage.value = text;
-        snackbarColor.value = 'success';
         invoice.value = res.data.invoice;
         const order = await axios.get(`/api/order/${invoice.value.buyerId}/${remark}`);
+        if (!order.data?.products) {
+            const error = new Error('Products not found in order') as Error & { status: number };
+            error.status = 400; // Добавляем свойство `status`
+            // noinspection ExceptionCaughtLocallyJS
+            throw error;
+        }
+        snackbarMessage.value = text;
+        snackbarColor.value = 'success';
         products.value = order.data.products;
-        await goods.getGoodInfoBySkus(products.value.map((v) => v.offer_id ), GoodServiceEnum.OZON)
+        await goods.getGoodInfoBySkus(products.value.map((v) => v.offer_id ), service.value)
     } catch (e: any) {
         products.value = [];
         if (e.status === 400) {
