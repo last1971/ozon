@@ -347,6 +347,7 @@ export class WbOrderService implements IOrderable {
             await this.listInProgress();
             res = this.postingDtos.get(postingNumber);
         }
+        console.log(this.postingDtos);
         return res;
     }
 

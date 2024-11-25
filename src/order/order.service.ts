@@ -137,6 +137,7 @@ export class OrderService {
     }
 
     async getByPostingNumber(postingNumber: string, buyerId: number): Promise<PostingDto | null> {
+        console.log(postingNumber, buyerId);
         return this.getServiceByBuyerId(buyerId)?.getByPostingNumber(postingNumber);
     }
 }
