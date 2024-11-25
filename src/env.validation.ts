@@ -1,5 +1,5 @@
 import { plainToInstance, Transform } from 'class-transformer';
-import { IsEmail, IsEnum, IsIP, IsNumber, IsString, IsUrl, validateSync } from 'class-validator';
+import { IsEmail, IsEnum, IsIP, IsNumber, IsOptional, IsString, IsUrl, validateSync } from "class-validator";
 import { GoodServiceEnum } from './good/good.service.enum';
 
 export enum Environment {
@@ -124,6 +124,18 @@ class EnvironmentVariables {
 
     @IsNumber()
     WB_EXT_PERC: number;
+
+    @IsOptional()
+    @IsNumber()
+    WB_BUYER_ID: number;
+
+    @IsOptional()
+    @IsNumber()
+    OZON_BUYER_ID: number;
+
+    @IsOptional()
+    @IsNumber()
+    YANDEX_BUYER_ID: number;
 }
 
 export function configValidate(config: Record<string, unknown>) {
