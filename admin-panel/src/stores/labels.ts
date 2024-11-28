@@ -8,15 +8,17 @@ import type { SizeDto } from "@/contracts/size.dto";
 export const labelStore = defineStore("labelStore", {
     state: () => ({
         isLoading: false,
+        service: GoodServiceEnum.OZON,
     }),
     actions: {
-        async fetchAndCombineData() {
+        async fetchAndCombineData(service: GoodServiceEnum) {
+            this.service = service;
             const postings = postingStore();
             const goods = goodStore();
             const { awaitingDelivery } = postings;
             // Запускаем загрузку заказов, если они еще не загружены
             if (!awaitingDelivery.length) {
-                await postings.getAwaitingDelivery();
+                await postings.getAwaitingDelivery(service);
             }
 
             // Собираем SKU товаров из заказов
@@ -25,7 +27,7 @@ export const labelStore = defineStore("labelStore", {
             ) || [];
 
             // Определяем, какие SKU отсутствуют в goodStore
-            const goodInfos = goods.goodInfos.get(GoodServiceEnum.OZON) || [];
+            const goodInfos = goods.goodInfos.get(service) || [];
             const missingSkus = skus.filter(
                 sku => !goodInfos.some(good => good.sku === sku)
             );
@@ -33,7 +35,7 @@ export const labelStore = defineStore("labelStore", {
             // Если есть недостающие товары, загружаем их
             if (missingSkus.length) {
                 this.isLoading = true;
-                await goods.getGoodInfoBySkus(missingSkus, GoodServiceEnum.OZON);
+                await goods.getGoodInfoBySkus(missingSkus, service);
                 this.isLoading = false;
             }
         },
@@ -49,7 +51,7 @@ export const labelStore = defineStore("labelStore", {
             });
             const labelsData = [];
             for (const order of orders) {
-                labelsData.push({ code: order[0], description: `\nЗаказ OZON FBS ${order[0]}` });
+                labelsData.push({ code: order[0], description: `\nЗаказ ${this.service.toString().toUpperCase()} FBS ${order[0]}` });
                 order[1].forEach((item) => {
                     labelsData.push(
                         ...Array(item.quantity)
@@ -81,7 +83,7 @@ export const labelStore = defineStore("labelStore", {
         ozonFbsLabels(): ItemFbsDto[] {
             const postings = postingStore();
             const goods = goodStore();
-            const goodInfos = goods.goodInfos.get(GoodServiceEnum.OZON) || [];
+            const goodInfos = goods.goodInfos.get(this.service) || [];
             return postings.awaitingDelivery.flatMap(order =>
                 order.products
                     .map(product => {
@@ -91,9 +93,8 @@ export const labelStore = defineStore("labelStore", {
 
                         // Если товар найден, возвращаем объект товара, если нет — пропускаем
                         if (!goodInfo) return null;
-
                         return {
-                            id: order.order_id,
+                            id: order.posting_number,
                             image: goodInfo.primaryImage || '',
                             barcode: goodInfo.barCode,
                             sku: product.offer_id,

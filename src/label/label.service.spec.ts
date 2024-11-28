@@ -40,6 +40,11 @@ describe('LabelService', () => {
 
         // Мокирование экземпляра PDFDocument
         const pdfMock = {
+            page: {
+                height: 30,
+                width: 50,
+            },
+            heightOfString: () => 0,
             pipe: jest.fn(),
             font: jest.fn().mockReturnThis(),
             fontSize: jest.fn().mockReturnThis(),

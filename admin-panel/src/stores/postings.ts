@@ -1,6 +1,7 @@
 import { defineStore } from "pinia";
 import type { PostingDto } from "@/contracts/posting.dto";
 import axios from "@/axios.config";
+import type { GoodServiceEnum } from "@/stores/goods";
 
 // const url = import.meta.env.VITE_URL;
 
@@ -10,10 +11,10 @@ export const postingStore = defineStore("postingStore", {
         isLoadingAwaitingDelivery: false,
     }),
     actions: {
-        async getAwaitingDelivery(): Promise<void> {
+        async getAwaitingDelivery(service: GoodServiceEnum): Promise<void> {
             this.isLoadingAwaitingDelivery = true;
             try {
-                const res = await axios.get("/api/order/awaiting-packaging/ozon");
+                const res = await axios.get(`/api/order/awaiting-packaging/${service}`);
                 this.awaitingDelivery = res.data.sort((a: any, b: any) => {
                     // Сортировка по первой дате
                     const date1Comparison =

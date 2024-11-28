@@ -136,12 +136,42 @@ export class LabelService {
         return canvas.toBuffer('image/png');
     }
 
+    calculateFontSize(
+        doc:  PDFKit.PDFDocument,
+        text: string,
+        minFontSize = 6,
+        maxFontSize = 10,
+        lineHeight = 1.2,
+    ) {
+        let fontSize = maxFontSize;
+        const maxHeight = doc.page.height / 2 - 4;
+        const  maxWidth = doc.page.width;
+        while (fontSize >= minFontSize) {
+            doc.fontSize(fontSize);
+
+            // Рассчитать высоту текста с учётом переноса строк
+            const textMetrics = doc.heightOfString(text, {
+                width: maxWidth,
+                lineGap: fontSize * (lineHeight - 1), // Учитываем межстрочный интервал
+            });
+
+            if (textMetrics <= maxHeight) {
+                break; // Текущий размер подходит
+            }
+
+
+            fontSize -= 1; // Уменьшаем размер шрифта
+        }
+
+        return Math.max(fontSize, minFontSize); // Убедимся, что не вышли за минимальный размер
+    }
+
     async generateLabels(generateLabelsDto: GenerateLabelsDto): Promise<Buffer> {
         const { labelsData, size, barcodeType } = generateLabelsDto;
 
         // Определение размеров и отступов для штрих-кода и текста
         const margin = Math.ceil(size.width * 0.05);
-        const barcodeHeight = Math.ceil(size.height * 0.60); // Высота штрих-кода — 60% от высоты этикетки
+        const barcodeHeight = Math.ceil(size.height * 0.50); // Высота штрих-кода — 60% от высоты этикетки
         const barcodeWidth = Math.ceil(size.width * 0.95);   // Ширина штрих-кода — 95% от ширины этикетки
         const textYPosition = barcodeHeight;
 
@@ -168,7 +198,7 @@ export class LabelService {
 
                 if (barcodeType === BarcodeType.TEXT) {
                     // Печать текста вместо штрих-кода
-                    const fontSize = Math.max(10, Math.min(20, Math.ceil(size.width * 0.2)));
+                    const fontSize = Math.max(9, Math.min(18, Math.ceil(size.width * 0.2)));
                     const maxTextHeight = fontSize * 6 * 1.2;
 
                     doc.fontSize(fontSize)
@@ -203,13 +233,14 @@ export class LabelService {
                         { width: barcodeWidth * this.pointSize, height: barcodeHeight * this.pointSize }
                     );
 
-                    const fontSize = Math.max(8, Math.min(16, Math.ceil(size.width * 0.1)));
-                    const maxTextHeight = fontSize * 3 * 1.2;
-                    doc.fontSize(fontSize)
+                    // const maxTextWidth = barcodeWidth * this.pointSize; // Максимальная ширина для текста
+                    const dynamicFontSize = this. calculateFontSize(doc, label.description);
+                    const maxTextHeight = dynamicFontSize * 4 * 1.2;
+                    doc.fontSize(dynamicFontSize)
                         .text(
                             label.description,
                             margin,
-                            textYPosition * this.pointSize,
+                            textYPosition * this.pointSize + 2,
                             {
                                 width: barcodeWidth * this.pointSize, // Ограничение ширины для авто-переноса
                                 align: 'left',

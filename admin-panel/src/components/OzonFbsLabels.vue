@@ -1,11 +1,13 @@
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { onMounted, ref, watch } from "vue";
 import type { ItemFbsDto } from "@/contracts/item.fbs.dto";
 import { labelStore } from "@/stores/labels";
 import { postingStore } from "@/stores/postings";
 import type { SizeDto } from "@/contracts/size.dto";
 import ProductImage from "@/components/ProductImage.vue";
 import BarcodeImage from "@/components/BarcodeImage.vue";
+import MarketplaceSelect from "@/components/MarketplaceSelect.vue";
+import { GoodServiceEnum } from "@/stores/goods";
 // import type { GoodInfoDto } from "@/contracts/good.info.dto";
 
 const store = labelStore();
@@ -52,10 +54,12 @@ const getRowProps = (row: { item: ItemFbsDto }) => {
     };
 };
 
+const service = ref<GoodServiceEnum>(GoodServiceEnum.OZON);
+
 const updateData = async () => {
     posting.clearAwaitingDelivery();
     selectedRows.value = [];
-    await store.fetchAndCombineData();
+    await store.fetchAndCombineData(service.value);
 };
 
 const getLabels = async () => {
@@ -64,7 +68,11 @@ const getLabels = async () => {
 
 // Асинхронная загрузка данных при инициализации
 onMounted(async () => {
-    await store.fetchAndCombineData();
+    await store.fetchAndCombineData(service.value);
+});
+
+watch(service, async () => {
+    await updateData();
 });
 
 </script>
@@ -88,7 +96,7 @@ onMounted(async () => {
                 <!-- Кнопка для pdf -->
                 <v-btn @click="getLabels"
                        :loading="store.isLoading"
-                       class="w-25 pa-2 mr-2"
+                       class="w-20 pa-2 mr-2"
                        :disabled="!selectedRows.length"
                 >
                     Печать этикеток
@@ -101,7 +109,7 @@ onMounted(async () => {
                         density="compact"
                     ></v-combobox>
                 </div>
-                <div class="w-25">
+                <div class="w-25 mr-2">
                     <v-combobox
                         label="Размер"
                         :items="labelTypes"
@@ -109,6 +117,9 @@ onMounted(async () => {
                         v-model="labelType"
                         density="compact"
                     ></v-combobox>
+                </div>
+                <div class="w-25">
+                    <marketplace-select v-model="service" />
                 </div>
             </div>
         </template>
