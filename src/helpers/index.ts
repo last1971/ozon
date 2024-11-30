@@ -4,7 +4,6 @@ import { ObtainCoeffsDto } from './obtain.coeffs.dto';
 import { AutoAction, UpdatePriceDto } from '../price/dto/update.price.dto';
 import { toNumber, head } from 'lodash';
 import { WbCardDto } from '../wb.card/dto/wb.card.dto';
-import PDFDocument from 'pdfkit'
 import TextOptions = PDFKit.Mixins.TextOptions;
 
 export const goodCode = (value: IOfferIdable): string => value.offer_id.replace(/-.*/g, '');

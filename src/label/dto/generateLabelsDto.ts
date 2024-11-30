@@ -1,7 +1,7 @@
 import { ApiProperty } from "@nestjs/swagger";
 import { LabelDto } from "./labelDto";
 import { IsArray, IsEnum, IsNumber, IsOptional, ValidateNested } from "class-validator";
-import { Transform, Type } from "class-transformer";
+import { Type } from "class-transformer";
 import { SizeDto } from "./sizeDto";
 import { BarcodeType } from "./barcodeType";
 
