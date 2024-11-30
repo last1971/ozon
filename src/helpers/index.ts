@@ -4,6 +4,8 @@ import { ObtainCoeffsDto } from './obtain.coeffs.dto';
 import { AutoAction, UpdatePriceDto } from '../price/dto/update.price.dto';
 import { toNumber, head } from 'lodash';
 import { WbCardDto } from '../wb.card/dto/wb.card.dto';
+import PDFDocument from 'pdfkit'
+import TextOptions = PDFKit.Mixins.TextOptions;
 
 export const goodCode = (value: IOfferIdable): string => value.offer_id.replace(/-.*/g, '');
 export const goodQuantityCoeff = (value: IOfferIdable): any => {
@@ -102,3 +104,44 @@ export const barCodeSkuPairs = (cards: WbCardDto[]): Map<string, string> => {
     });
     return skus;
 };
+
+export type CalculateFontSizeParams = {
+    doc: PDFKit.PDFDocument; // Экземпляр PDFKit документа
+    text: string; // Текст, который нужно разместить
+    maxTextHeight: number; // Максимальная высота текстового блока
+    options?: TextOptions;
+    minFontSize?: number; // Минимальный размер шрифта (по умолчанию 6)
+    maxFontSize?: number; // Максимальный размер шрифта (по умолчанию 16)
+};
+
+// без теста если менять то сделать тест
+export const calculateOptimalFontSize = ({
+                                                     doc,
+                                                     text,
+                                                     maxTextHeight,
+                                                     options = {},
+                                                     minFontSize = 6, // Значение по умолчанию
+                                                     maxFontSize = 30, // Значение по умолчанию
+                                                 }: CalculateFontSizeParams): number => {
+    let fontSize = minFontSize;
+
+    // Итерация от максимального размера шрифта к минимальному
+    for (let calculateFontSize = maxFontSize; calculateFontSize > minFontSize ; calculateFontSize--) {
+        doc.fontSize(calculateFontSize); // Устанавливаем текущий размер шрифта
+
+        // Высота лини с переносом
+        const lineHeight = doc.currentLineHeight(true);
+        // Высота текста посчитанная через жопу
+        const heightOfString = doc.heightOfString(text, options);
+        // Количество строк
+        const totalTextHeight = Math.ceil(heightOfString / lineHeight);
+
+        // Проверяем, помещается ли текст в указанные ограничения
+        if (totalTextHeight * lineHeight <= maxTextHeight) {
+            fontSize = calculateFontSize;
+            break;
+        }
+    }
+
+    return fontSize;
+}
