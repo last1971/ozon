@@ -1,7 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { BarcodeType, GenerateLabelsDto, LabelService } from "./label.service";
+import { LabelService } from "./label.service";
 import * as bwipjs from 'bwip-js';
 import PDFDocument from 'pdfkit';
+import { BarcodeType } from "./dto/barcodeType";
+import { GenerateLabelsDto } from "./dto/generateLabelsDto";
 
 jest.mock('bwip-js');
 jest.mock('pdfkit');
@@ -33,6 +35,11 @@ describe('LabelService', () => {
             ],
             size: { width: 50, height: 30 },
             barcodeType: BarcodeType.CODE128,
+            marginX: 5,
+            marginY: 0,
+            barcodeHeightPercent: 50,
+            barcodeWidthPercent: 95,
+            spacingBetweenBarcodeAndText: 2,
         };
 
         // Мокирование ответа от bwip-js
@@ -44,6 +51,7 @@ describe('LabelService', () => {
                 height: 30,
                 width: 50,
             },
+            currentLineHeight: () => 0,
             heightOfString: () => 0,
             pipe: jest.fn(),
             font: jest.fn().mockReturnThis(),

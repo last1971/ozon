@@ -1,7 +1,9 @@
 import { Body, Controller, Get, Post, Query, Res } from "@nestjs/common";
-import { GenerateBarcodeDto, GenerateLabelsDto, LabelService } from "./label.service";
+import { LabelService } from "./label.service";
 import { ApiBody, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { Response} from 'express';
+import { GenerateBarcodeDto } from "./dto/generateBarcodeDto";
+import { GenerateLabelsDto } from "./dto/generateLabelsDto";
 
 @ApiTags('label')
 @Controller('label')

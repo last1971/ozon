@@ -8,7 +8,6 @@ import ProductImage from "@/components/ProductImage.vue";
 import BarcodeImage from "@/components/BarcodeImage.vue";
 import MarketplaceSelect from "@/components/MarketplaceSelect.vue";
 import { GoodServiceEnum } from "@/stores/goods";
-// import type { GoodInfoDto } from "@/contracts/good.info.dto";
 
 const store = labelStore();
 const posting = postingStore();
@@ -24,6 +23,7 @@ const headers = ref([
     { title: 'Количество', key: 'quantity' },                       // Название товара
     { title: 'Заказ', key: 'order' }                          // Информация о заказе
 ]);
+const printNumber = ref(false);
 
 const barcodeType = ref('code128');
 
@@ -40,7 +40,7 @@ const labelTypes: SizeDto[] = [
     },
 ];
 
-const labelType = ref(labelTypes[0]);
+const labelType = ref(labelTypes[1]);
 
 // const items = ref<ItemFbsDto[]>([]);
 
@@ -63,7 +63,7 @@ const updateData = async () => {
 };
 
 const getLabels = async () => {
-    await store.getLabels(selectedRows.value, barcodeType.value, labelType.value)
+    await store.getLabels(selectedRows.value, barcodeType.value, labelType.value, printNumber.value);
 };
 
 // Асинхронная загрузка данных при инициализации
@@ -117,6 +117,15 @@ watch(service, async () => {
                         v-model="labelType"
                         density="compact"
                     ></v-combobox>
+                </div>
+                <div class="w-25 mr-2 mb-4">
+                    <v-switch
+                        v-model="printNumber"
+                        density="compact"
+                        label="Номер заказа"
+                        hide-details
+                        inset
+                    ></v-switch>
                 </div>
                 <div class="w-25">
                     <marketplace-select v-model="service" />
