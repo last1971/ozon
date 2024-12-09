@@ -5,6 +5,7 @@ import { ProductVisibility } from './product.visibility';
 import { StockType } from './stock.type';
 import { ConfigService } from '@nestjs/config';
 import { ProductFilterDto } from "./dto/product.filter.dto";
+import { VaultService } from "vault-module/lib/vault.service";
 
 describe('ProductService', () => {
     let service: ProductService;
@@ -17,6 +18,7 @@ describe('ProductService', () => {
                 ProductService,
                 { provide: OzonApiService, useValue: { method } },
                 { provide: ConfigService, useValue: {} },
+                { provide: VaultService, useValue: { get: { STORE: 444 }}}
             ],
         }).compile();
         method.mockClear();
@@ -43,8 +45,8 @@ describe('ProductService', () => {
     it('test updateCount', async () => {
         await service.updateCount([{ offer_id: '1', product_id: 1, stock: 1 }]);
         expect(method.mock.calls[0]).toEqual([
-            '/v1/product/import/stocks',
-            { stocks: [{ offer_id: '1', product_id: 1, stock: 1 }] },
+            '/v2/products/stocks',
+            { stocks: [{ offer_id: '1', product_id: 1, stock: 1, warehouse_id: undefined }] },
         ]);
     });
     it('test listWithCount', async () => {
@@ -102,7 +104,7 @@ describe('ProductService', () => {
         method.mockResolvedValueOnce({ result: [2] });
         const res = await service.updateGoodCounts(new Map([['1', 1]]));
         expect(res).toEqual(1);
-        expect(method.mock.calls[0]).toEqual(['/v1/product/import/stocks', { stocks: [{ offer_id: '1', stock: 1 }] }]);
+        expect(method.mock.calls[0]).toEqual(['/v2/products/stocks', { stocks: [{ offer_id: '1', stock: 1, warehouse_id: undefined }] }]);
     });
     it('orderFboList', async () => {
         const date = new Date();

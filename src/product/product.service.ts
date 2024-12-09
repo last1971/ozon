@@ -20,17 +20,22 @@ import { ConfigService } from '@nestjs/config';
 import { ProductFilterDto } from "./dto/product.filter.dto";
 import { ProductInfoDto } from "./dto/product.info.dto";
 import { GoodServiceEnum } from "../good/good.service.enum";
+import { VaultService } from "vault-module/lib/vault.service";
 
 @Injectable()
 export class ProductService extends ICountUpdateable implements OnModuleInit {
+    private warehouseId: number;
     constructor(
         private ozonApiService: OzonApiService,
         private configService: ConfigService,
+        private vaultService: VaultService,
     ) {
         super();
     }
     async onModuleInit(): Promise<void> {
         await this.loadSkuList(this.configService.get<Environment>('NODE_ENV') === 'production');
+        const ozon = await this.vaultService.get('ozon');
+        this.warehouseId = ozon.STORE as number;
     }
     async list(last_id = '', limit = 100, filter: ProductFilterDto = new ProductFilterDto()): Promise<ProductListResultDto> {
         return this.ozonApiService.method('/v2/product/list', { filter, last_id, limit });
@@ -50,7 +55,14 @@ export class ProductService extends ICountUpdateable implements OnModuleInit {
         return this.ozonApiService.method('/v3/product/info/stocks', { filter: {}, limit, last_id });
     }
     async updateCount(stocks: ProductCodeStockDto[]): Promise<ProductCodeUpdateStockResultDto> {
-        return this.ozonApiService.method('/v1/product/import/stocks', { stocks });
+        return this.ozonApiService.method(
+            '/v2/products/stocks',
+            {
+                stocks: stocks.map(
+                    (stock) => ({ ...stock, warehouse_id: this.warehouseId })
+                )
+            }
+        );
     }
     async orderList(filter: PostingsRequestDto, limit = 100): Promise<PostingResultDto> {
         return this.ozonApiService.method('/v3/posting/fbs/list', { filter, limit });
@@ -110,6 +122,8 @@ export class ProductService extends ICountUpdateable implements OnModuleInit {
         const response = result.result || [];
         return response.length;
     }
-
+    async getStoreList(): Promise<any> {
+        return this.ozonApiService.method('/v1/warehouse/list', {});
+    }
 
 }
