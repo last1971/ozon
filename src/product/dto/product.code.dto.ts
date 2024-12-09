@@ -9,6 +9,7 @@ export class ProductCodeDto implements IOfferIdable {
 
 export class ProductCodeStockDto extends ProductCodeDto {
     stock: number;
+    warehouse_id?: number;
 }
 
 export class ProductCodeUpdateStockDto extends ProductCodeDto {
