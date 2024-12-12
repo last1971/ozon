@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia'
 import axios from "../axios.config";
-import { th } from "vuetify/locale";
 
 export const tariffStore = defineStore('tariffStore', {
     state: () => ({
