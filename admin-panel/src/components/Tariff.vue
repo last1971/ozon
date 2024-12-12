@@ -56,6 +56,12 @@ async function reloadTrarif() {
             <th class="text-left">
                 Этикетка
             </th>
+            <th style="text-align: center; vertical-align: middle;">
+                <v-icon>mdi-trending-down</v-icon>
+            </th>
+            <th style="text-align: center; vertical-align: middle;">
+                <v-icon>mdi-percent</v-icon>
+            </th>
         </tr>
         </thead>
         <tbody>
@@ -69,6 +75,17 @@ async function reloadTrarif() {
             <td>{{ tariff.tariffs.sum_obtain }} ₽</td>
             <td>{{ tariff.tariffs.sum_pack }} ₽</td>
             <td>{{ tariff.tariffs.sum_label }} ₽</td>
+            <td>
+                <v-text-field v-model="tariff.tariffs.min_price"
+                              label="Мин.цена"
+                              append-inner
+                >
+                    <template #append-inner>
+                        <v-icon>mdi-currency-rub</v-icon>
+                    </template>
+                </v-text-field>
+            </td>
+            <td><v-text-field v-model="tariff.tariffs.min_perc" label="Мин.нац."></v-text-field></td>
         </tr>
         </tbody>
     </v-table>
