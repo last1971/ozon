@@ -7,7 +7,7 @@ import { PostingsRequestDto } from '../posting/dto/postings.request.dto';
 import { ProductPriceListDto } from '../price/dto/product.price.list.dto';
 import { PriceRequestDto } from '../price/dto/price.request.dto';
 import { ProductVisibility } from './product.visibility';
-import { isArray } from 'lodash';
+import { chunk, isArray } from 'lodash';
 import { UpdatePricesDto } from '../price/dto/update.price.dto';
 import { TransactionFilterDto } from '../posting/dto/transaction.filter.dto';
 import { TransactionDto } from '../posting/dto/transaction.dto';
@@ -118,9 +118,19 @@ export class ProductService extends ICountUpdateable implements OnModuleInit {
         goods.forEach((stock, offer_id) => {
             updateGoods.push({ offer_id, stock });
         });
-        const result = await this.updateCount(updateGoods);
-        const response = result.result || [];
-        return response.length;
+        let totalUpdated = 0;
+
+        // Используем lodash для разбиения массива
+        const chunks = chunk(updateGoods, 100);
+
+        for (const chunk of chunks) {
+            const result = await this.updateCount(chunk);
+            const response = result.result || [];
+            totalUpdated += response.length; // Увеличиваем счетчик успешно обновленных товаров
+        }
+
+        return totalUpdated;
+
     }
     async getStoreList(): Promise<any> {
         return this.ozonApiService.method('/v1/warehouse/list', {});
