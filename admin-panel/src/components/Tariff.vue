@@ -77,7 +77,7 @@ async function reloadTrarif() {
             <td>{{ tariff.tariffs.sum_label }} ₽</td>
             <td>
                 <v-text-field v-model="tariff.tariffs.min_price"
-                              label="Мин.цена"
+                              label="Мин.приб."
                               append-inner
                 >
                     <template #append-inner>
