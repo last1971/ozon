@@ -70,6 +70,7 @@ describe('YandexPriceService', () => {
             sumLabel: 13,
             percEkv: 1,
             sumObtain: 25,
+            taxUnit: 6,
         });
     });
 

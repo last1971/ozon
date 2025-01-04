@@ -36,7 +36,8 @@ export const priceStore = defineStore("priceStore", {
                             percMil: tariffs.perc_mil,
                             percEkv: tariffs.perc_ekv,
                             sumObtain: tariffs.sum_obtain,
-                            sumLabel: tariffs.sum_label
+                            sumLabel: tariffs.sum_label,
+                            taxUnit: tariffs.tax_unit,
                         },
                         sums: [price.marketing_seller_price, price.old_price, price.price, price.min_price]
                     })).data
@@ -57,7 +58,8 @@ export const priceStore = defineStore("priceStore", {
                         percMil: tariffs.perc_mil,
                         percEkv: tariffs.perc_ekv,
                         sumObtain: tariffs.sum_obtain,
-                        sumLabel: tariffs.sum_label
+                        sumLabel: tariffs.sum_label,
+                        taxUnit: tariffs.tax_unit,
                     }
                 });
             price.min_price = res.data.min_price;
@@ -71,6 +73,7 @@ export const priceStore = defineStore("priceStore", {
                     percEkv: tariffs.perc_ekv,
                     sumObtain: tariffs.sum_obtain,
                     sumLabel: tariffs.sum_label,
+                    taxUnit: tariffs.tax_unit,
                 },
                 sums: [price.marketing_seller_price, price.old_price, price.price, price.min_price]
             })

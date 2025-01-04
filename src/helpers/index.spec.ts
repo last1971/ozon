@@ -48,6 +48,7 @@ describe('Test helpers', () => {
                     percEkv: 1,
                     sumObtain: 25,
                     sumLabel: 10,
+                    taxUnit: 6,
                 },
             ),
         ).toEqual({
@@ -56,7 +57,7 @@ describe('Test helpers', () => {
             min_price: '238',
             incoming_price: 100,
             offer_id: '123',
-            old_price: '353',
+            old_price: '384',
             price: '289',
             price_strategy_enabled: AutoAction.DISABLED,
             sum_pack: 0,
@@ -82,10 +83,11 @@ describe('Test helpers', () => {
                     percEkv: 1,
                     sumObtain: 25,
                     sumLabel: 10,
+                    taxUnit: 6,
                 },
                 250,
             ),
-        ).toEqual(120);
+        ).toEqual(105);
     });
     it('skusToGoodIds', () => {
         expect(skusToGoodIds(['1111', '1111-10', '1111-20', '23', '24-2'])).toEqual(['1111', '23', '24']);

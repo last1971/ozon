@@ -19,4 +19,6 @@ export class PricePresetDto {
     sum_pack: number;
     @ApiProperty({ description: 'сумма за этикетку' })
     sum_label: number;
+    @ApiProperty({ description: 'налог' })
+    tax_unit: number;
 }

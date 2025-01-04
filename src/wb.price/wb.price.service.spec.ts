@@ -56,6 +56,7 @@ describe('WbPriceService', () => {
             percMil: 0,
             sumLabel: 0,
             sumObtain: 0,
+            taxUnit: 0,
         });
     });
 

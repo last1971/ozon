@@ -56,6 +56,9 @@ async function reloadTrarif() {
             <th class="text-left">
                 Этикетка
             </th>
+            <th class="text-left">
+                Налог
+            </th>
             <th style="text-align: center; vertical-align: middle;">
                 <v-icon>mdi-trending-down</v-icon>
             </th>
@@ -75,6 +78,7 @@ async function reloadTrarif() {
             <td>{{ tariff.tariffs.sum_obtain }} ₽</td>
             <td>{{ tariff.tariffs.sum_pack }} ₽</td>
             <td>{{ tariff.tariffs.sum_label }} ₽</td>
+            <td>{{ tariff.tariffs.tax_unit }} ₽</td>
             <td>
                 <v-text-field v-model="tariff.tariffs.min_price"
                               label="Мин.приб."

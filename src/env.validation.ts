@@ -136,6 +136,10 @@ class EnvironmentVariables {
     @IsOptional()
     @IsNumber()
     YANDEX_BUYER_ID: number;
+
+    @IsOptional()
+    @IsNumber()
+    TAX_UNIT: number;
 }
 
 export function configValidate(config: Record<string, unknown>) {
