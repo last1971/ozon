@@ -111,9 +111,11 @@ export class Trade2006InvoiceService implements IInvoice, ISuppliable {
         await transaction.execute('UPDATE S SET PRIM = ?, STATUS = 1 WHERE PRIM = ?', [newPrim, prim], !t);
     }
 
-    async getByPosting(posting: PostingDto, t: FirebirdTransaction = null): Promise<InvoiceDto> {
+    async getByPosting(posting: PostingDto | string, t: FirebirdTransaction = null, containing: boolean = false): Promise<InvoiceDto> {
         const transaction = t ?? (await this.pool.getTransaction());
-        const res = await transaction.query('SELECT * FROM S WHERE PRIM = ?', [posting.posting_number], !t);
+        const postingNumber = typeof posting === 'string' ? posting : posting.posting_number;
+        const operator = containing ? 'CONTAINING' : '=';
+        const res = await transaction.query(`SELECT * FROM S WHERE PRIM ${operator} ?`, [postingNumber], !t);
         return res.length > 0
             ? {
                   id: res[0].SCODE,
@@ -284,8 +286,10 @@ export class Trade2006InvoiceService implements IInvoice, ISuppliable {
             } else {
                 const commissions = new Map<string, number>();
                 invoices.forEach((invoice) => {
-                    const newAmount = transactions.find((dto) => dto.posting_number === invoice.remark).amount;
-                    commissions.set(invoice.remark, newAmount);
+                    const tr = transactions.find((dto) => dto.posting_number === invoice.remark);
+                    if (tr) {
+                        commissions.set(invoice.remark, tr.amount);
+                    }
                 });
                 res = await this.updateByCommissions(commissions, t);
                 if (invoices.length < transactions.length) {

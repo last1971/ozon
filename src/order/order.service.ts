@@ -139,4 +139,21 @@ export class OrderService {
     async getByPostingNumber(postingNumber: string, buyerId: number): Promise<PostingDto | null> {
         return this.getServiceByBuyerId(buyerId)?.getByPostingNumber(postingNumber);
     }
+
+    async getByFboNumber(fboNumber: string): Promise<PostingDto | null> {
+        const invoice = await this.invoiceService.getByPosting(fboNumber, null, true);
+        if (!invoice) return null;
+        const invoiceLines = await this.invoiceService.getInvoiceLines(invoice, null);
+        return {
+            posting_number: fboNumber,
+            status: invoice.status.toString(),
+            in_process_at: invoice.date.toString(),
+            isFbo: true,
+            products: invoiceLines.map((line) => ({
+                price: line.price,
+                offer_id: `${line.goodCode}${line.whereOrdered ? `-${line.whereOrdered}` : ''}`,
+                quantity: line.quantity,
+            })),
+        }
+    }
 }

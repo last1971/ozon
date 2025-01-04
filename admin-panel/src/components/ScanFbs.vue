@@ -70,6 +70,7 @@ async function update(remark: string, data: any, text: string): Promise<boolean>
         const res = await axios.put(`/api/invoice/update/${remark}`, data);
         invoice.value = res.data.invoice;
         const order = await axios.get(`/api/order/${invoice.value.buyerId}/${remark}`);
+            //axios.get(`/api/order/${remark}`);
         if (!order.data?.products) {
             const error = new Error('Products not found in order') as Error & { status: number };
             error.status = 400; // Добавляем свойство `status`

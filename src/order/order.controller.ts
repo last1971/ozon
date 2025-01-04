@@ -138,4 +138,26 @@ export class OrderController {
     ): Promise<PostingDto | null> {
         return this.orderService.getByPostingNumber(postingNumber, buyerId);
     }
+
+    @Get(':fboNumber')
+    @ApiOperation({ summary: 'Получить информацию о составе заказа по его номеру' })
+    @ApiParam({
+        name: 'fboNumber',
+        description: 'Номер FBO заказа',
+        type: 'string',
+    })
+    @ApiOkResponse({
+        description: 'Данные размещения заказа',
+        schema: {
+            oneOf: [
+                { $ref: getSchemaPath(PostingDto) }, // Используем описание из PostingDto для успешного ответа
+                { type: 'null' }, // Ответ может быть null
+            ],
+        },
+    })
+    async getByFboNumber(
+        @Param('fboNumber') fboNumber: string
+    ): Promise<PostingDto | null> {
+        return this.orderService.getByFboNumber(fboNumber);
+    }
 }
