@@ -4,4 +4,5 @@ export class ObtainCoeffsDto {
     percEkv: number;
     sumObtain: number;
     sumLabel: number;
+    taxUnit: number;
 }

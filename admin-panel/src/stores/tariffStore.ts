@@ -1,6 +1,5 @@
 import { defineStore } from 'pinia'
 import axios from "../axios.config";
-import { th } from "vuetify/locale";
 
 export const tariffStore = defineStore('tariffStore', {
     state: () => ({
@@ -14,6 +13,9 @@ export const tariffStore = defineStore('tariffStore', {
             sum_obtain: 0,
             sum_pack: 0,
             sum_label: 0,
+            tax_unit: 0,
+            min_perc: 5,
+            min_price: 15,
         },
         isLoading: false,
     }),
@@ -21,7 +23,10 @@ export const tariffStore = defineStore('tariffStore', {
         async get(){
             this.isLoading = true;
             const res = await axios.get('/api/price/preset');
-            this.tariffs = res.data;
+            this.tariffs = {
+                ...this.tariffs,  // Сохраняем старые значения
+                ...res.data       // Перезаписываем пришедшими данными
+            };
             this.isLoading = false;
         }
     }

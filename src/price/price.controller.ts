@@ -101,6 +101,7 @@ export class PriceController {
                         old_perc: { type: 'number' },
                         adv_perc: { type: 'number' },
                         sum_pack: { type: 'number' },
+                        tax_unit: { type: 'number' },
                     },
                 },
                 percents: {
@@ -136,6 +137,7 @@ export class PriceController {
                         old_perc: { type: 'number' },
                         adv_perc: { type: 'number' },
                         sum_pack: { type: 'number' },
+                        tax_unit: { type: 'number' },
                     },
                 },
                 percents: {

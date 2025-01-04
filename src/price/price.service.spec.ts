@@ -43,6 +43,8 @@ describe('PriceService', () => {
                                     return 25;
                                 case 'SUM_PACK':
                                     return 13;
+                                case 'TAX_UNIT':
+                                    return 6;
                                 default:
                                     return null;
                             }
@@ -73,6 +75,7 @@ describe('PriceService', () => {
             perc_ekv: 1.5,
             sum_obtain: 25,
             sum_pack: 13,
+            tax_unit: 6,
             sum_label: 0,
         });
     });
@@ -141,6 +144,7 @@ describe('PriceService', () => {
             percMil: 5.5,
             sumLabel: 0,
             sumObtain: 25,
+            taxUnit: 6,
         });
     });
     it('getProductsWithCoeffs', async () => {

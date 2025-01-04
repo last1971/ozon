@@ -12,9 +12,9 @@ export class IsRemarkValid implements ValidatorConstraintInterface {
 
     async validate(remark: string, args: ValidationArguments) {
         // Логика проверки через сервис
-        const invoices = await this.invoiceService.getByPostingNumbers([remark]);
-        if (invoices.length > 0) {
-            (args.object as RemarkDto).invoice = invoices[0]; // Сохраняем счет в объект DTO
+        const invoice = await this.invoiceService.getByPosting(remark, null, true);
+        if (invoice) {
+            (args.object as RemarkDto).invoice = invoice; // Сохраняем счет в объект DTO
             return true;
         }
         // const res = await this.invoiceService.isExists(remark, null);

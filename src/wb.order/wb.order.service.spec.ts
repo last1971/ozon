@@ -202,7 +202,7 @@ describe('WbOrderService', () => {
         method
             .mockResolvedValueOnce([
                 {
-                    order_dt: new Date(1665522000 * 1000).toISOString(),
+                    order_dt: new Date(1665334800 * 1000).toISOString(),
                     srid: '123',
                     delivery_rub: undefined,
                     ppvz_for_pay: undefined,
@@ -256,7 +256,7 @@ describe('WbOrderService', () => {
             '/api/v3/orders',
             'get',
             {
-                dateFrom: 1665522000,
+                dateFrom: 1665334800,
                 limit: 1000,
                 next: 0,
             },

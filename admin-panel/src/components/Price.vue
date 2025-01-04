@@ -2,11 +2,13 @@
 import type { PriceDto } from "@/contracts/price.dto";
 import { storeToRefs } from "pinia";
 import { priceStore } from "@/stores/prices";
-import { ref, watch } from "vue";
+import { computed, ref, watch } from "vue";
 import { debounce } from "lodash";
+import { tariffStore } from "@/stores/tariffStore";
 
 const props = defineProps<{ value: PriceDto, ind: number }>();
 const { pays, isLoadingPrice } = storeToRefs(priceStore())
+const { tariffs } = storeToRefs(tariffStore());
 const edit = ref(false)
 
 const updateIncomingPrice = (newValue: string) => {
@@ -19,7 +21,12 @@ watch(
     debounce(async ()=> {
         await priceStore().getInd(props.ind);
     }, 2000),
-)
+);
+const profit = computed(() => Math.ceil(parseInt(pays.value[props.ind][0]) - props.value.incoming_price));
+const minPerc = computed(
+    () =>
+    Math.ceil((parseInt(pays.value[props.ind][0]) - props.value.incoming_price) / props.value.incoming_price * 100)
+);
 </script>
 
 <template>
@@ -27,10 +34,18 @@ watch(
     <v-table>
         <template v-slot:bottom>
             <v-row class="d-flex align-center justify-center">
-                <v-col cols="6">
+                <v-col cols="4">
                     <v-switch class="mt-4" label="своя цена" v-model="edit"/>
                 </v-col>
-                <v-col cols="6">
+                <v-col cols="4">
+                    <v-btn @click="priceStore().getInd(props.ind)"
+                           block
+                           prepend-icon="mdi-reload"
+                    >
+                        Обновить
+                    </v-btn>
+                </v-col>
+                <v-col cols="4">
                     <v-btn
                         block
                         prepend-icon="mdi-content-save"
@@ -73,9 +88,12 @@ watch(
                 <td v-else>
                     {{ Math.ceil(value.incoming_price) }} ₽
                 </td>
-                <td>{{ Math.ceil(parseInt(pays[ind][0]) - value.incoming_price) }} ₽
+                <td
+                    :class="{'bg-orange text-white': profit < tariffs.min_price || minPerc < tariffs.min_perc}"
+                >
+                    {{ profit }} ₽
                     /
-                    {{ Math.ceil((parseInt(pays[ind][0]) - value.incoming_price) / value.incoming_price * 100) }} %
+                    {{ minPerc }} %
                 </td>
                 <td>
                     <v-text-field

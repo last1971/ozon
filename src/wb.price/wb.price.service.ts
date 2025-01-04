@@ -31,6 +31,7 @@ export class WbPriceService implements IPriceUpdateable {
             percEkv: this.configService.get<number>('WB_EKV', 0),
             sumObtain: this.configService.get<number>('WB_OBTAIN', 0),
             sumLabel: this.configService.get<number>('SUM_LABEL', 2),
+            taxUnit: this.configService.get<number>('TAX_UNIT', 6),
         };
     }
 

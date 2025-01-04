@@ -32,6 +32,7 @@ export const calculatePay = (price: IPriceable, percents: ObtainCoeffsDto, sum: 
         (mil < percents.minMil ? toNumber(percents.minMil) : 0) -
         (sum *
             (toNumber(price.sales_percent) +
+                toNumber(percents.taxUnit) +
                 toNumber(price.adv_perc) +
                 (mil < percents.minMil ? 0 : toNumber(percents.percMil)) +
                 toNumber(percents.percEkv))) /
@@ -54,6 +55,7 @@ export const calculatePrice = (
                 toNumber(price.fbs_direct_flow_trans_max_amount)) /
                 (1 -
                     (toNumber(price.sales_percent) +
+                        toNumber(percents.taxUnit) +
                         toNumber(price.adv_perc) +
                         toNumber(percents.percMil) +
                         toNumber(percents.percEkv)) /

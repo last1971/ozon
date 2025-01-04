@@ -35,6 +35,7 @@ export class PriceService implements IPriceUpdateable {
             sum_obtain: toNumber(this.configService.get<number>('SUM_OBTAIN', 25)),
             sum_pack: toNumber(this.configService.get<number>('SUM_PACK', 10)),
             sum_label: toNumber(this.configService.get<number>('SUM_LABEL', 2)),
+            tax_unit: this.configService.get<number>('TAX_UNIT', 6),
         };
     }
 
@@ -114,6 +115,7 @@ export class PriceService implements IPriceUpdateable {
             percEkv: toNumber(this.configService.get<number>('PERC_EKV', 1.5)),
             sumObtain: toNumber(this.configService.get<number>('SUM_OBTAIN', 25)),
             sumLabel: toNumber(this.configService.get<number>('SUM_LABEL', 13)),
+            taxUnit: toNumber(this.configService.get<number>('TAX_UNIT', 6)),
         };
     }
 
