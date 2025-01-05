@@ -54,11 +54,11 @@ describe('Test helpers', () => {
         ).toEqual({
             auto_action_enabled: AutoAction.ENABLED,
             currency_code: 'RUB',
-            min_price: '238',
+            min_price: '257',
             incoming_price: 100,
             offer_id: '123',
             old_price: '384',
-            price: '289',
+            price: '313',
             price_strategy_enabled: AutoAction.DISABLED,
             sum_pack: 0,
         });

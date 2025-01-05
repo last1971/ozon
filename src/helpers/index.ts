@@ -21,22 +21,30 @@ export class StringToIOfferIdableAdapter implements IOfferIdable {
     }
 }
 
+const calculateCosts = (price: IPriceable, percents: ObtainCoeffsDto) => {
+    const fixedCosts =
+        toNumber(percents.sumObtain) +
+        toNumber(percents.sumLabel) +
+        toNumber(price.sum_pack) +
+        toNumber(price.fbs_direct_flow_trans_max_amount);
+
+    const dynamicCosts =
+        toNumber(price.sales_percent) +
+        toNumber(percents.taxUnit) +
+        toNumber(price.adv_perc) +
+        toNumber(percents.percEkv);
+
+    return { fixedCosts, dynamicCosts };
+};
+
 export const calculatePay = (price: IPriceable, percents: ObtainCoeffsDto, sum: number): number => {
+    const { fixedCosts, dynamicCosts } = calculateCosts(price, percents);
     const mil = sum * (percents.percMil / 100);
     return (
         sum -
-        toNumber(percents.sumObtain) -
-        toNumber(percents.sumLabel) -
-        toNumber(price.sum_pack) -
-        toNumber(price.fbs_direct_flow_trans_max_amount) -
+        fixedCosts -
         (mil < percents.minMil ? toNumber(percents.minMil) : 0) -
-        (sum *
-            (toNumber(price.sales_percent) +
-                toNumber(percents.taxUnit) +
-                toNumber(price.adv_perc) +
-                (mil < percents.minMil ? 0 : toNumber(percents.percMil)) +
-                toNumber(percents.percEkv))) /
-            100
+        (sum * (dynamicCosts + (mil < percents.minMil ? 0 : toNumber(percents.percMil)))) / 100
     );
 };
 
@@ -47,30 +55,18 @@ export const calculatePrice = (
     price_strategy_enabled = AutoAction.DISABLED,
 ): UpdatePriceDto => {
     const calc = (percent: number, price: IPriceable): string => {
+        const { fixedCosts, dynamicCosts } = calculateCosts(price, percents);
         let calcPrice = Math.ceil(
-            (toNumber(price.incoming_price) * (1 + toNumber(percent) / 100) +
-                toNumber(percents.sumObtain) +
-                toNumber(percents.sumLabel) +
-                toNumber(price.sum_pack) +
-                toNumber(price.fbs_direct_flow_trans_max_amount)) /
-                (1 -
-                    (toNumber(price.sales_percent) +
-                        toNumber(percents.taxUnit) +
-                        toNumber(price.adv_perc) +
-                        toNumber(percents.percMil) +
-                        toNumber(percents.percEkv)) /
-                        100),
+            (toNumber(price.incoming_price) * (1 + toNumber(percent) / 100) + fixedCosts)
+            /
+            (1 - (dynamicCosts + toNumber(percents.percMil)) / 100)
         );
         const mil = calcPrice * (percents.percMil / 100);
         if (mil < percents.minMil) {
             calcPrice = Math.ceil(
-                (toNumber(price.incoming_price) * (1 + toNumber(percent) / 100) +
-                    toNumber(percents.minMil) +
-                    toNumber(percents.sumObtain) +
-                    toNumber(percents.sumLabel) +
-                    toNumber(price.sum_pack) +
-                    toNumber(price.fbs_direct_flow_trans_max_amount)) /
-                    (1 - (toNumber(price.sales_percent) + toNumber(price.adv_perc) + toNumber(percents.percEkv)) / 100),
+                (toNumber(price.incoming_price) * (1 + toNumber(percent) / 100) + toNumber(percents.minMil) + fixedCosts)
+                /
+                (1 - dynamicCosts / 100)
             );
         }
         return calcPrice.toString();
