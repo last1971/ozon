@@ -1,20 +1,20 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
-import { ProductService } from '../product/product.service';
-import { PriceRequestDto } from './dto/price.request.dto';
-import { PricePresetDto } from './dto/price.preset.dto';
-import { ConfigService } from '@nestjs/config';
-import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
-import { PriceResponseDto } from './dto/price.response.dto';
-import { goodCode, goodQuantityCoeff } from '../helpers';
-import { GoodPercentDto } from '../good/dto/good.percent.dto';
-import { UpdatePriceDto, UpdatePricesDto } from './dto/update.price.dto';
-import { toNumber } from 'lodash';
-import { ProductVisibility } from '../product/product.visibility';
-import { IPriceUpdateable } from '../interfaces/i.price.updateable';
-import { ObtainCoeffsDto } from '../helpers/obtain.coeffs.dto';
-import { IProductCoeffsable } from '../interfaces/i.product.coeffsable';
-import { OzonProductCoeffsAdapter } from './ozon.product.coeffs.adapter';
-import Excel from 'exceljs';
+import { Inject, Injectable, Logger } from "@nestjs/common";
+import { ProductService } from "../product/product.service";
+import { PriceRequestDto } from "./dto/price.request.dto";
+import { PricePresetDto } from "./dto/price.preset.dto";
+import { ConfigService } from "@nestjs/config";
+import { GOOD_SERVICE, IGood } from "../interfaces/IGood";
+import { PriceResponseDto } from "./dto/price.response.dto";
+import { calculatePay, goodCode, goodQuantityCoeff } from "../helpers";
+import { GoodPercentDto } from "../good/dto/good.percent.dto";
+import { UpdatePriceDto, UpdatePricesDto } from "./dto/update.price.dto";
+import { chunk, toNumber } from "lodash";
+import { ProductVisibility } from "../product/product.visibility";
+import { IPriceUpdateable } from "../interfaces/i.price.updateable";
+import { ObtainCoeffsDto } from "../helpers/obtain.coeffs.dto";
+import { IProductCoeffsable } from "../interfaces/i.product.coeffsable";
+import { OzonProductCoeffsAdapter } from "./ozon.product.coeffs.adapter";
+import Excel from "exceljs";
 
 @Injectable()
 export class PriceService implements IPriceUpdateable {
@@ -135,5 +135,28 @@ export class PriceService implements IPriceUpdateable {
 
     createAction(): Promise<Excel.Buffer> {
         return Promise.resolve(undefined);
+    }
+    
+    async getLowPrices(minProfit: number, minPercent: number, count: number): Promise<string[]> {
+        const skus = this.product.skuList;
+        const lowPrices: string[] = [];
+        const percents: ObtainCoeffsDto = this.getObtainCoeffs();
+        for (const offerIdChunk of chunk(skus, count)) {
+            const prices: PriceResponseDto =
+                await this.index({ offer_id: offerIdChunk, visibility: ProductVisibility.VISIBLE, limit: count });
+            for (const price of prices.data) {
+                const marketingPrice = toNumber(price.marketing_seller_price);
+                const incomingPrice = toNumber(price.incoming_price);
+                if (incomingPrice <=0) continue;
+                const payment = calculatePay(price, percents, marketingPrice);
+                const profit = payment - incomingPrice;
+
+                if (profit < minProfit || (profit / incomingPrice) * 100 < minPercent) {
+                    lowPrices.push(price.offer_id);
+                    if (lowPrices.length >= count) return lowPrices;
+                }
+            }
+        }
+        return lowPrices;
     }
 }

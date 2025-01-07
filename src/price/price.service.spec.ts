@@ -22,7 +22,7 @@ describe('PriceService', () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 PriceService,
-                { provide: ProductService, useValue: { getPrices, setPrice } },
+                { provide: ProductService, useValue: { getPrices, setPrice, skuList: ['sku1', 'sku2', 'sku3'] } },
                 { provide: GOOD_SERVICE, useValue: { prices, getPerc, updatePriceForService } },
                 {
                     provide: ConfigService,
@@ -63,6 +63,78 @@ describe('PriceService', () => {
 
     it('should be defined', () => {
         expect(service).toBeDefined();
+    });
+
+    it('должен вернуть массив предложений с низкой прибылью', async () => {
+        // Мокаем метод index с обязательными свойствами
+        jest.spyOn(service, 'index').mockResolvedValue({
+            data: [
+                {
+                    offer_id: "offer1",
+                    marketing_price: 100,
+                    incoming_price: 90,
+                    product_id: 1,
+                    name: "Product 1",
+                    marketing_seller_price: 95,
+                    min_price: 85,
+                    price: 100,
+                    old_price: 105,
+                    min_perc: 5,
+                    perc: 10,
+                    old_perc: 12,
+                    adv_perc: 0,
+                    sales_percent: 8,
+                    fbs_direct_flow_trans_max_amount: 50,
+                    auto_action_enabled: false,
+                    sum_pack: 0,
+                },
+                {
+                    offer_id: "offer2",
+                    marketing_price: 200,
+                    incoming_price: 10,
+                    product_id: 2,
+                    name: "Product 2",
+                    marketing_seller_price: 205,
+                    min_price: 190,
+                    price: 220,
+                    old_price: 230,
+                    min_perc: 7,
+                    perc: 0,
+                    old_perc: 10,
+                    adv_perc: 2,
+                    sales_percent: 5,
+                    fbs_direct_flow_trans_max_amount: 20,
+                    auto_action_enabled: true,
+                    sum_pack: 0,
+                },
+                {
+                    offer_id: "offer3",
+                    marketing_price: 50,
+                    incoming_price: 60,
+                    product_id: 3,
+                    name: "Product 3",
+                    marketing_seller_price: 45,
+                    min_price: 40,
+                    price: 55,
+                    old_price: 60,
+                    min_perc: 3,
+                    perc: 2,
+                    old_perc: 3,
+                    adv_perc: 1,
+                    sales_percent: 0,
+                    fbs_direct_flow_trans_max_amount: 10,
+                    auto_action_enabled: false,
+                    sum_pack: 0,
+                },
+            ],
+            last_id: '3',
+        });
+
+        const lowPrices = await service.getLowPrices(20, 10, 2); // minProfit = 20, minPercent = 10, max count = 2
+
+        // Проверяем корректность результатов
+        expect(lowPrices).toEqual(['offer1', 'offer3']);
+        expect(lowPrices.length).toBe(2); // Ожидаемый результат ограничивается до 2 предложений
     });
 
     it('test preset', async () => {
