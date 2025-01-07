@@ -22,7 +22,7 @@ describe('PriceService', () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 PriceService,
-                { provide: ProductService, useValue: { getPrices, setPrice } },
+                { provide: ProductService, useValue: { getPrices, setPrice, skuList: ['sku1', 'sku2', 'sku3'] } },
                 { provide: GOOD_SERVICE, useValue: { prices, getPerc, updatePriceForService } },
                 {
                     provide: ConfigService,
@@ -59,9 +59,6 @@ describe('PriceService', () => {
         getPerc.mockClear();
         setPrice.mockClear();
         service = module.get<PriceService>(PriceService);
-        (service as any).product = {
-            skuList: ['sku1', 'sku2', 'sku3'], // Заполняем skuList реальными тестовыми значениями
-        };
     });
 
     it('should be defined', () => {
