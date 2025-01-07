@@ -134,6 +134,14 @@ export class Trade2006GoodService implements IGood {
         );
     }
 
+    /**
+     * Fetches data from the Wildberries database for the given IDs.
+     * The data is retrieved in chunks to optimize the query performance
+     * and then flattened into a single array of results.
+     *
+     * @param {string[]} ids - An array of IDs corresponding to the Wildberries data to be retrieved.
+     * @return {Promise<GoodWbDto[]>} A promise that resolves to an array of GoodWbDto objects containing the retrieved data.
+     */
     async getWbData(ids: string[]): Promise<GoodWbDto[]> {
         const wbData: any[] = flatten(
             await Promise.all(

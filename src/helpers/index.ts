@@ -21,22 +21,40 @@ export class StringToIOfferIdableAdapter implements IOfferIdable {
     }
 }
 
-const calculateCosts = (price: IPriceable, percents: ObtainCoeffsDto) => {
-    const fixedCosts =
-        toNumber(percents.sumObtain) +
-        toNumber(percents.sumLabel) +
-        toNumber(price.sum_pack) +
-        toNumber(price.fbs_direct_flow_trans_max_amount);
+/**
+ * Calculates fixed and dynamic costs based on provided price and percentage coefficients.
+ *
+ * @param {IPriceable} price - The object containing various price-related properties such as packaging and flow amounts.
+ * @param {ObtainCoeffsDto} percents - The object containing percentage coefficients and other related values.
+ * @returns {Object} An object containing the calculated fixed and dynamic costs:
+ * - `fixedCosts` {number}: The total of fixed cost components such as obtaining, labeling, packaging, and flow maximum amounts.
+ * - `dynamicCosts` {number}: The total of dynamic cost components like sales percentage, tax unit, advertisement percentage, and equivalent percentage.
+ */
+const calculateCosts =
+    (price: IPriceable, percents: ObtainCoeffsDto): { fixedCosts: number, dynamicCosts: number } => {
+        const fixedCosts: number =
+            toNumber(percents.sumObtain) +
+            toNumber(percents.sumLabel) +
+            toNumber(price.sum_pack) +
+            toNumber(price.fbs_direct_flow_trans_max_amount);
 
-    const dynamicCosts =
-        toNumber(price.sales_percent) +
-        toNumber(percents.taxUnit) +
-        toNumber(price.adv_perc) +
-        toNumber(percents.percEkv);
+        const dynamicCosts: number =
+            toNumber(price.sales_percent) +
+            toNumber(percents.taxUnit) +
+            toNumber(price.adv_perc) +
+            toNumber(percents.percEkv);
 
-    return { fixedCosts, dynamicCosts };
-};
+        return { fixedCosts, dynamicCosts };
+    };
 
+/**
+ * Calculates the payable amount based on provided inputs and associated costs.
+ *
+ * @param {IPriceable} price - The price object that contains cost-related information.
+ * @param {ObtainCoeffsDto} percents - The percentage coefficients and minimum thresholds for calculations.
+ * @param {number} sum - The starting value from which calculations are performed.
+ * @returns {number} The final calculated payable amount after deducting fixed and dynamic costs.
+ */
 export const calculatePay = (price: IPriceable, percents: ObtainCoeffsDto, sum: number): number => {
     const { fixedCosts, dynamicCosts } = calculateCosts(price, percents);
     const mil = sum * (percents.percMil / 100);

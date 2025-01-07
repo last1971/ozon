@@ -12,7 +12,16 @@ import {
     UploadedFile,
     UseInterceptors,
 } from '@nestjs/common';
-import { ApiBody, ApiConsumes, ApiOkResponse, ApiProduces, ApiTags } from '@nestjs/swagger';
+import {
+    ApiBody,
+    ApiConsumes,
+    ApiOkResponse,
+    ApiOperation,
+    ApiProduces,
+    ApiQuery,
+    ApiResponse,
+    ApiTags
+} from "@nestjs/swagger";
 import { PriceRequestDto } from './dto/price.request.dto';
 import { PricePresetDto } from './dto/price.preset.dto';
 import { PriceService } from './price.service';
@@ -212,5 +221,47 @@ export class PriceController {
     @Get('wb-coefficients')
     async getWbCoeff(@Query('name') name: string): Promise<WbCommissionDto> {
         return this.goodService.getWbCategoryByName(name);
+    }
+
+    @Get('low-prices')
+    @ApiOperation({ summary: 'Получить цены по низкой стоимости' })
+    @ApiResponse({
+        status: 200,
+        description: 'Список предложений с низкими ценами',
+        schema: {
+            type: 'array',
+            items: {
+                type: 'string',
+                example: 'offer1', // примеры ответа
+            },
+        },
+    })
+    @ApiQuery({
+        name: 'minProfit',
+        type: Number,
+        description: 'Минимальная прибыль для фильтрации (опционально)',
+        required: true, // Свойство делает параметр не обязательным
+        example: 20,
+    })
+    @ApiQuery({
+        name: 'minPercent',
+        type: Number,
+        description: 'Минимальный процент прибыли для фильтрации (опционально)',
+        required: true,
+        example: 10,
+    })
+    @ApiQuery({
+        name: 'maxCount',
+        type: Number,
+        description: 'Максимальное количество результатов (опционально)',
+        required: true,
+        example: 5,
+    })
+    async getLowPrices(
+        @Query('minProfit') minProfit: number, // Необязательный параметр
+        @Query('minPercent') minPercent: number, // Необязательный параметр
+        @Query('maxCount') maxCount: number, // Необязательный параметр
+    ): Promise<string[]> {
+        return this.service.getLowPrices(minProfit, minPercent, maxCount);
     }
 }

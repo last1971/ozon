@@ -78,7 +78,7 @@ async function reloadTrarif() {
             <td>{{ tariff.tariffs.sum_obtain }} ₽</td>
             <td>{{ tariff.tariffs.sum_pack }} ₽</td>
             <td>{{ tariff.tariffs.sum_label }} ₽</td>
-            <td>{{ tariff.tariffs.tax_unit }} ₽</td>
+            <td>{{ tariff.tariffs.tax_unit }} %</td>
             <td>
                 <v-text-field v-model="tariff.tariffs.min_price"
                               label="Мин.приб."
