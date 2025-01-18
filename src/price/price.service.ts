@@ -14,6 +14,7 @@ import { IPriceUpdateable } from "../interfaces/i.price.updateable";
 import { ObtainCoeffsDto } from "../helpers/obtain.coeffs.dto";
 import { IProductCoeffsable } from "../interfaces/i.product.coeffsable";
 import { OzonProductCoeffsAdapter } from "./ozon.product.coeffs.adapter";
+import { Cache } from '@nestjs/cache-manager';
 import Excel from "exceljs";
 
 @Injectable()
@@ -23,6 +24,7 @@ export class PriceService implements IPriceUpdateable {
         private product: ProductService,
         @Inject(GOOD_SERVICE) private goodService: IGood,
         private configService: ConfigService,
+        private cacheManager: Cache
     ) {}
     async preset(): Promise<PricePresetDto> {
         return {
@@ -138,7 +140,8 @@ export class PriceService implements IPriceUpdateable {
     }
     
     async getLowPrices(minProfit: number, minPercent: number, count: number): Promise<string[]> {
-        const skus = this.product.skuList;
+        const cachedLowPrices = await this.cacheManager.get<string[]>('lowPrices');
+        const skus = this.product.skuList.filter(sku => !cachedLowPrices?.includes(sku));
         const lowPrices: string[] = [];
         const percents: ObtainCoeffsDto = this.getObtainCoeffs();
         for (const offerIdChunk of chunk(skus, count)) {
@@ -153,10 +156,13 @@ export class PriceService implements IPriceUpdateable {
 
                 if (profit < minProfit || (profit / incomingPrice) * 100 < minPercent) {
                     lowPrices.push(price.offer_id);
-                    if (lowPrices.length >= count) return lowPrices;
+                    if (lowPrices.length >= count) break;
                 }
             }
+            if (lowPrices.length >= count) break;
         }
+        cachedLowPrices.push(...lowPrices);
+        await this.cacheManager.set('lowPrices', cachedLowPrices, 1000 * 60 * 60);
         return lowPrices;
     }
 }

@@ -6,6 +6,7 @@ import { StockType } from './stock.type';
 import { ConfigService } from '@nestjs/config';
 import { ProductFilterDto } from "./dto/product.filter.dto";
 import { VaultService } from "vault-module/lib/vault.service";
+import { Cache } from "@nestjs/cache-manager";
 
 describe('ProductService', () => {
     let service: ProductService;
@@ -18,7 +19,7 @@ describe('ProductService', () => {
                 ProductService,
                 { provide: OzonApiService, useValue: { method } },
                 { provide: ConfigService, useValue: {} },
-                { provide: VaultService, useValue: { get: { STORE: 444 }}}
+                { provide: VaultService, useValue: { get: { STORE: 444 }}},
             ],
         }).compile();
         method.mockClear();
