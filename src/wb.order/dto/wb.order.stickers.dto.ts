@@ -1,5 +1,4 @@
 import { ApiProperty } from "@nestjs/swagger";
-import { WbSupplyOrderDto } from "../../wb.supply/dto/wb.supply.order.dto";
 import { WbOrderStickerDto } from "./wb.order.sticker.dto";
 
 export class WbOrderStickersDto {
