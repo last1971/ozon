@@ -6,7 +6,6 @@ import { StockType } from './stock.type';
 import { ConfigService } from '@nestjs/config';
 import { ProductFilterDto } from "./dto/product.filter.dto";
 import { VaultService } from "vault-module/lib/vault.service";
-import { Cache } from "@nestjs/cache-manager";
 
 describe('ProductService', () => {
     let service: ProductService;

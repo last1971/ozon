@@ -1,7 +1,7 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { WbSupplyService } from './wb.supply.service';
-import { WbApiService } from '../wb.api/wb.api.service';
-import { GoodServiceEnum } from '../good/good.service.enum';
+import { Test, TestingModule } from "@nestjs/testing";
+import { WbSupplyService } from "./wb.supply.service";
+import { WbApiService } from "../wb.api/wb.api.service";
+import { GoodServiceEnum } from "../good/good.service.enum";
 
 describe('WbSupplyService', () => {
     let service: WbSupplyService;
@@ -83,5 +83,42 @@ describe('WbSupplyService', () => {
         expect(res).toEqual([
             { goodService: GoodServiceEnum.WB, id: 'WB-123', remark: 'test123', isMarketplace: true },
         ]);
+    });
+
+    // New tests for listOrders method
+    it('listOrders - success case', async () => {
+        method.mockResolvedValueOnce({
+            orders: [{ id: 'order-1' }, { id: 'order-2' }],
+        });
+
+        const res = await service.listOrders('123');
+        expect(method.mock.calls[0]).toEqual([
+            'https://marketplace-api.wildberries.ru/api/v3/supplies/123/orders',
+            'get',
+            {},
+            true,
+        ]);
+        expect(res).toEqual({
+            orders: [{ id: 'order-1' }, { id: 'order-2' }],
+            success: true,
+            error: null,
+        });
+    });
+
+    it('listOrders - error case', async () => {
+        method.mockRejectedValueOnce(new Error('Request failed'));
+
+        const res = await service.listOrders('123');
+        expect(method.mock.calls[0]).toEqual([
+            'https://marketplace-api.wildberries.ru/api/v3/supplies/123/orders',
+            'get',
+            {},
+            true,
+        ]);
+        expect(res).toEqual({
+            orders: [],
+            success: false,
+            error: 'Request failed',
+        });
     });
 });
