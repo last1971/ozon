@@ -368,4 +368,43 @@ describe('WbOrderService', () => {
             }],
         });
     });
+    it("should return stickers when API method succeeds", async () => {
+        const mockOrders = [1, 2, 3];
+        const mockStickers = [{ id: 1, data: "<svg/>" }, { id: 2, data: "<svg/>" }];
+        method.mockResolvedValueOnce({ stickers: mockStickers });
+
+        const result = await service.getOrdersStickers(mockOrders);
+
+        expect(method).toHaveBeenCalledWith(
+            "https://marketplace-api.wildberries.ru/api/v3/orders/stickers?type=svg&width=58&height=40",
+            "post",
+            { orders: mockOrders },
+            true
+        );
+        expect(result).toEqual({
+            stickers: mockStickers,
+            success: true,
+            error: null
+        });
+    });
+
+    it("should return an error when API method fails", async () => {
+        const mockOrders = [1, 2, 3];
+        const mockError = new Error("Failed to fetch stickers");
+        method.mockRejectedValueOnce(mockError);
+
+        const result = await service.getOrdersStickers(mockOrders);
+
+        expect(method).toHaveBeenCalledWith(
+            "https://marketplace-api.wildberries.ru/api/v3/orders/stickers?type=svg&width=58&height=40",
+            "post",
+            { orders: mockOrders },
+            true
+        );
+        expect(result).toEqual({
+            stickers: [],
+            success: false,
+            error: "Failed to fetch stickers"
+        });
+    });
 });
