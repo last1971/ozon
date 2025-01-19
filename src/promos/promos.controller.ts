@@ -1,6 +1,6 @@
 import { Controller, Get, Post, Query } from '@nestjs/common';
-import { ApiOkResponse, ApiQuery, ApiTags } from "@nestjs/swagger";
-import { PromosService } from './promos.service';
+import { ApiOkResponse, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { FitProductsStrategy, PromosService } from './promos.service';
 import { ActionsDto } from './dto/actions.dto';
 import { ActionsListParamsDto } from './dto/actionsCandidateParams.dto';
 import { ActionsListDto } from './dto/actionsCandidate.dto';
@@ -114,5 +114,36 @@ export class PromosController {
     @Get('actions/products/unfit-removal')
     async unfitProductsRemoval(@Query('actionId') actionId: number): Promise<number> {
         return this.service.unfitProductsRemoval(actionId);
+    }
+
+    /**
+     * Add fit products to action.
+     * @param {number} actionId - The parameters for activating products in an action.
+     * @param {number} strategy - The parameters for strategy choise.
+     * @returns {number} A promise that resolves to an fit count.
+     */
+    @ApiOkResponse({
+        description: 'Метод для добавления подходящих товаров в акцию по её id.',
+        type: Number,
+    })
+    @ApiQuery({
+        name: 'actionId',
+        description: 'ID акции, для которой требуется добавить подходящие товары.',
+        type: Number,
+        required: true,
+    })
+    @ApiQuery({
+        name: 'strategy',
+        description:
+            'Стратегия ценообразования: max_action_price | max(action_price, цена.price.min_price) | цена.price.min_price',
+        type: String,
+        required: true,
+    })
+    @Get('actions/products/fit-addition')
+    async fitProductsAddition(
+        @Query('actionId') actionId: number,
+        @Query('strategy') strategy: FitProductsStrategy,
+    ): Promise<number> {
+        return this.service.fitProductsAddition(actionId, strategy);
     }
 }

@@ -72,9 +72,9 @@ describe('PromosService', () => {
             { id: 3, action_price: 150 },
         ];
         const productPrices = [
-            { product_id: 1, price: { min_price: 60 } },
-            { product_id: 2, price: { min_price: 90 } },
-            { product_id: 3, price: { min_price: 160 } },
+            { id: 1, price: { min_price: 60 } },
+            { id: 2, price: { min_price: 90 } },
+            { id: 3, price: { min_price: 160 } },
         ];
 
         method.mockResolvedValueOnce({ result: { products: actionProducts, total: 3 } });
@@ -86,6 +86,99 @@ describe('PromosService', () => {
         expect(method.mock.calls[1]).toEqual([
             '/v1/actions/products/deactivate',
             { action_id: actionId, product_ids: [1, 3] },
+        ]);
+    });
+
+    it('should add fit products with maxActionPrice strategy', async () => {
+        const actionId = 1;
+        const actionCandidates = [
+            { id: 1, max_action_price: 50, stock: 10 },
+            { id: 2, max_action_price: 100, stock: 20 },
+            { id: 3, max_action_price: 150, stock: 30 },
+        ];
+        const candidatesPrice = [
+            { id: 1, price: { min_price: 40 } },
+            { id: 2, price: { min_price: 90 } },
+            { id: 3, price: { min_price: 160 } },
+        ];
+
+        method.mockResolvedValueOnce({ result: { products: actionCandidates, total: 3 } });
+        getPrices.mockResolvedValueOnce({ items: candidatesPrice });
+
+        const fitProductsCount = await service.fitProductsAddition(actionId, 'maxActionPrice');
+
+        expect(fitProductsCount).toBe(2);
+        expect(method.mock.calls[1]).toEqual([
+            '/v1/actions/products/activate',
+            {
+                action_id: actionId,
+                products: [
+                    { product_id: 1, action_price: 50, stock: 10 },
+                    { product_id: 2, action_price: 100, stock: 20 },
+                ],
+            },
+        ]);
+    });
+
+    it('should add fit products with maxFromActionActionPiceAndProdMinPrice strategy', async () => {
+        const actionId = 1;
+        const actionCandidates = [
+            { id: 1, max_action_price: 50, stock: 10 },
+            { id: 2, max_action_price: 100, stock: 20 },
+            { id: 3, max_action_price: 150, stock: 30 },
+        ];
+        const candidatesPrice = [
+            { id: 1, price: { min_price: 40 } },
+            { id: 2, price: { min_price: 90 } },
+            { id: 3, price: { min_price: 160 } },
+        ];
+
+        method.mockResolvedValueOnce({ result: { products: actionCandidates, total: 3 } });
+        getPrices.mockResolvedValueOnce({ items: candidatesPrice });
+
+        const fitProductsCount = await service.fitProductsAddition(actionId, 'maxFromActionActionPiceAndProdMinPrice');
+
+        expect(fitProductsCount).toBe(2);
+        expect(method.mock.calls[1]).toEqual([
+            '/v1/actions/products/activate',
+            {
+                action_id: actionId,
+                products: [
+                    { product_id: 1, action_price: 50, stock: 10 },
+                    { product_id: 2, action_price: 100, stock: 20 },
+                ],
+            },
+        ]);
+    });
+
+    it('should add fit products with minFromProdMinPrice strategy', async () => {
+        const actionId = 1;
+        const actionCandidates = [
+            { id: 1, max_action_price: 50, stock: 10 },
+            { id: 2, max_action_price: 100, stock: 20 },
+            { id: 3, max_action_price: 150, stock: 30 },
+        ];
+        const candidatesPrice = [
+            { id: 1, price: { min_price: 40 } },
+            { id: 2, price: { min_price: 90 } },
+            { id: 3, price: { min_price: 160 } },
+        ];
+
+        method.mockResolvedValueOnce({ result: { products: actionCandidates, total: 3 } });
+        getPrices.mockResolvedValueOnce({ items: candidatesPrice });
+
+        const fitProductsCount = await service.fitProductsAddition(actionId, 'minFromProdMinPrice');
+
+        expect(fitProductsCount).toBe(2);
+        expect(method.mock.calls[1]).toEqual([
+            '/v1/actions/products/activate',
+            {
+                action_id: actionId,
+                products: [
+                    { product_id: 1, action_price: 40, stock: 10 },
+                    { product_id: 2, action_price: 90, stock: 20 },
+                ],
+            },
         ]);
     });
 });
