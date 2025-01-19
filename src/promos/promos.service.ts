@@ -89,6 +89,17 @@ export class PromosService {
         return res.result;
     }
 
+    /**
+     * Removes unfit products from an action based on their prices.
+     *
+     * This method retrieves all products associated with a given action, checks their prices,
+     * and deactivates those that do not meet the required price criteria.
+     *
+     * @param {number} actionId - The ID of the action from which unfit products should be removed.
+     * @returns {Promise<number>} - A promise that resolves to the number of products that were deactivated.
+     *
+     * @throws {Error} - Throws an error if there is an issue retrieving products or prices, or deactivating products.
+     */
     async unfitProductsRemoval(actionId: number): Promise<number> {
         const limit = 100;
         let offset = 0;

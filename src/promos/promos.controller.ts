@@ -95,4 +95,18 @@ export class PromosController {
     ): Promise<ActivateOrDeactivateActionProductsDto> {
         return this.service.deactivateActionProducts(params);
     }
+
+    /**
+     * Removes unfit products from an action.
+     * @param {number} actionId - The parameters for deactivating products in an action.
+     * @returns {number} A promise that resolves to an unfit count.
+     */
+    @ApiOkResponse({
+        description: 'Метод для удаления неподходящих товаров из акции по её id.',
+        type: Number,
+    })
+    @Get('actions/products/unfit-removal')
+    async unfitProductsRemoval(@Query() actionId: number): Promise<number> {
+        return this.service.unfitProductsRemoval(actionId);
+    }
 }
