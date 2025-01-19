@@ -1,4 +1,4 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { PromosService } from './promos.service';
 import { ActionsDto } from './dto/actions.dto';
@@ -32,7 +32,7 @@ export class PromosController {
         type: ActionsDto,
     })
     @Get('actions')
-    async actions(): Promise<ActionsDto> {
+    async actions(): Promise<ActionsDto[]> {
         return this.service.getActions();
     }
 
@@ -45,7 +45,7 @@ export class PromosController {
         description: 'Метод для получения списка товаров, которые могут участвовать в акции, по её идентификатору.',
         type: ActionsListDto,
     })
-    @Get('actions/candidates')
+    @Post('actions/candidates')
     async actionsCandidates(@Query() params: ActionsListParamsDto): Promise<ActionsListDto> {
         return this.service.getActionsCandidates(params);
     }
@@ -59,7 +59,7 @@ export class PromosController {
         description: 'Метод для получения списка товаров, участвующих в акции, по её идентификатору.',
         type: ActionsListDto,
     })
-    @Get('actions/products')
+    @Post('actions/products')
     async actionsProducts(@Query() params: ActionsListParamsDto): Promise<ActionsListDto> {
         return this.service.getActionsProducts(params);
     }
@@ -73,7 +73,7 @@ export class PromosController {
         description: 'Метод для добавления товаров в доступную акцию.',
         type: ActivateOrDeactivateActionProductsDto,
     })
-    @Get('actions/products/activate')
+    @Post('actions/products/activate')
     async activateActionProducts(
         @Query() params: ActivateActionProductsParamsDto,
     ): Promise<ActivateOrDeactivateActionProductsDto> {
@@ -89,7 +89,7 @@ export class PromosController {
         description: 'Метод для удаления товаров из акции.',
         type: ActivateOrDeactivateActionProductsDto,
     })
-    @Get('actions/products/deactivate')
+    @Post('actions/products/deactivate')
     async deactivateActionProducts(
         @Query() params: DeactivateActionProductsParamsDto,
     ): Promise<ActivateOrDeactivateActionProductsDto> {
