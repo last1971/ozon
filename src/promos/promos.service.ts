@@ -28,7 +28,7 @@ export class PromosService {
      */
     constructor(
         private ozonApiService: OzonApiService,
-        // private productService: ProductService,
+        private productService: ProductService,
     ) {}
 
     /**
@@ -89,37 +89,38 @@ export class PromosService {
         return res.result;
     }
 
-    // async unfitProductsRemoval(actionId: number): Promise<void> {
-    //     const limit = 100;
-    //     let offset = 0;
-    //     let { products: actionProducts, total } = await this.getActionsProducts({ action_id: actionId, limit, offset });
-    //     while (total > actionProducts.length) {
-    //         offset += limit;
-    //         const { products: nextProducts } = await this.getActionsProducts({ action_id: actionId, limit, offset });
-    //         actionProducts = actionProducts.concat(nextProducts);
-    //     }
-    //     const productPrices: { id: number; minPrice: number }[] = [];
-    //     const pages = Math.ceil(actionProducts.length / limit);
-    //     for (let i = 0; i < pages; i++) {
-    //         const chunk = actionProducts.slice(i * limit, (i + 1) * limit);
-    //         const priceRequest: PriceRequestDto = {
-    //             product_id: chunk.map((product) => product.id),
-    //             visibility: ProductVisibility.ALL,
-    //             limit,
-    //         };
-    //         const pricesChunk = await this.productService.getPrices(priceRequest);
-    //         productPrices.push(
-    //             ...pricesChunk.items.map((item) => ({ id: item.product_id, minPrice: item.price.min_price })),
-    //         );
-    //     }
-    //     const unfitProductIds = actionProducts
-    //         .filter(
-    //             (actionProduct) =>
-    //                 (actionProduct.action_price ?? 1) <
-    //                 (productPrices.find((product) => product.id === actionProduct.id)?.minPrice ??
-    //                     (actionProduct.action_price ?? 1) + 1),
-    //         )
-    //         .map((p) => p.id);
-    //     await this.deactivateActionProducts({ action_id: actionId, products: unfitProductIds });
-    // }
+    async unfitProductsRemoval(actionId: number): Promise<number> {
+        const limit = 100;
+        let offset = 0;
+        let { products: actionProducts, total } = await this.getActionsProducts({ action_id: actionId, limit, offset });
+        while (total > actionProducts.length) {
+            offset += limit;
+            const { products: nextProducts } = await this.getActionsProducts({ action_id: actionId, limit, offset });
+            actionProducts = actionProducts.concat(nextProducts);
+        }
+        const productPrices: { id: number; minPrice: number }[] = [];
+        const pages = Math.ceil(actionProducts.length / limit);
+        for (let i = 0; i < pages; i++) {
+            const chunk = actionProducts.slice(i * limit, (i + 1) * limit);
+            const priceRequest: PriceRequestDto = {
+                product_id: chunk.map((product) => product.id),
+                visibility: ProductVisibility.ALL,
+                limit,
+            };
+            const pricesChunk = await this.productService.getPrices(priceRequest);
+            productPrices.push(
+                ...pricesChunk.items.map((item) => ({ id: item.product_id, minPrice: item.price.min_price })),
+            );
+        }
+        const unfitProductIds = actionProducts
+            .filter(
+                (actionProduct) =>
+                    (actionProduct.action_price ?? 1) <
+                    (productPrices.find((product) => product.id === actionProduct.id)?.minPrice ??
+                        (actionProduct.action_price ?? 1) + 1),
+            )
+            .map((p) => p.id);
+        await this.deactivateActionProducts({ action_id: actionId, products: unfitProductIds });
+        return unfitProductIds.length;
+    }
 }
