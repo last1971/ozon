@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { HttpException, Injectable } from "@nestjs/common";
 import { WbApiService } from '../wb.api/wb.api.service';
 import { WbSupplyDto } from './dto/wb.supply.dto';
 import { ISuppliable } from '../interfaces/i.suppliable';
@@ -6,17 +6,55 @@ import { SupplyDto } from '../supply/dto/supply.dto';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { SupplyPositionDto } from 'src/supply/dto/supply.position.dto';
 import { WbSupplyOrdersDto } from "./dto/wb.supply.orders.dto";
+import { WbOrderService } from "../wb.order/wb.order.service";
+import { find } from "lodash";
 
 @Injectable()
 export class WbSupplyService implements ISuppliable {
     private next: number = 0;
     private supplies: WbSupplyDto[] = [];
 
-    constructor(private api: WbApiService) {
+    constructor(private api: WbApiService, private wbOrderService: WbOrderService) {
     }
 
-    getSupplyPositions(id: string): Promise<SupplyPositionDto[]> {
-        throw new Error('Method not implemented.');
+    async getSupplyPositions(id: string): Promise<SupplyPositionDto[]> {
+        const data = await this.listOrders(id);
+        if (!data.success) {
+            throw new HttpException(data.error, 400);
+        }
+        const maxOrdersPerRequest = 100;
+        let remainingOrders = data.orders.slice();
+
+        if (remainingOrders.length === 0) {
+            return [];
+        }
+
+        const allPositions: SupplyPositionDto[] = [];
+
+        do {
+            const batch = remainingOrders.slice(0, maxOrdersPerRequest);
+            remainingOrders = remainingOrders.slice(maxOrdersPerRequest);
+
+            const labelsResponse = await this.wbOrderService.getOrdersStickers(
+                batch.map(order => order.id)
+            );
+
+            if (!labelsResponse.success) {
+                throw new HttpException(labelsResponse.error, 400);
+            }
+
+            allPositions.push(
+                ...batch.map((order) => ({
+                    supplyId: id,
+                    barCode: find(labelsResponse.stickers, sticker => sticker.orderId === order.id)?.barcode || "",
+                    remark: order.article,
+                    quantity: 1,
+                }))
+            );
+        } while (remainingOrders.length > 0);
+
+        return allPositions;
+        
     }
 
     async list(next = 0): Promise<WbSupplyDto[]> {
