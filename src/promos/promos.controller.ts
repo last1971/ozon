@@ -1,5 +1,5 @@
 import { Controller, Get, Post, Query } from '@nestjs/common';
-import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
+import { ApiOkResponse, ApiQuery, ApiTags } from "@nestjs/swagger";
 import { PromosService } from './promos.service';
 import { ActionsDto } from './dto/actions.dto';
 import { ActionsListParamsDto } from './dto/actionsCandidateParams.dto';
@@ -105,8 +105,14 @@ export class PromosController {
         description: 'Метод для удаления неподходящих товаров из акции по её id.',
         type: Number,
     })
+    @ApiQuery({
+        name: 'actionId',
+        description: 'ID акции, для которой требуется удалить неподходящие товары.',
+        type: Number,
+        required: true,
+    })
     @Get('actions/products/unfit-removal')
-    async unfitProductsRemoval(@Query() actionId: number): Promise<number> {
+    async unfitProductsRemoval(@Query('actionId') actionId: number): Promise<number> {
         return this.service.unfitProductsRemoval(actionId);
     }
 }

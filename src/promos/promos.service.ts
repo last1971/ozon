@@ -9,12 +9,12 @@ import { DeactivateActionProductsParamsDto } from './dto/deactivateActionProduct
 import { ProductService } from '../product/product.service';
 import { PriceRequestDto } from '../price/dto/price.request.dto';
 import { ProductVisibility } from '../product/product.visibility';
+import { toNumber } from 'lodash';
 
 /**
  * Service responsible for handling promotional actions.
  *
  * @class PromosService
- * @implements {OnModuleInit}
  */
 @Injectable()
 /**
@@ -25,6 +25,7 @@ export class PromosService {
      * Creates an instance of PromosService.
      *
      * @param {OzonApiService} ozonApiService - The Ozon API service.
+     * @param productService
      */
     constructor(
         private ozonApiService: OzonApiService,
@@ -106,8 +107,8 @@ export class PromosService {
         let { products: actionProducts, total } = await this.getActionsProducts({ action_id: actionId, limit, offset });
         while (total > actionProducts.length) {
             offset += limit;
-            const { products: nextProducts } = await this.getActionsProducts({ action_id: actionId, limit, offset });
-            actionProducts = actionProducts.concat(nextProducts);
+            const nextProducts = await this.getActionsProducts({ action_id: actionId, limit, offset });
+            actionProducts = actionProducts.concat(nextProducts.products);
         }
         const productPrices: { id: number; minPrice: number }[] = [];
         const pages = Math.ceil(actionProducts.length / limit);
@@ -120,7 +121,7 @@ export class PromosService {
             };
             const pricesChunk = await this.productService.getPrices(priceRequest);
             productPrices.push(
-                ...pricesChunk.items.map((item) => ({ id: item.product_id, minPrice: item.price.min_price })),
+                ...pricesChunk.items.map((item) => ({ id: item.product_id, minPrice: toNumber(item.price.min_price) })),
             );
         }
         const unfitProductIds = actionProducts
@@ -131,7 +132,7 @@ export class PromosService {
                         (actionProduct.action_price ?? 1) + 1),
             )
             .map((p) => p.id);
-        await this.deactivateActionProducts({ action_id: actionId, products: unfitProductIds });
+        await this.deactivateActionProducts({ action_id: actionId, product_ids: unfitProductIds });
         return unfitProductIds.length;
     }
 }

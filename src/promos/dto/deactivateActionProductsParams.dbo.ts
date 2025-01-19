@@ -5,5 +5,5 @@ export class DeactivateActionProductsParamsDto {
     action_id: number;
 
     @ApiProperty({ description: 'Список идентификаторов товаров.', type: () => [Number] })
-    products: number[];
+    product_ids: number[];
 }

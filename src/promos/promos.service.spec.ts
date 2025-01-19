@@ -58,7 +58,7 @@ describe('PromosService', () => {
     });
 
     it('should deactivate action products', async () => {
-        const params: DeactivateActionProductsParamsDto = { action_id: 1, products: [1, 2, 3] };
+        const params: DeactivateActionProductsParamsDto = { action_id: 1, product_ids: [1, 2, 3] };
         method.mockResolvedValue({ result: [] });
         await service.deactivateActionProducts(params);
         expect(method.mock.calls[0]).toEqual(['/v1/actions/products/deactivate', params]);
@@ -85,7 +85,7 @@ describe('PromosService', () => {
         expect(unfitProductsCount).toBe(2);
         expect(method.mock.calls[1]).toEqual([
             '/v1/actions/products/deactivate',
-            { action_id: actionId, products: [1, 3] },
+            { action_id: actionId, product_ids: [1, 3] },
         ]);
     });
 });
