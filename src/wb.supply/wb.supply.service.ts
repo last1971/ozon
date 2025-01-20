@@ -47,7 +47,7 @@ export class WbSupplyService implements ISuppliable {
                 ...batch.map((order) => ({
                     supplyId: id,
                     barCode: find(labelsResponse.stickers, sticker => sticker.orderId === order.id)?.barcode || "",
-                    remark: order.article,
+                    remark: order.id.toString(),
                     quantity: 1,
                 }))
             );
