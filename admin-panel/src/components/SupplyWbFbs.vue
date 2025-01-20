@@ -89,7 +89,7 @@ async function onSupplyChange(newValue: string | null) {
         <v-container>
             <!-- Список элементов -->
             <v-row dense class="gap-4">
-                <v-col cols="3" v-for="(order, index) in supplyOrders" :key="order.id">
+                <v-col cols="3" v-for="(order) in supplyOrders" :key="order.remark">
                     <!-- Карточка -->
                     <v-card
                         class="pa-3"

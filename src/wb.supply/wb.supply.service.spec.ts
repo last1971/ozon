@@ -203,8 +203,8 @@ describe('WbSupplyService', () => {
         expect(mockListOrders).toHaveBeenCalledWith("supply-123");
         expect(mockGetOrdersStickers).toHaveBeenCalledWith([123456789, 987654321]);
         expect(res).toEqual([
-            { supplyId: "supply-123", barCode: "ABC123456789", remark: "ABC-123", quantity: 1 },
-            { supplyId: "supply-123", barCode: "XYZ987654321", remark: "DEF-456", quantity: 1 }
+            { supplyId: "supply-123", barCode: "ABC123456789", remark: "123456789", quantity: 1 },
+            { supplyId: "supply-123", barCode: "XYZ987654321", remark: "987654321", quantity: 1 }
         ]);
     });
 
