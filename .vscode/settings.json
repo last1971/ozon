@@ -1,0 +1,8 @@
+{
+    "github.copilot.chat.localeOverride": "ru",
+    "editor.inlineSuggest.enabled": true,
+    "github.copilot.editor.enableAutoCompletions": true,
+    "github.copilot.enable": {
+        "*": true
+      }
+}

@@ -32,6 +32,7 @@ import { CacheModule } from '@nestjs/cache-manager';
 import { WbSupplyModule } from './wb.supply/wb.supply.module';
 import { SupplyModule } from './supply/supply.module';
 import { LabelModule } from './label/label.module';
+import { PromosModule } from './promos/promos.module';
 @Module({
     imports: [
         CacheModule.register({
@@ -84,6 +85,7 @@ import { LabelModule } from './label/label.module';
         WbSupplyModule,
         SupplyModule,
         LabelModule,
+        PromosModule,
     ],
     controllers: [AppController],
     providers: [AppService, CronSetupProviderService],
