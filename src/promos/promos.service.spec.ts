@@ -110,13 +110,17 @@ describe('PromosService', () => {
         const limit = 2;
         const productsPage1 = { products: [{ id: 1 }, { id: 2 }], total: 4 };
         const productsPage2 = { products: [{ id: 3 }, { id: 4 }], total: 4 };
+        const productsPage3 = { products: []};
 
-        method.mockResolvedValueOnce({ result: productsPage1 }).mockResolvedValueOnce({ result: productsPage2 });
+        method
+            .mockResolvedValueOnce({ result: productsPage1 })
+            .mockResolvedValueOnce({ result: productsPage2 })
+            .mockResolvedValueOnce({ result: productsPage3 });
 
         const result = await service.getAllActionsProductsOrCandidates(actionId, 'products', limit);
 
         expect(result).toEqual([...productsPage1.products, ...productsPage2.products]);
-        expect(method).toHaveBeenCalledTimes(2);
+        expect(method).toHaveBeenCalledTimes(3);
         expect(method).toHaveBeenCalledWith('/v1/actions/products', { action_id: actionId, limit, offset: 0 });
         expect(method).toHaveBeenCalledWith('/v1/actions/products', { action_id: actionId, limit, offset: limit });
     });
@@ -126,13 +130,17 @@ describe('PromosService', () => {
         const limit = 2;
         const candidatesPage1 = { products: [{ id: 1 }, { id: 2 }], total: 4 };
         const candidatesPage2 = { products: [{ id: 3 }, { id: 4 }], total: 4 };
+        const candidatesPage3 = { products: [], total: 4 };
 
-        method.mockResolvedValueOnce({ result: candidatesPage1 }).mockResolvedValueOnce({ result: candidatesPage2 });
+        method
+            .mockResolvedValueOnce({ result: candidatesPage1 })
+            .mockResolvedValueOnce({ result: candidatesPage2 })
+            .mockResolvedValueOnce({ result: candidatesPage3 });
 
         const result = await service.getAllActionsProductsOrCandidates(actionId, 'candidates', limit);
 
         expect(result).toEqual([...candidatesPage1.products, ...candidatesPage2.products]);
-        expect(method).toHaveBeenCalledTimes(2);
+        expect(method).toHaveBeenCalledTimes(3);
         expect(method).toHaveBeenCalledWith('/v1/actions/candidates', { action_id: actionId, limit, offset: 0 });
         expect(method).toHaveBeenCalledWith('/v1/actions/candidates', { action_id: actionId, limit, offset: limit });
     });

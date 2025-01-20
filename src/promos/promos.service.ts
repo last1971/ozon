@@ -153,7 +153,7 @@ export class PromosService {
                           : Number(candidatesPrice.find((p) => p.id === id)?.price.min_price ?? 0),
                 stock: actionCandidates.find((p) => p.id === id)?.stock ?? 0, //TODO: additional rules
             }))
-            .filter((p) => p.action_price > 0 && p.stock > 0);
+            .filter((p) => p.action_price > 0);
         await this.activateActionProducts({ action_id: actionId, products });
         return fitProductIds.length;
     }
@@ -198,18 +198,24 @@ export class PromosService {
         limit: number = 100,
     ): Promise<ActionListProduct[]> {
         let offset = 0;
-        let { products: actionProducts, total } =
+        let actionProducts: ActionListProduct[] = [];
+        let isMoreDataAvailable = true;
+
+        // Helper function to fetch data based on type
+        const fetchProducts = async () =>
             type === 'candidates'
-                ? await this.getActionsCandidates({ action_id: actionId, limit, offset })
-                : await this.getActionsProducts({ action_id: actionId, limit, offset });
-        while (total > actionProducts.length) {
+                ? this.getActionsCandidates({ action_id: actionId, limit, offset })
+                : this.getActionsProducts({ action_id: actionId, limit, offset });
+
+        while (isMoreDataAvailable) {
+            const { products } = await fetchProducts();
+            actionProducts = actionProducts.concat(products);
             offset += limit;
-            const nextProducts =
-                type === 'products'
-                    ? await this.getActionsProducts({ action_id: actionId, limit, offset })
-                    : await this.getActionsCandidates({ action_id: actionId, limit, offset });
-            actionProducts = actionProducts.concat(nextProducts.products);
+
+            // Если количество возвращённых продуктов меньше лимита, больше данных нет
+            isMoreDataAvailable = products.length === limit;
         }
+
         return actionProducts;
     }
 }
