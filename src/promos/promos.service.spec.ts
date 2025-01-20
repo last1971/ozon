@@ -6,7 +6,6 @@ import { ActivateActionProductsParamsDto } from './dto/activateActionProductsPar
 import { DeactivateActionProductsParamsDto } from './dto/deactivateActionProductsParams.dbo';
 import { ProductService } from '../product/product.service';
 import { ActionListProduct } from './dto/actionsCandidate.dto';
-import { PriceRequestDto } from '../price/dto/price.request.dto';
 
 describe('PromosService', () => {
     let service: PromosService;
