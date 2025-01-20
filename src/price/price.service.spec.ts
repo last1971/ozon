@@ -5,6 +5,7 @@ import { GOOD_SERVICE } from '../interfaces/IGood';
 import { ConfigService } from '@nestjs/config';
 import { ProductVisibility } from '../product/product.visibility';
 import { OzonProductCoeffsAdapter } from './ozon.product.coeffs.adapter';
+import { Cache } from "@nestjs/cache-manager";
 
 describe('PriceService', () => {
     let service: PriceService;
@@ -24,6 +25,7 @@ describe('PriceService', () => {
                 PriceService,
                 { provide: ProductService, useValue: { getPrices, setPrice, skuList: ['sku1', 'sku2', 'sku3'] } },
                 { provide: GOOD_SERVICE, useValue: { prices, getPerc, updatePriceForService } },
+                { provide: Cache, useValue: { get: () => [], set: () => {}}},
                 {
                     provide: ConfigService,
                     useValue: {

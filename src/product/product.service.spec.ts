@@ -18,7 +18,7 @@ describe('ProductService', () => {
                 ProductService,
                 { provide: OzonApiService, useValue: { method } },
                 { provide: ConfigService, useValue: {} },
-                { provide: VaultService, useValue: { get: { STORE: 444 }}}
+                { provide: VaultService, useValue: { get: { STORE: 444 }}},
             ],
         }).compile();
         method.mockClear();

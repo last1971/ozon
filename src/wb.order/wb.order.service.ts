@@ -18,6 +18,7 @@ import { Cron } from "@nestjs/schedule";
 import { WbFboOrder } from './dto/wb.fbo.order';
 import { ProductPostingDto } from '../product/dto/product.posting.dto';
 import Excel from 'exceljs';
+import { WbOrderStickersDto } from "./dto/wb.order.stickers.dto";
 
 @Injectable()
 export class WbOrderService implements IOrderable {
@@ -352,5 +353,28 @@ export class WbOrderService implements IOrderable {
 
     getBuyerId(): number {
         return this.configService.get<number>('WB_BUYER_ID', 24532);
+    }
+
+    async getOrdersStickers(orders: number[]): Promise<WbOrderStickersDto> {
+        try {
+            const res = await this.api.method(
+                'https://marketplace-api.wildberries.ru/api/v3/orders/stickers?type=svg&width=58&height=40',
+                'post',
+                { orders },
+                true,
+            );
+            const { stickers } = res;
+            return {
+                stickers,
+                success: true,
+                error: null,
+            };
+        } catch (e) {
+            return {
+                stickers: [],
+                success: false,
+                error: (e as Error).message || 'Неизвестная ошибка',
+            };
+        }
     }
 }
