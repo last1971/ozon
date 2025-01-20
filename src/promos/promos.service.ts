@@ -210,6 +210,6 @@ export class PromosService {
                     : await this.getActionsCandidates({ action_id: actionId, limit, offset });
             actionProducts = actionProducts.concat(nextProducts.products);
         }
-        return actionProducts || [];
+        return actionProducts;
     }
 }
