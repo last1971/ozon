@@ -32,7 +32,7 @@ describe('ProductService', () => {
     it('test list', async () => {
         await service.list();
         expect(method.mock.calls[0]).toEqual([
-            '/v2/product/list',
+            '/v3/product/list',
             { filter: new ProductFilterDto(), last_id: '', limit: 100 }
         ]);
     });
@@ -134,4 +134,39 @@ describe('ProductService', () => {
             },
         ]);
     });
+    it("test getFreeProductCount with valid data", async () => {
+        method.mockResolvedValueOnce({
+            items: [
+                {
+                    product_id: 1,
+                    stocks: [{ present: 10, reserved: 3 }]
+                },
+                {
+                    product_id: 2,
+                    stocks: [{ present: 5, reserved: 2 }]
+                }
+            ]
+        });
+        const result = await service.getFreeProductCount([1, 2]);
+        expect(result).toEqual([
+            { id: 1, count: 7 },
+            { id: 2, count: 3 }
+        ]);
+        expect(method.mock.calls[0]).toEqual([
+            "/v4/product/info/stocks",
+            { filter: { product_id: [1, 2] }, limit: 100, cursor: "" }
+        ]);
+    });
+
+    it("test getFreeProductCount with empty productIds", async () => {
+        const result = await service.getFreeProductCount([]);
+        expect(result).toEqual([]);
+        expect(method.mock.calls.length).toBe(0);
+    });
+
+    it("test getFreeProductCount handles API error gracefully", async () => {
+        method.mockRejectedValueOnce(new Error("API Error"));
+        await expect(service.getFreeProductCount([1, 2])).rejects.toThrow("API Error");
+    });
+
 });
