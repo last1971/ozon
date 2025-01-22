@@ -15,7 +15,7 @@ export enum FitProductsStrategy {
     MAX_ACTION_PRICE = 'maxActionPrice',
     MAX_FROM_ACTION_PRICE_AND_MIN_PRICE = 'maxFromActionActionPiceAndProdMinPrice',
     MIN_FROM_MIN_PRICE = 'minFromProdMinPrice',
-};
+}
 
 /**
  * Service responsible for handling promotional actions.
