@@ -51,7 +51,7 @@ describe('ProductService', () => {
     });
     it('test listWithCount', async () => {
         await service.listWithCount();
-        expect(method.mock.calls[0]).toEqual(['/v3/product/info/stocks', { filter: {}, last_id: '', limit: 100 }]);
+        expect(method.mock.calls[0]).toEqual(['/v4/product/info/stocks', { filter: {}, cursor: '', limit: 100 }]);
     });
     it('test orderList', async () => {
         const date = new Date();
@@ -90,12 +90,24 @@ describe('ProductService', () => {
         await service.getTransactionList(filter);
         expect(method.mock.calls[0]).toEqual(['/v3/finance/transaction/list', { filter, page: 1, page_size: 1000 }]);
     });
+    it('getGoods', async () => {
+        method.mockResolvedValueOnce({
+            items: [{
+                offer_id: '345',
+                stocks: [
+                    { type: StockType.FBS, present: 2, reserved: 1 },
+                    { type: StockType.FBO, present: 4, reserved: 0 }
+                ],
+            }],
+            cursor: '123',
+        });
+        const res = await service.getGoods('', [ StockType.FBO]);
+        expect(res).toEqual({ goods: new Map([['345', 4]]), nextArgs: '123' });
+    });
     it('getGoodIds', async () => {
         method.mockResolvedValueOnce({
-            result: {
-                items: [{ offer_id: '345', stocks: [{ type: StockType.FBS, present: 2, reserved: 1 }] }],
-                last_id: '123',
-            },
+            items: [{ offer_id: '345', stocks: [{ type: StockType.FBS, present: 2, reserved: 1 }] }],
+            cursor: '123',
         });
         const res = await service.getGoodIds('');
         expect(res).toEqual({ goods: new Map([['345', 1]]), nextArgs: '123' });

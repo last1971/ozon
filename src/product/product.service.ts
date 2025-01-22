@@ -21,6 +21,7 @@ import { ProductFilterDto } from "./dto/product.filter.dto";
 import { ProductInfoDto } from "./dto/product.info.dto";
 import { GoodServiceEnum } from "../good/good.service.enum";
 import { VaultService } from "vault-module/lib/vault.service";
+import { ProductListDto } from "./dto/product.list.dto";
 
 @Injectable()
 export class ProductService extends ICountUpdateable implements OnModuleInit {
@@ -51,8 +52,17 @@ export class ProductService extends ICountUpdateable implements OnModuleInit {
             goodService: GoodServiceEnum.OZON,
         }));
     }
-    async listWithCount(last_id = '', limit = 100): Promise<ProductListResultDto> {
-        return this.ozonApiService.method('/v3/product/info/stocks', { filter: {}, limit, last_id });
+
+    /**
+     * Retrieves a list of products with pagination and filtering capabilities, including a total count.
+     *
+     * @param {string} [cursor=''] The pagination cursor for fetching the next set of products.
+     * @param {number} [limit=100] The maximum number of products to be fetched in a single request.
+     * @param {Object} [filter={}] An optional filter object to specify additional criteria for retrieving products.
+     * @return {Promise<ProductListDto>} A promise resolving to a ProductListDto object containing the list of products and the total count.
+     */
+    async listWithCount(cursor = '', limit = 100, filter = {}): Promise<ProductListDto> {
+        return this.ozonApiService.method('/v4/product/info/stocks', { filter, limit, cursor });
     }
     async updateCount(stocks: ProductCodeStockDto[]): Promise<ProductCodeUpdateStockResultDto> {
         return this.ozonApiService.method(
@@ -104,14 +114,18 @@ export class ProductService extends ICountUpdateable implements OnModuleInit {
         return response;
     }
 
-    async getGoodIds(args: any): Promise<GoodCountsDto<number>> {
+    async getGoods(args: any, stockTypes = [StockType.FBS, StockType.FBO]): Promise<any> {
         const products = await this.listWithCount(args);
         const goods = new Map<string, number>();
-        (products.result?.items || []).forEach((product) => {
-            const stock = product.stocks.find((stock) => stock.type === StockType.FBS);
+        (products.items || []).forEach((product) => {
+            const stock = product.stocks.find((stock) => stockTypes.includes(stock.type));
             goods.set(product.offer_id, product.stocks.length > 0 ? stock.present - stock.reserved : 0);
         });
-        return { goods, nextArgs: products?.result.last_id };
+        return { goods, nextArgs: products.cursor };
+    }
+
+    async getGoodIds(args: any): Promise<GoodCountsDto<number>> {
+        return this.getGoods(args, [StockType.FBS]);
     }
     async updateGoodCounts(goods: Map<string, number>): Promise<number> {
         const updateGoods: ProductCodeStockDto[] = [];
