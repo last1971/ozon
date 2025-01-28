@@ -58,7 +58,7 @@ describe('ProductService', () => {
         await service.orderList({ since: date, to: date, status: 'test' });
         expect(method.mock.calls[0]).toEqual([
             '/v3/posting/fbs/list',
-            { filter: { since: date, to: date, status: 'test' }, limit: 100 },
+            { filter: { since: date, to: date, status: 'test' }, limit: 100, offset: 0 },
         ]);
     });
     it('test getPrices', async () => {

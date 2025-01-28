@@ -97,8 +97,8 @@ export class ProductService extends ICountUpdateable implements OnModuleInit {
             }
         );
     }
-    async orderList(filter: PostingsRequestDto, limit = 100): Promise<PostingResultDto> {
-        return this.ozonApiService.method('/v3/posting/fbs/list', { filter, limit });
+    async orderList(filter: PostingsRequestDto, limit = 100, offset = 0): Promise<PostingResultDto> {
+        return this.ozonApiService.method('/v3/posting/fbs/list', { filter, limit, offset });
     }
     async orderFboList(request: PostingsFboRequestDto): Promise<{ result: PostingDto[] }> {
         return this.ozonApiService.method('/v2/posting/fbo/list', request);
