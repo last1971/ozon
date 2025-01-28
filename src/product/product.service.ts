@@ -115,10 +115,10 @@ export class ProductService extends ICountUpdateable implements OnModuleInit {
                 visibility: priceRequest.visibility || ProductVisibility.ALL,
             },
             limit: priceRequest.limit,
-            last_id: priceRequest.last_id || null,
+            cursor: priceRequest.cursor || null,
         };
-        const res = await this.ozonApiService.method('/v4/product/info/prices', options);
-        return res?.result || { items: [], last_id: '' };
+        const res = await this.ozonApiService.method('/v5/product/info/prices', options);
+        return res || { items: [], cursor: '' };
     }
     async setPrice(prices: UpdatePricesDto): Promise<any> {
         return this.ozonApiService.method('/v1/product/import/prices', prices);

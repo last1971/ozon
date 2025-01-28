@@ -64,11 +64,11 @@ describe('ProductService', () => {
     it('test getPrices', async () => {
         await service.getPrices({ limit: 0, visibility: ProductVisibility.ARCHIVED });
         expect(method.mock.calls[0]).toEqual([
-            '/v4/product/info/prices',
+            '/v5/product/info/prices',
             {
                 filter: { product_id: null, offer_id: null, visibility: ProductVisibility.ARCHIVED },
                 limit: 0,
-                last_id: null,
+                cursor: null,
             },
         ]);
     });
