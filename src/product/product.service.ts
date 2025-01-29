@@ -43,10 +43,10 @@ export class ProductService extends ICountUpdateable implements OnModuleInit {
         return this.ozonApiService.method('/v3/product/list', { filter, last_id, limit });
     }
     async infoList(offer_id: string[]): Promise<ProductInfoDto[]> {
-        const res = await this.ozonApiService.method('/v2/product/info/list', { offer_id });
-        return res?.result?.items.map((item: any): ProductInfoDto => ({
+        const res = await this.ozonApiService.method('/v3/product/info/list', { offer_id });
+        return res?.items.map((item: any): ProductInfoDto => ({
             sku: item.offer_id,
-            barCode: item.barcode,
+            barCode: item.barcodes[0],
             remark: item.name,
             primaryImage: item.primary_image,
             id: item.id,

@@ -39,7 +39,7 @@ describe('ProductService', () => {
 
     it('test listInfo', async () => {
         await service.infoList(['123', '123-5']);
-        expect(method.mock.calls[0]).toEqual(['/v2/product/info/list', { offer_id: ['123', '123-5'] }]);
+        expect(method.mock.calls[0]).toEqual(['/v3/product/info/list', { offer_id: ['123', '123-5'] }]);
     });
 
     it('test updateCount', async () => {
