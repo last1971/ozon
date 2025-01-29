@@ -1,24 +1,25 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { PromosService } from './promos.service';
-import { OzonApiService } from '../ozon.api/ozon.api.service';
-import { ActionsListParamsDto } from './dto/actionsCandidateParams.dto';
-import { ActivateActionProductsParamsDto } from './dto/activateActionProductsParams.dbo';
-import { DeactivateActionProductsParamsDto } from './dto/deactivateActionProductsParams.dbo';
-import { ProductService } from '../product/product.service';
-import { ActionListProduct } from './dto/actionsCandidate.dto';
+import { Test, TestingModule } from "@nestjs/testing";
+import { FitProductsStrategy, PromosService } from "./promos.service";
+import { OzonApiService } from "../ozon.api/ozon.api.service";
+import { ActionsListParamsDto } from "./dto/actionsCandidateParams.dto";
+import { ActivateActionProductsParamsDto } from "./dto/activateActionProductsParams.dbo";
+import { DeactivateActionProductsParamsDto } from "./dto/deactivateActionProductsParams.dbo";
+import { ProductService } from "../product/product.service";
+import { ActionListProduct } from "./dto/actionsCandidate.dto";
 
 describe('PromosService', () => {
     let service: PromosService;
 
     const method = jest.fn();
     const getPrices = jest.fn();
+    const getFreeProductCount = jest.fn();
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 PromosService,
                 { provide: OzonApiService, useValue: { method } },
-                { provide: ProductService, useValue: { getPrices } },
+                { provide: ProductService, useValue: { getPrices, getFreeProductCount } },
             ],
         }).compile();
 
@@ -171,9 +172,16 @@ describe('PromosService', () => {
             { id: 2, price: { min_price: 90 } },
             { id: 3, price: { min_price: 170 } },
         ] as any;
+        const productCounts = [
+            { id: 1, count: 1 },
+            { id: 2, count: 1 },
+            { id: 3, count: 1 },
+            { id: 4, count: 0 },
+        ];
 
         jest.spyOn(service, 'getAllActionsProductsOrCandidates').mockResolvedValueOnce(actionProducts);
         jest.spyOn(service, 'getProductsPrices').mockResolvedValueOnce(productPrices);
+        getFreeProductCount.mockResolvedValueOnce(productCounts);
         jest.spyOn(service, 'deactivateActionProducts').mockResolvedValueOnce(void 0);
 
         const result = await service.unfitProductsRemoval(actionId);
@@ -193,12 +201,18 @@ describe('PromosService', () => {
             { id: 2, price: { min_price: 90 } },
             { id: 3, price: { min_price: 160 } },
         ] as any;
+        const productCounts = [
+            { id: 1, count: 1 },
+            { id: 2, count: 1 },
+            { id: 3, count: 1 },
+        ];
 
+        getFreeProductCount.mockResolvedValueOnce(productCounts);
         jest.spyOn(service, 'getAllActionsProductsOrCandidates').mockResolvedValueOnce(actionCandidates);
         jest.spyOn(service, 'getProductsPrices').mockResolvedValueOnce(candidatesPrice);
         const activateActionProductsSpy = jest.spyOn(service, 'activateActionProducts').mockResolvedValueOnce(void 0);
 
-        const result = await service.fitProductsAddition(actionId, 'maxActionPrice');
+        const result = await service.fitProductsAddition(actionId, FitProductsStrategy.MAX_ACTION_PRICE);
 
         expect(result).toBe(2);
 
@@ -224,11 +238,18 @@ describe('PromosService', () => {
             { id: 3, price: { min_price: 160 } },
         ] as any;
 
+        const productCounts = [
+            { id: 1, count: 1 },
+            { id: 2, count: 1 },
+            { id: 3, count: 1 },
+        ];
+
+        getFreeProductCount.mockResolvedValueOnce(productCounts);
         jest.spyOn(service, 'getAllActionsProductsOrCandidates').mockResolvedValueOnce(actionCandidates);
         jest.spyOn(service, 'getProductsPrices').mockResolvedValueOnce(candidatesPrice);
         const activateActionProductsSpy = jest.spyOn(service, 'activateActionProducts').mockResolvedValueOnce(void 0);
 
-        const result = await service.fitProductsAddition(actionId, 'maxFromActionActionPiceAndProdMinPrice');
+        const result = await service.fitProductsAddition(actionId, FitProductsStrategy.MAX_FROM_ACTION_PRICE_AND_MIN_PRICE);
 
         expect(result).toBe(2);
 
@@ -253,12 +274,18 @@ describe('PromosService', () => {
             { id: 2, price: { min_price: 90 } },
             { id: 3, price: { min_price: 160 } },
         ] as any;
+        const productCounts = [
+            { id: 1, count: 1 },
+            { id: 2, count: 1 },
+            { id: 3, count: 1 },
+        ];
 
+        getFreeProductCount.mockResolvedValueOnce(productCounts);
         jest.spyOn(service, 'getAllActionsProductsOrCandidates').mockResolvedValueOnce(actionCandidates);
         jest.spyOn(service, 'getProductsPrices').mockResolvedValueOnce(candidatesPrice);
         const activateActionProductsSpy = jest.spyOn(service, 'activateActionProducts').mockResolvedValueOnce(void 0);
 
-        const result = await service.fitProductsAddition(actionId, 'minFromProdMinPrice');
+        const result = await service.fitProductsAddition(actionId, FitProductsStrategy.MIN_FROM_MIN_PRICE);
 
         expect(result).toBe(2);
         expect(activateActionProductsSpy).toHaveBeenCalledWith({
@@ -267,6 +294,76 @@ describe('PromosService', () => {
                 { product_id: 1, action_price: 40, stock: 10 },
                 { product_id: 2, action_price: 90, stock: 20 },
             ],
+        });
+    });
+
+    it('should add fit products', async () => {
+        const actionId = 123;
+        const candidates = [
+            { id: 1, max_action_price: 50, stock: 10 },
+            { id: 2, max_action_price: 100, stock: 20 },
+            { id: 3, max_action_price: 150, stock: 30 },
+        ] as any;
+        const prices = [
+            { id: 1, price: { min_price: 50 } },
+            { id: 2, price: { min_price: 80 } },
+            { id: 3, price: { min_price: 160 } },
+        ] as any;
+        const freeCounts = [
+            { id: 1, count: 10 },
+            { id: 2, count: 5 },
+            { id: 3, count: 0 },
+        ];
+
+        getFreeProductCount.mockResolvedValueOnce(freeCounts);
+        jest.spyOn(service, 'getAllActionsProductsOrCandidates').mockResolvedValueOnce(candidates);
+        jest.spyOn(service, 'getProductsPrices').mockResolvedValueOnce(prices);
+        const activateActionProductsSpy = jest.spyOn(service, 'activateActionProducts').mockResolvedValueOnce(void 0);
+
+        const result = await service.fitProductsAddition(actionId, FitProductsStrategy.MAX_ACTION_PRICE);
+
+        expect(result).toBe(2);
+        expect(activateActionProductsSpy).toHaveBeenCalledWith({
+            action_id: actionId,
+            products: [
+                { product_id: 1, action_price: 50, stock: 10 },
+                { product_id: 2, action_price: 100, stock: 20 },
+            ],
+        });
+    });
+
+    it('should remove unfit products', async () => {
+        const actionId = 123;
+        const products = [
+            { id: 1, action_price: 50 },
+            { id: 2, action_price: 100 },
+            { id: 3, action_price: 150 },
+            { id: 4, action_price: 200 },
+        ] as ActionListProduct[];
+        const prices = [
+            { id: 1, price: { min_price: 60 } },
+            { id: 2, price: { min_price: 80 } },
+            { id: 3, price: { min_price: 170 } },
+            { id: 4, price: { min_price: 190 } },
+        ] as any;
+        const freeCounts = [
+            { id: 1, count: 0 }, // Product with zero count should be removed
+            { id: 2, count: 1 },
+            { id: 3, count: 0 }, // Product with price not meeting criteria
+            { id: 4, count: 1 },
+        ];
+
+        jest.spyOn(service, 'getAllActionsProductsOrCandidates').mockResolvedValueOnce(products);
+        jest.spyOn(service, 'getProductsPrices').mockResolvedValueOnce(prices);
+        getFreeProductCount.mockResolvedValueOnce(freeCounts);
+        const deactivateActionProductsSpy = jest.spyOn(service, 'deactivateActionProducts').mockResolvedValueOnce(void 0);
+
+        const result = await service.unfitProductsRemoval(actionId);
+
+        expect(result).toBe(2);
+        expect(deactivateActionProductsSpy).toHaveBeenCalledWith({
+            action_id: actionId,
+            product_ids: [1, 3],
         });
     });
 });

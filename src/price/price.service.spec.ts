@@ -208,7 +208,7 @@ describe('PriceService', () => {
             .mockResolvedValueOnce({ items: [] });
         await service.updateAllPrices();
         expect(getPrices.mock.calls).toHaveLength(2);
-        expect(getPrices.mock.calls[0]).toEqual([{ last_id: '', limit: 1000, visibility: 'IN_SALE' }]);
+        expect(getPrices.mock.calls[0]).toEqual([{ cursor: '', limit: 1000, visibility: 'IN_SALE' }]);
         expect(updatePriceForService.mock.calls).toHaveLength(1);
     });
     it('getObtainCoeffs', () => {

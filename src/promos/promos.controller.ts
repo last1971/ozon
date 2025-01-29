@@ -136,7 +136,7 @@ export class PromosController {
         name: 'strategy',
         description:
             'Стратегия ценообразования: max_action_price | max(action_price, цена.price.min_price) | цена.price.min_price',
-        type: String,
+            enum: FitProductsStrategy,
         required: true,
     })
     @Get('actions/products/fit-addition')

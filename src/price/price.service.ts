@@ -48,7 +48,7 @@ export class PriceService implements IPriceUpdateable {
         const percents = await this.goodService.getPerc(codes, null);
         const percDirectFlow = 1 + this.configService.get<number>('PERC_DIRECT_FLOW', 0)/100;
         return {
-            last_id: products.last_id,
+            last_id: products.cursor,
             data: products.items.map((item) => {
                 const good = goods.find((g) => g.code.toString() === goodCode(item));
                 const percent: GoodPercentDto = percents.find(
@@ -91,8 +91,8 @@ export class PriceService implements IPriceUpdateable {
         return this.product.setPrice(prices);
     }
     // @Cron('0 0 0 * * 0', { name: 'updateOzonPrices' })
-    async updateAllPrices(level = 0, last_id = '', visibility = ProductVisibility.IN_SALE, limit = 1000): Promise<any> {
-        const pricesForObtain = await this.product.getPrices({ limit, last_id, visibility });
+    async updateAllPrices(level = 0, cursor = '', visibility = ProductVisibility.IN_SALE, limit = 1000): Promise<any> {
+        const pricesForObtain = await this.product.getPrices({ limit, cursor, visibility });
         let answer = [];
         if (pricesForObtain.items.length > 0) {
             const res = await this.goodService.updatePriceForService(
@@ -101,7 +101,7 @@ export class PriceService implements IPriceUpdateable {
             );
             answer = res.result
                 .filter((update: any) => !update.updated)
-                .concat(await this.updateAllPrices(level + 1, pricesForObtain.last_id));
+                .concat(await this.updateAllPrices(level + 1, pricesForObtain.cursor));
         }
         if (level === 0) {
             this.logger.log('Update ozon prices was finished');

@@ -9,7 +9,7 @@ export class PriceRequestDto {
     @ApiProperty({ description: 'Фильтр по видимости товара', required: false, enum: ProductVisibility })
     visibility = ProductVisibility.ALL;
     @ApiProperty({ description: 'Идентификатор последнего значения на странице.', required: false })
-    last_id?: string;
+    cursor?: string;
     @ApiProperty({ description: 'Количество значений на странице. Минимум — 1, максимум — 1000', required: true })
     limit: number;
 }
