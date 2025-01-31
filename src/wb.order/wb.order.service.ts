@@ -38,7 +38,10 @@ export class WbOrderService implements IOrderable {
     }
 
     async list(dateFrom = 0, initialNext = 0, limit = 1000): Promise<WbOrderDto[]> {
-        const { orders, next } = await this.api.method('/api/v3/orders', 'get', { next: initialNext, limit, dateFrom });
+        const { orders, next } = await this.api.method(
+            '/api/v3/orders', 'get',
+            { next: initialNext, limit, dateFrom }
+        );
         if (next) {
             orders.push(...(await this.list(dateFrom, next, limit)));
         }
@@ -358,10 +361,9 @@ export class WbOrderService implements IOrderable {
     async getOrdersStickers(orders: number[]): Promise<WbOrderStickersDto> {
         try {
             const res = await this.api.method(
-                'https://marketplace-api.wildberries.ru/api/v3/orders/stickers?type=svg&width=58&height=40',
+                '/api/v3/orders/stickers?type=svg&width=58&height=40',
                 'post',
                 { orders },
-                true,
             );
             const { stickers } = res;
             return {

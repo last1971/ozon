@@ -40,10 +40,9 @@ describe('WbSupplyService', () => {
         });
         const res = await service.list();
         expect(method.mock.calls[0]).toEqual([
-            'https://marketplace-api.wildberries.ru/api/v3/supplies',
+            '/api/v3/supplies',
             'get',
             { limit: 1000, next: 0 },
-            true,
         ]);
         expect(res).toEqual([{ id: 123 }]);
     });
@@ -56,22 +55,19 @@ describe('WbSupplyService', () => {
         await service.updateSupplies();
         expect(method.mock.calls).toHaveLength(3);
         expect(method.mock.calls[0]).toEqual([
-            'https://marketplace-api.wildberries.ru/api/v3/supplies',
+            '/api/v3/supplies',
             'get',
             { limit: 1000, next: 0 },
-            true,
         ]);
         expect(method.mock.calls[1]).toEqual([
-            'https://marketplace-api.wildberries.ru/api/v3/supplies',
+            '/api/v3/supplies',
             'get',
             { limit: 1000, next: 1 },
-            true,
         ]);
         expect(method.mock.calls[2]).toEqual([
-            'https://marketplace-api.wildberries.ru/api/v3/supplies',
+            '/api/v3/supplies',
             'get',
             { limit: 1000, next: 2 },
-            true,
         ]);
     });
 
@@ -99,10 +95,9 @@ describe('WbSupplyService', () => {
 
         const res = await service.listOrders('123');
         expect(method.mock.calls[0]).toEqual([
-            'https://marketplace-api.wildberries.ru/api/v3/supplies/123/orders',
+            '/api/v3/supplies/123/orders',
             'get',
             {},
-            true,
         ]);
         expect(res).toEqual({
             orders: [{ id: 'order-1' }, { id: 'order-2' }],
@@ -116,10 +111,9 @@ describe('WbSupplyService', () => {
 
         const res = await service.listOrders('123');
         expect(method.mock.calls[0]).toEqual([
-            'https://marketplace-api.wildberries.ru/api/v3/supplies/123/orders',
+            '/api/v3/supplies/123/orders',
             'get',
             {},
-            true,
         ]);
         expect(res).toEqual({
             orders: [],

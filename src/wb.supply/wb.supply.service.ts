@@ -59,10 +59,9 @@ export class WbSupplyService implements ISuppliable {
 
     async list(next = 0): Promise<WbSupplyDto[]> {
         const res = await this.api.method(
-            'https://marketplace-api.wildberries.ru/api/v3/supplies',
+            '/api/v3/supplies',
             'get',
             { limit: 1000, next },
-            true,
         );
         this.next = res?.next ?? 0;
         return res?.supplies ?? [];
@@ -92,10 +91,9 @@ export class WbSupplyService implements ISuppliable {
     async listOrders(id: string): Promise<WbSupplyOrdersDto> {
         try {
             const data = await this.api.method(
-                `https://marketplace-api.wildberries.ru/api/v3/supplies/${id}/orders`,
+                `/api/v3/supplies/${id}/orders`,
                 'get',
                 {},
-                true,
             );
 
             return {

@@ -376,10 +376,9 @@ describe('WbOrderService', () => {
         const result = await service.getOrdersStickers(mockOrders);
 
         expect(method).toHaveBeenCalledWith(
-            "https://marketplace-api.wildberries.ru/api/v3/orders/stickers?type=svg&width=58&height=40",
+            "/api/v3/orders/stickers?type=svg&width=58&height=40",
             "post",
             { orders: mockOrders },
-            true
         );
         expect(result).toEqual({
             stickers: mockStickers,
@@ -396,10 +395,9 @@ describe('WbOrderService', () => {
         const result = await service.getOrdersStickers(mockOrders);
 
         expect(method).toHaveBeenCalledWith(
-            "https://marketplace-api.wildberries.ru/api/v3/orders/stickers?type=svg&width=58&height=40",
+            "/api/v3/orders/stickers?type=svg&width=58&height=40",
             "post",
             { orders: mockOrders },
-            true
         );
         expect(result).toEqual({
             stickers: [],
