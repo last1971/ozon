@@ -20,34 +20,37 @@ export class YandexProductCoeffsAdapter implements IProductCoeffsable {
                 5000,
         );
         if (weight < 0.2) {
-            return 55;
+            return 80;
         }
         if (weight < 0.5) {
-            return 60;
+            return 85;
         }
         if (weight < 1) {
-            return 65;
+            return 95;
         }
         if (weight < 2) {
-            return 70;
+            return 135;
         }
         if (weight < 4) {
-            return 100;
+            return 190;
         }
         if (weight < 6) {
-            return 180;
+            return 270;
         }
         if (weight < 8) {
-            return 250;
+            return 360;
         }
         if (weight < 10) {
-            return 300;
+            return 440;
         }
         if (weight < 12) {
-            return 400;
+            return 530;
         }
         if (weight < 15) {
-            return 500;
+            return 640;
+        }
+        if (weight < 20) {
+            return 800;
         }
         return 1000;
     }
