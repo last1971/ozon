@@ -1,6 +1,7 @@
 export interface IPriceable {
     offer_id: string;
     incoming_price: number;
+    available_price: number;
     fbs_direct_flow_trans_max_amount: number;
     sales_percent: number;
     min_perc: number;

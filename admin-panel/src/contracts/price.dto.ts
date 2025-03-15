@@ -4,6 +4,7 @@ export interface PriceDto {
     name: string;
     marketing_price: number;
     marketing_seller_price: number;
+    available_price: number;
     incoming_price: number;
     min_price: number;
     price: number;

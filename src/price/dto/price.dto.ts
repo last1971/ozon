@@ -13,6 +13,8 @@ export class PriceDto {
     marketing_seller_price: number;
     @ApiProperty({ description: 'Входящая цена' })
     incoming_price: number;
+    @ApiProperty({ description: 'Рыночная цена' })
+    available_price: number;
     @ApiProperty({ description: 'Мин цена' })
     min_price: number;
     @ApiProperty({ description: 'Цена' })

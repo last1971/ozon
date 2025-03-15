@@ -91,20 +91,22 @@ export class Trade2006GoodService implements IGood {
             old_perc: percent.PERC_MAX,
             min_perc: percent.PERC_MIN,
             packing_price: percent.PACKING_PRICE ?? this.configService.get<number>('SUM_PACK', 10),
+            available_price: percent.AVAILABLE_PRICE,
         }));
     }
     async setPercents(perc: GoodPercentDto, t: FirebirdTransaction = null): Promise<void> {
         const transaction = t ?? (await this.pool.getTransaction());
         await transaction.execute(
-            'UPDATE OR INSERT INTO OZON_PERC (PERC_MIN, PERC_NOR, PERC_MAX, PERC_ADV, PACKING_PRICE, GOODSCODE,' +
-                ' PIECES)' +
-                'VALUES (?, ?, ?, ?, ?, ?, ?) MATCHING (GOODSCODE, PIECES)',
+            'UPDATE OR INSERT INTO OZON_PERC (PERC_MIN, PERC_NOR, PERC_MAX, PERC_ADV, PACKING_PRICE,' +
+                ' AVAILABLE_PRICE, GOODSCODE, PIECES)' +
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?) MATCHING (GOODSCODE, PIECES)',
             [
                 perc.min_perc || null,
                 perc.perc || null,
                 perc.old_perc || null,
                 perc.adv_perc || null,
                 perc.packing_price || null,
+                perc.available_price ?? 0,
                 goodCode(perc),
                 goodQuantityCoeff(perc),
             ],
@@ -226,7 +228,7 @@ export class Trade2006GoodService implements IGood {
                 ? prices.get(product.getSku()).incoming_price
                 : goods.find((g) => g.code.toString() === gCode).price * gCoeff;
             if (incoming_price !== 0) {
-                const { min_perc, perc, old_perc, adv_perc, packing_price } = percents.find(
+                const { min_perc, perc, old_perc, adv_perc, packing_price, available_price } = percents.find(
                     (p) => p.offer_id.toString() === gCode && p.pieces === gCoeff,
                 ) || {
                     adv_perc: 0,
@@ -234,6 +236,7 @@ export class Trade2006GoodService implements IGood {
                     perc: this.configService.get<number>('PERC_NOR', 25),
                     min_perc: this.configService.get<number>('PERC_MIN', 15),
                     packing_price: this.configService.get<number>('SUM_PACK', 10),
+                    available_price: 0,
                 };
                 updatePrices.push(
                     calculatePrice(
@@ -241,6 +244,7 @@ export class Trade2006GoodService implements IGood {
                             adv_perc,
                             fbs_direct_flow_trans_max_amount: product.getTransMaxAmount(),
                             incoming_price,
+                            available_price,
                             min_perc,
                             offer_id: product.getSku(),
                             old_perc,

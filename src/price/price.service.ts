@@ -60,6 +60,7 @@ export class PriceService implements IPriceUpdateable {
                     old_perc: this.configService.get<number>('PERC_MAX', 50),
                     perc: this.configService.get<number>('PERC_NOR', 25),
                     min_perc: this.configService.get<number>('PERC_MIN', 15),
+                    available_price: 0,
                 };
                 return {
                     product_id: item.product_id,
@@ -68,6 +69,7 @@ export class PriceService implements IPriceUpdateable {
                     marketing_price: item.price.marketing_price,
                     marketing_seller_price: item.price.marketing_seller_price,
                     incoming_price: good.price * goodQuantityCoeff(item),
+                    available_price: percent.available_price,
                     min_price: item.price.min_price,
                     price: item.price.price,
                     old_price: item.price.old_price,
@@ -150,7 +152,7 @@ export class PriceService implements IPriceUpdateable {
             for (const price of prices.data) {
                 const marketingPrice = toNumber(price.marketing_seller_price);
                 const incomingPrice = toNumber(price.incoming_price);
-                if (incomingPrice <=0) continue;
+                if (incomingPrice <= 0) continue;
                 const payment = calculatePay(price, percents, marketingPrice);
                 const profit = payment - incomingPrice;
 

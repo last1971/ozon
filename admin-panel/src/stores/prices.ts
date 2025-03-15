@@ -90,15 +90,16 @@ export const priceStore = defineStore("priceStore", {
                 adv_perc,
                 sum_pack,
                 incoming_price,
+                available_price,
             } = this.prices[index];
             try {
                 await axios.post('/api/good/percent', {}, {
                     params: {
-                        offer_id, min_perc, perc, old_perc, adv_perc, packing_price: sum_pack,
+                        offer_id, min_perc, perc, old_perc, adv_perc, packing_price: sum_pack, available_price,
                     }
                 });
                 const res = await axios.post<any[]>('/api/price', {
-                    prices: [{ offer_id, min_price: '0', price: '0', old_price: '0', incoming_price: edit ? incoming_price : 0 }]
+                    prices: [{ offer_id, min_price: '0', price: '0', old_price: '0', incoming_price: edit ? available_price : 0 }]
                 });
                 if (!res.data[0].result[0].updated) {
                     throw new Error(res.data[0].result[0].errors.toString())

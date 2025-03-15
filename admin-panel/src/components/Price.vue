@@ -11,21 +11,24 @@ const { pays, isLoadingPrice } = storeToRefs(priceStore())
 const { tariffs } = storeToRefs(tariffStore());
 const edit = ref(false)
 
-const updateIncomingPrice = (newValue: string) => {
-    props.value.incoming_price = parseFloat(newValue) || 0; // Преобразование строки в число
+const updateAvailablePrice = (newValue: string) => {
+    props.value.available_price = parseFloat(newValue) || 0; // Преобразование строки в число
 };
 
 watch(
     () => props.value.old_perc + props.value.min_perc + props.value.perc + props.value.adv_perc +
-        props.value.sum_pack + props.value.incoming_price,
+        props.value.sum_pack + props.value.incoming_price + props.value.available_price,
     debounce(async ()=> {
         await priceStore().getInd(props.ind);
     }, 2000),
 );
-const profit = computed(() => Math.ceil(parseInt(pays.value[props.ind][0]) - props.value.incoming_price));
+const incomingPrice = computed(() => edit.value ? props.value.available_price : props.value.incoming_price);
+const profit = computed(() => Math.ceil(
+    parseInt(pays.value[props.ind][0]) - incomingPrice.value)
+);
 const minPerc = computed(
     () =>
-    Math.ceil((parseInt(pays.value[props.ind][0]) - props.value.incoming_price) / props.value.incoming_price * 100)
+    Math.ceil((parseInt(pays.value[props.ind][0]) - incomingPrice.value) / incomingPrice.value * 100)
 );
 </script>
 
@@ -65,6 +68,7 @@ const minPerc = computed(
                 <th>Для нас</th>
                 <th>Выплата</th>
                 <th>Вх.цена</th>
+                <th>Рын.цена</th>
                 <th>Прибыль</th>
                 <th>Рекл.</th>
                 <th>Упак</th>
@@ -77,16 +81,16 @@ const minPerc = computed(
                 <td>{{ Math.ceil(value.marketing_price) }} ₽</td>
                 <td>{{ Math.ceil(value.marketing_seller_price) }} ₽</td>
                 <td>{{ Math.ceil(parseInt(pays[ind][0])) }} ₽</td>
-                <td v-if="edit">
+                <td>
+                    {{ Math.ceil(value.incoming_price) }} ₽
+                </td>
+                <td>
                     <v-text-field
-                        :model-value="value.incoming_price"
-                        @update:modelValue="updateIncomingPrice"
+                        :model-value="value.available_price"
+                        @update:modelValue="updateAvailablePrice"
                         suffix="₽"
                         variant="underlined"
                     />
-                </td>
-                <td v-else>
-                    {{ Math.ceil(value.incoming_price) }} ₽
                 </td>
                 <td
                     :class="{'bg-orange text-white': profit < tariffs.min_price || minPerc < tariffs.min_perc}"

@@ -74,15 +74,16 @@ export const calculatePrice = (
 ): UpdatePriceDto => {
     const calc = (percent: number, price: IPriceable): string => {
         const { fixedCosts, dynamicCosts } = calculateCosts(price, percents);
+        const incoming_price = toNumber(price.available_price) > 0 ? price.available_price : price.incoming_price;
         let calcPrice = Math.ceil(
-            (toNumber(price.incoming_price) * (1 + toNumber(percent) / 100) + fixedCosts)
+            (toNumber(incoming_price) * (1 + toNumber(percent) / 100) + fixedCosts)
             /
             (1 - (dynamicCosts + toNumber(percents.percMil)) / 100)
         );
         const mil = calcPrice * (percents.percMil / 100);
         if (mil < percents.minMil) {
             calcPrice = Math.ceil(
-                (toNumber(price.incoming_price) * (1 + toNumber(percent) / 100) + toNumber(percents.minMil) + fixedCosts)
+                (toNumber(incoming_price) * (1 + toNumber(percent) / 100) + toNumber(percents.minMil) + fixedCosts)
                 /
                 (1 - dynamicCosts / 100)
             );
