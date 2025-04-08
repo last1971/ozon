@@ -82,12 +82,14 @@ export class YandexOrderService implements IOrderable, OnModuleInit {
             'post',
             request,
         );
-        let orders: OrderStatsDto[] = [];
-        if (res.result.orders.length > 0) {
-            orders = (res.result.orders as OrderStatsDto[]).concat(
-                await this.statsOrder(request, res.result.paging.nextPageToken),
-            );
+
+        const orders: OrderStatsDto[] = res.result.orders || [];
+
+        if (res.result.paging?.nextPageToken) {
+            const nextOrders = await this.statsOrder(request, res.result.paging.nextPageToken);
+            orders.push(...nextOrders);
         }
+
         return orders;
     }
     async updateTransactions(): Promise<ResultDto> {
