@@ -142,10 +142,6 @@ describe("GoodsCountProcessor", () => {
 
     it("should handle cases where totalQuantity is zero", async () => {
         const totalQuantity = 0;
-        const skus = [
-            { sku: "sku-1", coefficient: 1 },
-            { sku: "sku-2", coefficient: 2 }
-        ];
 
         const spyDistributeGoods = jest.spyOn(
             GoodsCountProcessor.prototype as any,
@@ -169,11 +165,6 @@ describe("GoodsCountProcessor", () => {
 
     it("should allocate remaining quantities correctly", async () => {
         const totalQuantity = 101;
-        const skus = [
-            { sku: "sku-1", coefficient: 1 },
-            { sku: "sku-2", coefficient: 2 },
-            { sku: "sku-3", coefficient: 3 }
-        ];
 
         const spyDistributeGoods = jest.spyOn(
             GoodsCountProcessor.prototype as any,
