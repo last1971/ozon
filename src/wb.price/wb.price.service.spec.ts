@@ -102,7 +102,7 @@ describe('WbPriceService', () => {
         ]);
         expect(method.mock.calls).toHaveLength(1);
         expect(method.mock.calls[0]).toEqual([
-            'https://discounts-prices-api.wb.ru/api/v2/upload/task',
+            'https://discounts-prices-api.wildberries.ru/api/v2/upload/task',
             'post',
             { data: [{ discount: 33, nmID: 1, price: 3 }] },
             true,

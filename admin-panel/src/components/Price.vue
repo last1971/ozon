@@ -141,7 +141,7 @@ const minPerc = computed(
                 </td>
                 <td>{{ Math.ceil(value.old_price) }} ₽</td>
                 <td>{{ Math.ceil(parseInt(pays[ind][1])) }} ₽</td>
-                <td>{{ Math.ceil(parseInt(pays[ind][1]) - value.incoming_price) }} ₽</td>
+                <td>{{ Math.ceil(parseInt(pays[ind][1]) - incomingPrice) }} ₽</td>
             </tr>
             <tr>
                 <td>Норм</td>
@@ -154,7 +154,7 @@ const minPerc = computed(
                 </td>
                 <td>{{ Math.ceil(value.price) }} ₽</td>
                 <td>{{ Math.ceil(parseInt(pays[ind][2])) }} ₽</td>
-                <td>{{ Math.ceil(parseInt(pays[ind][2]) - value.incoming_price) }} ₽</td>
+                <td>{{ Math.ceil(parseInt(pays[ind][2]) - incomingPrice) }} ₽</td>
             </tr>
             <tr>
                 <td>Мин</td>
@@ -167,7 +167,7 @@ const minPerc = computed(
                 </td>
                 <td>{{ Math.ceil(value.min_price) }} ₽</td>
                 <td>{{ Math.ceil(parseInt(pays[ind][3])) }} ₽</td>
-                <td>{{ Math.ceil(parseInt(pays[ind][3]) - value.incoming_price) }} ₽</td>
+                <td>{{ Math.ceil(parseInt(pays[ind][3]) - incomingPrice) }} ₽</td>
             </tr>
         </tbody>
     </v-table>

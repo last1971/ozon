@@ -83,4 +83,31 @@ export class GoodController {
     ): Promise<ProductInfoDto[]> {
         return this.extraService.getProductInfo(skus, service);
     }
+
+    @Post('change-count')
+    @ApiOperation({ summary: 'Получить информацию о продуктах по списку SKU' })
+    @ApiBody({
+        description: 'Список SKU для обновления',
+        schema: {
+            type: 'object',
+            properties: {
+                skus: {
+                    type: 'array',
+                    items: {
+                        type: 'string',
+                    },
+                    example: ['SKU123', 'SKU456'],
+                },
+            },
+        },
+        required: true,
+    })
+    @ApiResponse({
+        status: 201,
+        description: 'Обновлено',
+    })
+    async changeCount(@Body('skus') skus: string[]): Promise<void> {
+        const goods = await this.goodService.in(skus, null);
+        await this.extraService.countsChanged(goods);
+    }
 }

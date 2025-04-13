@@ -10,13 +10,13 @@ import { ResultDto } from "../helpers/result.dto";
 import { OnEvent } from "@nestjs/event-emitter";
 import { IsSwitchedDto } from "./dto/is.switched.dto";
 import { chunk } from "lodash";
-import { goodQuantityCoeff, productQuantity } from "../helpers";
 import { Cron } from "@nestjs/schedule";
 import { GoodDto } from "./dto/good.dto";
 import { ConfigService } from "@nestjs/config";
 // import { ProductVisibility } from "../product/product.visibility";
 // import { ProductListResultDto } from "../product/dto/product.list.result.dto";
 import { ProductInfoDto } from "../product/dto/product.info.dto";
+import { GoodsCountProcessor } from "../helpers/goods.count.processor";
 
 @Injectable()
 export class ExtraGoodService {
@@ -131,22 +131,11 @@ export class ExtraGoodService {
 
     @OnEvent('counts.changed', { async: true })
     async countsChanged(goods: GoodDto[]): Promise<void> {
-        this.logger.log('Skus - ' + goods.map((good) => good.code).join() + ' was changed');
-        for (const key of this.services.keys()) {
-            const service = this.services.get(key);
-            if (!service.isSwitchedOn) continue;
-            const forChange = new Map<string, number>();
-            goods.forEach((good) => {
-                const filtredSkus = service.service.skuList.filter((sku) => sku.includes(good.code));
-                filtredSkus.forEach((fs) => {
-                    const coeff = goodQuantityCoeff({ offer_id: fs });
-                    forChange.set(fs, productQuantity(good.quantity - (good.reserve ?? 0), coeff));
-                });
-            });
-            if (forChange.size > 0) {
-                this.logger.log(`Update ${await service.service.updateGoodCounts(forChange)} skus in ${key}`);
-            }
-        }
+        this.logger.log(`SKUs changed: ${goods.map((good) => good.code).join(', ')}`);
+
+        const processor = new GoodsCountProcessor(this.services, this.logger);
+
+        await processor.processGoodsCountChanges(goods);
     }
 
     async getProductInfo(offer_id: string[], service: GoodServiceEnum): Promise<ProductInfoDto[]> {

@@ -7,6 +7,7 @@ import { WbCardService } from '../wb.card/wb.card.service';
 import { ExtraGoodService } from './extra.good.service';
 import { GoodServiceEnum } from './good.service.enum';
 import { ConfigService } from '@nestjs/config';
+import { GoodsCountProcessor } from "../helpers/goods.count.processor";
 
 describe('ExtraGoodService', () => {
     let service: ExtraGoodService;
@@ -68,11 +69,21 @@ describe('ExtraGoodService', () => {
     });
 
     it('countsChanged', async () => {
+        const mockProcessGoodsCountChanges = jest.spyOn(GoodsCountProcessor.prototype, 'processGoodsCountChanges').mockResolvedValue();
+
         await service.countsChanged([
             { code: '111', quantity: 10, reserve: 1, name: '111' },
             { code: '222', quantity: 2, reserve: null, name: '222' },
         ]);
-        expect(updateGoodCounts.mock.calls[0]).toEqual([new Map([['222', 2]])]);
-        expect(updateGoodCounts.mock.calls[1]).toEqual([new Map([['111', 9]])]);
+
+        // Проверяем вызов processGoodsCountChanges
+        expect(mockProcessGoodsCountChanges).toHaveBeenCalledWith([
+            { code: '111', quantity: 10, reserve: 1, name: '111' },
+            { code: '222', quantity: 2, reserve: null, name: '222' },
+        ]);
+
+        // Восстанавливаем оригинальное поведение
+        mockProcessGoodsCountChanges.mockRestore();
     });
+
 });

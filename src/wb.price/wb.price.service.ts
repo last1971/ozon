@@ -90,7 +90,7 @@ export class WbPriceService implements IPriceUpdateable {
             updateDiscounts: await this.updateDiscounts(discounts),
         };
          */
-        return this.api.method('https://discounts-prices-api.wb.ru/api/v2/upload/task', 'post', { data }, true);
+        return this.api.method('https://discounts-prices-api.wildberries.ru/api/v2/upload/task', 'post', { data }, true);
     }
 
     // Not using remove
