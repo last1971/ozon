@@ -44,12 +44,14 @@ export class ExtraGoodService {
 
     async updateService(serviceEnum: GoodServiceEnum): Promise<ResultDto> {
         const service = this.services.get(serviceEnum);
+        const processor = new GoodsCountProcessor(this.services, this.logger);
         return {
             isSuccess: service.isSwitchedOn,
             message: service.isSwitchedOn
-                ? `Was updated ${await this.goodService.updateCountForService(
-                      service.service,
-                      '',
+                ? `Was updated ${await processor.processGoodsCountForService(
+                    serviceEnum,
+                    this.goodService,
+                    ''
                   )} offers in ${serviceEnum}`
                 : `${serviceEnum} switched off`,
         };
@@ -58,9 +60,10 @@ export class ExtraGoodService {
     async serviceIsSwitchedOn(isSwitchedDto: IsSwitchedDto): Promise<ResultDto> {
         const service = this.services.get(isSwitchedDto.service);
         service.isSwitchedOn = isSwitchedDto.isSwitchedOn;
+        const processor = new GoodsCountProcessor(this.services, this.logger);
         let count: number;
         if (isSwitchedDto.isSwitchedOn) {
-            count = await this.goodService.updateCountForService(service.service, '');
+            count = await processor.processGoodsCountForService(isSwitchedDto.service, this.goodService, '');
         } else {
             count = await this.resetBalances(isSwitchedDto.service);
         }
@@ -100,15 +103,16 @@ export class ExtraGoodService {
 
     @Cron('0 0 9-19 * * 1-6', { name: 'controlCheckGoodCount' })
     async checkGoodCount(): Promise<void> {
-        for (const service of this.services) {
-            if (service[1].isSwitchedOn) {
-                this.logger.log(
-                    `Update quantity for ${await this.goodService.updateCountForService(
-                        service[1].service,
-                        '',
-                    )} goods in ${service[0]}`,
-                );
-            }
+        const processor = new GoodsCountProcessor(this.services, this.logger);
+        for (const service of this.services.keys()) {
+            this.logger.log(
+                `Update quantity for ${await processor.processGoodsCountForService(
+                    service,
+                    this.goodService,
+                    '',
+                )} goods in ${service}`,
+            );
+
         }
     }
 

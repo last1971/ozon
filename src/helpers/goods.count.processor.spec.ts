@@ -3,6 +3,7 @@ import { Logger } from "@nestjs/common";
 import { GoodServiceEnum } from "../good/good.service.enum";
 import { ICountUpdateable } from "src/interfaces/ICountUpdatebale";
 import { GoodDto } from "../good/dto/good.dto";
+import { IGood } from "../interfaces/IGood";
 
 describe("GoodsCountProcessor", () => {
     let goodsCountProcessor: GoodsCountProcessor;
@@ -189,17 +190,13 @@ describe("GoodsCountProcessor", () => {
     it("should correctly process goods and update caches", () => {
         const goods = [
             { code: "sku", quantity: 50, reserve: 10 },
-            { code: "hz", quantity: 30, reserve: 5 }
+            { code: "hz", quantity: 30, reserve: 5 },
         ] as GoodDto[];
 
+        // SKU, предварительно отфильтрованные для товаров
         const filteredSkuMap = new Map<string, string[]>([
             ["sku", ["sku-1", "sku-2"]],
-            ["hz", ["hz-2", "hz-3"]]
-        ]);
-
-        const quantityCache = new Map<string, number>([
-            ["sku-1", 10],
-            ["sku-2", 15]
+            ["hz", ["hz-2", "hz-3"]],
         ]);
 
         const spyDistributeGoodQuantities = jest.spyOn(
@@ -209,28 +206,29 @@ describe("GoodsCountProcessor", () => {
 
         const processGoods = (GoodsCountProcessor.prototype as any).processGoods;
 
-        const { skusToUpdate, updatedCache } = processGoods.call(
-            goodsCountProcessor,
-            goods,
-            filteredSkuMap,
-            quantityCache
-        );
+        // Вызываем метод processGoods без явного передачи кеша
+        const skusToUpdate = processGoods.call(goodsCountProcessor, goods, filteredSkuMap);
 
+        // Ожидание: метод distributeGoodQuantities был вызван
         expect(spyDistributeGoodQuantities).toHaveBeenCalled();
+
+        // Ожидание: обновляются следующие SKU
         expect(Array.from(skusToUpdate.entries())).toEqual([
-            ["sku-1", 10], // Изменённое значение
-            ["sku-2", 15], // Изменённое значение
-            ["hz-2", expect.any(Number)], // Новое значение после распределения
-            ["hz-3", expect.any(Number)]  // Новое значение после распределения
+            ["sku-1", 14], // Ожидание: раньше данное значение было в кэше
+            ["sku-2", 13], // Ожидание: раньше данное значение было в кэше
+            ["hz-2", expect.any(Number)], // Ожидание: новый результат распределения
+            ["hz-3", expect.any(Number)], // Ожидание: новый результат распределения
         ]);
 
-        expect(Array.from(updatedCache.entries())).toEqual([
-            ["sku-1", 10],
-            ["sku-2", 15],
-            ["hz-2", expect.any(Number)],
-            ["hz-3", expect.any(Number)]
+        // Делаем дополнительное ожидание, проверяя кэш (через товары):
+        expect(Array.from(goodsCountProcessor['quantityCache'].entries())).toEqual([
+            ["sku-1", 14], // Проверка, что значение не изменилось
+            ["sku-2", 13], // Проверка, что значение не изменилось
+            ["hz-2", expect.any(Number)], // Проверка, что для новых SKU всё распределилось
+            ["hz-3", expect.any(Number)], // Проверка, что для новых SKU всё распределилось
         ]);
     });
+
 
     it("should update service with skus if there are skus to update", async () => {
         const skusToUpdate = new Map<string, number>([
@@ -261,4 +259,94 @@ describe("GoodsCountProcessor", () => {
         expect(logger.log).not.toHaveBeenCalledWith();
     });
 
+    it("should process goods recursively when nextArgs is present", async () => {
+        // Отключение глобальной очистки специально для этого теста
+        // afterEach(() => jest.clearAllMocks()); // Локально восстанавливаем вызовы
+
+        // Подготавливаем моки на getGoodIds (возвращаются две страницы)
+        (mockServiceOne.getGoodIds as jest.Mock)
+            .mockResolvedValueOnce({
+                goods: new Map([["aaa", 10], ["bbb", 20]]),
+                nextArgs: { page: 2 },
+            })
+            .mockResolvedValueOnce({
+                goods: new Map([["ccc", 5]]),
+                nextArgs: null,
+            });
+
+        // Подготавливаем мок для goodService, чтобы возвращать данные о товарах
+        const goodServiceMock = {
+            in: jest.fn().mockResolvedValueOnce([
+                { code: "aaa", quantity: 15, reserve: 0 },
+                { code: "bbb", quantity: 15, reserve: 0 },
+            ])
+                .mockResolvedValueOnce([
+                    { code: "ccc", quantity: 5, reserve: 0 }, // Второй вызов
+                ])
+                .mockResolvedValue([]), // Последующие вызовы возвращают пустой результат
+        } as unknown as IGood;
+
+
+        // Выполнение метода
+        const result = await goodsCountProcessor.processGoodsCountForService(
+            GoodServiceEnum.OZON,
+            goodServiceMock,
+            {}
+        );
+
+        // Ожидания
+        expect(result).toBe(3); // 2 обновления из первой страницы, 1 из второй
+        expect(mockServiceOne.getGoodIds).toHaveBeenCalledTimes(2); // Вызваны обе страницы
+        expect(mockServiceOne.updateGoodCounts).toHaveBeenCalledTimes(2); // Обновление для двух батчей
+    });
+
+    it("should correctly update goods quantities for given items and service", async () => {
+        // Моки данных для getGoodIds (возвращаются текущие остатки)
+        (mockServiceOne.getGoodIds as jest.Mock).mockResolvedValueOnce({
+            goods: new Map([
+                ["sku-1", 10], // Начальный остаток: 10
+                ["sku-2", 5],  // Начальный остаток: 5
+                ["sku-3", 0],  // Начальный остаток: 0
+                ["hz", 0],     // Начальный остаток: 0
+            ]),
+            nextArgs: null, // Нет дополнительных страниц
+        });
+
+        // Входные товары для обработки
+        const goods = [
+            { code: "sku", quantity: 10 }, // Общее количество для `sku`: 10
+            { code: "hz", quantity: 15 },  // Общее количество для `hz`: 15
+        ] as GoodDto[];
+
+        // Мок для goodService (emulation API call для `in`)
+        const goodServiceMock = {
+            in: jest.fn().mockResolvedValue([
+                { code: "sku", quantity: 10, reserve: 0 },
+                { code: "hz", quantity: 15, reserve: 0 },
+            ]),
+        } as unknown as IGood;
+
+        // Выполнение метода
+        const result = await goodsCountProcessor.processGoodsCountForService(
+            GoodServiceEnum.OZON,
+            goodServiceMock,
+            {}
+        );
+
+        // Ожидания
+        expect(result).toBe(3); // Обновиться должны 2 SKU
+
+        // Проверить вызов updateGoodCounts
+        expect(mockServiceOne.updateGoodCounts).toHaveBeenCalledWith(
+            new Map([
+                ["sku-1", 2],
+                ["sku-2", 1],
+                ["sku-3", 2],
+            ])
+        );
+
+        // Проверить вызовы методов
+        expect(mockServiceOne.getGoodIds).toHaveBeenCalledTimes(1);   // SKU загружены один раз
+        expect(mockServiceOne.updateGoodCounts).toHaveBeenCalledTimes(1); // Произведено одно обновление
+    });
 });

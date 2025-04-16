@@ -175,6 +175,7 @@ export class Trade2006GoodService implements IGood {
         );
     }
 
+    // Not used. Should be removed.
     async updateCountForService(service: ICountUpdateable, args: any): Promise<number> {
         const serviceGoods = await service.getGoodIds(args);
         if (serviceGoods.goods.size === 0) return 0;
