@@ -312,12 +312,6 @@ describe("GoodsCountProcessor", () => {
             nextArgs: null, // Нет дополнительных страниц
         });
 
-        // Входные товары для обработки
-        const goods = [
-            { code: "sku", quantity: 10 }, // Общее количество для `sku`: 10
-            { code: "hz", quantity: 15 },  // Общее количество для `hz`: 15
-        ] as GoodDto[];
-
         // Мок для goodService (emulation API call для `in`)
         const goodServiceMock = {
             in: jest.fn().mockResolvedValue([

@@ -16,15 +16,20 @@ describe('ExtraGoodService', () => {
     const loadSkuList = jest.fn();
     const updateGoodCounts = jest.fn();
     const mockIn = jest.fn();
+    const getGoodIds = jest.fn().mockResolvedValue(
+        { goods: new Map<string, number>(), nextArgs: '' },
+    );
     beforeEach(async () => {
+        jest.clearAllMocks();
+
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 ExtraGoodService,
                 { provide: GOOD_SERVICE, useValue: { updateCountForService, updateCountForSkus, in: mockIn } },
-                { provide: YandexOfferService, useValue: { test: 'Yandex', skuList: [] } },
-                { provide: ExpressOfferService, useValue: { skuList: [] } },
-                { provide: ProductService, useValue: { skuList: ['222'], updateGoodCounts } },
-                { provide: WbCardService, useValue: { loadSkuList, skuList: ['111'], updateGoodCounts } },
+                { provide: YandexOfferService, useValue: { test: 'Yandex', skuList: [], getGoodIds } },
+                { provide: ExpressOfferService, useValue: { skuList: [], getGoodIds } },
+                { provide: ProductService, useValue: { skuList: ['222'], updateGoodCounts, getGoodIds } },
+                { provide: WbCardService, useValue: { loadSkuList, skuList: ['111'], updateGoodCounts, getGoodIds } },
                 { provide: ConfigService, useValue: { get: () => Object.values(GoodServiceEnum) } },
             ],
         }).compile();
@@ -41,12 +46,12 @@ describe('ExtraGoodService', () => {
 
     it('updateService', async () => {
         await service.updateService(GoodServiceEnum.YANDEX);
-        expect(updateCountForService.mock.calls[0]).toEqual([{ skuList: [], test: 'Yandex' }, '']);
+        expect(getGoodIds.mock.calls[0]).toEqual(['']);
     });
 
     it('test checkGoodCount', async () => {
         await service.checkGoodCount();
-        expect(updateCountForService.mock.calls).toHaveLength(4);
+        expect(getGoodIds.mock.calls).toHaveLength(4);
     });
 
     it('reserveCreated', async () => {
