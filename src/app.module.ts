@@ -33,6 +33,7 @@ import { WbSupplyModule } from './wb.supply/wb.supply.module';
 import { SupplyModule } from './supply/supply.module';
 import { LabelModule } from './label/label.module';
 import { PromosModule } from './promos/promos.module';
+import { Trade2006IncomingModule } from "./trade2006.incoming/trade2006.incoming.module";
 @Module({
     imports: [
         CacheModule.register({
@@ -86,6 +87,7 @@ import { PromosModule } from './promos/promos.module';
         SupplyModule,
         LabelModule,
         PromosModule,
+        Trade2006IncomingModule,
     ],
     controllers: [AppController],
     providers: [AppService, CronSetupProviderService],
