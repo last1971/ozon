@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Logger, Module } from "@nestjs/common";
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -34,6 +34,8 @@ import { SupplyModule } from './supply/supply.module';
 import { LabelModule } from './label/label.module';
 import { PromosModule } from './promos/promos.module';
 import { Trade2006IncomingModule } from "./trade2006.incoming/trade2006.incoming.module";
+import { HttpModule } from '@nestjs/axios';
+
 @Module({
     imports: [
         CacheModule.register({
@@ -41,6 +43,32 @@ import { Trade2006IncomingModule } from "./trade2006.incoming/trade2006.incoming
         }),
         EventEmitterModule.forRoot(),
         ConfigModule.forRoot({ isGlobal: true, validate: configValidate }),
+        HttpModule.registerAsync({
+            imports: [ConfigModule], // Импортируем ConfigModule, чтобы использовать ConfigService
+            useFactory: async (configService: ConfigService) => {
+                // Получаем таймаут из конфигурации или используем значения по умолчанию
+                // Можно использовать разные переменные окружения для production и development/debug
+                const isDebugging = process.env.NODE_ENV !== 'production';
+
+                // Таймаут по умолчанию для отладки (например, 5 минут)
+                const debugTimeout = configService.get<number>('HTTP_DEBUG_TIMEOUT', 300000);
+                // Таймаут по умолчанию для production (например, 60 секунд)
+                const productionTimeout = configService.get<number>('HTTP_TIMEOUT', 60000);
+
+                const defaultTimeout = isDebugging ? debugTimeout : productionTimeout;
+
+                const logger = new Logger('HttpModule');
+                logger.log(`HttpModule registered with default timeout: ${defaultTimeout}ms`); // Лог для проверки
+
+                return {
+                    timeout: defaultTimeout,
+                    // Здесь можно задать и другие глобальные параметры Axios, например:
+                    // baseURL: configService.get<string>('OZON_API_URL'),
+                    // headers: { 'X-Custom-Header': 'value' },
+                };
+            },
+            inject: [ConfigService], // Внедряем ConfigService в фабрику
+        }),
         ServeStaticModule.forRoot({
             // serveRoot: 'admin',
             rootPath: join(__dirname, '..', 'admin-panel/dist'),

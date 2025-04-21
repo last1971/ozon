@@ -6,6 +6,7 @@ import { GOOD_SERVICE } from '../interfaces/IGood';
 import { WbPriceService } from '../wb.price/wb.price.service';
 import { ConfigService } from '@nestjs/config';
 import { GoodServiceEnum } from '../good/good.service.enum';
+import { ExtraPriceService } from "./extra.price.service";
 
 describe('PriceController', () => {
     let controller: PriceController;
@@ -15,6 +16,7 @@ describe('PriceController', () => {
             controllers: [PriceController],
             providers: [
                 { provide: PriceService, useValue: {} },
+                { provide: ExtraPriceService, useValue: {} },
                 { provide: YandexPriceService, useValue: {} },
                 { provide: WbPriceService, useValue: {} },
                 { provide: GOOD_SERVICE, useValue: {} },

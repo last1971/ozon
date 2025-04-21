@@ -19,8 +19,8 @@ export class Trade2006IncomingService extends WithTransactions(class {}) impleme
     // Инициализация при запуске модуля
     async onModuleInit() {
         // Получение максимального SHOPINCODE при старте
-        // await this.fetchLastShopInCode();
-        this.lastShopInCode = 415083;
+        await this.fetchLastShopInCode();
+        // this.lastShopInCode = 415096;
         this.logger.log(`Начальный SHOPINCODE: ${this.lastShopInCode}`);
     }
 
@@ -71,4 +71,6 @@ export class Trade2006IncomingService extends WithTransactions(class {}) impleme
     async manualCheck(): Promise<void> {
         return this.checkNewGoods();
     }
+
+
 }

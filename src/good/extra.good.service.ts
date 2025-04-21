@@ -42,6 +42,15 @@ export class ExtraGoodService {
             this.services.set(GoodServiceEnum.YANDEX, { service: this.yandexOffer, isSwitchedOn: true });
     }
 
+    /**
+     * Публичный метод для получения сервиса обновления количества товаров.
+     * Возвращает сервис ICountUpdateable, если он найден и включен, иначе null.
+     * @param serviceEnum - Тип сервиса (маркетплейса)
+     */
+    public getCountUpdateableService(serviceEnum: GoodServiceEnum): ICountUpdateable | null {
+        return this.services.get(serviceEnum)?.service || null;
+    }
+
     async updateService(serviceEnum: GoodServiceEnum): Promise<ResultDto> {
         const service = this.services.get(serviceEnum);
         const processor = new GoodsCountProcessor(this.services, this.logger);
@@ -144,5 +153,14 @@ export class ExtraGoodService {
 
     async getProductInfo(offer_id: string[], service: GoodServiceEnum): Promise<ProductInfoDto[]> {
         return this.services.get(service).service.infoList(offer_id);
+    }
+
+    tradeSkusToServiceSkus(tradeSkus: string[], serviceEnum: GoodServiceEnum): string[] {
+        const service = this.getCountUpdateableService(serviceEnum);
+        if (!service || !service.skuList) return [];
+        return service.skuList
+            .filter(
+                (serviceSku) => tradeSkus.some((tradeSku) => serviceSku.startsWith(tradeSku))
+            );
     }
 }

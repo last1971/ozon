@@ -1,7 +1,7 @@
 import { Logger } from '@nestjs/common';
-import { FirebirdPool, FirebirdTransaction } from 'ts-firebird';
+import { FirebirdTransaction } from 'ts-firebird';
 
-type Constructor = new (...args: any[]) => any;
+// type Constructor = new (...args: any[]) => any;
 
 export function WithTransactions<T extends new (...args: any[]) => {}>(Base: T) {
     return class extends Base {

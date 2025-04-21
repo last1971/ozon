@@ -140,6 +140,14 @@ class EnvironmentVariables {
     @IsOptional()
     @IsNumber()
     TAX_UNIT: number;
+
+    @IsOptional()
+    @IsNumber()
+    HTTP_DEBUG_TIMEOUT: number;
+
+    @IsOptional()
+    @IsNumber()
+    HTTP_TIMEOUT: number;
 }
 
 export function configValidate(config: Record<string, unknown>) {

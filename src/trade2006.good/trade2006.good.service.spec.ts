@@ -6,7 +6,6 @@ import { ConfigService } from "@nestjs/config";
 import { IPriceUpdateable } from "../interfaces/i.price.updateable";
 import { EventEmitter2 } from "@nestjs/event-emitter";
 import { Cache } from "@nestjs/cache-manager";
-import { FirebirdTransaction } from "ts-firebird";
 
 describe('Trade2006GoodService', () => {
     let service: Trade2006GoodService;

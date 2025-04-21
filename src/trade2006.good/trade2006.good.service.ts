@@ -219,6 +219,14 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         return service.updateGoodCounts(updateGoods);
     }
 
+    /**
+     * Updates the price for the given service using the provided SKUs, price data, and coefficient calculations.
+     *
+     * @param {IPriceUpdateable} service - The service interface that supports price update operations.
+     * @param {string[]} skus - The list of marketplace SKU identifiers for which the prices need to be updated.
+     * @param {Map<string, UpdatePriceDto>} [prices] - An optional map of SKU to price update data (incoming prices).
+     * @return {Promise<any>} Returns a promise that resolves with the result of the update operation, or null if no updates were needed.
+     */
     async updatePriceForService(service: IPriceUpdateable, skus: string[], prices?: Map<string, UpdatePriceDto>): Promise<any> {
         const codes = skus.map((item) => goodCode({ offer_id: item }));
         const goods = await this.prices(codes);
