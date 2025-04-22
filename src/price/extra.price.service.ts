@@ -1,4 +1,4 @@
-import { forwardRef, Inject, Injectable, Logger, Query } from "@nestjs/common";
+import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
 import { GoodServiceEnum } from "../good/good.service.enum";
 import { IPriceUpdateable } from "../interfaces/i.price.updateable";
 import { PriceService } from "./price.service";
@@ -9,8 +9,11 @@ import { ConfigService } from "@nestjs/config";
 import { UpdatePriceDto } from "./dto/update.price.dto";
 import { Cron } from "@nestjs/schedule";
 import { WbCommissionDto } from "../wb.card/dto/wb.commission.dto";
-import { OnEvent } from "@nestjs/event-emitter";
+import { EventEmitter2, OnEvent } from "@nestjs/event-emitter";
 import { ExtraGoodService } from "../good/extra.good.service";
+import { toNumber } from "lodash";
+import { PriceDto } from "./dto/price.dto";
+import { ProductVisibility } from "../product/product.visibility";
 
 @Injectable()
 export class ExtraPriceService {
@@ -24,6 +27,7 @@ export class ExtraPriceService {
         @Inject(GOOD_SERVICE) private goodService: IGood,
         private configService: ConfigService,
         private extraGoodService: ExtraGoodService,
+        private eventEmitter: EventEmitter2,
     ) {
         this.services = new Map<GoodServiceEnum, IPriceUpdateable>();
         const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
@@ -96,9 +100,7 @@ export class ExtraPriceService {
     /**
      * Обработчик события получения входящих товаров.
      * Обновляет цены для всех маркетплейсов на основе новых поступлений товаров.
-     *
-     * @param {Object} data - Данные о поступивших товарах
-     * @param {string[]} data.skus - Массив SKU поступивших товаров
+     * @param skus
      */
     @OnEvent('incoming.goods', { async: true })
     async handleIncomingGoods(skus: string[]): Promise<void> {
@@ -115,10 +117,90 @@ export class ExtraPriceService {
             await this.goodService.resetAvailablePrice(skus);
             // Обновляем цены для всех маркетплейсов на основе поступивших товаров
             await this.updatePriceForGoodSkus(skus);
+            // Затем проверяем разницу цен и отправляем уведомление, если необходимо
+            await this.checkPriceDifferenceAndNotify(skus);
+            // Отправляем уведомление о завершении обработки
             this.logger.log(`Successfully updated prices for ${skus.length} SKUs after incoming goods event`);
         } catch (error) {
             this.logger.error(`Error updating prices after incoming goods: ${error.message}`, error.stack);
         }
     }
 
+    async checkPriceDifferenceAndNotify(tradeSkus: string[]): Promise<void> {
+        // 1. Получаем порог разницы из конфигурации (в процентах)
+        const thresholdPercent = this.configService.get<number>('PRICE_DIFF_THRESHOLD_PERCENT', 5);
+        if (!tradeSkus || tradeSkus.length === 0) {
+            this.logger.warn('No trade SKUs provided for price difference check.');
+            return;
+        }
+        try {
+            // 2. Преобразуем Trade SKU в Ozon SKU
+            const ozonSkus = this.extraGoodService.tradeSkusToServiceSkus(tradeSkus, GoodServiceEnum.OZON);
+            if (ozonSkus.length === 0) {
+                this.logger.warn('No Ozon SKUs found for the provided trade SKUs.');
+                return;
+            }
+            // 3. Получаем цены для Ozon SKUs
+            const priceResponse = await this.service.index({
+                offer_id: ozonSkus,
+                limit: ozonSkus.length * 2, // Запас на случай дублей или неточностей
+                visibility: ProductVisibility.ALL, // Получаем все товары, независимо от видимости
+            });
+            const productsToCheck = priceResponse.data;
+            // 4. Фильтруем товары по разнице цен
+            const problematicProducts: Array<PriceDto & { diffPercent: number }> = this.filterProblematicProducts(
+                productsToCheck,
+                thresholdPercent
+            );
+            if (problematicProducts.length > 0) {
+                this.eventEmitter.emit(
+                    'problematic.prices', // Название события
+                    { products: problematicProducts, thresholdPercent },
+                );
+            } else {
+                this.logger.log('No products found exceeding the price difference threshold. No report sent.');
+            }
+        } catch (error) {
+            this.logger.error(`Error during price difference check: ${error.message}`, error.stack);
+        }
+    }
+
+    /**
+     * Filters out products with a price difference exceeding the specified threshold percentage.
+     * Сейчас убрал фильтрацию но скорее всего потребуется в будущем
+     * @param products
+     * @param thresholdPercent
+     * @private
+     */
+    private filterProblematicProducts(
+        products: PriceDto[],
+        thresholdPercent: number
+    ): Array<PriceDto & { diffPercent: number }> {
+        return products.map((product): PriceDto & { diffPercent: number } => {
+            const marketingPrice = toNumber(product.marketing_seller_price);
+            const minPrice = toNumber(product.min_price);
+            const diff = Math.abs(marketingPrice - minPrice);
+            const diffPercent = Math.round((diff / minPrice) * 100);
+            return { ...product, diffPercent };
+        });
+        /*
+        const problematicProducts: Array<PriceDto & { diffPercent: number }> = [];
+        products.forEach(item => {
+            const marketingPrice = toNumber(item.marketing_seller_price);
+            const minPrice = toNumber(item.min_price);
+
+            if (minPrice > 0 && marketingPrice > 0) {
+                const diff = Math.abs(marketingPrice - minPrice);
+                const diffPercent = (diff / minPrice) * 100;
+
+                if (diffPercent > thresholdPercent) {
+                    problematicProducts.push({ ...item, diffPercent });
+                }
+            } else if (minPrice <= 0 && marketingPrice > 0) {
+                this.logger.warn(`Product ${item.offer_id} (${item.name}) has invalid min_price (${item.min_price}) but valid marketing_price (${item.marketing_seller_price}). Skipping percentage check.`);
+            }
+        });
+        return problematicProducts;
+        */
+    }
 }
