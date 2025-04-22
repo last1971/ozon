@@ -5,11 +5,12 @@ import { ProductModule } from '../product/product.module';
 import { GoodModule } from '../good/good.module';
 import { YandexPriceModule } from '../yandex.price/yandex.price.module';
 import { WbPriceModule } from '../wb.price/wb.price.module';
+import { ExtraPriceService } from "./extra.price.service";
 
 @Module({
     imports: [ProductModule, GoodModule, YandexPriceModule, WbPriceModule],
-    providers: [PriceService],
+    providers: [PriceService, ExtraPriceService],
     controllers: [PriceController],
-    exports: [PriceService],
+    exports: [PriceService, ExtraPriceService],
 })
 export class PriceModule {}

@@ -8,6 +8,7 @@ import { ICountUpdateable } from '../interfaces/ICountUpdatebale';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
 import { GoodWbDto } from '../good/dto/good.wb.dto';
 import { WbCommissionDto } from '../wb.card/dto/wb.commission.dto';
+import { FirebirdTransaction } from "ts-firebird";
 @Injectable()
 export class ElectronicaGoodService implements IGood {
     constructor(private api: ElectronicaApiService) {}
@@ -65,6 +66,9 @@ export class ElectronicaGoodService implements IGood {
     }
 
     getWbCategoryByName(name: string): Promise<WbCommissionDto> {
+        return Promise.resolve(undefined);
+    }
+    async resetAvailablePrice(goodCodes?: string[], t?: FirebirdTransaction): Promise<void> {
         return Promise.resolve(undefined);
     }
 }

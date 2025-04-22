@@ -22,5 +22,6 @@ export interface IGood {
     updatePriceForService(service: IPriceUpdateable, skus: string[], prices?: Map<string, UpdatePriceDto>): Promise<any>;
     updateWbCategory(wbCard: WbCardDto): Promise<void>;
     getWbCategoryByName(name: string): Promise<WbCommissionDto>;
+    resetAvailablePrice(goodCodes?: string[], t?: FirebirdTransaction): Promise<void>
 }
 export const GOOD_SERVICE = 'GOOD_SERVICE';

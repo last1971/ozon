@@ -26,9 +26,10 @@ import { DateTime } from 'luxon';
 import { WbCardDto } from '../wb.card/dto/wb.card.dto';
 import { Cache } from '@nestjs/cache-manager';
 import { WbCommissionDto } from '../wb.card/dto/wb.commission.dto';
+import { WithTransactions } from "../helpers/transaction.mixin";
 
 @Injectable()
-export class Trade2006GoodService implements IGood {
+export class Trade2006GoodService extends WithTransactions(class {}) implements IGood {
     private halfStoreMessages: string[] = [];
     private boundCheckMessages: string[] = [];
     constructor(
@@ -36,7 +37,9 @@ export class Trade2006GoodService implements IGood {
         private configService: ConfigService,
         private eventEmitter: EventEmitter2,
         private cacheManager: Cache,
-    ) {}
+    ) {
+        super();
+    }
 
     async in(codes: string[], t: FirebirdTransaction = null): Promise<GoodDto[]> {
         if (codes.length === 0) return [];
@@ -216,6 +219,14 @@ export class Trade2006GoodService implements IGood {
         return service.updateGoodCounts(updateGoods);
     }
 
+    /**
+     * Updates the price for the given service using the provided SKUs, price data, and coefficient calculations.
+     *
+     * @param {IPriceUpdateable} service - The service interface that supports price update operations.
+     * @param {string[]} skus - The list of marketplace SKU identifiers for which the prices need to be updated.
+     * @param {Map<string, UpdatePriceDto>} [prices] - An optional map of SKU to price update data (incoming prices).
+     * @return {Promise<any>} Returns a promise that resolves with the result of the update operation, or null if no updates were needed.
+     */
     async updatePriceForService(service: IPriceUpdateable, skus: string[], prices?: Map<string, UpdatePriceDto>): Promise<any> {
         const codes = skus.map((item) => goodCode({ offer_id: item }));
         const goods = await this.prices(codes);
@@ -346,5 +357,30 @@ export class Trade2006GoodService implements IGood {
                   commission: res[0].COMMISSION,
               }
             : null;
+    }
+
+    /**
+     * Обнуляет значение AVAILABLE_PRICE для всех товаров или указанного списка
+     */
+    async resetAvailablePrice(goodCodes?: string[], t?: FirebirdTransaction): Promise<void> {
+        return this.withTransaction(async (transaction) => {
+            // Если goodCodes не указан или пустой, обнуляем для всех товаров
+            if (!goodCodes || goodCodes.length === 0) {
+                await transaction.execute('UPDATE OZON_PERC SET AVAILABLE_PRICE = 0', []);
+                return;
+            }
+
+            // Размер пакета (максимальное количество кодов в одном запросе)
+            const batchSize = 50;
+
+            // Разбиваем список на пакеты
+            for (let i = 0; i < goodCodes.length; i += batchSize) {
+                const batch = goodCodes.slice(i, i + batchSize);
+                const placeholders = batch.map(() => '?').join(',');
+                const query = `UPDATE OZON_PERC SET AVAILABLE_PRICE = 0 WHERE GOODSCODE IN (${placeholders})`;
+
+                await transaction.execute(query, batch);
+            }
+        }, t);
     }
 }

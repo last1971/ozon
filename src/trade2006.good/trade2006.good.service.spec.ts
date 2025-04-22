@@ -1,11 +1,11 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { Trade2006GoodService } from './trade2006.good.service';
-import { FIREBIRD } from '../firebird/firebird.module';
-import { ICountUpdateable } from '../interfaces/ICountUpdatebale';
-import { ConfigService } from '@nestjs/config';
-import { IPriceUpdateable } from '../interfaces/i.price.updateable';
-import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Cache } from '@nestjs/cache-manager';
+import { Test, TestingModule } from "@nestjs/testing";
+import { Trade2006GoodService } from "./trade2006.good.service";
+import { FIREBIRD } from "../firebird/firebird.module";
+import { ICountUpdateable } from "../interfaces/ICountUpdatebale";
+import { ConfigService } from "@nestjs/config";
+import { IPriceUpdateable } from "../interfaces/i.price.updateable";
+import { EventEmitter2 } from "@nestjs/event-emitter";
+import { Cache } from "@nestjs/cache-manager";
 
 describe('Trade2006GoodService', () => {
     let service: Trade2006GoodService;
@@ -253,4 +253,148 @@ describe('Trade2006GoodService', () => {
         await service.getWbCategoryByName('test');
         expect(query.mock.calls[0]).toEqual(['SELECT * FROM WB_CATEGORIES WHERE NAME = ?', ['test'], true]);
     });
+
+    it('должен обнулять AVAILABLE_PRICE для всех товаров', async () => {
+        const execute = jest.fn();
+
+        // @ts-ignore - Игнорируем проверку типов для теста
+        const existingTransaction = { execute };
+
+        // @ts-ignore - Игнорируем проверку типов для теста
+        await service.resetAvailablePrice(null, existingTransaction);
+
+        expect(execute).toHaveBeenCalledWith(
+            'UPDATE OZON_PERC SET AVAILABLE_PRICE = 0',
+            []
+        );
+    });
+
+    it('должен обнулять AVAILABLE_PRICE для указанных товаров', async () => {
+        const execute = jest.fn();
+        const goodCodes = ['100', '101', '102'];
+
+        const existingTransaction = { execute };
+
+        // @ts-expect-error Игнорируем несоответствие типов для теста
+        await service.resetAvailablePrice(goodCodes, existingTransaction);
+
+        expect(execute).toHaveBeenCalledWith(
+            'UPDATE OZON_PERC SET AVAILABLE_PRICE = 0 WHERE GOODSCODE IN (?,?,?)',
+            goodCodes
+        );
+    });
+
+    it('должен разбивать большой список товаров на пакеты', async () => {
+        const execute = jest.fn();
+        // Создаем массив из 100 кодов товаров
+        const goodCodes = Array.from({ length: 100 }, (_, i) => `${i}`);
+
+        const existingTransaction = {
+            execute,
+            commit: jest.fn(),
+            db: {},
+            isolation: 0,
+            transaction: {},
+            init: jest.fn(),
+            rollback: jest.fn(),
+            query: jest.fn(),
+            inTransaction: true
+        };
+
+        await service.resetAvailablePrice(goodCodes, existingTransaction as any);
+
+        // Должно быть 2 вызова (по 50 товаров в каждом)
+        expect(execute).toHaveBeenCalledTimes(2);
+
+        // Проверяем первый вызов с первыми 50 товарами
+        const firstBatch = goodCodes.slice(0, 50);
+        const placeholders1 = firstBatch.map(() => '?').join(',');
+        expect(execute).toHaveBeenNthCalledWith(
+            1,
+            `UPDATE OZON_PERC SET AVAILABLE_PRICE = 0 WHERE GOODSCODE IN (${placeholders1})`,
+            firstBatch
+        );
+
+        // Проверяем второй вызов со следующими 50 товарами
+        const secondBatch = goodCodes.slice(50, 100);
+        const placeholders2 = secondBatch.map(() => '?').join(',');
+        expect(execute).toHaveBeenNthCalledWith(
+            2,
+            `UPDATE OZON_PERC SET AVAILABLE_PRICE = 0 WHERE GOODSCODE IN (${placeholders2})`,
+            secondBatch
+        );
+    });
+
+    it('должен использовать существующую транзакцию, если она предоставлена', async () => {
+        const execute = jest.fn();
+        const commit = jest.fn();
+        const getTransaction = jest.fn();
+
+        const existingTransaction = {
+            execute,
+            commit,
+            query: jest.fn(),
+            db: {},
+            isolation: 0,
+            transaction: {},
+            init: jest.fn(),
+            rollback: jest.fn(),
+            inTransaction: true
+        };
+
+        const operation = jest.fn().mockImplementation(async (transaction) => {
+            await transaction.execute('TEST QUERY', []);
+            return 'TEST RESULT';
+        });
+
+        // Мокаем pool.getTransaction, но он не должен вызываться
+        jest.spyOn(service['pool'], 'getTransaction').mockImplementation(getTransaction);
+
+        const result = await service['withTransaction'](operation, existingTransaction as any);
+
+        expect(getTransaction).not.toHaveBeenCalled();
+        expect(operation).toHaveBeenCalled();
+        expect(execute).toHaveBeenCalledWith('TEST QUERY', []);
+        expect(commit).not.toHaveBeenCalled(); // Не должен коммитить существующую транзакцию
+        expect(result).toBe('TEST RESULT');
+    });
+
+    it('должен обрабатывать ошибки и откатывать транзакцию', async () => {
+        const execute = jest.fn();
+        const commit = jest.fn();
+        const rollback = jest.fn();
+        const query = jest.fn();
+        const getTransaction = jest.fn().mockResolvedValue({
+            execute,
+            commit,
+            rollback,
+            query,
+            db: {},
+            isolation: 0,
+            transaction: {},
+            init: jest.fn(),
+            inTransaction: true
+        });
+
+        // Мокаем logger.error
+        const loggerError = jest.fn();
+        service['logger'] = { error: loggerError } as any;
+
+        // Мокаем pool.getTransaction
+        jest.spyOn(service['pool'], 'getTransaction').mockImplementation(getTransaction);
+
+        const testError = new Error('Test error');
+        const operation = jest.fn().mockImplementation(() => {
+            throw testError;
+        });
+
+        await expect(service['withTransaction'](operation)).rejects.toThrow(testError);
+
+        expect(getTransaction).toHaveBeenCalled();
+        expect(operation).toHaveBeenCalled();
+        expect(rollback).toHaveBeenCalledWith(true);
+        expect(commit).not.toHaveBeenCalled();
+        expect(loggerError).toHaveBeenCalledWith(testError.message);
+    });
+
 });

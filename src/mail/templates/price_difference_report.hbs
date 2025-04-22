@@ -1,0 +1,26 @@
+<h2>Отчет о расхождении цен Ozon</h2>
+<p>Найдено товаров: <strong>{{products.length}}</strong></p>
+<p>Порог расхождения: <strong>{{thresholdPercent}}%</strong></p>
+
+<table border="1" cellpadding="5" cellspacing="0">
+  <thead>
+  <tr>
+    <th>Ozon SKU</th>
+    <th>Название</th>
+    <th>Маркетинг. цена</th>
+    <th>Минимальная цена</th>
+    <th>Разница (%)</th>
+  </tr>
+  </thead>
+  <tbody>
+  {{#each products}}
+    <tr>
+      <td>{{this.offer_id}}</td>
+      <td>{{this.name}}</td>
+      <td>{{this.marketing_seller_price}}</td>
+      <td>{{this.min_price}}</td>
+      <td>{{this.diffPercent}}</td>
+    </tr>
+  {{/each}}
+  </tbody>
+</table>

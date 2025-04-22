@@ -82,4 +82,14 @@ export class MailService {
             context: { good, bound },
         });
     }
+
+    @OnEvent('problematic.prices', { async: true })
+    async problematicPrices(context: any): Promise<boolean> {
+        return this.send({
+            to: this.configService.get<string>('MAIL_LAST'),
+            subject: 'Поправить цены',
+            template: 'price_difference_report', // `.hbs` extension is appended automatically
+            context,
+        });
+    }
 }
