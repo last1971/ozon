@@ -15,7 +15,6 @@ import {
 } from '../helpers';
 import { ICountUpdateable } from '../interfaces/ICountUpdatebale';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
-import { IProductCoeffsable } from '../interfaces/i.product.coeffsable';
 import { UpdatePriceDto } from '../price/dto/update.price.dto';
 import { ConfigService } from '@nestjs/config';
 import { GoodWbDto } from '../good/dto/good.wb.dto';
@@ -222,7 +221,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
     }
 
     async updatePercentsForService(service: IPriceUpdateable, skus: string[], prices?: Map<string, UpdatePriceDto>): Promise<void> {
-        const { codes, goods, percents, products } = await this.priceCalculationHelper.preparePricesContext(service, skus, this);
+        const { goods, percents, products } = await this.priceCalculationHelper.preparePricesContext(service, skus, this);
         const skuPairs = skus.map(sku => ({
             offer_id: goodCode({ offer_id: sku }),
             pieces: goodQuantityCoeff({ offer_id: sku })
@@ -277,7 +276,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
      * @return {Promise<any>} Returns a promise that resolves with the result of the update operation, or null if no updates were needed.
      */
     async updatePriceForService(service: IPriceUpdateable, skus: string[], prices?: Map<string, UpdatePriceDto>): Promise<any> {
-        const { codes, goods, percents, products } = await this.priceCalculationHelper.preparePricesContext(service, skus, this);
+        const { goods, percents, products } = await this.priceCalculationHelper.preparePricesContext(service, skus, this);
         const updatePrices: UpdatePriceDto[] = [];
         products.forEach((product) => {
             const incoming_price = this.priceCalculationHelper.getIncomingPrice(product, goods, prices);

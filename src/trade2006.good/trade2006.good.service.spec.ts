@@ -6,9 +6,6 @@ import { ConfigService } from "@nestjs/config";
 import { IPriceUpdateable } from "../interfaces/i.price.updateable";
 import { EventEmitter2 } from "@nestjs/event-emitter";
 import { Cache } from "@nestjs/cache-manager";
-import { GoodPriceDto } from "../good/dto/good.price.dto";
-import { IProductCoeffsable } from "../interfaces/i.product.coeffsable";
-import { goodQuantityCoeff } from "../helpers";
 import { PriceCalculationHelper } from "../helpers/price/price.calculation.helper";
 import { UpdatePriceDto } from "../price/dto/update.price.dto";
 
