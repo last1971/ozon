@@ -20,6 +20,11 @@ describe('Test helpers', () => {
         expect(goodQuantityCoeff({ offer_id: 'abc-123' })).toEqual(123);
         expect(goodQuantityCoeff({ offer_id: 'abc-1' })).toEqual(1);
     });
+    it('goodQuantityCoeff should handle large and invalid numbers', () => {
+        expect(goodQuantityCoeff({ offer_id: '123-10000' })).toEqual(10000);
+        expect(goodQuantityCoeff({ offer_id: '123-abc' })).toEqual(1);
+        expect(goodQuantityCoeff({ offer_id: '123-0' })).toEqual(0);
+    });
     it('Test productQuantity', () => {
         expect(productQuantity(11, 1)).toEqual(11);
         expect(productQuantity(11, 2)).toEqual(5);

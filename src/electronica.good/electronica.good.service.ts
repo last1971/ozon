@@ -9,9 +9,16 @@ import { IPriceUpdateable } from '../interfaces/i.price.updateable';
 import { GoodWbDto } from '../good/dto/good.wb.dto';
 import { WbCommissionDto } from '../wb.card/dto/wb.commission.dto';
 import { FirebirdTransaction } from "ts-firebird";
+import { UpdatePriceDto } from 'src/price/dto/update.price.dto';
+
 @Injectable()
 export class ElectronicaGoodService implements IGood {
-    constructor(private api: ElectronicaApiService) {}
+    constructor(private api: ElectronicaApiService) {
+    }
+
+    updatePercentsForService(service: IPriceUpdateable, skus: string[], prices?: Map<string, UpdatePriceDto>): Promise<void> {
+        throw new Error('Method not implemented.');
+    }
 
     updateWbCategory(): Promise<void> {
         throw new Error('Method not implemented.');

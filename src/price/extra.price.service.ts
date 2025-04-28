@@ -14,6 +14,7 @@ import { ExtraGoodService } from "../good/extra.good.service";
 import { toNumber } from "lodash";
 import { PriceDto } from "./dto/price.dto";
 import { ProductVisibility } from "../product/product.visibility";
+import { GoodPercentDto } from "../good/dto/good.percent.dto";
 
 @Injectable()
 export class ExtraPriceService {
@@ -202,5 +203,17 @@ export class ExtraPriceService {
         });
         return problematicProducts;
         */
+    }
+    public async updatePercentsForOzon(sku: string, incomingPrice?: number): Promise<GoodPercentDto> {
+        const prices = incomingPrice
+            ? new Map([[sku, { incoming_price: incomingPrice } as unknown as UpdatePriceDto ]])
+            : undefined;
+        await this.goodService.updatePercentsForService(
+            this.getService(GoodServiceEnum.OZON),
+            [sku],  // передаем как массив
+            prices
+        );
+        const [percent] = await this.goodService.getPerc([sku], null);  // передаем как массив
+        return percent;
     }
 }

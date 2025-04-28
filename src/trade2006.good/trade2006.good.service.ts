@@ -27,6 +27,7 @@ import { WbCardDto } from '../wb.card/dto/wb.card.dto';
 import { Cache } from '@nestjs/cache-manager';
 import { WbCommissionDto } from '../wb.card/dto/wb.commission.dto';
 import { WithTransactions } from "../helpers/transaction.mixin";
+import { PriceCalculationHelper } from "../helpers/price/price.calculation.helper";
 
 @Injectable()
 export class Trade2006GoodService extends WithTransactions(class {}) implements IGood {
@@ -37,6 +38,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         private configService: ConfigService,
         private eventEmitter: EventEmitter2,
         private cacheManager: Cache,
+        private priceCalculationHelper: PriceCalculationHelper,
     ) {
         super();
     }
@@ -219,6 +221,53 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         return service.updateGoodCounts(updateGoods);
     }
 
+    async updatePercentsForService(service: IPriceUpdateable, skus: string[], prices?: Map<string, UpdatePriceDto>): Promise<void> {
+        const { codes, goods, percents, products } = await this.priceCalculationHelper.preparePricesContext(service, skus, this);
+        const skuPairs = skus.map(sku => ({
+            offer_id: goodCode({ offer_id: sku }),
+            pieces: goodQuantityCoeff({ offer_id: sku })
+        }));
+
+        const filteredPercents = percents.filter(percent =>
+            skuPairs.some(pair =>
+                pair.offer_id === percent.offer_id.toString() &&
+                pair.pieces === percent.pieces
+            )
+        );
+        filteredPercents.forEach((percent: GoodPercentDto) => {
+            const product = products.find((p) => {
+                const sku = p.getSku();
+                return sku === percent.offer_id.toString();
+            });
+            const {adv_perc, packing_price, available_price} = percent;
+            const incoming_price = this.priceCalculationHelper.getIncomingPrice(product, goods, prices);
+
+            const initialPrice = {
+                adv_perc,
+                fbs_direct_flow_trans_max_amount: product.getTransMaxAmount(),
+                incoming_price,
+                available_price,
+                offer_id: product.getSku(),
+                sales_percent: product.getSalesPercent(),
+                sum_pack: packing_price,
+                min_perc: 0,
+                perc: 0,
+                old_perc: 0
+            };
+
+            const { min_perc, perc, old_perc } = this.priceCalculationHelper.adjustPercents(
+                initialPrice,
+                service
+            );
+
+            // Обновляем проценты
+            percent.perc = perc;
+            percent.old_perc = old_perc;
+            percent.min_perc = min_perc;
+        });
+        await Promise.all(filteredPercents.map((percent) => this.setPercents(percent)));
+    }
+
     /**
      * Updates the price for the given service using the provided SKUs, price data, and coefficient calculations.
      *
@@ -228,18 +277,13 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
      * @return {Promise<any>} Returns a promise that resolves with the result of the update operation, or null if no updates were needed.
      */
     async updatePriceForService(service: IPriceUpdateable, skus: string[], prices?: Map<string, UpdatePriceDto>): Promise<any> {
-        const codes = skus.map((item) => goodCode({ offer_id: item }));
-        const goods = await this.prices(codes);
-        const percents = await this.getPerc(codes);
-        const products: IProductCoeffsable[] = await service.getProductsWithCoeffs(skus);
+        const { codes, goods, percents, products } = await this.priceCalculationHelper.preparePricesContext(service, skus, this);
         const updatePrices: UpdatePriceDto[] = [];
         products.forEach((product) => {
-            const gCode = goodCode({ offer_id: product.getSku() });
-            const gCoeff = goodQuantityCoeff({ offer_id: product.getSku() });
-            const incoming_price = prices?.get(product.getSku()).incoming_price
-                ? prices.get(product.getSku()).incoming_price
-                : goods.find((g) => g.code.toString() === gCode).price * gCoeff;
+            const incoming_price = this.priceCalculationHelper.getIncomingPrice(product, goods, prices);
             if (incoming_price !== 0) {
+                const gCode = goodCode({ offer_id: product.getSku() });
+                const gCoeff = goodQuantityCoeff({ offer_id: product.getSku() });
                 const { min_perc, perc, old_perc, adv_perc, packing_price, available_price } = percents.find(
                     (p) => p.offer_id.toString() === gCode && p.pieces === gCoeff,
                 ) || {

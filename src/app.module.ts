@@ -35,6 +35,7 @@ import { LabelModule } from './label/label.module';
 import { PromosModule } from './promos/promos.module';
 import { Trade2006IncomingModule } from "./trade2006.incoming/trade2006.incoming.module";
 import { HttpModule } from '@nestjs/axios';
+import { HelpersModule } from "./helpers/helpers.module";
 
 @Module({
     imports: [
@@ -116,6 +117,7 @@ import { HttpModule } from '@nestjs/axios';
         LabelModule,
         PromosModule,
         Trade2006IncomingModule,
+        HelpersModule,
     ],
     controllers: [AppController],
     providers: [AppService, CronSetupProviderService],
