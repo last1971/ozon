@@ -220,7 +220,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         return service.updateGoodCounts(updateGoods);
     }
 
-    async updatePercentsForService(service: IPriceUpdateable, skus: string[], prices?: Map<string, UpdatePriceDto>): Promise<void> {
+    async generatePercentsForService(service: IPriceUpdateable, skus: string[], available_prices?: Map<string, number>): Promise<GoodPercentDto[]> {
         const { goods, percents, products } = await this.priceCalculationHelper.preparePricesContext(service, skus, this);
         const skuPairs = skus.map(sku => ({
             offer_id: goodCode({ offer_id: sku }),
@@ -233,13 +233,15 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                 pair.pieces === percent.pieces
             )
         );
-        filteredPercents.forEach((percent: GoodPercentDto) => {
+
+        return filteredPercents.map((percent: GoodPercentDto) => {
             const product = products.find((p) => {
                 const sku = p.getSku();
                 return sku === percent.offer_id.toString();
             });
-            const {adv_perc, packing_price, available_price} = percent;
-            const incoming_price = this.priceCalculationHelper.getIncomingPrice(product, goods, prices);
+            const {adv_perc, packing_price} = percent;
+            const incoming_price = this.priceCalculationHelper.getIncomingPrice(product, goods);
+            const available_price = available_prices?.get(product.getSku()) ?? percent.available_price;
 
             const initialPrice = {
                 adv_perc,
@@ -259,12 +261,19 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                 service
             );
 
-            // Обновляем проценты
-            percent.perc = perc;
-            percent.old_perc = old_perc;
-            percent.min_perc = min_perc;
+            return {
+                ...percent,
+                perc,
+                old_perc,
+                min_perc,
+                available_price
+            };
         });
-        await Promise.all(filteredPercents.map((percent) => this.setPercents(percent)));
+    }
+
+    async updatePercentsForService(service: IPriceUpdateable, skus: string[], available_prices?: Map<string, number>): Promise<void> {
+        const updatedPercents = await this.generatePercentsForService(service, skus, available_prices);
+        await Promise.all(updatedPercents.map((percent) => this.setPercents(percent)));
     }
 
     /**

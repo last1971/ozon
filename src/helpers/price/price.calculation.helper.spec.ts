@@ -86,6 +86,7 @@ describe("PriceCalculationHelper", () => {
                 updateWbCategory: jest.fn(),
                 resetAvailablePrice: jest.fn(),
                 updatePercentsForService:  jest.fn().mockResolvedValue(undefined),
+                generatePercentsForService:  jest.fn().mockResolvedValue(undefined),
             };
 
             const result = await helper.preparePricesContext(

@@ -50,7 +50,8 @@ describe('Trade2006GoodService', () => {
                 adv_perc: 0,
                 min_perc: 10,
                 old_perc: 30,
-                packing_price: 0
+                packing_price: 0,
+                available_price: 0
             }],
             products: [
                 {
@@ -429,14 +430,60 @@ describe('Trade2006GoodService', () => {
         expect(loggerError).toHaveBeenCalledWith(testError.message);
     });
 
-    it('updatePercentsForService', async () => {
-        const prices = new Map<string, UpdatePriceDto>();
-        prices.set('1', { incoming_price: 100 } as UpdatePriceDto);
-        
-        await service.updatePercentsForService(priceUdateable, ['1'], prices);
+    it('updatePercentsForService without available_prices', async () => {
+        await service.updatePercentsForService(priceUdateable, ['1']);
         expect(mockPriceCalculationHelper.preparePricesContext).toHaveBeenCalledWith(priceUdateable, ['1'], service);
         expect(mockPriceCalculationHelper.getIncomingPrice).toHaveBeenCalled();
         expect(mockPriceCalculationHelper.adjustPercents).toHaveBeenCalled();
+        expect(execute).toHaveBeenCalled();
+    });
+
+    it('updatePercentsForService with available_prices', async () => {
+        const available_prices = new Map<string, number>();
+        available_prices.set('1', 150);
+        
+        await service.updatePercentsForService(priceUdateable, ['1'], available_prices);
+        expect(mockPriceCalculationHelper.preparePricesContext).toHaveBeenCalledWith(priceUdateable, ['1'], service);
+        expect(mockPriceCalculationHelper.getIncomingPrice).toHaveBeenCalled();
+        expect(mockPriceCalculationHelper.adjustPercents).toHaveBeenCalled();
+        expect(execute).toHaveBeenCalled();
+    });
+
+    it('generatePercentsForService without available_prices', async () => {
+        const result = await service.generatePercentsForService(priceUdateable, ['1']);
+        expect(mockPriceCalculationHelper.preparePricesContext).toHaveBeenCalledWith(priceUdateable, ['1'], service);
+        expect(mockPriceCalculationHelper.getIncomingPrice).toHaveBeenCalled();
+        expect(mockPriceCalculationHelper.adjustPercents).toHaveBeenCalled();
+        expect(result).toEqual([{
+            offer_id: '1',
+            pieces: 1,
+            perc: 20,
+            adv_perc: 0,
+            min_perc: 10,
+            old_perc: 30,
+            packing_price: 0,
+            available_price: 0
+        }]);
+    });
+
+    it('generatePercentsForService with available_prices', async () => {
+        const available_prices = new Map<string, number>();
+        available_prices.set('1', 150);
+        
+        const result = await service.generatePercentsForService(priceUdateable, ['1'], available_prices);
+        expect(mockPriceCalculationHelper.preparePricesContext).toHaveBeenCalledWith(priceUdateable, ['1'], service);
+        expect(mockPriceCalculationHelper.getIncomingPrice).toHaveBeenCalled();
+        expect(mockPriceCalculationHelper.adjustPercents).toHaveBeenCalled();
+        expect(result).toEqual([{
+            offer_id: '1',
+            pieces: 1,
+            perc: 20,
+            adv_perc: 0,
+            min_perc: 10,
+            old_perc: 30,
+            packing_price: 0,
+            available_price: 150
+        }]);
     });
 
     it('resetAvailablePrice', async () => {

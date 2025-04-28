@@ -11,7 +11,7 @@ import { Cron } from "@nestjs/schedule";
 import { WbCommissionDto } from "../wb.card/dto/wb.commission.dto";
 import { EventEmitter2, OnEvent } from "@nestjs/event-emitter";
 import { ExtraGoodService } from "../good/extra.good.service";
-import { toNumber } from "lodash";
+import { toNumber, first } from "lodash";
 import { PriceDto } from "./dto/price.dto";
 import { ProductVisibility } from "../product/product.visibility";
 import { GoodPercentDto } from "../good/dto/good.percent.dto";
@@ -204,16 +204,14 @@ export class ExtraPriceService {
         return problematicProducts;
         */
     }
-    public async updatePercentsForOzon(sku: string, incomingPrice?: number): Promise<GoodPercentDto> {
-        const prices = incomingPrice
-            ? new Map([[sku, { incoming_price: incomingPrice } as unknown as UpdatePriceDto ]])
+    public async generatePercentsForOzon(sku: string, availablePrice?: number): Promise<GoodPercentDto> {
+        const available_prices = availablePrice !== null && availablePrice !== undefined
+            ? new Map([[sku, availablePrice]])
             : undefined;
-        await this.goodService.updatePercentsForService(
+        return first(await this.goodService.generatePercentsForService(
             this.getService(GoodServiceEnum.OZON),
             [sku],  // передаем как массив
-            prices
-        );
-        const [percent] = await this.goodService.getPerc([sku], null);  // передаем как массив
-        return percent;
+            available_prices
+        )) as GoodPercentDto;
     }
 }
