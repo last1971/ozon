@@ -15,6 +15,7 @@ import {
     ApiConsumes,
     ApiOkResponse,
     ApiOperation,
+    ApiParam,
     ApiProduces,
     ApiQuery,
     ApiResponse,
@@ -243,32 +244,28 @@ export class PriceController {
     ): Promise<string[]> {
         return this.service.getLowPrices(minProfit, minPercent, maxCount);
     }
-    @Post('calculate-percents')
+    @Post('calculate-percents/:sku')
     @ApiOperation({ summary: 'Calculate and update percents for Ozon products' })
+    @ApiParam({
+        name: 'sku',
+        type: 'string',
+        example: 'SKU123',
+        description: 'SKU of the product',
+        required: true,
+    })
     @ApiBody({
-        schema: {
-            type: 'object',
-            properties: {
-                sku: {
-                    type: 'string',
-                    example: 'SKU123',
-                    description: 'SKU of the product'
-                },
-                availablePrice: {
-                    type: 'number',
-                    example: 100.50,
-                    description: 'Available price for the product (optional)'
-                }
-            },
-            required: ['sku']
-        }
+        type: GoodPercentDto,
+        description: 'Partial update of GoodPercentDto',
     })
     @ApiResponse({ 
         status: 200, 
         description: 'Percents calculated and updated successfully',
         type: GoodPercentDto,
     })
-    async calculatePercents(@Body() body: { sku: string; availablePrice?: number }): Promise<GoodPercentDto> {
-        return this.extraService.generatePercentsForOzon(body.sku, body.availablePrice);
+    async calculatePercents(
+        @Param('sku') sku: string,
+        @Body() goodPercentDto: Partial<GoodPercentDto>
+    ): Promise<GoodPercentDto> {
+        return this.extraService.generatePercentsForOzon(sku, goodPercentDto);
     }
 }

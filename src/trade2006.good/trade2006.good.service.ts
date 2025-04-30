@@ -220,7 +220,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         return service.updateGoodCounts(updateGoods);
     }
 
-    async generatePercentsForService(service: IPriceUpdateable, skus: string[], available_prices?: Map<string, number>): Promise<GoodPercentDto[]> {
+    async generatePercentsForService(service: IPriceUpdateable, skus: string[], goodPercentsDto?: Map<string, Partial<GoodPercentDto>>): Promise<GoodPercentDto[]> {
         const { goods, percents, products } = await this.priceCalculationHelper.preparePricesContext(service, skus, this);
         const skuPairs = skus.map(sku => ({
             offer_id: goodCode({ offer_id: sku }),
@@ -237,18 +237,23 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         return filteredPercents.map((percent: GoodPercentDto) => {
             const product = products.find((p) => {
                 const sku = p.getSku();
-                return sku === percent.offer_id.toString();
+                const offerId = percent.offer_id.toString();
+                const pieces = percent.pieces;
+                return sku === offerId || sku === `${offerId}-${pieces}`;
             });
-            const {adv_perc, packing_price} = percent;
-            const incoming_price = this.priceCalculationHelper.getIncomingPrice(product, goods);
-            const available_price = available_prices?.get(product.getSku()) ?? percent.available_price;
+            const sku = product.getSku();
+            const dto = goodPercentsDto?.get(sku);
+
+            const adv_perc = dto?.adv_perc ?? percent.adv_perc;
+            const available_price = dto?.available_price ?? percent.available_price;
+            const packing_price = dto?.packing_price ?? percent.packing_price;
 
             const initialPrice = {
                 adv_perc,
                 fbs_direct_flow_trans_max_amount: product.getTransMaxAmount(),
-                incoming_price,
+                incoming_price: this.priceCalculationHelper.getIncomingPrice(product, goods),
                 available_price,
-                offer_id: product.getSku(),
+                offer_id: sku,
                 sales_percent: product.getSalesPercent(),
                 sum_pack: packing_price,
                 min_perc: 0,
@@ -266,13 +271,15 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                 perc,
                 old_perc,
                 min_perc,
-                available_price
+                adv_perc,
+                available_price,
+                packing_price,
             };
         });
     }
 
-    async updatePercentsForService(service: IPriceUpdateable, skus: string[], available_prices?: Map<string, number>): Promise<void> {
-        const updatedPercents = await this.generatePercentsForService(service, skus, available_prices);
+    async updatePercentsForService(service: IPriceUpdateable, skus: string[], goodPercentsDto?: Map<string, Partial<GoodPercentDto>>): Promise<void> {
+        const updatedPercents = await this.generatePercentsForService(service, skus, goodPercentsDto);
         await Promise.all(updatedPercents.map((percent) => this.setPercents(percent)));
     }
 

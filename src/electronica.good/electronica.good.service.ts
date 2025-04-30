@@ -16,12 +16,13 @@ export class ElectronicaGoodService implements IGood {
     constructor(private api: ElectronicaApiService) {
     }
 
-    generatePercentsForService(service: IPriceUpdateable, skus: string[], available_prices?: Map<string, number>): Promise<GoodPercentDto[]> {
+    generatePercentsForService(service: IPriceUpdateable, skus: string[], goodPercentsDto?: Map<string, Partial<GoodPercentDto>>): Promise<GoodPercentDto[]> {
         throw new Error('Method not implemented.');
     }
-    updatePercentsForService(service: IPriceUpdateable, skus: string[], available_prices?: Map<string, number>): Promise<void> {
+    updatePercentsForService(service: IPriceUpdateable, skus: string[], goodPercentsDto?: Map<string, Partial<GoodPercentDto>>): Promise<void> {
         throw new Error('Method not implemented.');
     }
+
 
     updateWbCategory(): Promise<void> {
         throw new Error('Method not implemented.');

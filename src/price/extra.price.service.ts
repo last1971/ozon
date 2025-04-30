@@ -204,9 +204,9 @@ export class ExtraPriceService {
         return problematicProducts;
         */
     }
-    public async generatePercentsForOzon(sku: string, availablePrice?: number): Promise<GoodPercentDto> {
-        const available_prices = availablePrice !== null && availablePrice !== undefined
-            ? new Map([[sku, availablePrice]])
+    public async generatePercentsForOzon(sku: string, goodPercentDto?: Partial<GoodPercentDto>): Promise<GoodPercentDto> {
+        const available_prices = goodPercentDto !== null && goodPercentDto !== undefined
+            ? new Map([[sku, goodPercentDto]])
             : undefined;
         return first(await this.goodService.generatePercentsForService(
             this.getService(GoodServiceEnum.OZON),
