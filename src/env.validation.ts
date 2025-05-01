@@ -148,6 +148,14 @@ class EnvironmentVariables {
     @IsOptional()
     @IsNumber()
     HTTP_TIMEOUT: number;
+
+    @IsOptional()
+    @IsNumber()
+    MIN_PROFIT_TARGET: number;
+
+    @IsOptional()
+    @IsNumber()
+    PRICE_SMOOTHING_OFFSET: number;
 }
 
 export function configValidate(config: Record<string, unknown>) {
