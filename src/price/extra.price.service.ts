@@ -116,6 +116,8 @@ export class ExtraPriceService {
         try {
             // Сначала обнуляем available_price для всех поступивших товаров
             await this.goodService.resetAvailablePrice(skus);
+            // Обновляем наценки для всех поступивших товаров
+            await this.updatePercentsForGoodSkus(skus);
             // Обновляем цены для всех маркетплейсов на основе поступивших товаров
             await this.updatePriceForGoodSkus(skus);
             // Затем проверяем разницу цен и отправляем уведомление, если необходимо
@@ -213,5 +215,10 @@ export class ExtraPriceService {
             [sku],  // передаем как массив
             available_prices
         )) as GoodPercentDto;
+    }
+
+    public async updatePercentsForGoodSkus(skus: string[]): Promise<void> {
+        const serviceSkus = this.extraGoodService.tradeSkusToServiceSkus(skus, GoodServiceEnum.OZON);
+        await this.goodService.updatePercentsForService(this.getService(GoodServiceEnum.OZON), serviceSkus);
     }
 }
