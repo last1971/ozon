@@ -23,13 +23,14 @@ watch(
     }, 2000),
 );
 const incomingPrice = computed(() => edit.value ? props.value.available_price : props.value.incoming_price);
-const profit = computed(() => Math.ceil(
-    parseInt(pays.value[props.ind][0]) - incomingPrice.value)
-);
-const minPerc = computed(
-    () =>
-    Math.ceil((parseInt(pays.value[props.ind][0]) - incomingPrice.value) / incomingPrice.value * 100)
-);
+const profit = computed(() => {
+    if (!pays.value?.[props.ind]?.[0]) return 0;
+    return Math.ceil(parseInt(pays.value[props.ind][0]) - incomingPrice.value);
+});
+const minPerc = computed(() => {
+    if (!pays.value?.[props.ind]?.[0] || !incomingPrice.value) return 0;
+    return Math.ceil((parseInt(pays.value[props.ind][0]) - incomingPrice.value) / incomingPrice.value * 100);
+});
 </script>
 
 <template>
@@ -37,10 +38,10 @@ const minPerc = computed(
     <v-table>
         <template v-slot:bottom>
             <v-row class="d-flex align-center justify-center">
-                <v-col cols="4">
+                <v-col cols="3">
                     <v-switch class="mt-4" label="своя цена" v-model="edit"/>
                 </v-col>
-                <v-col cols="4">
+                <v-col cols="3">
                     <v-btn @click="priceStore().getInd(props.ind)"
                            block
                            prepend-icon="mdi-reload"
@@ -48,7 +49,17 @@ const minPerc = computed(
                         Обновить
                     </v-btn>
                 </v-col>
-                <v-col cols="4">
+                <v-col cols="3">
+                    <v-btn
+                        block
+                        prepend-icon="mdi-calculator"
+                        @click="priceStore().calculatePercents(props.ind)"
+                        :loading="isLoadingPrice[props.ind]"
+                    >
+                        Рассчитать проценты
+                    </v-btn>
+                </v-col>
+                <v-col cols="3">
                     <v-btn
                         block
                         prepend-icon="mdi-content-save"
@@ -80,7 +91,7 @@ const minPerc = computed(
                 <td>{{ value.name }}</td>
                 <td>{{ Math.ceil(value.marketing_price) }} ₽</td>
                 <td>{{ Math.ceil(value.marketing_seller_price) }} ₽</td>
-                <td>{{ Math.ceil(parseInt(pays[ind][0])) }} ₽</td>
+                <td>{{ pays[ind]?.[0] ? Math.ceil(parseInt(pays[ind][0])) : 0 }} ₽</td>
                 <td>
                     {{ Math.ceil(value.incoming_price) }} ₽
                 </td>

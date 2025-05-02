@@ -53,15 +53,16 @@ export class PriceCalculationHelper {
     }
 
     getInitialPercents(incoming_price: number = 0): { min_perc: number; perc: number; old_perc: number } {
+        const minPercent = this.configService.get<number>('MIN_PROFIT_PERC', 10);
         const basePercent = this.configService.get<number>('MIN_PROFIT_TARGET', 103);
         const priceOffset = this.configService.get<number>('PRICE_SMOOTHING_OFFSET', 500);
         let old_perc: number, perc: number, min_perc: number;
 
         if (incoming_price) {
-            const base = basePercent / (incoming_price + priceOffset);
-            old_perc = Math.round(base * 400);
-            perc = Math.round(base * 200);
-            min_perc = Math.round(base * 100);
+            const base = minPercent + basePercent / (incoming_price + priceOffset) * 100;
+            old_perc = Math.round(base * 4);
+            perc = Math.round(base * 2);
+            min_perc = Math.round(base);
         } else {
             old_perc = this.configService.get<number>('PERC_MAX', 80);
             perc = this.configService.get<number>('PERC_NOR', 40);
@@ -87,7 +88,9 @@ export class PriceCalculationHelper {
         initialPrice: IPriceable,
         service: IPriceUpdateable
     ): { min_perc: number; perc: number; old_perc: number } {
-        let { min_perc, perc, old_perc } = this.getInitialPercents(initialPrice.available_price ?? initialPrice.incoming_price);
+        let { min_perc, perc, old_perc } = this.getInitialPercents(
+            initialPrice.available_price != null && initialPrice.available_price > 0 ? initialPrice.available_price : initialPrice.incoming_price
+        );
 
         let calculatedPrice = this.calculatePriceWithPercents(
             initialPrice,

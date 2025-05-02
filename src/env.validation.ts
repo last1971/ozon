@@ -155,6 +155,14 @@ class EnvironmentVariables {
 
     @IsOptional()
     @IsNumber()
+    MIN_PROFIT_PERC: number;
+
+    @IsOptional()
+    @IsNumber()
+    MIN_PERC_MARKUP: number;
+
+    @IsOptional()
+    @IsNumber()
     PRICE_SMOOTHING_OFFSET: number;
 }
 

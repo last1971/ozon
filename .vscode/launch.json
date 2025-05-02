@@ -96,6 +96,17 @@
           "build"
         ],
         "console": "integratedTerminal"
+      },
+      {
+        "type": "node",
+        "request": "launch",
+        "name": "Run Tests",
+        "runtimeExecutable": "npm",
+        "runtimeArgs": [
+          "run",
+          "test"
+        ],
+        "console": "integratedTerminal"
       }
     ]
   }

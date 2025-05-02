@@ -26,6 +26,7 @@ describe("PriceCalculationHelper", () => {
                                 "PERC_NOR": 40,
                                 "PERC_MIN": 20,
                                 "SUM_PACK": 10,
+                                "MIN_PROFIT_PERC": 10,
                                 "MIN_PROFIT_TARGET": 103,
                                 "PRICE_SMOOTHING_OFFSET": 500,
                             };
@@ -144,22 +145,23 @@ describe("PriceCalculationHelper", () => {
     it('should return correct initial percents for default (no incoming_price)', () => {
         const result = helper.getInitialPercents();
         expect(result).toEqual({
-            old_perc: 80,
-            perc: 40,
-            min_perc: 20
+            old_perc: 80,  // PERC_MAX
+            perc: 40,      // PERC_NOR
+            min_perc: 20   // PERC_MIN
         });
     });
 
     it('should return correct initial percents for incoming_price', () => {
         const result = helper.getInitialPercents(1000);
-        // base = 103 / (1000 + 500) = 103 / 1500 ≈ 0.068666...
-        // old_perc = Math.round(0.068666... * 400) ≈ 27
-        // perc = Math.round(0.068666... * 200) ≈ 14
-        // min_perc = Math.round(0.068666... * 100) ≈ 7
+        // base = MIN_PROFIT_PERC + MIN_PROFIT_TARGET / (incoming_price + PRICE_SMOOTHING_OFFSET) * 100
+        // base = 10 + 103 / (1000 + 500) * 100 ≈ 10 + 6.8666... ≈ 16.8666...
+        // old_perc = Math.round(16.8666... * 4) ≈ 67
+        // perc = Math.round(16.8666... * 2) ≈ 34
+        // min_perc = Math.round(16.8666...) ≈ 17
         expect(result).toEqual({
-            old_perc: 27,
-            perc: 14,
-            min_perc: 7
+            old_perc: 67,
+            perc: 34,
+            min_perc: 17
         });
     });
 
