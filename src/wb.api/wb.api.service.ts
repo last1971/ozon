@@ -38,11 +38,27 @@ export class WbApiService {
         return firstValueFrom(
             response.pipe(map((res) => res.data)).pipe(
                 catchError(async (error: AxiosError) => {
-                    this.logger.error(error.message + ' ' + error?.response?.data['message']);
+                    this.logger.error('WB API Error:', {
+                        message: error.message,
+                        status: error.response?.status,
+                        statusText: error.response?.statusText,
+                        data: error.response?.data,
+                        url: error.config?.url,
+                        method: error.config?.method,
+                        params: error.config?.params,
+                        body: error.config?.data
+                    });
                     return {
                         result: null,
                         status: 'NotOk',
-                        error: { service_message: error.message, message: error?.response?.data['message'] },
+                        error: { 
+                            service_message: error.message,
+                            message: error?.response?.data['message'],
+                            status: error.response?.status,
+                            statusText: error.response?.statusText,
+                            data: error.response?.data,
+                            url: error.config?.url
+                        },
                     };
                 }),
             ),

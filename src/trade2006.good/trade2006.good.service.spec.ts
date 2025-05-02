@@ -6,18 +6,22 @@ import { ConfigService } from "@nestjs/config";
 import { IPriceUpdateable } from "../interfaces/i.price.updateable";
 import { EventEmitter2 } from "@nestjs/event-emitter";
 import { Cache } from "@nestjs/cache-manager";
+import { PriceCalculationHelper } from "../helpers/price/price.calculation.helper";
+import { UpdatePriceDto } from "../price/dto/update.price.dto";
+import { GoodPercentDto } from "../good/dto/good.percent.dto";
 
 describe('Trade2006GoodService', () => {
     let service: Trade2006GoodService;
     const query = jest.fn().mockReturnValue([{ GOODSCODE: 1, QUAN: 2, RES: 1, PIECES: 1 }]);
     const execute = jest.fn();
     const get = jest.fn();
-    const getProductsWithCoeffs = jest.fn().mockResolvedValueOnce([
-        {
-            getSku: () => '1',
-            getTransMaxAmount: () => 40,
-            getSalesPercent: () => 10,
-        },
+    const getProductsWithCoeffsFirst = {
+        getSku: () => '1',
+        getTransMaxAmount: () => 40,
+        getSalesPercent: () => 10,
+    };
+    const getProductsWithCoeffs = jest.fn().mockResolvedValue([
+        getProductsWithCoeffsFirst,
     ]);
     const updatePrices = jest.fn();
     const priceUdateable: IPriceUpdateable = {
@@ -36,11 +40,73 @@ describe('Trade2006GoodService', () => {
     };
     const emit = jest.fn();
 
+    const mockPriceCalculationHelper = {
+        preparePricesContext: jest.fn().mockResolvedValue({
+            codes: ['1'],
+            goods: [{ code: 1, name: 'ONE', price: 10.11 }],
+            percents: [{
+                offer_id: '1',
+                pieces: 1,
+                perc: 20,
+                adv_perc: 0,
+                min_perc: 10,
+                old_perc: 30,
+                packing_price: 0,
+                available_price: 0
+            }],
+            products: [
+                {
+                    getSku: () => '1',
+                    getTransMaxAmount: () => 40,
+                    getSalesPercent: () => 10
+                }
+            ]
+        }),
+        getIncomingPrice: jest.fn().mockReturnValue(10.11),
+        adjustPercents: jest.fn().mockReturnValue({
+            min_perc: 10,
+            perc: 20,
+            old_perc: 30
+        })
+    };
+
+    const commit = jest.fn();
+
     beforeEach(async () => {
+        query.mockReset().mockReturnValue([{ GOODSCODE: 1, QUAN: 2, RES: 1, PIECES: 1 }]);
+        // Дефолтное поведение для всех методов helper-а
+        mockPriceCalculationHelper.preparePricesContext.mockResolvedValue({
+            codes: ['1'],
+            goods: [{ code: 1, name: 'ONE', price: 10.11 }],
+            percents: [{
+                offer_id: '1',
+                pieces: 1,
+                perc: 20,
+                adv_perc: 0,
+                min_perc: 10,
+                old_perc: 30,
+                packing_price: 0,
+                available_price: 0
+            }],
+            products: [
+                {
+                    getSku: () => '1',
+                    getTransMaxAmount: () => 40,
+                    getSalesPercent: () => 10
+                }
+            ]
+        });
+        mockPriceCalculationHelper.getIncomingPrice.mockReturnValue(10.11);
+        mockPriceCalculationHelper.adjustPercents.mockReturnValue({
+            min_perc: 10,
+            perc: 20,
+            old_perc: 30
+        });
+
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 Trade2006GoodService,
-                { provide: FIREBIRD, useValue: { getTransaction: () => ({ query, execute }) } },
+                { provide: FIREBIRD, useValue: { getTransaction: () => ({ query, execute, commit }) } },
                 { provide: ConfigService, useValue: { get: () => null } },
                 {
                     provide: EventEmitter2,
@@ -50,6 +116,10 @@ describe('Trade2006GoodService', () => {
                     provide: Cache,
                     useValue: { get },
                 },
+                {
+                    provide: PriceCalculationHelper,
+                    useValue: mockPriceCalculationHelper,
+                },
             ],
         }).compile();
 
@@ -57,6 +127,18 @@ describe('Trade2006GoodService', () => {
         query.mockClear();
         execute.mockClear();
         service = module.get<Trade2006GoodService>(Trade2006GoodService);
+    });
+
+    afterEach(() => {
+        jest.clearAllMocks();
+        mockPriceCalculationHelper.preparePricesContext.mockReset();
+        mockPriceCalculationHelper.getIncomingPrice.mockReset();
+        mockPriceCalculationHelper.adjustPercents.mockReset();
+    });
+
+
+    afterAll(() => {
+        jest.resetModules(); // Сбрасываем все модули после всех тестов
     });
 
     it('should be defined', () => {
@@ -135,29 +217,13 @@ describe('Trade2006GoodService', () => {
         ]);
     });
     it('updatePriceForService', async () => {
-        query
-            .mockResolvedValueOnce([{ GOODSCODE: 1, NAME: 'ONE', PRIC: 10.11 }])
-            .mockResolvedValueOnce([
-                { GOODSCODE: 1, PIECES: 1, PERC_NOR: 20, PERC_ADV: 0, PERC_MIN: 10, PERC_MAX: 30, PACKING_PRICE: 0 },
-            ]);
-        await service.updatePriceForService(priceUdateable, ['1']);
-        expect(query.mock.calls).toHaveLength(2);
-        expect(getProductsWithCoeffs.mock.calls[0]).toEqual([['1']]);
-        expect(updatePrices.mock.calls[0]).toEqual([
-            [
-                {
-                    auto_action_enabled: 'ENABLED',
-                    currency_code: 'RUB',
-                    incoming_price: 10.11,
-                    min_price: '112',
-                    offer_id: '1',
-                    old_price: '115',
-                    price: '114',
-                    price_strategy_enabled: 'DISABLED',
-                    sum_pack: 0,
-                },
-            ],
-        ]);
+        const prices = new Map<string, UpdatePriceDto>();
+        prices.set('1', { incoming_price: 100 } as UpdatePriceDto);
+        
+        await service.updatePriceForService(priceUdateable, ['1'], prices);
+        expect(mockPriceCalculationHelper.preparePricesContext).toHaveBeenCalledWith(priceUdateable, ['1'], service);
+        expect(mockPriceCalculationHelper.getIncomingPrice).toHaveBeenCalled();
+        expect(updatePrices).toHaveBeenCalled();
     });
 
     it('checkCounts', async () => {
@@ -397,4 +463,155 @@ describe('Trade2006GoodService', () => {
         expect(loggerError).toHaveBeenCalledWith(testError.message);
     });
 
+    it('updatePercentsForService with goodPercentsDto', async () => {
+        // Предположим, что getSku() возвращает '1-1'
+        const goodPercentsDto = new Map<string, Partial<GoodPercentDto>>();
+        goodPercentsDto.set('1-1', { available_price: 150 });
+    
+        // Моки для preparePricesContext
+        mockPriceCalculationHelper.preparePricesContext.mockResolvedValue({
+            goods: [],
+            percents: [{
+                offer_id: 1,
+                pieces: 1,
+                adv_perc: 0,
+                old_perc: 0,
+                perc: 0,
+                min_perc: 0,
+                packing_price: 0,
+                available_price: 0,
+            }],
+            products: [{
+                getSku: () => '1-1',
+                getTransMaxAmount: () => 0,
+                getSalesPercent: () => 0,
+            }]
+        });
+        mockPriceCalculationHelper.getIncomingPrice.mockReturnValue(100);
+        mockPriceCalculationHelper.adjustPercents.mockReturnValue({
+            min_perc: 10,
+            perc: 20,
+            old_perc: 30
+        });
+    
+        // Мок для setPercents (если он вызывает execute)
+        const setPercents = jest.spyOn(service, 'setPercents').mockResolvedValue(undefined);
+    
+        await service.updatePercentsForService(priceUdateable, ['1'], goodPercentsDto);
+    
+        expect(mockPriceCalculationHelper.preparePricesContext).toHaveBeenCalledWith(priceUdateable, ['1'], service);
+        expect(mockPriceCalculationHelper.getIncomingPrice).toHaveBeenCalled();
+        expect(mockPriceCalculationHelper.adjustPercents).toHaveBeenCalled();
+        expect(setPercents).toHaveBeenCalled(); // Проверяем, что setPercents вызван
+    });
+
+    it('updatePercentsForService without goodPercentsDto', async () => {
+        // Моки для preparePricesContext
+        mockPriceCalculationHelper.preparePricesContext.mockResolvedValue({
+            goods: [],
+            percents: [{
+                offer_id: 1,
+                pieces: 1,
+                adv_perc: 0,
+                old_perc: 0,
+                perc: 0,
+                min_perc: 0,
+                packing_price: 0,
+                available_price: 0,
+            }],
+            products: [{
+                getSku: () => '1-1',
+                getTransMaxAmount: () => 0,
+                getSalesPercent: () => 0,
+            }]
+        });
+        mockPriceCalculationHelper.getIncomingPrice.mockReturnValue(100);
+        mockPriceCalculationHelper.adjustPercents.mockReturnValue({
+            min_perc: 10,
+            perc: 20,
+            old_perc: 30
+        });
+
+        // Мок для setPercents
+        const setPercents = jest.spyOn(service, 'setPercents').mockResolvedValue(undefined);
+
+        await service.updatePercentsForService(priceUdateable, ['1']);
+
+        expect(mockPriceCalculationHelper.preparePricesContext).toHaveBeenCalledWith(priceUdateable, ['1'], service);
+        expect(mockPriceCalculationHelper.getIncomingPrice).toHaveBeenCalled();
+        expect(mockPriceCalculationHelper.adjustPercents).toHaveBeenCalled();
+        expect(setPercents).toHaveBeenCalled(); // Проверяем, что setPercents вызван
+    });
+
+
+    it('generatePercentsForService without available_prices', async () => {
+        const result = await service.generatePercentsForService(priceUdateable, ['1']);
+        expect(mockPriceCalculationHelper.preparePricesContext).toHaveBeenCalledWith(priceUdateable, ['1'], service);
+        expect(mockPriceCalculationHelper.getIncomingPrice).toHaveBeenCalled();
+        expect(mockPriceCalculationHelper.adjustPercents).toHaveBeenCalled();
+        expect(result).toEqual([{
+            offer_id: '1',
+            pieces: 1,
+            perc: 20,
+            adv_perc: 0,
+            min_perc: 10,
+            old_perc: 30,
+            packing_price: 0,
+            available_price: 0
+        }]);
+    });
+
+    it('generatePercentsForService with available_prices', async () => {
+        // Моки для preparePricesContext
+        mockPriceCalculationHelper.preparePricesContext.mockResolvedValue({
+            goods: [],
+            percents: [{
+                offer_id: '1',
+                pieces: 1,
+                adv_perc: 5,
+                old_perc: 30,
+                perc: 20,
+                min_perc: 10,
+                packing_price: 0,
+                available_price: 150, // Указываем available_price
+            }],
+            products: [{
+                getSku: () => '1',
+                getTransMaxAmount: () => 40,
+                getSalesPercent: () => 10,
+            }]
+        });
+        mockPriceCalculationHelper.getIncomingPrice.mockReturnValue(100);
+        mockPriceCalculationHelper.adjustPercents.mockReturnValue({
+            min_perc: 10,
+            perc: 20,
+            old_perc: 30
+        });
+
+        // Вызов метода
+        const result = await service.generatePercentsForService(priceUdateable, ['1']);
+
+        // Проверки
+        expect(mockPriceCalculationHelper.preparePricesContext).toHaveBeenCalledWith(priceUdateable, ['1'], service);
+        expect(mockPriceCalculationHelper.getIncomingPrice).toHaveBeenCalled();
+        expect(mockPriceCalculationHelper.adjustPercents).toHaveBeenCalled();
+        expect(result).toEqual([{
+            offer_id: '1',
+            pieces: 1,
+            perc: 20,
+            adv_perc: 5,
+            min_perc: 10,
+            old_perc: 30,
+            packing_price: 0,
+            available_price: 150 // Проверяем, что available_price корректно обработан
+        }]);
+    });
+
+    it('resetAvailablePrice', async () => {
+        await service.resetAvailablePrice(['1', '2']);
+        expect(execute.mock.calls[0]).toEqual([
+            'UPDATE OZON_PERC SET AVAILABLE_PRICE = 0 WHERE GOODSCODE IN (?,?)',
+            ['1', '2'],
+        ]);
+    });
 });

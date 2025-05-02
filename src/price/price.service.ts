@@ -130,6 +130,12 @@ export class PriceService implements IPriceUpdateable {
             limit: 1000,
             visibility: ProductVisibility.IN_SALE,
         });
+        
+        if (!response?.items) {
+            this.logger.error('Invalid response from Ozon API', { response, skus });
+            return [];
+        }
+        
         return response.items.map((product) => new OzonProductCoeffsAdapter(product, percDirectFlow));
     }
 

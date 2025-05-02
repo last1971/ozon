@@ -15,6 +15,7 @@ import {
     ApiConsumes,
     ApiOkResponse,
     ApiOperation,
+    ApiParam,
     ApiProduces,
     ApiQuery,
     ApiResponse,
@@ -34,6 +35,7 @@ import { calculatePay, calculatePrice } from "../helpers";
 import { WbCommissionDto } from "../wb.card/dto/wb.commission.dto";
 import { ExtraPriceService } from "./extra.price.service";
 import { WbPriceService } from "../wb.price/wb.price.service";
+import { GoodPercentDto } from "../good/dto/good.percent.dto";
 
 @ApiTags('price')
 @Controller('price')
@@ -241,5 +243,29 @@ export class PriceController {
         @Query('maxCount') maxCount: number, // Необязательный параметр
     ): Promise<string[]> {
         return this.service.getLowPrices(minProfit, minPercent, maxCount);
+    }
+    @Post('calculate-percents/:sku')
+    @ApiOperation({ summary: 'Calculate and update percents for Ozon products' })
+    @ApiParam({
+        name: 'sku',
+        type: 'string',
+        example: 'SKU123',
+        description: 'SKU of the product',
+        required: true,
+    })
+    @ApiBody({
+        type: GoodPercentDto,
+        description: 'Partial update of GoodPercentDto',
+    })
+    @ApiResponse({ 
+        status: 200, 
+        description: 'Percents calculated and updated successfully',
+        type: GoodPercentDto,
+    })
+    async calculatePercents(
+        @Param('sku') sku: string,
+        @Body() goodPercentDto: Partial<GoodPercentDto>
+    ): Promise<GoodPercentDto> {
+        return this.extraService.generatePercentsForOzon(sku, goodPercentDto);
     }
 }

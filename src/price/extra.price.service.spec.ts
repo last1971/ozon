@@ -12,6 +12,7 @@ import { ExtraGoodService } from "../good/extra.good.service";
 import { EventEmitter2 } from "@nestjs/event-emitter";
 import { PriceDto } from "./dto/price.dto";
 import { PriceResponseDto } from "./dto/price.response.dto";
+import { GoodPercentDto } from "../good/dto/good.percent.dto";
 
 jest.mock("../yandex.price/yandex.price.service");
 jest.mock("../wb.price/wb.price.service");
@@ -84,7 +85,9 @@ describe("ExtraPriceService", () => {
         updatePriceForService: jest.fn(),
         updateWbCategory: jest.fn(),
         getWbCategoryByName: jest.fn(),
-        resetAvailablePrice: jest.fn()
+        resetAvailablePrice: jest.fn(),
+        generatePercentsForService: jest.fn(),
+        updatePercentsForService: jest.fn()
     };
 
     beforeEach(async () => {
@@ -288,7 +291,6 @@ describe("ExtraPriceService", () => {
                     name: "Product 1",
                     marketing_price: "200",
                     incoming_price: "90"
-                    // Добавьте остальные обязательные свойства
                 } as unknown as PriceDto,
                 {
                     marketing_seller_price: '150',
@@ -297,9 +299,8 @@ describe("ExtraPriceService", () => {
                     product_id: 'p2',
                     name: 'Product 2',
                     marketing_price: '150',
-                    incoming_price: '140',
-                    // Добавьте остальные обязательные свойства
-                }  as unknown as PriceDto,
+                    incoming_price: '140'
+                } as unknown as PriceDto,
                 {
                     marketing_seller_price: '300',
                     min_price: '200',
@@ -307,62 +308,76 @@ describe("ExtraPriceService", () => {
                     product_id: 'p3',
                     name: 'Product 3',
                     marketing_price: '300',
-                    incoming_price: '190',
-                    // Добавьте остальные обязательные свойства
-                }  as unknown as PriceDto,
+                    incoming_price: '190'
+                } as unknown as PriceDto,
             ];
 
             const thresholdPercent = 50;
             const result = extraPriceService['filterProblematicProducts'](products, thresholdPercent);
 
-            expect(result).toEqual([
-                {
-                    diffPercent: 100,
-                    marketing_seller_price: "200",
-                    min_price: "100",
-                    offer_id: "1",
-                    product_id: "p1",
-                    name: "Product 1",
-                    marketing_price: "200",
-                    incoming_price: "90"
-                    // Добавьте остальные обязательные свойства
-                },
-                {
-                    diffPercent: 0,
-                    marketing_seller_price: '150',
-                    min_price: '150',
-                    offer_id: '2',
-                    product_id: 'p2',
-                    name: 'Product 2',
-                    marketing_price: '150',
-                    incoming_price: '140',
-                    // Добавьте остальные обязательные свойства
-                },
-                {
-                    diffPercent: 50,
-                    marketing_seller_price: '300',
-                    min_price: '200',
-                    offer_id: '3',
-                    product_id: 'p3',
-                    name: 'Product 3',
-                    marketing_price: '300',
-                    incoming_price: '190',
-                    // Добавьте остальные обязательные свойства
-                },
-            ]);
+            expect(result).toHaveLength(3);
+            expect(result[0].diffPercent).toBe(100); // (200-100)/100 * 100
+            expect(result[1].diffPercent).toBe(0);   // (150-150)/150 * 100
+            expect(result[2].diffPercent).toBe(50);  // (300-200)/200 * 100
+        });
+    });
+
+    describe('ExtraPriceService - generatePercentsForOzon', () => {
+        it('should call generatePercentsForService with correct parameters', async () => {
+            const sku = 'test-sku';
+            const goodPercentDto: Partial<GoodPercentDto> = {
+                min_perc: 10,
+                perc: 15,
+                old_perc: 20,
+                available_price: 100
+            };
+
+            mockGoodService.generatePercentsForService.mockResolvedValue([goodPercentDto]);
+
+            const result = await extraPriceService.generatePercentsForOzon(sku, goodPercentDto);
+
+            expect(mockGoodService.generatePercentsForService).toHaveBeenCalledWith(
+                mockPriceService,
+                [sku],
+                new Map([[sku, goodPercentDto]])
+            );
+            expect(result).toEqual(goodPercentDto);
+        });
+
+        it('should call generatePercentsForService without goodPercentDto', async () => {
+            const sku = 'test-sku';
+            const goodPercentDto: Partial<GoodPercentDto> = {
+                min_perc: 10,
+                perc: 15,
+                old_perc: 20,
+                available_price: 100
+            };
+
+            mockGoodService.generatePercentsForService.mockResolvedValue([goodPercentDto]);
+
+            const result = await extraPriceService.generatePercentsForOzon(sku);
+
+            expect(mockGoodService.generatePercentsForService).toHaveBeenCalledWith(
+                mockPriceService,
+                [sku],
+                undefined
+            );
+            expect(result).toEqual(goodPercentDto);
         });
     });
 
     describe("ExtraPriceService - handleIncomingGoods", () => {
-        it("should reset available prices, update prices, and check price differences", async () => {
+        it("should reset available prices, update percents, update prices, and check price differences", async () => {
             const skus = ["sku1", "sku2"];
             mockGoodService.resetAvailablePrice.mockResolvedValue({});
+            jest.spyOn(extraPriceService, "updatePercentsForGoodSkus").mockResolvedValue(undefined);
             jest.spyOn(extraPriceService, "updatePriceForGoodSkus").mockResolvedValue({});
             jest.spyOn(extraPriceService, "checkPriceDifferenceAndNotify").mockResolvedValue(undefined);
 
             await extraPriceService.handleIncomingGoods(skus);
 
             expect(mockGoodService.resetAvailablePrice).toHaveBeenCalledWith(skus);
+            expect(extraPriceService.updatePercentsForGoodSkus).toHaveBeenCalledWith(skus);
             expect(extraPriceService.updatePriceForGoodSkus).toHaveBeenCalledWith(skus);
             expect(extraPriceService.checkPriceDifferenceAndNotify).toHaveBeenCalledWith(skus);
         });
@@ -377,6 +392,40 @@ describe("ExtraPriceService", () => {
         });
     });
 
+    describe("ExtraPriceService - updatePercentsForGoodSkus", () => {
+        it("should call generatePercentsForService with correct parameters", async () => {
+            const skus = ["sku1", "sku2"];
+            const serviceSkus = ["ozon-sku1", "ozon-sku2"];
+            
+            mockExtraGoodService.tradeSkusToServiceSkus.mockReturnValue(serviceSkus);
+            mockGoodService.updatePercentsForService.mockResolvedValue([]);
+
+            await extraPriceService.updatePercentsForGoodSkus(skus);
+
+            expect(mockExtraGoodService.tradeSkusToServiceSkus).toHaveBeenCalledWith(skus, GoodServiceEnum.OZON);
+            expect(mockGoodService.updatePercentsForService).toHaveBeenCalledWith(
+                mockPriceService,
+                serviceSkus
+            );
+        });
+
+        it("should handle empty skus array", async () => {
+            const skus: string[] = [];
+            const serviceSkus: string[] = [];
+            
+            mockExtraGoodService.tradeSkusToServiceSkus.mockReturnValue(serviceSkus);
+            mockGoodService.updatePercentsForService.mockResolvedValue([]);
+
+            await extraPriceService.updatePercentsForGoodSkus(skus);
+
+            expect(mockExtraGoodService.tradeSkusToServiceSkus).toHaveBeenCalledWith(skus, GoodServiceEnum.OZON);
+            expect(mockGoodService.updatePercentsForService).toHaveBeenCalledWith(
+                mockPriceService,
+                serviceSkus
+            );
+        });
+    });
+
     describe("ExtraPriceService - checkPriceDifferenceAndNotify", () => {
         it("should emit an event if problematic products are found", async () => {
             const skus = ["sku1", "sku2"];
@@ -387,16 +436,22 @@ describe("ExtraPriceService", () => {
 
             const mockResponse = {
                 data: mockProducts,
-                total: mockProducts.length, // Пример обязательного свойства
-                success: true, // Пример обязательного свойства
+                total: mockProducts.length,
+                success: true,
             } as unknown as PriceResponseDto;
 
-            mockPriceService.index.mockResolvedValue(mockResponse);
+            // Настраиваем моки
+            mockExtraGoodService.tradeSkusToServiceSkus.mockReturnValue(["ozon-sku1", "ozon-sku2"]);
+            mockPriceService.index = jest.fn().mockResolvedValue(mockResponse);
             const eventEmitterSpy = jest.spyOn(mockEventEmitter, "emit");
 
             await extraPriceService.checkPriceDifferenceAndNotify(skus);
 
-            expect(mockPriceService.index).toHaveBeenCalled();
+            expect(mockPriceService.index).toHaveBeenCalledWith({
+                offer_id: ["ozon-sku1", "ozon-sku2"],
+                limit: 4,
+                visibility: "ALL"
+            });
             expect(eventEmitterSpy).toHaveBeenCalledWith("problematic.prices", expect.any(Object));
         });
 

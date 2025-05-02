@@ -20,6 +20,8 @@ export interface IGood {
     updateCountForService(service: ICountUpdateable, args: any): Promise<number>;
     updateCountForSkus(service: ICountUpdateable, skus: string[]): Promise<number>;
     updatePriceForService(service: IPriceUpdateable, skus: string[], prices?: Map<string, UpdatePriceDto>): Promise<any>;
+    generatePercentsForService(service: IPriceUpdateable, skus: string[], goodPercentsDto?: Map<string, Partial<GoodPercentDto>>): Promise<GoodPercentDto[]>;
+    updatePercentsForService(service: IPriceUpdateable, skus: string[], goodPercentsDto?: Map<string, Partial<GoodPercentDto>>): Promise<void>;
     updateWbCategory(wbCard: WbCardDto): Promise<void>;
     getWbCategoryByName(name: string): Promise<WbCommissionDto>;
     resetAvailablePrice(goodCodes?: string[], t?: FirebirdTransaction): Promise<void>

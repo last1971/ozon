@@ -11,9 +11,10 @@ import { Cron } from "@nestjs/schedule";
 import { WbCommissionDto } from "../wb.card/dto/wb.commission.dto";
 import { EventEmitter2, OnEvent } from "@nestjs/event-emitter";
 import { ExtraGoodService } from "../good/extra.good.service";
-import { toNumber } from "lodash";
+import { toNumber, first } from "lodash";
 import { PriceDto } from "./dto/price.dto";
 import { ProductVisibility } from "../product/product.visibility";
+import { GoodPercentDto } from "../good/dto/good.percent.dto";
 
 @Injectable()
 export class ExtraPriceService {
@@ -115,6 +116,8 @@ export class ExtraPriceService {
         try {
             // Сначала обнуляем available_price для всех поступивших товаров
             await this.goodService.resetAvailablePrice(skus);
+            // Обновляем наценки для всех поступивших товаров
+            await this.updatePercentsForGoodSkus(skus);
             // Обновляем цены для всех маркетплейсов на основе поступивших товаров
             await this.updatePriceForGoodSkus(skus);
             // Затем проверяем разницу цен и отправляем уведомление, если необходимо
@@ -202,5 +205,20 @@ export class ExtraPriceService {
         });
         return problematicProducts;
         */
+    }
+    public async generatePercentsForOzon(sku: string, goodPercentDto?: Partial<GoodPercentDto>): Promise<GoodPercentDto> {
+        const available_prices = goodPercentDto !== null && goodPercentDto !== undefined
+            ? new Map([[sku, goodPercentDto]])
+            : undefined;
+        return first(await this.goodService.generatePercentsForService(
+            this.getService(GoodServiceEnum.OZON),
+            [sku],  // передаем как массив
+            available_prices
+        )) as GoodPercentDto;
+    }
+
+    public async updatePercentsForGoodSkus(skus: string[]): Promise<void> {
+        const serviceSkus = this.extraGoodService.tradeSkusToServiceSkus(skus, GoodServiceEnum.OZON);
+        await this.goodService.updatePercentsForService(this.getService(GoodServiceEnum.OZON), serviceSkus);
     }
 }

@@ -6,10 +6,16 @@ import { toNumber, head } from 'lodash';
 import { WbCardDto } from '../wb.card/dto/wb.card.dto';
 import TextOptions = PDFKit.Mixins.TextOptions;
 
-export const goodCode = (value: IOfferIdable): string => value.offer_id.replace(/-.*/g, '');
+export const goodCode = (value: IOfferIdable): string => value.offer_id.toString().replace(/-.*/g, '');
 export const goodQuantityCoeff = (value: IOfferIdable): any => {
-    const coeff = value.offer_id.replace(/.*-/g, '');
-    return coeff === value.offer_id ? 1 : parseInt(coeff);
+    const offerIdStr = value.offer_id.toString();
+    const dashIndex = offerIdStr.indexOf('-');
+    if (dashIndex === -1) {
+        return 1;
+    }
+    const coeff = offerIdStr.slice(dashIndex + 1);
+    const parsed = parseInt(coeff, 10);
+    return isNaN(parsed) ? 1 : parsed;
 };
 export const productQuantity = (goodQuantity: number, goodCoeff: number) =>
     goodQuantity ? Math.floor(goodQuantity / goodCoeff) : 0;

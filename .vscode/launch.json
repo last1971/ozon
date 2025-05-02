@@ -1,0 +1,112 @@
+{
+    "version": "0.2.0",
+    "configurations": [
+      {
+        "type": "node",
+        "request": "launch",
+        "name": "Start App",
+        "runtimeExecutable": "npm",
+        "runtimeArgs": [
+          "run",
+          "start"
+        ],
+        "console": "integratedTerminal"
+      },
+      {
+        "type": "node",
+        "request": "launch",
+        "name": "Start Dev",
+        "runtimeExecutable": "npm",
+        "runtimeArgs": [
+          "run",
+          "start:dev"
+        ],
+        "console": "integratedTerminal",
+        "presentation": {
+          "panel": "new"
+        }
+      },
+      {
+        "type": "node",
+        "request": "launch",
+        "name": "Start Debug",
+        "runtimeExecutable": "npm",
+        "runtimeArgs": [
+          "run",
+          "start:debug"
+        ],
+        "console": "integratedTerminal"
+      },
+      {
+        "type": "node",
+        "request": "launch",
+        "name": "Start Prod",
+        "runtimeExecutable": "npm",
+        "runtimeArgs": [
+          "run",
+          "start:prod"
+        ],
+        "console": "integratedTerminal"
+      },
+      {
+        "type": "node",
+        "request": "launch",
+        "name": "Build",
+        "runtimeExecutable": "npm",
+        "runtimeArgs": [
+          "run",
+          "build"
+        ],
+        "console": "integratedTerminal"
+      },
+      {
+        "type": "node",
+        "request": "launch",
+        "name": "Format",
+        "runtimeExecutable": "npm",
+        "runtimeArgs": [
+          "run",
+          "format"
+        ],
+        "console": "integratedTerminal"
+      },
+      {
+        "type": "node",
+        "request": "launch",
+        "name": "Admin Panel Dev",
+        "cwd": "${workspaceFolder}/admin-panel",
+        "runtimeExecutable": "npm",
+        "runtimeArgs": [
+          "run",
+          "dev"
+        ],
+        "console": "integratedTerminal",
+        "presentation": {
+          "panel": "new"
+        }
+      },
+      {
+        "type": "node",
+        "request": "launch",
+        "name": "Admin Panel Build",
+        "cwd": "${workspaceFolder}/admin-panel",
+        "runtimeExecutable": "npm",
+        "runtimeArgs": [
+          "run",
+          "build"
+        ],
+        "console": "integratedTerminal"
+      },
+      {
+        "type": "node",
+        "request": "launch",
+        "name": "Run Tests",
+        "runtimeExecutable": "npm",
+        "runtimeArgs": [
+          "run",
+          "test"
+        ],
+        "console": "integratedTerminal"
+      }
+    ]
+  }
