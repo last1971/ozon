@@ -20,7 +20,7 @@ export class Trade2006IncomingService extends WithTransactions(class {}) impleme
     async onModuleInit() {
         // Получение максимального SHOPINCODE при старте
         await this.fetchLastShopInCode();
-        // this.lastShopInCode = 415212;
+        // this.lastShopInCode = 415250;
         this.logger.log(`Начальный SHOPINCODE: ${this.lastShopInCode}`);
     }
 

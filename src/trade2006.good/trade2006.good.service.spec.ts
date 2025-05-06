@@ -9,6 +9,7 @@ import { Cache } from "@nestjs/cache-manager";
 import { PriceCalculationHelper } from "../helpers/price/price.calculation.helper";
 import { UpdatePriceDto } from "../price/dto/update.price.dto";
 import { GoodPercentDto } from "../good/dto/good.percent.dto";
+import { Logger } from "@nestjs/common";
 
 describe('Trade2006GoodService', () => {
     let service: Trade2006GoodService;
@@ -442,9 +443,8 @@ describe('Trade2006GoodService', () => {
             inTransaction: true
         });
 
-        // Мокаем logger.error
-        const loggerError = jest.fn();
-        service['logger'] = { error: loggerError } as any;
+        // Мокаем logger.error через spy
+        const loggerError = jest.spyOn(Logger.prototype, 'error').mockImplementation(() => {});
 
         // Мокаем pool.getTransaction
         jest.spyOn(service['pool'], 'getTransaction').mockImplementation(getTransaction);
