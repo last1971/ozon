@@ -167,3 +167,25 @@ export const calculateOptimalFontSize = ({
 
     return fontSize;
 }
+
+export function isSkuMatch(sku: string, offerId: string, pieces: number): boolean {
+    if (pieces === 1) {
+        return sku === offerId || sku === `${offerId}-1`;
+    } else {
+        return sku === `${offerId}-${pieces}`;
+    }
+}
+
+export function getPieces(obj: { pieces?: number; offer_id?: string | number }): number {
+    if (obj.pieces !== undefined && obj.pieces !== null && obj.pieces !== 0) {
+        return obj.pieces;
+    }
+    if (obj.offer_id !== undefined && obj.offer_id !== null) {
+        const offerIdStr = String(obj.offer_id);
+        const match = offerIdStr.match(/-(\d+)$/);
+        if (match) {
+            return Number(match[1]);
+        }
+    }
+    return 1;
+}

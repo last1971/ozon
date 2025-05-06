@@ -6,6 +6,8 @@ import {
     goodQuantityCoeff,
     productQuantity,
     skusToGoodIds,
+    isSkuMatch,
+    getPieces,
 } from './index';
 import { AutoAction } from '../price/dto/update.price.dto';
 
@@ -137,5 +139,45 @@ describe('Test helpers', () => {
                 ['2-1', '2'],
             ]),
         );
+    });
+    describe('isSkuMatch', () => {
+        it('совпадает XXXXXX и XXXXXX, если pieces=1', () => {
+            expect(isSkuMatch('123456', '123456', 1)).toBe(true);
+        });
+        it('совпадает XXXXXX-1 и XXXXXX, если pieces=1', () => {
+            expect(isSkuMatch('123456-1', '123456', 1)).toBe(true);
+        });
+        it('совпадает XXXXXX и XXXXXX-1, если pieces=1', () => {
+            expect(isSkuMatch('123456', '123456-1', 1)).toBe(false); // обратное не работает, и это ок
+        });
+        it('совпадает XXXXXX-2 и XXXXXX, если pieces=2', () => {
+            expect(isSkuMatch('123456-2', '123456', 2)).toBe(true);
+        });
+        it('не совпадает XXXXXX и XXXXXX, если pieces=2', () => {
+            expect(isSkuMatch('123456', '123456', 2)).toBe(false);
+        });
+        it('не совпадает XXXXXX-2 и XXXXXX, если pieces=1', () => {
+            expect(isSkuMatch('123456-2', '123456', 1)).toBe(false);
+        });
+    });
+    describe('getPieces', () => {
+        it('возвращает pieces, если он задан и не 0', () => {
+            expect(getPieces({ offer_id: '123', pieces: 5 })).toBe(5);
+            expect(getPieces({ offer_id: '123', pieces: 1 })).toBe(1);
+        });
+        it('игнорирует pieces=0, вычисляет из offer_id', () => {
+            expect(getPieces({ offer_id: '123-7', pieces: 0 })).toBe(7);
+        });
+        it('вычисляет из offer_id-строки', () => {
+            expect(getPieces({ offer_id: '123-3' })).toBe(3);
+            expect(getPieces({ offer_id: '123-1' })).toBe(1);
+        });
+        it('вычисляет из offer_id-числа', () => {
+            expect(getPieces({ offer_id: 123456 })).toBe(1);
+        });
+        it('возвращает 1, если ничего не найдено', () => {
+            expect(getPieces({ offer_id: 'abc' })).toBe(1);
+            expect(getPieces({})).toBe(1);
+        });
     });
 });

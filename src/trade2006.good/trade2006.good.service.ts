@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { IGood } from '../interfaces/IGood';
 import { GoodDto } from '../good/dto/good.dto';
 import { FIREBIRD } from '../firebird/firebird.module';
@@ -7,8 +7,10 @@ import { GoodPriceDto } from '../good/dto/good.price.dto';
 import { GoodPercentDto } from '../good/dto/good.percent.dto';
 import {
     calculatePrice,
+    getPieces,
     goodCode,
     goodQuantityCoeff,
+    isSkuMatch,
     productQuantity,
     skusToGoodIds,
     StringToIOfferIdableAdapter,
@@ -32,6 +34,7 @@ import { PriceCalculationHelper } from "../helpers/price/price.calculation.helpe
 export class Trade2006GoodService extends WithTransactions(class {}) implements IGood {
     private halfStoreMessages: string[] = [];
     private boundCheckMessages: string[] = [];
+    private readonly logger = new Logger(Trade2006GoodService.name);
     constructor(
         @Inject(FIREBIRD) private pool: FirebirdPool,
         private configService: ConfigService,
@@ -112,7 +115,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                 perc.packing_price || null,
                 perc.available_price ?? 0,
                 goodCode(perc),
-                goodQuantityCoeff(perc),
+                getPieces(perc),
             ],
             !t,
         );
@@ -222,25 +225,17 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
 
     async generatePercentsForService(service: IPriceUpdateable, skus: string[], goodPercentsDto?: Map<string, Partial<GoodPercentDto>>): Promise<GoodPercentDto[]> {
         const { goods, percents, products } = await this.priceCalculationHelper.preparePricesContext(service, skus, this);
-        const skuPairs = skus.map(sku => ({
-            offer_id: goodCode({ offer_id: sku }),
-            pieces: goodQuantityCoeff({ offer_id: sku })
-        }));
 
         const filteredPercents = percents.filter(percent =>
-            skuPairs.some(pair =>
-                pair.offer_id === percent.offer_id.toString() &&
-                pair.pieces === percent.pieces
+            products.some(product =>
+                isSkuMatch(product.getSku(), percent.offer_id.toString(), percent.pieces)
             )
         );
 
         return filteredPercents.map((percent: GoodPercentDto) => {
-            const product = products.find((p) => {
-                const sku = p.getSku();
-                const offerId = percent.offer_id.toString();
-                const pieces = percent.pieces;
-                return sku === offerId || sku === `${offerId}-${pieces}`;
-            });
+            const product = products.find((p) =>
+                isSkuMatch(p.getSku(), percent.offer_id.toString(), percent.pieces)
+            );
             const sku = product.getSku();
             const dto = goodPercentsDto?.get(sku);
 
@@ -280,7 +275,22 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
 
     async updatePercentsForService(service: IPriceUpdateable, skus: string[], goodPercentsDto?: Map<string, Partial<GoodPercentDto>>): Promise<void> {
         const updatedPercents = await this.generatePercentsForService(service, skus, goodPercentsDto);
-        await Promise.all(updatedPercents.map((percent) => this.setPercents(percent)));
+        // Убираем дубли по GOODSCODE и PIECES, оставляя только первый
+        const seen = new Set<string>();
+        const uniquePercents = updatedPercents.filter((percent) => {
+            const key = `${percent.offer_id}_${percent.pieces}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+        for (const percent of uniquePercents) {
+            try {
+                await this.setPercents(percent);
+            } catch (err) {
+                this.logger?.error?.(`setPercents error for GOODSCODE=${percent.offer_id}, PIECES=${percent.pieces}: ${err?.message}`, err?.stack);
+                // Продолжаем цикл
+            }
+        }
     }
 
     /**
