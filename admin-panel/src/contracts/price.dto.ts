@@ -17,4 +17,6 @@ export interface PriceDto {
     fbs_direct_flow_trans_max_amount: number;
     auto_action_enabled: boolean;
     sum_pack:number;
+    fbsCount: number;
+    fboCount: number;
 }

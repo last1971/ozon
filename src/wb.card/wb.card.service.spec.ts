@@ -182,6 +182,8 @@ describe('WbCardService', () => {
             primaryImage: 'test.jpg',
             remark: 'test-name',
             sku: '1',
+            fbsCount: 0,
+            fboCount: 0,
         });
         expect(res).toEqual([testCard, testCard, testCard]);
     });

@@ -37,4 +37,8 @@ export class PriceDto {
     auto_action_enabled: boolean;
     @ApiProperty({ description: 'Стоимость упаковки' })
     sum_pack:number;
+    @ApiProperty({ description: 'Остаток FBS', type: Number, example: 100 })
+    fbsCount: number;
+    @ApiProperty({ description: 'Остаток FBO', type: Number, example: 100 })
+    fboCount: number;
 }
