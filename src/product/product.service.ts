@@ -44,14 +44,20 @@ export class ProductService extends ICountUpdateable implements OnModuleInit {
     }
     async infoList(offer_id: string[]): Promise<ProductInfoDto[]> {
         const res = await this.ozonApiService.method('/v3/product/info/list', { offer_id });
-        return res?.items.map((item: any): ProductInfoDto => ({
-            sku: item.offer_id,
-            barCode: item.barcodes[0],
-            remark: item.name,
-            primaryImage: item.primary_image,
-            id: item.id,
-            goodService: GoodServiceEnum.OZON,
-        }));
+        return res?.items.map((item: any): ProductInfoDto => {
+            const { stocks } = item.stocks;
+            const fbs = stocks.find((stock: any) => stock.source === StockType.FBS);
+            const fbo = stocks.find((stock: any) => stock.source === StockType.FBO);
+            return{
+                sku: item.offer_id,
+                barCode: item.barcodes[0],
+                remark: item.name,
+                primaryImage: item.primary_image,
+                id: item.id,
+                goodService: GoodServiceEnum.OZON,
+                fbsCount: (fbs?.present || 0) - (fbs?.reserved || 0),
+                fboCount: (fbo?.present || 0) - (fbo?.reserved || 0),
+            }});
     }
 
     /**

@@ -78,6 +78,8 @@ const minPerc = computed(() => {
                 <tr>
                     <th>Код</th>
                     <th>Название</th>
+                    <th>FBS(шт)</th>
+                    <th>FBO(шт)</th>            
                     <th>На маркете</th>
                     <th>Для нас</th>
                     <th>Выплата</th>
@@ -92,6 +94,8 @@ const minPerc = computed(() => {
                 <tr>
                     <td>{{ value.offer_id }}</td>
                     <td>{{ value.name }}</td>
+                    <td>{{ value.fbsCount }}</td>
+                    <td>{{ value.fboCount }}</td>
                     <td>{{ Math.ceil(value.marketing_price) }} ₽</td>
                     <td>{{ Math.ceil(value.marketing_seller_price) }} ₽</td>
                     <td>{{ pays[ind]?.[0] ? Math.ceil(parseInt(pays[ind][0])) : 0 }} ₽</td>

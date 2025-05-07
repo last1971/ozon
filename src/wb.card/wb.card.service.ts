@@ -47,6 +47,8 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit {
             primaryImage: card.photos[0].big,
             remark: card.title,
             sku: card.vendorCode,
+            fbsCount: 0,
+            fboCount: 0,
         }
     }
 

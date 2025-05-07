@@ -42,10 +42,18 @@ export class PriceService implements IPriceUpdateable {
     }
 
     async index(request: PriceRequestDto): Promise<PriceResponseDto> {
-        const products = await this.product.getPrices(request);
+        const infoListPromise = request.offer_id
+            ? this.product.infoList(request.offer_id)
+            : Promise.resolve([]);
+        const [productsInfos, products] = await Promise.all([
+            infoListPromise,
+            this.product.getPrices(request),
+        ]);
         const codes = products.items.map((item) => goodCode(item));
-        const goods = await this.goodService.prices(codes, null);
-        const percents = await this.goodService.getPerc(codes, null);
+        const [goods, percents] = await Promise.all([
+            this.goodService.prices(codes, null),
+            this.goodService.getPerc(codes, null),
+        ]);
         const percDirectFlow = 1 + this.configService.get<number>('PERC_DIRECT_FLOW', 0)/100;
         return {
             last_id: products.cursor,
@@ -85,6 +93,8 @@ export class PriceService implements IPriceUpdateable {
                         / 2 * percDirectFlow,
                     auto_action_enabled: item.price.auto_action_enabled,
                     sum_pack: percent.packing_price,
+                    fbsCount: productsInfos.find((info) => info.sku === item.offer_id)?.fbsCount || 0,
+                    fboCount: productsInfos.find((info) => info.sku === item.offer_id)?.fboCount || 0,
                 };
             }),
         };

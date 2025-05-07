@@ -90,6 +90,8 @@ describe('PriceService', () => {
                     fbs_direct_flow_trans_max_amount: 50,
                     auto_action_enabled: false,
                     sum_pack: 0,
+                    fbsCount: 1,
+                    fboCount: 2,
                 },
                 {
                     offer_id: "offer2",
@@ -110,6 +112,8 @@ describe('PriceService', () => {
                     fbs_direct_flow_trans_max_amount: 20,
                     auto_action_enabled: true,
                     sum_pack: 0,
+                    fbsCount: 2,
+                    fboCount: 1,
                 },
                 {
                     offer_id: "offer3",
@@ -130,6 +134,8 @@ describe('PriceService', () => {
                     fbs_direct_flow_trans_max_amount: 10,
                     auto_action_enabled: false,
                     sum_pack: 0,
+                    fbsCount: 0,
+                    fboCount: 0,
                 },
             ],
             last_id: '3',
