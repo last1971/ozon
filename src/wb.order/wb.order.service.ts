@@ -244,6 +244,7 @@ export class WbOrderService implements IOrderable {
                     additional_payment: row.getCell(42).value as number,
                     penalty: row.getCell(41).value as number,
                     order_dt: row.getCell(12).value as string,
+                    assembly_id: row.getCell(54).value as number,
                     rrd_id: null,
                     srid: row.getCell(57).value as string,
                 });
@@ -253,36 +254,25 @@ export class WbOrderService implements IOrderable {
     }
     async updateTransactions(data: TransactionFilterDate, file: Express.Multer.File): Promise<ResultDto> {
         const transactions = file ? await this.getTransactionsFromFile(file) : await this.getTransactions(data);
-        const dateFrom = min(
-            transactions
-                .map((t) => t.order_dt)
-                .filter((date) => !!date)
-                .map((date) => DateTime.fromISO(date).toUnixInteger()),
-        );
-        const orders = await this.list(dateFrom);
-        const sridToNumber = new Map(orders.map((order) => [order.rid, order.id.toString()]));
         const commissions = new Map<string, number>();
         transactions.forEach((t) => {
-            let number = sridToNumber.get(t.srid);
-            if (!number) number = t.srid;
-            let amount = commissions.get(number);
-            if (!amount) {
-                amount = 0;
-            }
-            const ppvzForPay = t.ppvz_for_pay ?? 0;
-            const deliveryRub = t.delivery_rub ?? 0;
-            amount += ppvzForPay
-                - deliveryRub
-                + (t.additional_payment ?? 0)
-                - (t.penalty ?? 0);
+            const number = t.assembly_id ? t.assembly_id.toString() : t.srid;
+            let amount = commissions.get(number) ?? 0;
+            const { ppvz_for_pay = 0, delivery_rub = 0, additional_payment = 0, penalty = 0 } = t;
+            amount += ppvz_for_pay - delivery_rub + additional_payment - penalty;
             commissions.set(number, amount);
         });
         for (const key of commissions.keys()) {
             if (commissions.get(key) <= 0) {
                 commissions.delete(key);
             }
-        }
-        return this.invoiceService.updateByCommissions(commissions, null);
+        } 
+        return commissions.size > 0 
+        ? this.invoiceService.updateByCommissions(commissions, null)
+        : {
+            isSuccess: false,
+            message: 'Нет комиссий для обновления',
+        };
     }
 
     async getSales(dateFrom: string): Promise<any> {
