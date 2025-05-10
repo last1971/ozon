@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { PostingDto } from '../posting/dto/posting.dto';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { TransactionDto } from '../posting/dto/transaction.dto';
-import { ResultDto } from '../helpers/result.dto';
+import { ResultDto } from '../helpers/dto/result.dto';
 import { goodCode, goodQuantityCoeff } from '../helpers';
 import { chunk, flatten, toNumber } from 'lodash';
 import { ProductPostingDto } from '../product/dto/product.posting.dto';

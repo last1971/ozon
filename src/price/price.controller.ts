@@ -30,7 +30,7 @@ import { FileInterceptor } from "@nestjs/platform-express";
 import { Response } from "express";
 import { GoodServiceEnum } from "../good/good.service.enum";
 import { IPriceable } from "../interfaces/i.priceable";
-import { ObtainCoeffsDto } from "../helpers/obtain.coeffs.dto";
+import { ObtainCoeffsDto } from "../helpers/dto/obtain.coeffs.dto";
 import { calculatePay, calculatePrice } from "../helpers";
 import { WbCommissionDto } from "../wb.card/dto/wb.commission.dto";
 import { ExtraPriceService } from "./extra.price.service";

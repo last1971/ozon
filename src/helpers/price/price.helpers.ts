@@ -1,5 +1,5 @@
 import { IPriceable } from '../../interfaces/i.priceable';
-import { ObtainCoeffsDto } from '../obtain.coeffs.dto';
+import { ObtainCoeffsDto } from '../dto/obtain.coeffs.dto';
 import { toNumber } from 'lodash';
 import { AutoAction, UpdatePriceDto } from '../../price/dto/update.price.dto';
 /**

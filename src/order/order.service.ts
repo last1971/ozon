@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ProductService } from '../product/product.service';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
-import { ResultDto } from '../helpers/result.dto';
+import { ResultDto } from '../helpers/dto/result.dto';
 import { TransactionFilterDto } from '../posting/dto/transaction.filter.dto';
 import { Cron } from '@nestjs/schedule';
 import { PostingService } from '../posting/posting.service';

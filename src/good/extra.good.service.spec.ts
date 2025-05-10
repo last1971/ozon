@@ -7,7 +7,7 @@ import { WbCardService } from "../wb.card/wb.card.service";
 import { ExtraGoodService } from "./extra.good.service";
 import { GoodServiceEnum } from "./good.service.enum";
 import { ConfigService } from "@nestjs/config";
-import { GoodsCountProcessor } from "../helpers/goods.count.processor";
+import { GoodsCountProcessor } from "../helpers/good/goods.count.processor";
 
 describe('ExtraGoodService', () => {
     let service: ExtraGoodService;

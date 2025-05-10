@@ -10,7 +10,7 @@ import {
     UseInterceptors
 } from "@nestjs/common";
 import { OrderService } from './order.service';
-import { ResultDto } from '../helpers/result.dto';
+import { ResultDto } from '../helpers/dto/result.dto';
 import { TransactionFilterDate, TransactionFilterDto } from '../posting/dto/transaction.filter.dto';
 import {
     ApiBody,

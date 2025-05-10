@@ -1,5 +1,5 @@
-import { IOfferIdable } from '../interfaces/IOfferIdable';
-import { WbCardDto } from '../wb.card/dto/wb.card.dto';
+import { IOfferIdable } from '../../interfaces/IOfferIdable';
+import { WbCardDto } from '../../wb.card/dto/wb.card.dto';
 import { head } from 'lodash';
 
 /**

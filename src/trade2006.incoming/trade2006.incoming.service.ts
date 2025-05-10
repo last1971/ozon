@@ -1,5 +1,5 @@
 import { Inject, Injectable, Logger, OnModuleInit } from "@nestjs/common";
-import { WithTransactions } from "../helpers/transaction.mixin";
+import { WithTransactions } from "../helpers/mixin/transaction.mixin";
 import { FIREBIRD } from "../firebird/firebird.module";
 import { FirebirdPool } from "ts-firebird";
 import { EventEmitter2 } from "@nestjs/event-emitter";
