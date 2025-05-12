@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { PostingDto } from '../posting/dto/posting.dto';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { TransactionDto } from '../posting/dto/transaction.dto';
-import { ResultDto } from '../helpers/result.dto';
+import { ResultDto } from '../helpers/dto/result.dto';
 import { goodCode, goodQuantityCoeff } from '../helpers';
 import { chunk, flatten, toNumber } from 'lodash';
 import { ProductPostingDto } from '../product/dto/product.posting.dto';
@@ -488,18 +488,37 @@ export class Trade2006InvoiceService implements IInvoice, ISuppliable {
 
     async getSupplyPositions(id: string, productable: IProductable): Promise<SupplyPositionDto[]> {
         const lines = await this.getInvoiceLinesByInvoiceId(toNumber(id));
-        const ret: SupplyPositionDto[] = [];
-        for (const line of lines) {
+    
+        // Собираем все SKU для batch запроса
+        const skus = lines.map(line => {
             const { goodCode, whereOrdered } = line;
-            const sku = whereOrdered ? `${goodCode}-${whereOrdered}` : goodCode;
-            const product = await productable.getProductInfoBySku(sku);
-            ret.push({
+            return whereOrdered ? `${goodCode}-${whereOrdered}` : goodCode.toString();
+        });
+
+        // Получаем информацию о всех продуктах одним запросом
+        const productsInfo = await productable.infoList(skus);
+
+        // Создаем мапу для быстрого доступа к информации о продуктах
+        const productsMap = new Map(
+            productsInfo.map(product => [product.sku, product])
+        );
+
+        // Формируем результат
+        return lines.map(line => {
+            const { goodCode, whereOrdered } = line;
+            const sku = whereOrdered ? `${goodCode}-${whereOrdered}` : goodCode.toString();
+            const product = productsMap.get(sku);
+
+            if (!product) {
+                throw new Error(`Product not found for SKU: ${sku}`);
+            }
+
+            return {
                 supplyId: id,
                 barCode: product.barCode,
                 remark: product.remark,
-                quantity: toNumber(line.quantity),
-            });
-        }
-        return ret;
+                quantity: toNumber(line.quantity) / (toNumber(whereOrdered) || 1),
+            };
+        });
     }
 }

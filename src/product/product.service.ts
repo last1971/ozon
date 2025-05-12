@@ -22,9 +22,10 @@ import { ProductInfoDto } from "./dto/product.info.dto";
 import { GoodServiceEnum } from "../good/good.service.enum";
 import { VaultService } from "vault-module/lib/vault.service";
 import { ProductListDto } from "./dto/product.list.dto";
+import { IProductable } from 'src/interfaces/i.productable';
 
 @Injectable()
-export class ProductService extends ICountUpdateable implements OnModuleInit {
+export class ProductService extends ICountUpdateable implements OnModuleInit, IProductable {
     private warehouseId: number;
     constructor(
         private ozonApiService: OzonApiService,

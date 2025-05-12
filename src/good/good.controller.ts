@@ -2,7 +2,7 @@ import { Body, Controller, Inject, Param, ParseEnumPipe, Post, Put, Query } from
 import { ApiBody, ApiOperation, ApiParam, ApiProperty, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
 import { GoodPercentDto } from './dto/good.percent.dto';
-import { ResultDto } from '../helpers/result.dto';
+import { ResultDto } from '../helpers/dto/result.dto';
 import { GoodWbDto } from './dto/good.wb.dto';
 import { ExtraGoodService } from './extra.good.service';
 import { GoodServiceEnum } from './good.service.enum';

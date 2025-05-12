@@ -11,7 +11,7 @@ import { UpdatePriceDto, UpdatePricesDto } from "./dto/update.price.dto";
 import { chunk, toNumber } from "lodash";
 import { ProductVisibility } from "../product/product.visibility";
 import { IPriceUpdateable } from "../interfaces/i.price.updateable";
-import { ObtainCoeffsDto } from "../helpers/obtain.coeffs.dto";
+import { ObtainCoeffsDto } from "../helpers/dto/obtain.coeffs.dto";
 import { IProductCoeffsable } from "../interfaces/i.product.coeffsable";
 import { OzonProductCoeffsAdapter } from "./ozon.product.coeffs.adapter";
 import { Cache } from '@nestjs/cache-manager';

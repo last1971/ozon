@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
-import { ObtainCoeffsDto } from '../helpers/obtain.coeffs.dto';
+import { ObtainCoeffsDto } from '../helpers/dto/obtain.coeffs.dto';
 import { IProductCoeffsable } from '../interfaces/i.product.coeffsable';
 import { UpdatePriceDto } from '../price/dto/update.price.dto';
 import { ConfigService } from '@nestjs/config';

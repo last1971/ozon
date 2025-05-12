@@ -1,4 +1,4 @@
-import { ObtainCoeffsDto } from '../helpers/obtain.coeffs.dto';
+import { ObtainCoeffsDto } from '../helpers/dto/obtain.coeffs.dto';
 import { IProductCoeffsable } from './i.product.coeffsable';
 import { UpdatePriceDto } from '../price/dto/update.price.dto';
 import Excel from 'exceljs';

@@ -8,7 +8,7 @@ import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { ConfigService } from '@nestjs/config';
 import { DateTime } from 'luxon';
-import { ResultDto } from '../helpers/result.dto';
+import { ResultDto } from '../helpers/dto/result.dto';
 import { StatsOrderRequestDto } from './dto/stats.order.request.dto';
 import { OrderStatsDto } from './dto/order.stats.dto';
 import { FirebirdTransaction } from 'ts-firebird';

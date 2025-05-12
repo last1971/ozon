@@ -1,9 +1,9 @@
 import { GoodsCountProcessor } from "./goods.count.processor";
 import { Logger } from "@nestjs/common";
-import { GoodServiceEnum } from "../good/good.service.enum";
+import { GoodServiceEnum } from "../../good/good.service.enum";
 import { ICountUpdateable } from "src/interfaces/ICountUpdatebale";
-import { GoodDto } from "../good/dto/good.dto";
-import { IGood } from "../interfaces/IGood";
+import { GoodDto } from "../../good/dto/good.dto";
+import { IGood } from "../../interfaces/IGood";
 
 describe("GoodsCountProcessor", () => {
     let goodsCountProcessor: GoodsCountProcessor;

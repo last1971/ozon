@@ -7,7 +7,7 @@ import { UpdatePriceDto } from '../../price/dto/update.price.dto';
 import { IProductCoeffsable } from '../../interfaces/i.product.coeffsable';
 import { GoodPriceDto } from '../../good/dto/good.price.dto';
 import { IPriceable } from "../../interfaces/i.priceable";
-import * as helpers from '../index';
+import * as helpers from '../price/price.helpers';
 
 describe("PriceCalculationHelper", () => {
     let helper: PriceCalculationHelper;

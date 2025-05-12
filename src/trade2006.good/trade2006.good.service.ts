@@ -27,7 +27,7 @@ import { DateTime } from 'luxon';
 import { WbCardDto } from '../wb.card/dto/wb.card.dto';
 import { Cache } from '@nestjs/cache-manager';
 import { WbCommissionDto } from '../wb.card/dto/wb.commission.dto';
-import { WithTransactions } from "../helpers/transaction.mixin";
+import { WithTransactions } from "../helpers/mixin/transaction.mixin";
 import { PriceCalculationHelper } from "../helpers/price/price.calculation.helper";
 
 @Injectable()

@@ -1,9 +1,9 @@
 import { Logger } from "@nestjs/common";
-import { GoodCountsDto, ICountUpdateable } from "../interfaces/ICountUpdatebale";
-import { GoodDto } from "../good/dto/good.dto";
-import { GoodServiceEnum } from "../good/good.service.enum";
-import { goodQuantityCoeff, skusToGoodIds } from "./index";
-import { IGood } from "../interfaces/IGood";
+import { GoodCountsDto, ICountUpdateable } from "../../interfaces/ICountUpdatebale";
+import { GoodDto } from "../../good/dto/good.dto";
+import { GoodServiceEnum } from "../../good/good.service.enum";
+import { goodQuantityCoeff, skusToGoodIds } from "../index";
+import { IGood } from "../../interfaces/IGood";
 
 export class GoodsCountProcessor {
     private quantityCache = new Map<string, number>();

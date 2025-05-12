@@ -6,17 +6,15 @@ import { WbCardService } from "../wb.card/wb.card.service";
 import { GOOD_SERVICE, IGood } from "../interfaces/IGood";
 import { ICountUpdateable } from "../interfaces/ICountUpdatebale";
 import { GoodServiceEnum } from "./good.service.enum";
-import { ResultDto } from "../helpers/result.dto";
+import { ResultDto } from "../helpers/dto/result.dto";
 import { OnEvent } from "@nestjs/event-emitter";
 import { IsSwitchedDto } from "./dto/is.switched.dto";
 import { chunk } from "lodash";
 import { Cron } from "@nestjs/schedule";
 import { GoodDto } from "./dto/good.dto";
 import { ConfigService } from "@nestjs/config";
-// import { ProductVisibility } from "../product/product.visibility";
-// import { ProductListResultDto } from "../product/dto/product.list.result.dto";
 import { ProductInfoDto } from "../product/dto/product.info.dto";
-import { GoodsCountProcessor } from "../helpers/goods.count.processor";
+import { GoodsCountProcessor } from "../helpers/good/goods.count.processor";
 
 @Injectable()
 export class ExtraGoodService {
