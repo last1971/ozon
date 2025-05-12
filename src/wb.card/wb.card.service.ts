@@ -9,9 +9,10 @@ import { ConfigService } from '@nestjs/config';
 import { WbCardAnswerDto } from './dto/wb.card.answer.dto';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { ProductInfoDto } from "../product/dto/product.info.dto";
+import { IProductable } from '../interfaces/i.productable';
 
 @Injectable()
-export class WbCardService extends ICountUpdateable implements OnModuleInit {
+export class WbCardService extends ICountUpdateable implements OnModuleInit, IProductable {
     private warehouseId: number;
     private skuBarcodePair: Map<string, string>;
     private skuNmIDPair: Map<string, string>;

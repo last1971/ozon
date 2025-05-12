@@ -367,4 +367,100 @@ describe('Trade2006InvoiceService', () => {
             true,
         ]);
     });
+
+    describe('getSupplyPositions', () => {
+        const mockProductable = {
+            infoList: jest.fn(),
+        };
+
+        beforeEach(() => {
+            query.mockClear();
+            mockProductable.infoList.mockClear();
+        });
+
+        it('должен корректно получать позиции поставки', async () => {
+            // Подготовка данных
+            const supplyId = '123';
+            const mockLines = [
+                { GOODSCODE: 111, QUAN: 10, WHERE_ORDERED: '2' },
+                { GOODSCODE: 222, QUAN: 5, WHERE_ORDERED: null }
+            ];
+            
+            const mockProducts = [
+                { sku: '111-2', barCode: 'BAR111', remark: 'Product 1' },
+                { sku: '222', barCode: 'BAR222', remark: 'Product 2' }
+            ];
+
+            // Мокаем запрос к БД
+            query.mockResolvedValueOnce(mockLines);
+            
+            // Мокаем ответ от productable
+            mockProductable.infoList.mockResolvedValueOnce(mockProducts);
+
+            // Выполняем тест
+            const result = await service.getSupplyPositions(supplyId, mockProductable);
+
+            // Проверяем результаты
+            expect(result).toHaveLength(2);
+            expect(result[0]).toEqual({
+                supplyId,
+                barCode: 'BAR111',
+                remark: 'Product 1',
+                quantity: 5 // 10 / 2 (whereOrdered)
+            });
+            expect(result[1]).toEqual({
+                supplyId,
+                barCode: 'BAR222',
+                remark: 'Product 2',
+                quantity: 5 // 5 / 1 (whereOrdered = null)
+            });
+
+            // Проверяем вызовы
+            expect(query).toHaveBeenCalledWith('SELECT * FROM REALPRICE WHERE SCODE = ?', [123], true);
+            expect(mockProductable.infoList).toHaveBeenCalledWith(['111-2', '222']);
+        });
+
+        it('должен выбрасывать ошибку, если продукт не найден', async () => {
+            // Подготовка данных
+            const supplyId = '123';
+            const mockLines = [
+                { GOODSCODE: 111, QUAN: 10, WHERE_ORDERED: '2' }
+            ];
+            
+            const mockProducts = [
+                { sku: 'wrong-sku', barCode: 'BAR111', remark: 'Product 1' }
+            ];
+
+            // Мокаем запрос к БД
+            query.mockResolvedValueOnce(mockLines);
+            
+            // Мокаем ответ от productable
+            mockProductable.infoList.mockResolvedValueOnce(mockProducts);
+
+            // Проверяем, что метод выбрасывает ошибку
+            await expect(service.getSupplyPositions(supplyId, mockProductable))
+                .rejects
+                .toThrow('Product not found for SKU: 111-2');
+        });
+
+        it('должен корректно обрабатывать пустой список позиций', async () => {
+            // Подготовка данных
+            const supplyId = '123';
+            const mockLines = [];
+            
+            // Мокаем запрос к БД
+            query.mockResolvedValueOnce(mockLines);
+            
+            // Мокаем пустой ответ от productable
+            mockProductable.infoList.mockResolvedValueOnce([]);
+
+            // Выполняем тест
+            const result = await service.getSupplyPositions(supplyId, mockProductable);
+
+            // Проверяем результаты
+            expect(result).toHaveLength(0);
+            expect(query).toHaveBeenCalledWith('SELECT * FROM REALPRICE WHERE SCODE = ?', [123], true);
+            expect(mockProductable.infoList).toHaveBeenCalledWith([]);
+        });
+    });
 });

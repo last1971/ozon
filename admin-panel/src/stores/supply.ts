@@ -33,7 +33,8 @@ export const useSupplyStore = defineStore('supply', {
 
     getters: {
         wbSupplies: (state) => {
-            return state.supplies.filter(supply => supply.goodService === GoodServiceEnum.WB);
+            //return state.supplies.filter(supply => supply.goodService === GoodServiceEnum.WB);
+            return state.supplies;
         },
     },
 
@@ -41,9 +42,9 @@ export const useSupplyStore = defineStore('supply', {
         async fetchSupplyOrders(id: string) {
             this.isLoading = true;
             this.error = null;
-
+            const supply = this.supplies.find(supply => supply.id === id);
             try {
-                const response = await axios.get<SupplyOrderDto[]>(`/api/supply/orders/${id}`);
+                const response = await axios.get<SupplyOrderDto[]>(`/api/supply/orders/${id}/${supply?.isMarketplace ? 'fbs' : 'fbo'}/${supply?.goodService}`);
                 this.supplyOrders = response.data;
 
             } catch (error: any) {

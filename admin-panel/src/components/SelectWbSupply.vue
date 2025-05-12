@@ -1,12 +1,12 @@
 <script setup lang="ts">
 import { ref, onMounted, watch } from "vue";
-import { useSupplyStore } from "@/stores/supply";
+import { useSupplyStore, type SupplyDto } from "@/stores/supply";
 import { storeToRefs } from "pinia";
 
 // Объявление prop для v-model
 defineProps({
     modelValue: {
-        type: String || null, // Указать тип данных, например String
+        type: Object || null, // Указать тип данных, например String
         required: false,
         default: null,
     },
@@ -19,7 +19,7 @@ const emit = defineEmits(['update:modelValue']);
 const supplyStore = useSupplyStore();
 
 // Локальная переменная для выбранного значения в селекте
-const selectedSupply = ref<string | null>(null);
+const selectedSupply = ref<SupplyDto | null>(null);
 
 // Данные из стора
 const { wbSupplies, isLoading, error } = storeToRefs(useSupplyStore());
@@ -41,8 +41,8 @@ watch(selectedSupply, (newValue) => {
             v-model="selectedSupply"
             :items="wbSupplies"
             item-title="remark"
-            item-value="id"
             label="Выберите поставку"
+            :return-object="true"
             :loading="isLoading"
             :disabled="isLoading"
         ></v-select>
