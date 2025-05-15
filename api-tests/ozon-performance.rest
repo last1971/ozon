@@ -1,0 +1,55 @@
+@baseUrl = {{$dotenv OZON_API_BASE_URL}}
+@clientId = {{$dotenv OZON_CLIENT_ID}}
+@clientSecret = {{$dotenv OZON_CLIENT_SECRET}}
+@state = &state=CAMPAIGN_STATE_RUNNING
+
+### Получение OAuth токена
+# @name login
+POST {{baseUrl}}/api/client/token
+Content-Type: application/json
+Accept: application/json
+
+{
+    "client_id": "{{clientId}}",
+    "client_secret": "{{clientSecret}}",
+    "grant_type": "client_credentials"
+}
+
+### Сохраняем токен в переменную
+@accessToken = {{login.response.body.access_token}}
+
+### Получение списка кампаний
+GET {{baseUrl}}/api/client/campaign?advObjectType=SKU{{state}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+Accept: application/json
+
+### Создание новой кампании
+POST {{baseUrl}}/api/client/campaign
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+    "campaign": {
+        "name": "Test Campaign",
+        "budget": {
+            "amount": 1000,
+            "currency": "RUB"
+        },
+        "targeting": {
+            "locations": ["RU"],
+            "devices": ["MOBILE", "DESKTOP"]
+        }
+    }
+}
+
+### Получение статистики кампании
+GET {{baseUrl}}/api/client/campaign/stats
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+    "campaign_id": "your_campaign_id",
+    "date_from": "2024-01-01",
+    "date_to": "2024-03-20"
+} 
