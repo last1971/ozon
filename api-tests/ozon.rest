@@ -1,0 +1,12 @@
+@baseUrl = {{$dotenv OZON_API_BASE_URL}}
+@clientId = {{$dotenv OZON_API_CLIENT_ID}}
+@apiKey = {{$dotenv OZON_API_KEY}}
+
+### Получение списка складов
+POST {{baseUrl}}/v1/warehouse/list
+Content-Type: application/json
+Client-Id: {{clientId}}
+Api-Key: {{apiKey}}
+
+{
+} 
