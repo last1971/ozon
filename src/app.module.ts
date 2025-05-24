@@ -45,35 +45,22 @@ import { HelpersModule } from "./helpers/helpers.module";
         EventEmitterModule.forRoot(),
         ConfigModule.forRoot({ isGlobal: true, validate: configValidate }),
         HttpModule.registerAsync({
-            imports: [ConfigModule], // Импортируем ConfigModule, чтобы использовать ConfigService
+            imports: [ConfigModule],
             useFactory: async (configService: ConfigService) => {
-                // Получаем таймаут из конфигурации или используем значения по умолчанию
-                // Можно использовать разные переменные окружения для production и development/debug
                 const isDebugging = process.env.NODE_ENV !== 'production';
-
-                // Таймаут по умолчанию для отладки (например, 5 минут)
                 const debugTimeout = configService.get<number>('HTTP_DEBUG_TIMEOUT', 300000);
-                // Таймаут по умолчанию для production (например, 60 секунд)
                 const productionTimeout = configService.get<number>('HTTP_TIMEOUT', 60000);
-
                 const defaultTimeout = isDebugging ? debugTimeout : productionTimeout;
-
                 const logger = new Logger('HttpModule');
-                logger.log(`HttpModule registered with default timeout: ${defaultTimeout}ms`); // Лог для проверки
-
+                logger.log(`HttpModule registered with default timeout: ${defaultTimeout}ms`);
                 return {
                     timeout: defaultTimeout,
-                    // Здесь можно задать и другие глобальные параметры Axios, например:
-                    // baseURL: configService.get<string>('OZON_API_URL'),
-                    // headers: { 'X-Custom-Header': 'value' },
                 };
             },
-            inject: [ConfigService], // Внедряем ConfigService в фабрику
+            inject: [ConfigService],
         }),
         ServeStaticModule.forRoot({
-            // serveRoot: 'admin',
             rootPath: join(__dirname, '..', 'admin-panel/dist'),
-            // renderPath: 'dist/admin-panel/*',
         }),
         ScheduleModule.forRoot(),
         OzonApiModule,
