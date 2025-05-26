@@ -164,6 +164,10 @@ class EnvironmentVariables {
     @IsOptional()
     @IsNumber()
     PRICE_SMOOTHING_OFFSET: number;
+
+    @IsOptional()
+    @IsNumber()
+    MAX_DAILY_SPEND: number;
 }
 
 export function configValidate(config: Record<string, unknown>) {

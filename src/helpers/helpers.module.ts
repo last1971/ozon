@@ -1,23 +1,18 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { PriceCalculationHelper } from './price/price.calculation.helper';
-// import { GoodBoundaryHelper } from './boundary/good.boundary.helper';
-// import { WildberriesDataHelper } from './wildberries/wildberries.data.helper';
-// import { ServicePriceUpdateHelper } from './service/service.price.update.helper';
+import { HttpWrapperService } from './http/http-wrapper.service';
+import { HttpModule } from '@nestjs/axios';
 
 @Module({
-    imports: [ConfigModule],
+    imports: [ConfigModule, HttpModule],
     providers: [
         PriceCalculationHelper,
-//        GoodBoundaryHelper,
-//        WildberriesDataHelper,
-//        ServicePriceUpdateHelper
+        HttpWrapperService,
     ],
     exports: [
         PriceCalculationHelper,
-//        GoodBoundaryHelper,
-//        WildberriesDataHelper,
-//        ServicePriceUpdateHelper
+        HttpWrapperService,
     ]
 })
 export class HelpersModule {}

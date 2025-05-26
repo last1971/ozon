@@ -72,8 +72,8 @@ Content-Type: application/json
 
 {
     "campaign_id": "10708991",
-    "date_from": "2025-04-01",
-    "date_to": "2025-04-30"
+    "date_from": "2025-05-24",
+    "date_to": "2025-05-25"
 }
 
 ### Активация кампании
@@ -102,6 +102,16 @@ Content-Type: application/json
 
 {
     "campaignIds": "10708991",
-    "dateFrom": "2025-05-09",
-    "dateTo": "2025-05-10"
-} 
+    "dateFrom": "2025-05-24",
+    "dateTo": "2025-05-25"
+}
+
+### Получение расходов по кампаниям (GetCampaignExpense)
+GET {{baseUrl}}/api/client/statistics/expense/json?campaignIds=10708991&dateFrom=2025-05-25&dateTo=2025-05-26
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+### Получение расходов по кампаниям (GetCampaignDailyStats)
+GET {{baseUrl}}/api/client/statistics/daily/json?campaignIds=10708991&dateFrom=2025-05-25&dateTo=2025-05-26
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
