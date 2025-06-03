@@ -208,12 +208,9 @@ export class WbOrderService implements IOrderable {
 
     async listAwaitingPackaging(): Promise<PostingDto[]> {
         const orders = await this.listSomeDayAgo();
-        return this.listByStatus(orders, 'new');
-    }
-
-    async listInProgress(): Promise<PostingDto[]> {
-        const orders = await this.listSomeDayAgo();
-        return this.listByStatus(orders, 'confirm');
+        const newOrders = await this.listByStatus(orders, 'new');
+        const confirmOrders = await this.listByStatus(orders, 'confirm');
+        return newOrders.concat(confirmOrders);
     }
 
     async getTransactions(data: TransactionFilterDate, rrdid = 0): Promise<Array<WbTransactionDto>> {
@@ -336,10 +333,6 @@ export class WbOrderService implements IOrderable {
         let res = this.postingDtos.get(postingNumber);
         if (!res) {
             await this.listAwaitingPackaging();
-            res = this.postingDtos.get(postingNumber);
-        }
-        if (!res) {
-            await this.listInProgress();
             res = this.postingDtos.get(postingNumber);
         }
         return res;

@@ -35,12 +35,12 @@ export class OrderService {
         private configService: ConfigService,
     ) {
         const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
+        if (services.includes(GoodServiceEnum.WB)) this.orderServices.push(wbOrder);
         if (services.includes(GoodServiceEnum.OZON)) {
             this.orderServices.push(postingFboService);
             this.orderServices.push(postingService);
         }
         if (services.includes(GoodServiceEnum.YANDEX)) this.orderServices.push(yandexOrder);
-        if (services.includes(GoodServiceEnum.WB)) this.orderServices.push(wbOrder);
     }
 
     getServiceByName(name: GoodServiceEnum): IOrderable | null {

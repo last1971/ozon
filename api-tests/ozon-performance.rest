@@ -112,6 +112,41 @@ Authorization: Bearer {{accessToken}}
 Content-Type: application/json
 
 ### Получение расходов по кампаниям (GetCampaignDailyStats)
-GET {{baseUrl}}/api/client/statistics/daily/json?campaignIds=10708991&dateFrom=2025-05-25&dateTo=2025-05-26
+GET {{baseUrl}}/api/client/statistics/daily/json?campaignIds=10708991&dateFrom=2025-05-28&dateTo=2025-05-28
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+### Получение статистики по товарам
+
+POST {{baseUrl}}/api/client/statistics/products/generate/json
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+    "from": "2025-05-27T00:00:00Z",
+    "to": "2025-05-27T23:59:59Z"
+}
+
+
+### Статистика по компании
+POST {{baseUrl}}/api/client/statistics/json
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+    "campaigns": ["10708991"],
+    "from": "2025-05-21T00:00:00Z",
+    "to": "2025-05-27T23:59:59Z"
+}
+
+### Получить информацию об отчете
+
+GET {{baseUrl}}/api/client/statistics/80785578-3fe4-4a56-ab51-7d3fc2acb895
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+### Получить отчет
+
+GET {{baseUrl}}/api/client/statistics/report?UUID=80785578-3fe4-4a56-ab51-7d3fc2acb895
 Authorization: Bearer {{accessToken}}
 Content-Type: application/json
