@@ -270,7 +270,7 @@ export class PromosService {
         return actionProducts;
     }
 
-    private async getActionListProduct(
+    async getActionListProduct(
         source: (params: ActionsListParamsDto) => Promise<ActionsListDto>,
         action_id: number,
         limit: number,

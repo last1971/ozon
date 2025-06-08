@@ -1,17 +1,11 @@
 {
     "github.copilot.chat.localeOverride": "ru",
     "editor.inlineSuggest.enabled": true,
-    "github.copilot.editor.enableAutoCompletions": true,
     "github.copilot.enable": {
-        "*": true,
+        "*": false,
         "plaintext": false,
         "markdown": false,
-        "scminput": false
-
+        "scminput": false,
+        "enableAutoCompletions": false
     }
-          "database.jdbc.drivers": [
-        {
-            "name": "Firebird",
-            "path": "./jdbc-driver/jaybird-full-2.2.15.jar"
-        }
 }

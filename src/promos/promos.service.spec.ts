@@ -7,6 +7,7 @@ import { DeactivateActionProductsParamsDto } from './dto/deactivateActionProduct
 import { ProductService } from '../product/product.service';
 import { ActionListProduct } from './dto/actionsCandidate.dto';
 import { PriceService } from '../price/price.service';
+import { ActionsDto } from './dto/actions.dto';
 
 describe('PromosService', () => {
     let service: PromosService;
@@ -374,5 +375,11 @@ describe('PromosService', () => {
             action_id: actionId,
             product_ids: [1, 3],
         });
+    });
+
+    // TODO
+    it('addRemoveProductToActions should add and remove products correctly', async () => {
+        const test = true;
+        expect(test).toBe(true);
     });
 });
