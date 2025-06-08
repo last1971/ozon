@@ -150,7 +150,10 @@ export class PromosService {
             .filter((actionProduct) => {
                 const productPrice = productsPrice.find((p) => p.id === actionProduct.id);
                 const productCount = productsCount.find((p) => p.id === actionProduct.id);
-                return productPrice && (actionProduct.action_price < Number(productPrice.price.min_price) || productCount.count === 0);
+                return (
+                    productPrice &&
+                    (actionProduct.action_price < Number(productPrice.price.min_price) || productCount.count === 0)
+                );
             })
             .map((p) => p.id);
         await this.deactivateActionProducts({ action_id: actionId, product_ids: unfitProductIds });
@@ -178,8 +181,13 @@ export class PromosService {
                 const minPrice = Number(
                     candidatesPrice.find((product) => product.id === actionProduct.id)?.price.min_price,
                 );
-                const count= candidatesCount.find((product) => product.id === actionProduct.id)?.count;
-                return minPrice && actionProduct.max_action_price && actionProduct.max_action_price >= minPrice && count > 0;
+                const count = candidatesCount.find((product) => product.id === actionProduct.id)?.count;
+                return (
+                    minPrice &&
+                    actionProduct.max_action_price &&
+                    actionProduct.max_action_price >= minPrice &&
+                    count > 0
+                );
             })
             .map((p) => p.id);
         const products: ActivateActionProduct[] = fitProductIds
@@ -326,11 +334,11 @@ export class PromosService {
                 // то вносим в список на добавление
                 const productCanPromoted = productsCanPromoted.find((p) => p.id === price.product_id);
                 if (productCanPromoted && productCanPromoted.max_action_price >= price.min_price) {
-                    price.price = productCanPromoted.max_action_price ; // ❗️ для добавления в акцию (activateActionProducts)
+                    price.price = productCanPromoted.max_action_price; // ❗️ для добавления в акцию (activateActionProducts)
                     addList.push(price);
                 }
             }
-            const resultItem: AddRemoveProductToAction ={
+            const resultItem: AddRemoveProductToAction = {
                 action_id: action.id,
                 removed: {
                     success_ids: [],
@@ -339,8 +347,8 @@ export class PromosService {
                 added: {
                     success_ids: [],
                     failed: [],
-                }
-            }
+                },
+            };
             // удаляем если есть что
             if (removeList.length) {
                 const params: DeactivateActionProductsParamsDto = {
@@ -349,17 +357,24 @@ export class PromosService {
                 };
                 const removed = await this.deactivateActionProducts(params);
                 resultItem.removed.success_ids = removed.product_ids;
-                resultItem.removed.failed = removed.rejected
+                resultItem.removed.failed = removed.rejected;
             }
             // добавляем если есть что
             if (addList.length) {
                 const params: ActivateActionProductsParamsDto = {
                     action_id: action.id,
-                    products: addList.map((p) => <ActivateActionProduct>{product_id: p.product_id, action_price: p.price, stock: p.}), // ❗️ используем price.price = productCanPromoted.max_action_price (см выше) 
+                    products: addList.map(
+                        (p) =>
+                            <ActivateActionProduct>{
+                                product_id: p.product_id,
+                                action_price: p.price,
+                                stock: p.fboCount + p.fbsCount,
+                            },
+                    ), // ❗️ используем price.price = productCanPromoted.max_action_price (см выше)
                 };
                 const added = await this.activateActionProducts(params);
-                resultItem.removed.success_ids = removed.product_ids;
-                resultItem.removed.failed = removed.rejected
+                resultItem.removed.success_ids = added.product_ids;
+                resultItem.removed.failed = added.rejected;
             }
             result.push(resultItem);
         }

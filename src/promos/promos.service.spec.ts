@@ -6,6 +6,7 @@ import { ActivateActionProductsParamsDto } from './dto/activateActionProductsPar
 import { DeactivateActionProductsParamsDto } from './dto/deactivateActionProductsParams.dbo';
 import { ProductService } from '../product/product.service';
 import { ActionListProduct } from './dto/actionsCandidate.dto';
+import { PriceService } from '../price/price.service';
 
 describe('PromosService', () => {
     let service: PromosService;
@@ -20,6 +21,7 @@ describe('PromosService', () => {
             providers: [
                 PromosService,
                 { provide: OzonApiService, useValue: { method } },
+                { provide: PriceService, useValue: { index } },
                 { provide: ProductService, useValue: { getPrices, getFreeProductCount } },
             ],
         }).compile();
