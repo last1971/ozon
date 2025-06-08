@@ -10,14 +10,15 @@ import { ConfigService } from '@nestjs/config';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { FirebirdTransaction } from 'ts-firebird';
 import { TransactionFilterDate } from '../posting/dto/transaction.filter.dto';
-import { ResultDto } from '../helpers/result.dto';
+import { ResultDto } from '../helpers/dto/result.dto';
 import { first, min, chunk, find, filter } from 'lodash';
 import { WbTransactionDto } from './dto/wb.transaction.dto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Cron } from "@nestjs/schedule";
+import { Cron, Timeout } from "@nestjs/schedule";
 import { WbFboOrder } from './dto/wb.fbo.order';
 import { ProductPostingDto } from '../product/dto/product.posting.dto';
 import Excel from 'exceljs';
+import { WbOrderStickersDto } from "./dto/wb.order.stickers.dto";
 
 @Injectable()
 export class WbOrderService implements IOrderable {
@@ -37,7 +38,10 @@ export class WbOrderService implements IOrderable {
     }
 
     async list(dateFrom = 0, initialNext = 0, limit = 1000): Promise<WbOrderDto[]> {
-        const { orders, next } = await this.api.method('/api/v3/orders', 'get', { next: initialNext, limit, dateFrom });
+        const { orders, next } = await this.api.method(
+            '/api/v3/orders', 'get',
+            { next: initialNext, limit, dateFrom }
+        );
         if (next) {
             orders.push(...(await this.list(dateFrom, next, limit)));
         }
@@ -204,12 +208,9 @@ export class WbOrderService implements IOrderable {
 
     async listAwaitingPackaging(): Promise<PostingDto[]> {
         const orders = await this.listSomeDayAgo();
-        return this.listByStatus(orders, 'new');
-    }
-
-    async listInProgress(): Promise<PostingDto[]> {
-        const orders = await this.listSomeDayAgo();
-        return this.listByStatus(orders, 'confirm');
+        const newOrders = await this.listByStatus(orders, 'new');
+        const confirmOrders = await this.listByStatus(orders, 'confirm');
+        return newOrders.concat(confirmOrders);
     }
 
     async getTransactions(data: TransactionFilterDate, rrdid = 0): Promise<Array<WbTransactionDto>> {
@@ -240,6 +241,7 @@ export class WbOrderService implements IOrderable {
                     additional_payment: row.getCell(42).value as number,
                     penalty: row.getCell(41).value as number,
                     order_dt: row.getCell(12).value as string,
+                    assembly_id: row.getCell(54).value as number,
                     rrd_id: null,
                     srid: row.getCell(57).value as string,
                 });
@@ -249,36 +251,25 @@ export class WbOrderService implements IOrderable {
     }
     async updateTransactions(data: TransactionFilterDate, file: Express.Multer.File): Promise<ResultDto> {
         const transactions = file ? await this.getTransactionsFromFile(file) : await this.getTransactions(data);
-        const dateFrom = min(
-            transactions
-                .map((t) => t.order_dt)
-                .filter((date) => !!date)
-                .map((date) => DateTime.fromISO(date).toUnixInteger()),
-        );
-        const orders = await this.list(dateFrom);
-        const sridToNumber = new Map(orders.map((order) => [order.rid, order.id.toString()]));
         const commissions = new Map<string, number>();
         transactions.forEach((t) => {
-            let number = sridToNumber.get(t.srid);
-            if (!number) number = t.srid;
-            let amount = commissions.get(number);
-            if (!amount) {
-                amount = 0;
-            }
-            const ppvzForPay = t.ppvz_for_pay ?? 0;
-            const deliveryRub = t.delivery_rub ?? 0;
-            amount += ppvzForPay
-                - deliveryRub
-                + (t.additional_payment ?? 0)
-                - (t.penalty ?? 0);
+            const number = t.assembly_id ? t.assembly_id.toString() : t.srid;
+            let amount = commissions.get(number) ?? 0;
+            const { ppvz_for_pay = 0, delivery_rub = 0, additional_payment = 0, penalty = 0 } = t;
+            amount += ppvz_for_pay - delivery_rub + additional_payment - penalty;
             commissions.set(number, amount);
         });
         for (const key of commissions.keys()) {
             if (commissions.get(key) <= 0) {
                 commissions.delete(key);
             }
-        }
-        return this.invoiceService.updateByCommissions(commissions, null);
+        } 
+        return commissions.size > 0 
+        ? this.invoiceService.updateByCommissions(commissions, null)
+        : {
+            isSuccess: false,
+            message: 'Нет комиссий для обновления',
+        };
     }
 
     async getSales(dateFrom: string): Promise<any> {
@@ -286,9 +277,10 @@ export class WbOrderService implements IOrderable {
     }
     // @Timeout(0)
     // Not test
-    async closeSales(dateFrom: string = '2024-05-14', dateTo: string = '2024-06-01'): Promise<any> {
+    async closeSales(dateFrom: string = '2024-08-01', dateTo: string = '2024-09-01'): Promise<any> {
         const transaction = await this.invoiceService.getTransaction();
         try {
+            console.log('Started...');
             const buyerId: number = this.getBuyerId();
             const invoices = await this.invoiceService.getByDto({ buyerId, dateFrom, dateTo, status: 4 });
             const saleIds = invoices.map((invoice) => invoice.remark);
@@ -343,14 +335,32 @@ export class WbOrderService implements IOrderable {
             await this.listAwaitingPackaging();
             res = this.postingDtos.get(postingNumber);
         }
-        if (!res) {
-            await this.listInProgress();
-            res = this.postingDtos.get(postingNumber);
-        }
         return res;
     }
 
     getBuyerId(): number {
         return this.configService.get<number>('WB_BUYER_ID', 24532);
+    }
+
+    async getOrdersStickers(orders: number[]): Promise<WbOrderStickersDto> {
+        try {
+            const res = await this.api.method(
+                '/api/v3/orders/stickers?type=svg&width=58&height=40',
+                'post',
+                { orders },
+            );
+            const { stickers } = res;
+            return {
+                stickers,
+                success: true,
+                error: null,
+            };
+        } catch (e) {
+            return {
+                stickers: [],
+                success: false,
+                error: (e as Error).message || 'Неизвестная ошибка',
+            };
+        }
     }
 }

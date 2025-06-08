@@ -1,12 +1,13 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { GOOD_SERVICE } from '../interfaces/IGood';
-import { YandexOfferService } from '../yandex.offer/yandex.offer.service';
-import { ExpressOfferService } from '../yandex.offer/express.offer.service';
-import { ProductService } from '../product/product.service';
-import { WbCardService } from '../wb.card/wb.card.service';
-import { ExtraGoodService } from './extra.good.service';
-import { GoodServiceEnum } from './good.service.enum';
-import { ConfigService } from '@nestjs/config';
+import { Test, TestingModule } from "@nestjs/testing";
+import { GOOD_SERVICE } from "../interfaces/IGood";
+import { YandexOfferService } from "../yandex.offer/yandex.offer.service";
+import { ExpressOfferService } from "../yandex.offer/express.offer.service";
+import { ProductService } from "../product/product.service";
+import { WbCardService } from "../wb.card/wb.card.service";
+import { ExtraGoodService } from "./extra.good.service";
+import { GoodServiceEnum } from "./good.service.enum";
+import { ConfigService } from "@nestjs/config";
+import { GoodsCountProcessor } from "../helpers/good/goods.count.processor";
 
 describe('ExtraGoodService', () => {
     let service: ExtraGoodService;
@@ -15,16 +16,21 @@ describe('ExtraGoodService', () => {
     const loadSkuList = jest.fn();
     const updateGoodCounts = jest.fn();
     const mockIn = jest.fn();
+    const getGoodIds = jest.fn().mockResolvedValue(
+        { goods: new Map<string, number>(), nextArgs: '' },
+    );
     beforeEach(async () => {
+        jest.clearAllMocks();
+
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 ExtraGoodService,
                 { provide: GOOD_SERVICE, useValue: { updateCountForService, updateCountForSkus, in: mockIn } },
-                { provide: YandexOfferService, useValue: { test: 'Yandex', skuList: [] } },
-                { provide: ExpressOfferService, useValue: { skuList: [] } },
-                { provide: ProductService, useValue: { skuList: ['222'], updateGoodCounts } },
-                { provide: WbCardService, useValue: { loadSkuList, skuList: ['111'], updateGoodCounts } },
-                { provide: ConfigService, useValue: { get: () => Object.values(GoodServiceEnum) } },
+                { provide: YandexOfferService, useValue: { test: "Yandex", skuList: [], getGoodIds } },
+                { provide: ExpressOfferService, useValue: { skuList: [], getGoodIds } },
+                { provide: ProductService, useValue: { skuList: ["222", "222-10"], updateGoodCounts, getGoodIds } },
+                { provide: WbCardService, useValue: { loadSkuList, skuList: ["111"], updateGoodCounts, getGoodIds } },
+                { provide: ConfigService, useValue: { get: () => Object.values(GoodServiceEnum) } }
             ],
         }).compile();
 
@@ -34,45 +40,94 @@ describe('ExtraGoodService', () => {
         service = module.get<ExtraGoodService>(ExtraGoodService);
     });
 
-    it('should be defined', () => {
+    it("should be defined", () => {
         expect(service).toBeDefined();
     });
 
-    it('updateService', async () => {
+    it("should return a valid service when the service is included and enabled in the configuration", () => {
+        const result = service.getCountUpdateableService(GoodServiceEnum.WB);
+        expect(result).toBeDefined();
+        expect(result).toHaveProperty("skuList", ["111"]);
+    });
+
+    it("should return null when the service is not included in the configuration", () => {
+        const result = service.getCountUpdateableService(null);
+        expect(result).toBeNull();
+    });
+
+    it("updateService", async () => {
         await service.updateService(GoodServiceEnum.YANDEX);
-        expect(updateCountForService.mock.calls[0]).toEqual([{ skuList: [], test: 'Yandex' }, '']);
+        expect(getGoodIds.mock.calls[0]).toEqual([""]);
     });
 
-    it('test checkGoodCount', async () => {
+    it("test checkGoodCount", async () => {
         await service.checkGoodCount();
-        expect(updateCountForService.mock.calls).toHaveLength(4);
+        expect(getGoodIds.mock.calls).toHaveLength(4);
     });
 
-    it('reserveCreated', async () => {
-        await service.reserveCreated(['1', '2']);
+    it("reserveCreated", async () => {
+        await service.reserveCreated(["1", "2"]);
         expect(updateCountForSkus.mock.calls).toHaveLength(4);
     });
 
-    it('serviceIsSwitchedOn', async () => {
+    it("serviceIsSwitchedOn", async () => {
         updateGoodCounts.mockResolvedValueOnce(1);
         const res = await service.serviceIsSwitchedOn({ service: GoodServiceEnum.WB, isSwitchedOn: false });
-        expect(res).toEqual({ isSuccess: true, message: 'Service wb is switched off and reset 1 skus' });
-        expect(updateGoodCounts.mock.calls[0]).toEqual([new Map<string, number>([['111', 0]])]);
+        expect(res).toEqual({ isSuccess: true, message: "Service wb is switched off and reset 1 skus" });
+        expect(updateGoodCounts.mock.calls[0]).toEqual([new Map<string, number>([["111", 0]])]);
     });
 
-    it('loadSkuList', async () => {
+    it("loadSkuList", async () => {
         await service.loadSkuList(GoodServiceEnum.WB);
         await service.serviceIsSwitchedOn({ service: GoodServiceEnum.YANDEX, isSwitchedOn: false });
         await service.loadSkuList(GoodServiceEnum.YANDEX);
         expect(loadSkuList.mock.calls).toHaveLength(1);
     });
 
-    it('countsChanged', async () => {
+    it("countsChanged", async () => {
+        const mockProcessGoodsCountChanges = jest.spyOn(GoodsCountProcessor.prototype, "processGoodsCountChanges").mockResolvedValue();
+
         await service.countsChanged([
             { code: '111', quantity: 10, reserve: 1, name: '111' },
             { code: '222', quantity: 2, reserve: null, name: '222' },
         ]);
-        expect(updateGoodCounts.mock.calls[0]).toEqual([new Map([['222', 2]])]);
-        expect(updateGoodCounts.mock.calls[1]).toEqual([new Map([['111', 9]])]);
+
+        // Проверяем вызов processGoodsCountChanges
+        expect(mockProcessGoodsCountChanges).toHaveBeenCalledWith([
+            { code: '111', quantity: 10, reserve: 1, name: '111' },
+            { code: '222', quantity: 2, reserve: null, name: '222' },
+        ]);
+
+        // Восстанавливаем оригинальное поведение
+        mockProcessGoodsCountChanges.mockRestore();
     });
+
+    it("should return matching SKUs for the given service if SKUs exist", () => {
+        const tradeSkus = ["111", "222"];
+        const serviceEnum = GoodServiceEnum.OZON;
+        const matchingSkus = service.tradeSkusToServiceSkus(tradeSkus, serviceEnum);
+        expect(matchingSkus).toEqual(["222", "222-10"]);
+    });
+
+    it("should return an empty array if the service does not have any matching SKUs", () => {
+        const tradeSkus = ["nonexistent"];
+        const serviceEnum = GoodServiceEnum.YANDEX;
+        const result = service.tradeSkusToServiceSkus(tradeSkus, serviceEnum);
+        expect(result).toEqual([]);
+    });
+
+    it("should return an empty array if the service is not enabled or found", () => {
+        const tradeSkus = ["trade1"];
+        const serviceEnum = null;
+        const result = service.tradeSkusToServiceSkus(tradeSkus, serviceEnum);
+        expect(result).toEqual([]);
+    });
+
+    it("should return an empty array if no SKUs are provided", () => {
+        const tradeSkus: string[] = [];
+        const serviceEnum = GoodServiceEnum.WB;
+        const result = service.tradeSkusToServiceSkus(tradeSkus, serviceEnum);
+        expect(result).toEqual([]);
+    });
+
 });

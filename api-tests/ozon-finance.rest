@@ -1,0 +1,38 @@
+@baseUrl = {{$dotenv OZON_API_BASE_URL}}
+@clientId = {{$dotenv OZON_API_CLIENT_ID}}
+@apiKey = {{$dotenv OZON_API_KEY}}
+
+### Получение финансовых транзакций по услуге "Трафареты"
+POST {{baseUrl}}/v3/finance/transaction/list
+Content-Type: application/json
+Client-Id: {{clientId}}
+Api-Key: {{apiKey}}
+
+{
+  "filter": {
+    "date": {
+      "from": "2025-05-24T00:00:00Z",
+      "to": "2025-05-24T23:59:59Z"
+    },
+    "operation_type": [
+      "OperationElectronicServiceStencil"
+    ]
+  },
+  "page": 1,
+  "page_size": 1000
+}
+
+### Получение финансового отчёта (cash-flow statement)
+POST {{baseUrl}}/v1/finance/cash-flow-statement/list
+Content-Type: application/json
+Client-Id: {{clientId}}
+Api-Key: {{apiKey}}
+
+{
+  "date": {
+    "from": "2025-05-24T00:00:00Z",
+    "to": "2025-05-24T23:59:59Z"
+  },
+  "page": 1,
+  "page_size": 1000
+} 

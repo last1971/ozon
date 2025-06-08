@@ -39,8 +39,22 @@ export class PostingService implements IOrderable, ISuppliable {
             to: DateTime.now().endOf('day').toJSDate(),
             status,
         };
-        const response = await this.productService.orderList(filter);
-        return response.result?.postings || [];
+        const limit = 100; // Размер страницы
+        let offset = 0;
+        let allPostings: PostingDto[] = [];
+        let hasMore = true;
+        while (hasMore) {
+            const response = await this.productService.orderList(filter, limit, offset);
+            const postings = response.result?.postings || [];
+
+            allPostings = allPostings.concat(postings);
+
+            // Продолжаем, если было извлечено ровно `limit` записей
+            hasMore = postings.length === limit;
+            offset += limit;
+        }
+
+        return allPostings;
     }
     async listAwaitingPackaging(): Promise<PostingDto[]> {
         return this.list('awaiting_packaging', 5);

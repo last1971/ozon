@@ -140,6 +140,34 @@ class EnvironmentVariables {
     @IsOptional()
     @IsNumber()
     TAX_UNIT: number;
+
+    @IsOptional()
+    @IsNumber()
+    HTTP_DEBUG_TIMEOUT: number;
+
+    @IsOptional()
+    @IsNumber()
+    HTTP_TIMEOUT: number;
+
+    @IsOptional()
+    @IsNumber()
+    MIN_PROFIT_TARGET: number;
+
+    @IsOptional()
+    @IsNumber()
+    MIN_PROFIT_PERC: number;
+
+    @IsOptional()
+    @IsNumber()
+    MIN_PERC_MARKUP: number;
+
+    @IsOptional()
+    @IsNumber()
+    PRICE_SMOOTHING_OFFSET: number;
+
+    @IsOptional()
+    @IsNumber()
+    MAX_DAILY_SPEND: number;
 }
 
 export function configValidate(config: Record<string, unknown>) {

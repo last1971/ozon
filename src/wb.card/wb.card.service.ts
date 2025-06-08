@@ -9,9 +9,10 @@ import { ConfigService } from '@nestjs/config';
 import { WbCardAnswerDto } from './dto/wb.card.answer.dto';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { ProductInfoDto } from "../product/dto/product.info.dto";
+import { IProductable } from '../interfaces/i.productable';
 
 @Injectable()
-export class WbCardService extends ICountUpdateable implements OnModuleInit {
+export class WbCardService extends ICountUpdateable implements OnModuleInit, IProductable {
     private warehouseId: number;
     private skuBarcodePair: Map<string, string>;
     private skuNmIDPair: Map<string, string>;
@@ -47,12 +48,14 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit {
             primaryImage: card.photos[0].big,
             remark: card.title,
             sku: card.vendorCode,
+            fbsCount: 0,
+            fboCount: 0,
         }
     }
 
     async getWbCards(args: any): Promise<WbCardAnswerDto> {
         const res: WbCardAnswerDto = await this.api.method(
-            '/content/v2/get/cards/list',
+            'https://content-api.wildberries.ru/content/v2/get/cards/list',
             'post',
             args
                 ? args
@@ -66,6 +69,7 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit {
                           },
                       },
                   },
+            true,
         );
         res.cards.forEach((card) => {
             this.productInfos.set(card.vendorCode, this.wbCardToProductInfo(card));
@@ -99,9 +103,11 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit {
         cards.forEach((card) => {
             this.skuNmIDPair.set(card.vendorCode, card.nmID.toString());
         });
-        const quantities = await this.api.method('/api/v3/stocks/' + this.warehouseId, 'post', {
-            skus: Array.from(barcodes.keys()),
-        });
+        const quantities = await this.api.method(
+            '/api/v3/stocks/' + this.warehouseId,
+            'post',
+            { skus: Array.from(barcodes.keys()) },
+        );
         const goods = new Map<string, number>();
         if (quantities?.stocks) {
             quantities.stocks.forEach((stock) => {

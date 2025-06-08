@@ -2,7 +2,7 @@ import { Body, Controller, Inject, Param, ParseEnumPipe, Post, Put, Query } from
 import { ApiBody, ApiOperation, ApiParam, ApiProperty, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
 import { GoodPercentDto } from './dto/good.percent.dto';
-import { ResultDto } from '../helpers/result.dto';
+import { ResultDto } from '../helpers/dto/result.dto';
 import { GoodWbDto } from './dto/good.wb.dto';
 import { ExtraGoodService } from './extra.good.service';
 import { GoodServiceEnum } from './good.service.enum';
@@ -82,5 +82,32 @@ export class GoodController {
         @Body('skus') skus: string[]
     ): Promise<ProductInfoDto[]> {
         return this.extraService.getProductInfo(skus, service);
+    }
+
+    @Post('change-count')
+    @ApiOperation({ summary: 'Получить информацию о продуктах по списку SKU' })
+    @ApiBody({
+        description: 'Список SKU для обновления',
+        schema: {
+            type: 'object',
+            properties: {
+                skus: {
+                    type: 'array',
+                    items: {
+                        type: 'string',
+                    },
+                    example: ['SKU123', 'SKU456'],
+                },
+            },
+        },
+        required: true,
+    })
+    @ApiResponse({
+        status: 201,
+        description: 'Обновлено',
+    })
+    async changeCount(@Body('skus') skus: string[]): Promise<void> {
+        const goods = await this.goodService.in(skus, null);
+        await this.extraService.countsChanged(goods);
     }
 }

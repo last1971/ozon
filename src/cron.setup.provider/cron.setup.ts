@@ -39,6 +39,34 @@ export const cronConfig: Record<string, CronSetup> = {
         },
         development: false,
     },
+    enableOzonCampaigns: {
+        production: {
+            enabled: true,
+            settings: {
+                time: CronExpression.EVERY_DAY_AT_6AM,
+            },
+        },
+        development: {
+            enabled: true,
+            settings: {
+                time: CronExpression.EVERY_HOUR,
+            },
+        },
+    },
+    checkOzonCampaigns: {
+        production: {
+            enabled: true,
+            settings: {
+                time: CronExpression.EVERY_HOUR,
+            },
+        },
+        development: {
+            enabled: true,
+            settings: {
+                time: CronExpression.EVERY_5_MINUTES,
+            },
+        },
+    },
     /*
     updateOzonPrices: {
         production: {

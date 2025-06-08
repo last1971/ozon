@@ -62,9 +62,13 @@ export const priceStore = defineStore("priceStore", {
                         taxUnit: tariffs.tax_unit,
                     }
                 });
-            price.min_price = res.data.min_price;
-            price.price = res.data.price;
-            price.old_price = res.data.old_price;
+            const { min_price, price: newPrice, old_price } = res.data;
+            this.prices[index] = {
+                ...this.prices[index],
+                min_price,
+                price: newPrice,
+                old_price
+            };
             res = await axios.post('/api/price/calculate-pay', {
                 price,
                 percents: {
@@ -80,8 +84,33 @@ export const priceStore = defineStore("priceStore", {
             this.pays[index] = res.data;
             this.isLoadingPrice[index] = false;
         },
+        async calculatePercents(index: number): Promise<void> {
+            this.isLoadingPrice[index] = true;
+            const price = this.prices[index];
+            try {
+                const res = await axios.post(
+                    `/api/price/calculate-percents/${price.offer_id}`, 
+                    {
+                        adv_perc: price.adv_perc,
+                        packing_price: price.sum_pack,
+                        available_price: price.available_price
+                    }
+                );
+                const { offer_id, ...data } = res.data;
+                this.prices[index] = { ...this.prices[index], ...data };
+                await this.getInd(index);
+            } catch (e: any) {
+                this.failMessage = e.message;
+                this.failSave = true;
+            }
+            this.isLoadingPrice[index] = false;
+        },
+    
         async save(index: number, edit: boolean): Promise<void> {
             this.isLoadingPrice[index] = true;
+            this.successSave = false;
+            this.failSave = false;
+            this.failMessage = '';
             const {
                 offer_id,
                 min_perc,
@@ -90,28 +119,33 @@ export const priceStore = defineStore("priceStore", {
                 adv_perc,
                 sum_pack,
                 incoming_price,
+                available_price,
             } = this.prices[index];
             try {
                 await axios.post('/api/good/percent', {}, {
                     params: {
-                        offer_id, min_perc, perc, old_perc, adv_perc, packing_price: sum_pack,
+                        offer_id, min_perc, perc, old_perc, adv_perc, packing_price: sum_pack, available_price,
                     }
                 });
                 const res = await axios.post<any[]>('/api/price', {
-                    prices: [{ offer_id, min_price: '0', price: '0', old_price: '0', incoming_price: edit ? incoming_price : 0 }]
+                    prices: [{ offer_id, min_price: '0', price: '0', old_price: '0', incoming_price: edit ? available_price : 0 }]
                 });
-                if (!res.data[0].result[0].updated) {
-                    throw new Error(res.data[0].result[0].errors.toString())
+                if (!res.data?.[0]?.result?.[0]?.updated) {
+                    throw new Error(res.data?.[0]?.result?.[0]?.errors?.toString() || 'Unknown error in first response');
                 }
-                if (res.data[1].offerUpdate.status !== 'OK') {
-                    throw new Error(res.data.toString())
+                if (res.data?.[1]?.offerUpdate?.status !== 'OK') {
+                    throw new Error(res.data?.[1]?.toString() || 'Unknown error in second response');
                 }
-                if (res.data[2].status === 'NotOk') {
-                    throw new Error(res.data[2].error.service_message);
+                if (res.data?.[2]?.status === 'NotOk') {
+                    throw new Error(res.data?.[2]?.error?.service_message || res.data?.[2]?.error?.message || 'Unknown error in third response');
                 }
                 this.successSave = true;
             } catch (e: any) {
-                this.failMessage = e.message;
+                if (e.response?.data?.message) {
+                    this.failMessage = e.response.data.message;
+                } else {
+                    this.failMessage = e.message;
+                }
                 this.failSave = true;
             }
             this.isLoadingPrice[index] = false;

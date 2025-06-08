@@ -11,9 +11,10 @@ import { UpdatePriceDto, UpdatePricesDto } from "./dto/update.price.dto";
 import { chunk, toNumber } from "lodash";
 import { ProductVisibility } from "../product/product.visibility";
 import { IPriceUpdateable } from "../interfaces/i.price.updateable";
-import { ObtainCoeffsDto } from "../helpers/obtain.coeffs.dto";
+import { ObtainCoeffsDto } from "../helpers/dto/obtain.coeffs.dto";
 import { IProductCoeffsable } from "../interfaces/i.product.coeffsable";
 import { OzonProductCoeffsAdapter } from "./ozon.product.coeffs.adapter";
+import { Cache } from '@nestjs/cache-manager';
 import Excel from "exceljs";
 
 @Injectable()
@@ -23,6 +24,7 @@ export class PriceService implements IPriceUpdateable {
         private product: ProductService,
         @Inject(GOOD_SERVICE) private goodService: IGood,
         private configService: ConfigService,
+        private cacheManager: Cache
     ) {}
     async preset(): Promise<PricePresetDto> {
         return {
@@ -40,13 +42,21 @@ export class PriceService implements IPriceUpdateable {
     }
 
     async index(request: PriceRequestDto): Promise<PriceResponseDto> {
-        const products = await this.product.getPrices(request);
+        const infoListPromise = request.offer_id
+            ? this.product.infoList(request.offer_id)
+            : Promise.resolve([]);
+        const [productsInfos, products] = await Promise.all([
+            infoListPromise,
+            this.product.getPrices(request),
+        ]);
         const codes = products.items.map((item) => goodCode(item));
-        const goods = await this.goodService.prices(codes, null);
-        const percents = await this.goodService.getPerc(codes, null);
+        const [goods, percents] = await Promise.all([
+            this.goodService.prices(codes, null),
+            this.goodService.getPerc(codes, null),
+        ]);
         const percDirectFlow = 1 + this.configService.get<number>('PERC_DIRECT_FLOW', 0)/100;
         return {
-            last_id: products.last_id,
+            last_id: products.cursor,
             data: products.items.map((item) => {
                 const good = goods.find((g) => g.code.toString() === goodCode(item));
                 const percent: GoodPercentDto = percents.find(
@@ -58,6 +68,7 @@ export class PriceService implements IPriceUpdateable {
                     old_perc: this.configService.get<number>('PERC_MAX', 50),
                     perc: this.configService.get<number>('PERC_NOR', 25),
                     min_perc: this.configService.get<number>('PERC_MIN', 15),
+                    available_price: 0,
                 };
                 return {
                     product_id: item.product_id,
@@ -66,6 +77,7 @@ export class PriceService implements IPriceUpdateable {
                     marketing_price: item.price.marketing_price,
                     marketing_seller_price: item.price.marketing_seller_price,
                     incoming_price: good.price * goodQuantityCoeff(item),
+                    available_price: percent.available_price,
                     min_price: item.price.min_price,
                     price: item.price.price,
                     old_price: item.price.old_price,
@@ -81,6 +93,8 @@ export class PriceService implements IPriceUpdateable {
                         / 2 * percDirectFlow,
                     auto_action_enabled: item.price.auto_action_enabled,
                     sum_pack: percent.packing_price,
+                    fbsCount: productsInfos.find((info) => info.sku === item.offer_id)?.fbsCount || 0,
+                    fboCount: productsInfos.find((info) => info.sku === item.offer_id)?.fboCount || 0,
                 };
             }),
         };
@@ -89,8 +103,8 @@ export class PriceService implements IPriceUpdateable {
         return this.product.setPrice(prices);
     }
     // @Cron('0 0 0 * * 0', { name: 'updateOzonPrices' })
-    async updateAllPrices(level = 0, last_id = '', visibility = ProductVisibility.IN_SALE, limit = 1000): Promise<any> {
-        const pricesForObtain = await this.product.getPrices({ limit, last_id, visibility });
+    async updateAllPrices(level = 0, cursor = '', visibility = ProductVisibility.IN_SALE, limit = 1000): Promise<any> {
+        const pricesForObtain = await this.product.getPrices({ limit, cursor, visibility });
         let answer = [];
         if (pricesForObtain.items.length > 0) {
             const res = await this.goodService.updatePriceForService(
@@ -99,7 +113,7 @@ export class PriceService implements IPriceUpdateable {
             );
             answer = res.result
                 .filter((update: any) => !update.updated)
-                .concat(await this.updateAllPrices(level + 1, pricesForObtain.last_id));
+                .concat(await this.updateAllPrices(level + 1, pricesForObtain.cursor));
         }
         if (level === 0) {
             this.logger.log('Update ozon prices was finished');
@@ -126,6 +140,12 @@ export class PriceService implements IPriceUpdateable {
             limit: 1000,
             visibility: ProductVisibility.IN_SALE,
         });
+        
+        if (!response?.items) {
+            this.logger.error('Invalid response from Ozon API', { response, skus });
+            return [];
+        }
+        
         return response.items.map((product) => new OzonProductCoeffsAdapter(product, percDirectFlow));
     }
 
@@ -138,7 +158,8 @@ export class PriceService implements IPriceUpdateable {
     }
     
     async getLowPrices(minProfit: number, minPercent: number, count: number): Promise<string[]> {
-        const skus = this.product.skuList;
+        const cachedLowPrices = await this.cacheManager.get<string[]>('lowPrices');
+        const skus = this.product.skuList.filter(sku => !cachedLowPrices?.includes(sku));
         const lowPrices: string[] = [];
         const percents: ObtainCoeffsDto = this.getObtainCoeffs();
         for (const offerIdChunk of chunk(skus, count)) {
@@ -147,16 +168,19 @@ export class PriceService implements IPriceUpdateable {
             for (const price of prices.data) {
                 const marketingPrice = toNumber(price.marketing_seller_price);
                 const incomingPrice = toNumber(price.incoming_price);
-                if (incomingPrice <=0) continue;
+                if (incomingPrice <= 0) continue;
                 const payment = calculatePay(price, percents, marketingPrice);
                 const profit = payment - incomingPrice;
 
                 if (profit < minProfit || (profit / incomingPrice) * 100 < minPercent) {
                     lowPrices.push(price.offer_id);
-                    if (lowPrices.length >= count) return lowPrices;
+                    if (lowPrices.length >= count) break;
                 }
             }
+            if (lowPrices.length >= count) break;
         }
+        cachedLowPrices.push(...lowPrices);
+        await this.cacheManager.set('lowPrices', cachedLowPrices, 1000 * 60 * 60);
         return lowPrices;
     }
 }

@@ -8,7 +8,7 @@ import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { ConfigService } from '@nestjs/config';
 import { DateTime } from 'luxon';
-import { ResultDto } from '../helpers/result.dto';
+import { ResultDto } from '../helpers/dto/result.dto';
 import { StatsOrderRequestDto } from './dto/stats.order.request.dto';
 import { OrderStatsDto } from './dto/order.stats.dto';
 import { FirebirdTransaction } from 'ts-firebird';
@@ -82,12 +82,14 @@ export class YandexOrderService implements IOrderable, OnModuleInit {
             'post',
             request,
         );
-        let orders: OrderStatsDto[] = [];
-        if (res.result.orders.length > 0) {
-            orders = (res.result.orders as OrderStatsDto[]).concat(
-                await this.statsOrder(request, res.result.paging.nextPageToken),
-            );
+
+        const orders: OrderStatsDto[] = res.result.orders || [];
+
+        if (res.result.paging?.nextPageToken) {
+            const nextOrders = await this.statsOrder(request, res.result.paging.nextPageToken);
+            orders.push(...nextOrders);
         }
+
         return orders;
     }
     async updateTransactions(): Promise<ResultDto> {

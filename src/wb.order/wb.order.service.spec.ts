@@ -199,70 +199,52 @@ describe('WbOrderService', () => {
 
     it('updateTransactions', async () => {
         const date = new Date();
-        method
-            .mockResolvedValueOnce([
-                {
-                    order_dt: new Date(1665334800 * 1000).toISOString(),
-                    srid: '123',
-                    delivery_rub: undefined,
-                    ppvz_for_pay: undefined,
-                    rrd_id: 0,
-                },
-                {
-                    order_dt: date,
-                    srid: '123',
-                    delivery_rub: 10,
-                    ppvz_for_pay: 0,
-                    rrd_id: 1,
-                },
-                {
-                    order_dt: '2022-10-12',
-                    srid: '123',
-                    delivery_rub: 0,
-                    ppvz_for_pay: 100,
-                    rrd_id: 2,
-                },
-                {
-                    order_dt: '2022-10-12',
-                    srid: '124',
-                    delivery_rub: 0,
-                    rrd_id: 2,
-                },
-            ])
-            .mockResolvedValueOnce({
-                orders: [
-                    {
-                        id: 12345,
-                        createdAt: '2022-10-13',
-                        skus: [],
-                        price: 100,
-                        article: '4444',
-                        convertedPrice: 100,
-                        rid: '123',
-                    },
-                    {
-                        id: 12346,
-                        createdAt: '22-11-1111',
-                        skus: [],
-                        price: 200,
-                        article: '5555',
-                        convertedPrice: 200,
-                        rid: '124',
-                    },
-                ],
-            });
-        await service.updateTransactions({ from: date, to: date }, null);
-        expect(method.mock.calls[1]).toEqual([
-            '/api/v3/orders',
-            'get',
+        method.mockResolvedValueOnce([
             {
-                dateFrom: 1665334800,
-                limit: 1000,
-                next: 0,
+                order_dt: date,
+                srid: '123',
+                delivery_rub: 10,
+                ppvz_for_pay: 100,
+                additional_payment: 0,
+                penalty: 0,
+                rrd_id: 1,
+                assembly_id: null
+            },
+            {
+                order_dt: date,
+                srid: '124',
+                delivery_rub: 0,
+                ppvz_for_pay: 200,
+                additional_payment: 0,
+                penalty: 0,
+                rrd_id: 2,
+                assembly_id: null
+            }
+        ]);
+
+        await service.updateTransactions({ from: date, to: date }, null);
+
+        // Проверяем вызов API для получения транзакций
+        expect(method.mock.calls[0]).toEqual([
+            '/api/v5/supplier/reportDetailByPeriod',
+            'statistics',
+            {
+                dateFrom: date,
+                dateTo: date,
+                rrdid: 0,
             },
         ]);
-        expect(updateByCommissions.mock.calls[0]).toEqual([new Map([['12345', 90]]), null]);
+
+        // Проверяем вызов updateByCommissions с правильными комиссиями
+        expect(updateByCommissions.mock.calls[0]).toEqual([
+            new Map([
+                ['123', 90], // 100 - 10
+                ['124', 200] // 200 - 0
+            ]),
+            null
+        ]);
     });
+
     it('getAllFboOrders', async () => {
         await service.getAllFboOrders();
         expect(method.mock.calls[0]).toEqual([
@@ -271,6 +253,7 @@ describe('WbOrderService', () => {
             { dateFrom: DateTime.now().minus({ day: 2 }).toISODate(), flag: 0 },
         ]);
     });
+
     it('getOnlyFboOrders', async () => {
         method
             .mockResolvedValueOnce([{ srid: '1' }, { srid: '2' }, { srid: '3' }])
@@ -278,6 +261,7 @@ describe('WbOrderService', () => {
         const res = await service.getOnlyFboOrders();
         expect(res).toEqual([{ srid: '1' }, { srid: '3' }]);
     });
+
     it('addFboOrders', async () => {
         method
             .mockResolvedValueOnce([
@@ -319,6 +303,7 @@ describe('WbOrderService', () => {
         expect(pickupInvoice.mock.calls[0]).toEqual(['invoice', { commit }]);
         expect(commit.mock.calls).toHaveLength(1);
     });
+
     it('checkCanceledOrders', async () => {
         method
             .mockResolvedValueOnce([
@@ -341,6 +326,7 @@ describe('WbOrderService', () => {
         expect(updatePrim.mock.calls[0]).toEqual(['1', '1 возврат WBFBO', null]);
         expect(updatePrim.mock.calls[1]).toEqual(['14', '14 возврат WBFBO', null]);
     });
+
     it('transformToPostingDto', async () => {
         const order: WbOrderDto = {
             price: 0,
@@ -366,6 +352,44 @@ describe('WbOrderService', () => {
                 offer_id: order.article,
                 quantity: 1,
             }],
+        });
+    });
+
+    it("should return stickers when API method succeeds", async () => {
+        const mockOrders = [1, 2, 3];
+        const mockStickers = [{ id: 1, data: "<svg/>" }, { id: 2, data: "<svg/>" }];
+        method.mockResolvedValueOnce({ stickers: mockStickers });
+
+        const result = await service.getOrdersStickers(mockOrders);
+
+        expect(method).toHaveBeenCalledWith(
+            "/api/v3/orders/stickers?type=svg&width=58&height=40",
+            "post",
+            { orders: mockOrders },
+        );
+        expect(result).toEqual({
+            stickers: mockStickers,
+            success: true,
+            error: null
+        });
+    });
+
+    it("should return an error when API method fails", async () => {
+        const mockOrders = [1, 2, 3];
+        const mockError = new Error("Failed to fetch stickers");
+        method.mockRejectedValueOnce(mockError);
+
+        const result = await service.getOrdersStickers(mockOrders);
+
+        expect(method).toHaveBeenCalledWith(
+            "/api/v3/orders/stickers?type=svg&width=58&height=40",
+            "post",
+            { orders: mockOrders },
+        );
+        expect(result).toEqual({
+            stickers: [],
+            success: false,
+            error: "Failed to fetch stickers"
         });
     });
 });

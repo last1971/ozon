@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Logger, Module } from "@nestjs/common";
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -33,6 +33,11 @@ import { WbSupplyModule } from './wb.supply/wb.supply.module';
 import { SupplyModule } from './supply/supply.module';
 import { LabelModule } from './label/label.module';
 import { PromosModule } from './promos/promos.module';
+import { Trade2006IncomingModule } from "./trade2006.incoming/trade2006.incoming.module";
+import { HttpModule } from '@nestjs/axios';
+import { HelpersModule } from "./helpers/helpers.module";
+import { PerformanceModule } from "./performance/performance.module";
+
 @Module({
     imports: [
         CacheModule.register({
@@ -40,10 +45,23 @@ import { PromosModule } from './promos/promos.module';
         }),
         EventEmitterModule.forRoot(),
         ConfigModule.forRoot({ isGlobal: true, validate: configValidate }),
+        HttpModule.registerAsync({
+            imports: [ConfigModule],
+            useFactory: async (configService: ConfigService) => {
+                const isDebugging = process.env.NODE_ENV !== 'production';
+                const debugTimeout = configService.get<number>('HTTP_DEBUG_TIMEOUT', 300000);
+                const productionTimeout = configService.get<number>('HTTP_TIMEOUT', 60000);
+                const defaultTimeout = isDebugging ? debugTimeout : productionTimeout;
+                const logger = new Logger('HttpModule');
+                logger.log(`HttpModule registered with default timeout: ${defaultTimeout}ms`);
+                return {
+                    timeout: defaultTimeout,
+                };
+            },
+            inject: [ConfigService],
+        }),
         ServeStaticModule.forRoot({
-            // serveRoot: 'admin',
             rootPath: join(__dirname, '..', 'admin-panel/dist'),
-            // renderPath: 'dist/admin-panel/*',
         }),
         ScheduleModule.forRoot(),
         OzonApiModule,
@@ -86,6 +104,9 @@ import { PromosModule } from './promos/promos.module';
         SupplyModule,
         LabelModule,
         PromosModule,
+        Trade2006IncomingModule,
+        HelpersModule,
+        PerformanceModule,
     ],
     controllers: [AppController],
     providers: [AppService, CronSetupProviderService],

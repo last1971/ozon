@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { PostingDto } from '../posting/dto/posting.dto';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { TransactionDto } from '../posting/dto/transaction.dto';
-import { ResultDto } from '../helpers/result.dto';
+import { ResultDto } from '../helpers/dto/result.dto';
 import { goodCode, goodQuantityCoeff } from '../helpers';
 import { chunk, flatten, toNumber } from 'lodash';
 import { ProductPostingDto } from '../product/dto/product.posting.dto';
@@ -146,24 +146,51 @@ export class Trade2006InvoiceService implements IInvoice, ISuppliable {
 
     async getByDto(invoiceGetDto: InvoiceGetDto): Promise<InvoiceDto[]> {
         const t = await this.pool.getTransaction();
-        let sql = 'SELECT * FROM S WHERE 1=1';
+        const conditions = ['1=1'];
         const params = [];
-        if (invoiceGetDto.dateTo) {
-            sql += ' AND DATA <= ?';
-            params.push(invoiceGetDto.dateTo);
+
+        const filters = [
+            { condition: invoiceGetDto.dateTo ? 'DATA <= ?' : null, param: invoiceGetDto.dateTo },
+            { condition: invoiceGetDto.dateFrom ? 'DATA >= ?' : null, param: invoiceGetDto.dateFrom },
+            { condition: invoiceGetDto.buyerId ? 'POKUPATCODE = ?' : null, param: invoiceGetDto.buyerId },
+            { condition: invoiceGetDto.status ? 'STATUS = ?' : null, param: invoiceGetDto.status },
+        ];
+
+        // Добавляем базовые фильтры
+        filters.forEach(({ condition, param }) => condition && (conditions.push(condition), params.push(param)));
+
+        // Обработка remarks
+        if (Array.isArray(invoiceGetDto.remarks) && invoiceGetDto.remarks.length) {
+            const chunkSize = 50; // Размер чанка
+            const allInvoices: InvoiceDto[] = [];
+
+            // Разбиваем remarks на чанки
+            for (let i = 0; i < invoiceGetDto.remarks.length; i += chunkSize) {
+                const chunkRemarks = invoiceGetDto.remarks.slice(i, i + chunkSize);
+                const placeholders = chunkRemarks.map(() => '?').join(',');
+                
+                // Создаем SQL для текущего чанка
+                const chunkConditions = [...conditions, `PRIM IN (${placeholders})`];
+                const chunkParams = [...params, ...chunkRemarks];
+                
+                const sql = `SELECT * FROM S WHERE ${chunkConditions.join(' AND ')}`;
+                const res = await t.query(sql, chunkParams, false);
+                
+                allInvoices.push(...res.map((invoice) => ({
+                    id: invoice.SCODE,
+                    buyerId: invoice.POKUPATCODE,
+                    date: new Date(invoice.DATA),
+                    remark: invoice.PRIM,
+                    status: invoice.STATUS,
+                })));
+            }
+            await t.commit(false);
+
+            return allInvoices;
         }
-        if (invoiceGetDto.dateFrom) {
-            sql += ' AND DATA >= ?';
-            params.push(invoiceGetDto.dateFrom);
-        }
-        if (invoiceGetDto.buyerId) {
-            sql += ' AND POKUPATCODE = ?';
-            params.push(invoiceGetDto.buyerId);
-        }
-        if (invoiceGetDto.status) {
-            sql += ' AND STATUS = ?';
-            params.push(invoiceGetDto.status);
-        }
+
+        // Если нет remarks, выполняем обычный запрос
+        const sql = `SELECT * FROM S WHERE ${conditions.join(' AND ')}`;
         const res = await t.query(sql, params, true);
         return res.map((invoice) => ({
             id: invoice.SCODE,
@@ -461,18 +488,37 @@ export class Trade2006InvoiceService implements IInvoice, ISuppliable {
 
     async getSupplyPositions(id: string, productable: IProductable): Promise<SupplyPositionDto[]> {
         const lines = await this.getInvoiceLinesByInvoiceId(toNumber(id));
-        const ret: SupplyPositionDto[] = [];
-        for (const line of lines) {
+    
+        // Собираем все SKU для batch запроса
+        const skus = lines.map(line => {
             const { goodCode, whereOrdered } = line;
-            const sku = whereOrdered ? `${goodCode}-${whereOrdered}` : goodCode;
-            const product = await productable.getProductInfoBySku(sku);
-            ret.push({
+            return whereOrdered ? `${goodCode}-${whereOrdered}` : goodCode.toString();
+        });
+
+        // Получаем информацию о всех продуктах одним запросом
+        const productsInfo = await productable.infoList(skus);
+
+        // Создаем мапу для быстрого доступа к информации о продуктах
+        const productsMap = new Map(
+            productsInfo.map(product => [product.sku, product])
+        );
+
+        // Формируем результат
+        return lines.map(line => {
+            const { goodCode, whereOrdered } = line;
+            const sku = whereOrdered ? `${goodCode}-${whereOrdered}` : goodCode.toString();
+            const product = productsMap.get(sku);
+
+            if (!product) {
+                throw new Error(`Product not found for SKU: ${sku}`);
+            }
+
+            return {
                 supplyId: id,
                 barCode: product.barCode,
                 remark: product.remark,
-                quantity: toNumber(line.quantity),
-            });
-        }
-        return ret;
+                quantity: toNumber(line.quantity) / (toNumber(whereOrdered) || 1),
+            };
+        });
     }
 }

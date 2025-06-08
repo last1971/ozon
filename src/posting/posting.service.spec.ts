@@ -83,6 +83,8 @@ describe('PostingService', () => {
                 to: DateTime.now().endOf('day').toJSDate(),
                 status: 'awaiting_packaging',
             },
+            100,
+            0,
         ]);
     });
 

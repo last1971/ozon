@@ -4,5 +4,11 @@
     "github.copilot.editor.enableAutoCompletions": true,
     "github.copilot.enable": {
         "*": true
-      }
+      },
+      "database.jdbc.drivers": [
+        {
+            "name": "Firebird",
+            "path": "./jdbc-driver/jaybird-full-2.2.15.jar"
+        }
+    ]
 }

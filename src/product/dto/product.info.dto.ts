@@ -17,6 +17,12 @@ export class ProductInfoDto {
     @ApiProperty({ description: 'ID товара', example: '12345' })
     id: string;
 
+    @ApiProperty({ description: 'Остаток FBS', type: Number, example: 100 })
+    fbsCount: number;
+
+    @ApiProperty({ description: 'Остаток FBO', type: Number, example: 100 })
+    fboCount: number;
+
     @ApiProperty({ description: 'Сервис товара', enum: GoodServiceEnum })
     goodService: GoodServiceEnum;
 }

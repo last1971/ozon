@@ -1,0 +1,31 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "Start Backend",
+      "type": "shell",
+      "command": "npm run start:dev",
+      "group": "build",
+      "presentation": {
+        "panel": "new"
+      }
+    },
+    {
+      "label": "Start Admin Panel",
+      "type": "shell",
+      "command": "npm run dev",
+      "group": "build",
+      "options": {
+        "cwd": "${workspaceFolder}/admin-panel"
+      },
+      "presentation": {
+        "panel": "new"
+      }
+    },
+    {
+      "label": "Start All",
+      "dependsOn": ["Start Backend", "Start Admin Panel"],
+      "dependsOrder": "parallel"
+    }
+  ]
+}

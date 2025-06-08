@@ -53,7 +53,7 @@ describe('WbCardService', () => {
         expect(res).toEqual({ goods: new Map([['1', 10]]), nextArgs: null });
         expect(method.mock.calls).toHaveLength(2);
         expect(method.mock.calls[0]).toEqual([
-            '/content/v2/get/cards/list',
+            'https://content-api.wildberries.ru/content/v2/get/cards/list',
             'post',
             {
                 settings: {
@@ -65,6 +65,7 @@ describe('WbCardService', () => {
                     },
                 },
             },
+            true,
         ]);
         expect(method.mock.calls[1]).toEqual(['/api/v3/stocks/undefined', 'post', { skus: ['1-1'] }]);
     });
@@ -136,7 +137,7 @@ describe('WbCardService', () => {
         });
         await service.getWbCards('');
         expect(method.mock.calls[0]).toEqual([
-            '/content/v2/get/cards/list',
+            'https://content-api.wildberries.ru/content/v2/get/cards/list',
             'post',
             {
                 settings: {
@@ -148,6 +149,7 @@ describe('WbCardService', () => {
                     },
                 },
             },
+            true,
         ]);
     });
     it('getAllWbCards', async () => {
@@ -180,6 +182,8 @@ describe('WbCardService', () => {
             primaryImage: 'test.jpg',
             remark: 'test-name',
             sku: '1',
+            fbsCount: 0,
+            fboCount: 0,
         });
         expect(res).toEqual([testCard, testCard, testCard]);
     });

@@ -42,7 +42,9 @@ export class OzonApiService {
                               'Api-Key': ozon.API_KEY as string,
                           },
                       })
-                      .pipe(map((res) => res.data))
+                      .pipe(map((res) => {
+                          return res.data
+                      }))
                       .pipe(
                           catchError(async (error: AxiosError) => {
                               this.logger.error(error.message + ' ' + error?.response?.data['message']);

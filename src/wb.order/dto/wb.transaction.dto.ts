@@ -6,4 +6,5 @@ export class WbTransactionDto {
     additional_payment: number;
     penalty: number;
     rrd_id: number;
+    assembly_id: number;
 }

@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { IGood } from '../interfaces/IGood';
 import { GoodDto } from '../good/dto/good.dto';
 import { FIREBIRD } from '../firebird/firebird.module';
@@ -7,15 +7,16 @@ import { GoodPriceDto } from '../good/dto/good.price.dto';
 import { GoodPercentDto } from '../good/dto/good.percent.dto';
 import {
     calculatePrice,
+    getPieces,
     goodCode,
     goodQuantityCoeff,
+    isSkuMatch,
     productQuantity,
     skusToGoodIds,
     StringToIOfferIdableAdapter,
 } from '../helpers';
 import { ICountUpdateable } from '../interfaces/ICountUpdatebale';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
-import { IProductCoeffsable } from '../interfaces/i.product.coeffsable';
 import { UpdatePriceDto } from '../price/dto/update.price.dto';
 import { ConfigService } from '@nestjs/config';
 import { GoodWbDto } from '../good/dto/good.wb.dto';
@@ -26,17 +27,23 @@ import { DateTime } from 'luxon';
 import { WbCardDto } from '../wb.card/dto/wb.card.dto';
 import { Cache } from '@nestjs/cache-manager';
 import { WbCommissionDto } from '../wb.card/dto/wb.commission.dto';
+import { WithTransactions } from "../helpers/mixin/transaction.mixin";
+import { PriceCalculationHelper } from "../helpers/price/price.calculation.helper";
 
 @Injectable()
-export class Trade2006GoodService implements IGood {
+export class Trade2006GoodService extends WithTransactions(class {}) implements IGood {
     private halfStoreMessages: string[] = [];
     private boundCheckMessages: string[] = [];
+    private readonly logger = new Logger(Trade2006GoodService.name);
     constructor(
         @Inject(FIREBIRD) private pool: FirebirdPool,
         private configService: ConfigService,
         private eventEmitter: EventEmitter2,
         private cacheManager: Cache,
-    ) {}
+        private priceCalculationHelper: PriceCalculationHelper,
+    ) {
+        super();
+    }
 
     async in(codes: string[], t: FirebirdTransaction = null): Promise<GoodDto[]> {
         if (codes.length === 0) return [];
@@ -91,22 +98,24 @@ export class Trade2006GoodService implements IGood {
             old_perc: percent.PERC_MAX,
             min_perc: percent.PERC_MIN,
             packing_price: percent.PACKING_PRICE ?? this.configService.get<number>('SUM_PACK', 10),
+            available_price: percent.AVAILABLE_PRICE,
         }));
     }
     async setPercents(perc: GoodPercentDto, t: FirebirdTransaction = null): Promise<void> {
         const transaction = t ?? (await this.pool.getTransaction());
         await transaction.execute(
-            'UPDATE OR INSERT INTO OZON_PERC (PERC_MIN, PERC_NOR, PERC_MAX, PERC_ADV, PACKING_PRICE, GOODSCODE,' +
-                ' PIECES)' +
-                'VALUES (?, ?, ?, ?, ?, ?, ?) MATCHING (GOODSCODE, PIECES)',
+            'UPDATE OR INSERT INTO OZON_PERC (PERC_MIN, PERC_NOR, PERC_MAX, PERC_ADV, PACKING_PRICE,' +
+                ' AVAILABLE_PRICE, GOODSCODE, PIECES)' +
+                'VALUES (?, ?, ?, ?, ?, ?, ?, ?) MATCHING (GOODSCODE, PIECES)',
             [
                 perc.min_perc || null,
                 perc.perc || null,
                 perc.old_perc || null,
                 perc.adv_perc || null,
                 perc.packing_price || null,
+                perc.available_price ?? 0,
                 goodCode(perc),
-                goodQuantityCoeff(perc),
+                getPieces(perc),
             ],
             !t,
         );
@@ -173,6 +182,7 @@ export class Trade2006GoodService implements IGood {
         );
     }
 
+    // Not used. Should be removed.
     async updateCountForService(service: ICountUpdateable, args: any): Promise<number> {
         const serviceGoods = await service.getGoodIds(args);
         if (serviceGoods.goods.size === 0) return 0;
@@ -213,20 +223,93 @@ export class Trade2006GoodService implements IGood {
         return service.updateGoodCounts(updateGoods);
     }
 
+    async generatePercentsForService(service: IPriceUpdateable, skus: string[], goodPercentsDto?: Map<string, Partial<GoodPercentDto>>): Promise<GoodPercentDto[]> {
+        const { goods, percents, products } = await this.priceCalculationHelper.preparePricesContext(service, skus, this);
+
+        const filteredPercents = percents.filter(percent =>
+            products.some(product =>
+                isSkuMatch(product.getSku(), percent.offer_id.toString(), percent.pieces)
+            )
+        );
+
+        return filteredPercents.map((percent: GoodPercentDto) => {
+            const product = products.find((p) =>
+                isSkuMatch(p.getSku(), percent.offer_id.toString(), percent.pieces)
+            );
+            const sku = product.getSku();
+            const dto = goodPercentsDto?.get(sku);
+
+            const adv_perc = dto?.adv_perc ?? percent.adv_perc;
+            const available_price = dto?.available_price ?? percent.available_price;
+            const packing_price = dto?.packing_price ?? percent.packing_price;
+
+            const initialPrice = {
+                adv_perc,
+                fbs_direct_flow_trans_max_amount: product.getTransMaxAmount(),
+                incoming_price: this.priceCalculationHelper.getIncomingPrice(product, goods),
+                available_price,
+                offer_id: sku,
+                sales_percent: product.getSalesPercent(),
+                sum_pack: packing_price,
+                min_perc: 0,
+                perc: 0,
+                old_perc: 0
+            };
+
+            const { min_perc, perc, old_perc } = this.priceCalculationHelper.adjustPercents(
+                initialPrice,
+                service
+            );
+
+            return {
+                ...percent,
+                perc,
+                old_perc,
+                min_perc,
+                adv_perc,
+                available_price,
+                packing_price,
+            };
+        });
+    }
+
+    async updatePercentsForService(service: IPriceUpdateable, skus: string[], goodPercentsDto?: Map<string, Partial<GoodPercentDto>>): Promise<void> {
+        const updatedPercents = await this.generatePercentsForService(service, skus, goodPercentsDto);
+        // Убираем дубли по GOODSCODE и PIECES, оставляя только первый
+        const seen = new Set<string>();
+        const uniquePercents = updatedPercents.filter((percent) => {
+            const key = `${percent.offer_id}_${percent.pieces}`;
+            if (seen.has(key)) return false;
+            seen.add(key);
+            return true;
+        });
+        for (const percent of uniquePercents) {
+            try {
+                await this.setPercents(percent);
+            } catch (err) {
+                this.logger?.error?.(`setPercents error for GOODSCODE=${percent.offer_id}, PIECES=${percent.pieces}: ${err?.message}`, err?.stack);
+                // Продолжаем цикл
+            }
+        }
+    }
+
+    /**
+     * Updates the price for the given service using the provided SKUs, price data, and coefficient calculations.
+     *
+     * @param {IPriceUpdateable} service - The service interface that supports price update operations.
+     * @param {string[]} skus - The list of marketplace SKU identifiers for which the prices need to be updated.
+     * @param {Map<string, UpdatePriceDto>} [prices] - An optional map of SKU to price update data (incoming prices).
+     * @return {Promise<any>} Returns a promise that resolves with the result of the update operation, or null if no updates were needed.
+     */
     async updatePriceForService(service: IPriceUpdateable, skus: string[], prices?: Map<string, UpdatePriceDto>): Promise<any> {
-        const codes = skus.map((item) => goodCode({ offer_id: item }));
-        const goods = await this.prices(codes);
-        const percents = await this.getPerc(codes);
-        const products: IProductCoeffsable[] = await service.getProductsWithCoeffs(skus);
+        const { goods, percents, products } = await this.priceCalculationHelper.preparePricesContext(service, skus, this);
         const updatePrices: UpdatePriceDto[] = [];
         products.forEach((product) => {
-            const gCode = goodCode({ offer_id: product.getSku() });
-            const gCoeff = goodQuantityCoeff({ offer_id: product.getSku() });
-            const incoming_price = prices?.get(product.getSku()).incoming_price
-                ? prices.get(product.getSku()).incoming_price
-                : goods.find((g) => g.code.toString() === gCode).price * gCoeff;
+            const incoming_price = this.priceCalculationHelper.getIncomingPrice(product, goods, prices);
             if (incoming_price !== 0) {
-                const { min_perc, perc, old_perc, adv_perc, packing_price } = percents.find(
+                const gCode = goodCode({ offer_id: product.getSku() });
+                const gCoeff = goodQuantityCoeff({ offer_id: product.getSku() });
+                const { min_perc, perc, old_perc, adv_perc, packing_price, available_price } = percents.find(
                     (p) => p.offer_id.toString() === gCode && p.pieces === gCoeff,
                 ) || {
                     adv_perc: 0,
@@ -234,6 +317,7 @@ export class Trade2006GoodService implements IGood {
                     perc: this.configService.get<number>('PERC_NOR', 25),
                     min_perc: this.configService.get<number>('PERC_MIN', 15),
                     packing_price: this.configService.get<number>('SUM_PACK', 10),
+                    available_price: 0,
                 };
                 updatePrices.push(
                     calculatePrice(
@@ -241,6 +325,7 @@ export class Trade2006GoodService implements IGood {
                             adv_perc,
                             fbs_direct_flow_trans_max_amount: product.getTransMaxAmount(),
                             incoming_price,
+                            available_price,
                             min_perc,
                             offer_id: product.getSku(),
                             old_perc,
@@ -341,5 +426,30 @@ export class Trade2006GoodService implements IGood {
                   commission: res[0].COMMISSION,
               }
             : null;
+    }
+
+    /**
+     * Обнуляет значение AVAILABLE_PRICE для всех товаров или указанного списка
+     */
+    async resetAvailablePrice(goodCodes?: string[], t?: FirebirdTransaction): Promise<void> {
+        return this.withTransaction(async (transaction) => {
+            // Если goodCodes не указан или пустой, обнуляем для всех товаров
+            if (!goodCodes || goodCodes.length === 0) {
+                await transaction.execute('UPDATE OZON_PERC SET AVAILABLE_PRICE = 0', []);
+                return;
+            }
+
+            // Размер пакета (максимальное количество кодов в одном запросе)
+            const batchSize = 50;
+
+            // Разбиваем список на пакеты
+            for (let i = 0; i < goodCodes.length; i += batchSize) {
+                const batch = goodCodes.slice(i, i + batchSize);
+                const placeholders = batch.map(() => '?').join(',');
+                const query = `UPDATE OZON_PERC SET AVAILABLE_PRICE = 0 WHERE GOODSCODE IN (${placeholders})`;
+
+                await transaction.execute(query, batch);
+            }
+        }, t);
     }
 }
