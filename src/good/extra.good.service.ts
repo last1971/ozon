@@ -6,17 +6,15 @@ import { WbCardService } from "../wb.card/wb.card.service";
 import { GOOD_SERVICE, IGood } from "../interfaces/IGood";
 import { ICountUpdateable } from "../interfaces/ICountUpdatebale";
 import { GoodServiceEnum } from "./good.service.enum";
-import { ResultDto } from "../helpers/result.dto";
+import { ResultDto } from "../helpers/dto/result.dto";
 import { OnEvent } from "@nestjs/event-emitter";
 import { IsSwitchedDto } from "./dto/is.switched.dto";
 import { chunk } from "lodash";
-import { goodQuantityCoeff, productQuantity } from "../helpers";
 import { Cron } from "@nestjs/schedule";
 import { GoodDto } from "./dto/good.dto";
 import { ConfigService } from "@nestjs/config";
-// import { ProductVisibility } from "../product/product.visibility";
-// import { ProductListResultDto } from "../product/dto/product.list.result.dto";
 import { ProductInfoDto } from "../product/dto/product.info.dto";
+import { GoodsCountProcessor } from "../helpers/good/goods.count.processor";
 
 @Injectable()
 export class ExtraGoodService {
@@ -42,14 +40,25 @@ export class ExtraGoodService {
             this.services.set(GoodServiceEnum.YANDEX, { service: this.yandexOffer, isSwitchedOn: true });
     }
 
+    /**
+     * Публичный метод для получения сервиса обновления количества товаров.
+     * Возвращает сервис ICountUpdateable, если он найден и включен, иначе null.
+     * @param serviceEnum - Тип сервиса (маркетплейса)
+     */
+    public getCountUpdateableService(serviceEnum: GoodServiceEnum): ICountUpdateable | null {
+        return this.services.get(serviceEnum)?.service || null;
+    }
+
     async updateService(serviceEnum: GoodServiceEnum): Promise<ResultDto> {
         const service = this.services.get(serviceEnum);
+        const processor = new GoodsCountProcessor(this.services, this.logger);
         return {
             isSuccess: service.isSwitchedOn,
             message: service.isSwitchedOn
-                ? `Was updated ${await this.goodService.updateCountForService(
-                      service.service,
-                      '',
+                ? `Was updated ${await processor.processGoodsCountForService(
+                    serviceEnum,
+                    this.goodService,
+                    ''
                   )} offers in ${serviceEnum}`
                 : `${serviceEnum} switched off`,
         };
@@ -58,9 +67,10 @@ export class ExtraGoodService {
     async serviceIsSwitchedOn(isSwitchedDto: IsSwitchedDto): Promise<ResultDto> {
         const service = this.services.get(isSwitchedDto.service);
         service.isSwitchedOn = isSwitchedDto.isSwitchedOn;
+        const processor = new GoodsCountProcessor(this.services, this.logger);
         let count: number;
         if (isSwitchedDto.isSwitchedOn) {
-            count = await this.goodService.updateCountForService(service.service, '');
+            count = await processor.processGoodsCountForService(isSwitchedDto.service, this.goodService, '');
         } else {
             count = await this.resetBalances(isSwitchedDto.service);
         }
@@ -100,15 +110,16 @@ export class ExtraGoodService {
 
     @Cron('0 0 9-19 * * 1-6', { name: 'controlCheckGoodCount' })
     async checkGoodCount(): Promise<void> {
-        for (const service of this.services) {
-            if (service[1].isSwitchedOn) {
-                this.logger.log(
-                    `Update quantity for ${await this.goodService.updateCountForService(
-                        service[1].service,
-                        '',
-                    )} goods in ${service[0]}`,
-                );
-            }
+        const processor = new GoodsCountProcessor(this.services, this.logger);
+        for (const service of this.services.keys()) {
+            this.logger.log(
+                `Update quantity for ${await processor.processGoodsCountForService(
+                    service,
+                    this.goodService,
+                    '',
+                )} goods in ${service}`,
+            );
+
         }
     }
 
@@ -131,25 +142,23 @@ export class ExtraGoodService {
 
     @OnEvent('counts.changed', { async: true })
     async countsChanged(goods: GoodDto[]): Promise<void> {
-        this.logger.log('Skus - ' + goods.map((good) => good.code).join() + ' was changed');
-        for (const key of this.services.keys()) {
-            const service = this.services.get(key);
-            if (!service.isSwitchedOn) continue;
-            const forChange = new Map<string, number>();
-            goods.forEach((good) => {
-                const filtredSkus = service.service.skuList.filter((sku) => sku.includes(good.code));
-                filtredSkus.forEach((fs) => {
-                    const coeff = goodQuantityCoeff({ offer_id: fs });
-                    forChange.set(fs, productQuantity(good.quantity - (good.reserve ?? 0), coeff));
-                });
-            });
-            if (forChange.size > 0) {
-                this.logger.log(`Update ${await service.service.updateGoodCounts(forChange)} skus in ${key}`);
-            }
-        }
+        this.logger.log(`SKUs changed: ${goods.map((good) => good.code).join(', ')}`);
+
+        const processor = new GoodsCountProcessor(this.services, this.logger);
+
+        await processor.processGoodsCountChanges(goods);
     }
 
     async getProductInfo(offer_id: string[], service: GoodServiceEnum): Promise<ProductInfoDto[]> {
         return this.services.get(service).service.infoList(offer_id);
+    }
+
+    tradeSkusToServiceSkus(tradeSkus: string[], serviceEnum: GoodServiceEnum): string[] {
+        const service = this.getCountUpdateableService(serviceEnum);
+        if (!service || !service.skuList) return [];
+        return service.skuList
+            .filter(
+                (serviceSku) => tradeSkus.some((tradeSku) => serviceSku.startsWith(tradeSku))
+            );
     }
 }

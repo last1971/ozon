@@ -4,8 +4,8 @@ import axios from "@/axios.config";
 
 export enum GoodServiceEnum {
     OZON = 'ozon',
-    YANDEX = 'yandex',
-    EXPRESS = 'express',
+//    YANDEX = 'yandex',
+//    EXPRESS = 'express',
     WB = 'wb',
 }
 

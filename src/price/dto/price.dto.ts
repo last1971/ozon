@@ -13,6 +13,8 @@ export class PriceDto {
     marketing_seller_price: number;
     @ApiProperty({ description: 'Входящая цена' })
     incoming_price: number;
+    @ApiProperty({ description: 'Рыночная цена' })
+    available_price: number;
     @ApiProperty({ description: 'Мин цена' })
     min_price: number;
     @ApiProperty({ description: 'Цена' })
@@ -35,4 +37,8 @@ export class PriceDto {
     auto_action_enabled: boolean;
     @ApiProperty({ description: 'Стоимость упаковки' })
     sum_pack:number;
+    @ApiProperty({ description: 'Остаток FBS', type: Number, example: 100 })
+    fbsCount: number;
+    @ApiProperty({ description: 'Остаток FBO', type: Number, example: 100 })
+    fboCount: number;
 }

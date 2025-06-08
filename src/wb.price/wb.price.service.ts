@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
-import { ObtainCoeffsDto } from '../helpers/obtain.coeffs.dto';
+import { ObtainCoeffsDto } from '../helpers/dto/obtain.coeffs.dto';
 import { IProductCoeffsable } from '../interfaces/i.product.coeffsable';
 import { UpdatePriceDto } from '../price/dto/update.price.dto';
 import { ConfigService } from '@nestjs/config';
@@ -90,7 +90,7 @@ export class WbPriceService implements IPriceUpdateable {
             updateDiscounts: await this.updateDiscounts(discounts),
         };
          */
-        return this.api.method('https://discounts-prices-api.wb.ru/api/v2/upload/task', 'post', { data }, true);
+        return this.api.method('https://discounts-prices-api.wildberries.ru/api/v2/upload/task', 'post', { data }, true);
     }
 
     // Not using remove

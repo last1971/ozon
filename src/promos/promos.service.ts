@@ -14,7 +14,11 @@ import { PriceService } from '../price/price.service';
 import { PriceResponseDto } from '../price/dto/price.response.dto';
 import { PriceDto } from 'src/price/dto/price.dto';
 
-export type FitProductsStrategy = 'maxActionPrice' | 'maxFromActionActionPiceAndProdMinPrice' | 'minFromProdMinPrice';
+export enum FitProductsStrategy {
+    MAX_ACTION_PRICE = 'maxActionPrice',
+    MAX_FROM_ACTION_PRICE_AND_MIN_PRICE = 'maxFromActionActionPiceAndProdMinPrice',
+    MIN_FROM_MIN_PRICE = 'minFromProdMinPrice',
+}
 
 export type AddRemoveProductToAction = {
     action_id: number;
@@ -141,10 +145,12 @@ export class PromosService {
     async unfitProductsRemoval(actionId: number): Promise<number> {
         const actionProducts = await this.getAllActionsProductsOrCandidates(actionId, 'products');
         const productsPrice = await this.getProductsPrices(actionProducts);
+        const productsCount = await this.productService.getFreeProductCount(actionProducts.map((p) => p.id));
         const unfitProductIds = actionProducts
             .filter((actionProduct) => {
                 const productPrice = productsPrice.find((p) => p.id === actionProduct.id);
-                return productPrice && actionProduct.action_price < Number(productPrice.price.min_price);
+                const productCount = productsCount.find((p) => p.id === actionProduct.id);
+                return productPrice && (actionProduct.action_price < Number(productPrice.price.min_price) || productCount.count === 0);
             })
             .map((p) => p.id);
         await this.deactivateActionProducts({ action_id: actionId, product_ids: unfitProductIds });
@@ -166,21 +172,23 @@ export class PromosService {
     async fitProductsAddition(actionId: number, strategy: FitProductsStrategy): Promise<number> {
         const actionCandidates = await this.getAllActionsProductsOrCandidates(actionId, 'candidates');
         const candidatesPrice = await this.getProductsPrices(actionCandidates);
+        const candidatesCount = await this.productService.getFreeProductCount(actionCandidates.map((p) => p.id));
         const fitProductIds = actionCandidates
             .filter((actionProduct) => {
                 const minPrice = Number(
                     candidatesPrice.find((product) => product.id === actionProduct.id)?.price.min_price,
                 );
-                return minPrice && actionProduct.max_action_price && actionProduct.max_action_price >= minPrice;
+                const count= candidatesCount.find((product) => product.id === actionProduct.id)?.count;
+                return minPrice && actionProduct.max_action_price && actionProduct.max_action_price >= minPrice && count > 0;
             })
             .map((p) => p.id);
         const products: ActivateActionProduct[] = fitProductIds
             .map((id) => ({
                 product_id: id,
                 action_price:
-                    strategy === 'maxActionPrice'
+                    strategy === FitProductsStrategy.MAX_ACTION_PRICE
                         ? actionCandidates.find((p) => p.id === id).max_action_price
-                        : strategy === 'maxFromActionActionPiceAndProdMinPrice'
+                        : strategy === FitProductsStrategy.MAX_FROM_ACTION_PRICE_AND_MIN_PRICE
                           ? Math.max(
                                 actionCandidates.find((p) => p.id === id)?.action_price ?? 0,
                                 Number(candidatesPrice.find((p) => p.id === id)?.price.min_price ?? 0),

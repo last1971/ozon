@@ -1,0 +1,152 @@
+@baseUrl = {{$dotenv OZON_API_PERFOMANCE_URL}}
+@clientId = {{$dotenv OZON_CLIENT_ID}}
+@clientSecret = {{$dotenv OZON_CLIENT_SECRET}}
+
+### Возможные значения для state:
+### CAMPAIGN_STATE_RUNNING             - активная кампания
+### CAMPAIGN_STATE_PLANNED             - кампания, сроки проведения которой ещё не наступили
+### CAMPAIGN_STATE_STOPPED             - кампания, приостановленная из-за нехватки бюджета
+### CAMPAIGN_STATE_INACTIVE            - кампания, остановленная владельцем
+### CAMPAIGN_STATE_ARCHIVED            - архивная кампания
+### CAMPAIGN_STATE_MODERATION_DRAFT    - отредактированная кампания до отправки на модерацию
+### CAMPAIGN_STATE_MODERATION_IN_PROGRESS - кампания, отправленная на модерацию
+### CAMPAIGN_STATE_MODERATION_FAILED   - кампания, непрошедшая модерацию
+### CAMPAIGN_STATE_FINISHED            - кампания завершена, дата окончания в прошлом
+@state = &state=CAMPAIGN_STATE_INACTIVE
+
+#Список идентификаторов кампаний, для которых необходимо вывести информацию.
+#Если не указать, будут выведены все кампании.
+#Пример: &campaignIds=1234567890,1234567891,1234567892
+@campaignIds = 
+
+#Тип рекламируемой кампании:
+#SKU — Трафареты или Вывод в топ
+#BANNER — Баннерная рекламная кампания
+#SEARCH_PROMO — Продвижение в поиске
+@advObjectType = ?advObjectType=SKU
+
+
+### Получение OAuth токена
+# @name login
+POST {{baseUrl}}/api/client/token
+Content-Type: application/json
+Accept: application/json
+
+{
+    "client_id": "{{clientId}}",
+    "client_secret": "{{clientSecret}}",
+    "grant_type": "client_credentials"
+}
+
+### Сохраняем токен в переменную
+@accessToken = {{login.response.body.access_token}}
+
+### Получение списка кампаний
+GET {{baseUrl}}/api/client/campaign{{advObjectType}}{{state}}{{campaignIds}}
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+### Создание новой кампании
+POST {{baseUrl}}/api/client/campaign
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+    "campaign": {
+        "name": "Test Campaign",
+        "budget": {
+            "amount": 1000,
+            "currency": "RUB"
+        },
+        "targeting": {
+            "locations": ["RU"],
+            "devices": ["MOBILE", "DESKTOP"]
+        }
+    }
+}
+
+### Получение статистики кампании
+POST {{baseUrl}}/api/client/statistics
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+    "campaign_id": "10708991",
+    "date_from": "2025-05-24",
+    "date_to": "2025-05-25"
+}
+
+### Активация кампании
+POST {{baseUrl}}/api/client/campaign/10708991/activate
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{}
+
+### Деактивация кампании
+POST {{baseUrl}}/api/client/campaign/10708991/deactivate
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{}
+
+### Получение списка товаров кампании
+GET {{baseUrl}}/api/client/campaign/10708991/v2/products?pageSize=100
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+### Получение статистики по товарам в кампании
+GET {{baseUrl}}/api/client/statistics/campaign/product/json
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+    "campaignIds": "10708991",
+    "dateFrom": "2025-05-24",
+    "dateTo": "2025-05-25"
+}
+
+### Получение расходов по кампаниям (GetCampaignExpense)
+GET {{baseUrl}}/api/client/statistics/expense/json?campaignIds=10708991&dateFrom=2025-05-25&dateTo=2025-05-26
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+### Получение расходов по кампаниям (GetCampaignDailyStats)
+GET {{baseUrl}}/api/client/statistics/daily/json?campaignIds=10708991&dateFrom=2025-05-28&dateTo=2025-05-28
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+### Получение статистики по товарам
+
+POST {{baseUrl}}/api/client/statistics/products/generate/json
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+    "from": "2025-05-27T00:00:00Z",
+    "to": "2025-05-27T23:59:59Z"
+}
+
+
+### Статистика по компании
+POST {{baseUrl}}/api/client/statistics/json
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+{
+    "campaigns": ["10708991"],
+    "from": "2025-05-21T00:00:00Z",
+    "to": "2025-05-27T23:59:59Z"
+}
+
+### Получить информацию об отчете
+
+GET {{baseUrl}}/api/client/statistics/80785578-3fe4-4a56-ab51-7d3fc2acb895
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json
+
+### Получить отчет
+
+GET {{baseUrl}}/api/client/statistics/report?UUID=80785578-3fe4-4a56-ab51-7d3fc2acb895
+Authorization: Bearer {{accessToken}}
+Content-Type: application/json

@@ -3,4 +3,5 @@ export class InvoiceGetDto {
     dateFrom?: string;
     dateTo?: string;
     status?: number;
+    remarks?: string[];
 }

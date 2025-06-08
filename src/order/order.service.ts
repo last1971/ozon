@@ -1,7 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ProductService } from '../product/product.service';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
-import { ResultDto } from '../helpers/result.dto';
+import { ResultDto } from '../helpers/dto/result.dto';
 import { TransactionFilterDto } from '../posting/dto/transaction.filter.dto';
 import { Cron } from '@nestjs/schedule';
 import { PostingService } from '../posting/posting.service';
@@ -35,12 +35,12 @@ export class OrderService {
         private configService: ConfigService,
     ) {
         const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
+        if (services.includes(GoodServiceEnum.WB)) this.orderServices.push(wbOrder);
         if (services.includes(GoodServiceEnum.OZON)) {
             this.orderServices.push(postingFboService);
             this.orderServices.push(postingService);
         }
         if (services.includes(GoodServiceEnum.YANDEX)) this.orderServices.push(yandexOrder);
-        if (services.includes(GoodServiceEnum.WB)) this.orderServices.push(wbOrder);
     }
 
     getServiceByName(name: GoodServiceEnum): IOrderable | null {

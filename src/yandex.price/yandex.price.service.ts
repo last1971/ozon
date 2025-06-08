@@ -1,6 +1,6 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
-import { ObtainCoeffsDto } from '../helpers/obtain.coeffs.dto';
+import { ObtainCoeffsDto } from '../helpers/dto/obtain.coeffs.dto';
 import { IProductCoeffsable } from '../interfaces/i.product.coeffsable';
 import { UpdatePriceDto } from '../price/dto/update.price.dto';
 import { ConfigService } from '@nestjs/config';
@@ -117,7 +117,7 @@ export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
     async createAction(file: Express.Multer.File): Promise<Excel.Buffer> {
         const workbook = new Excel.Workbook();
         await workbook.xlsx.load(file.buffer);
-        const worksheet = workbook.getWorksheet(10);
+        const worksheet = workbook.getWorksheet('Товары и цены');
         const skus: string[] = [];
         let i = 11;
         worksheet.eachRow((row: Excel.Row, rowNumber) => {

@@ -11,9 +11,11 @@ import { FirebirdPool } from 'ts-firebird';
 import { ExtraGoodService } from './extra.good.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
+import { PriceCalculationHelper } from "../helpers/price/price.calculation.helper";
+import { HelpersModule } from "../helpers/helpers.module";
 
 @Module({
-    imports: [FirebirdModule, ProductModule, YandexOfferModule, WbCardModule],
+    imports: [FirebirdModule, ProductModule, YandexOfferModule, WbCardModule, HelpersModule],
     providers: [
         {
             provide: GOOD_SERVICE,
@@ -22,8 +24,9 @@ import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
                 configService: ConfigService,
                 eventEmitter: EventEmitter2,
                 cacheManager: Cache,
-            ) => new Trade2006GoodService(pool, configService, eventEmitter, cacheManager),
-            inject: [FIREBIRD, ConfigService, EventEmitter2, CACHE_MANAGER],
+                priceCalculationHelper: PriceCalculationHelper,
+            ) => new Trade2006GoodService(pool, configService, eventEmitter, cacheManager, priceCalculationHelper),
+            inject: [FIREBIRD, ConfigService, EventEmitter2, CACHE_MANAGER, PriceCalculationHelper],
         },
         ExtraGoodService,
     ],

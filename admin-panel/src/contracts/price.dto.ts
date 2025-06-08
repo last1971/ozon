@@ -4,6 +4,7 @@ export interface PriceDto {
     name: string;
     marketing_price: number;
     marketing_seller_price: number;
+    available_price: number;
     incoming_price: number;
     min_price: number;
     price: number;
@@ -16,4 +17,6 @@ export interface PriceDto {
     fbs_direct_flow_trans_max_amount: number;
     auto_action_enabled: boolean;
     sum_pack:number;
+    fbsCount: number;
+    fboCount: number;
 }

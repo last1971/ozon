@@ -3,9 +3,15 @@
     "editor.inlineSuggest.enabled": true,
     "github.copilot.editor.enableAutoCompletions": true,
     "github.copilot.enable": {
-        "*": false,
+        "*": true,
         "plaintext": false,
         "markdown": false,
         "scminput": false
+
     }
+          "database.jdbc.drivers": [
+        {
+            "name": "Firebird",
+            "path": "./jdbc-driver/jaybird-full-2.2.15.jar"
+        }
 }

@@ -3,7 +3,7 @@ import { Injectable } from '@nestjs/common';
 import { YandexApiService } from '../yandex.api/yandex.api.service';
 import { VaultService } from 'vault-module/lib/vault.service';
 import { StockDto } from './dto/stock.dto';
-import { ResultDto } from '../helpers/result.dto';
+import { ResultDto } from '../helpers/dto/result.dto';
 import { GetCampaignOffersResultDto } from './dto/get.campaign.offers.result.dto';
 import { GoodsStatsDto } from './dto/goods.stats.dto';
 import { GoodsStatsWarehouseStockType } from './dto/goods.stats.warehouse.stock.dto';

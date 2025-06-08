@@ -5,6 +5,7 @@ import { GOOD_SERVICE } from '../interfaces/IGood';
 import { ConfigService } from '@nestjs/config';
 import { ProductVisibility } from '../product/product.visibility';
 import { OzonProductCoeffsAdapter } from './ozon.product.coeffs.adapter';
+import { Cache } from "@nestjs/cache-manager";
 
 describe('PriceService', () => {
     let service: PriceService;
@@ -24,6 +25,7 @@ describe('PriceService', () => {
                 PriceService,
                 { provide: ProductService, useValue: { getPrices, setPrice, skuList: ['sku1', 'sku2', 'sku3'] } },
                 { provide: GOOD_SERVICE, useValue: { prices, getPerc, updatePriceForService } },
+                { provide: Cache, useValue: { get: () => [], set: () => {}}},
                 {
                     provide: ConfigService,
                     useValue: {
@@ -72,7 +74,8 @@ describe('PriceService', () => {
                 {
                     offer_id: "offer1",
                     marketing_price: 100,
-                    incoming_price: 90,
+                    incoming_price: 10,
+                    available_price: 90,
                     product_id: 1,
                     name: "Product 1",
                     marketing_seller_price: 95,
@@ -87,11 +90,14 @@ describe('PriceService', () => {
                     fbs_direct_flow_trans_max_amount: 50,
                     auto_action_enabled: false,
                     sum_pack: 0,
+                    fbsCount: 1,
+                    fboCount: 2,
                 },
                 {
                     offer_id: "offer2",
                     marketing_price: 200,
                     incoming_price: 10,
+                    available_price: 0,
                     product_id: 2,
                     name: "Product 2",
                     marketing_seller_price: 205,
@@ -106,11 +112,14 @@ describe('PriceService', () => {
                     fbs_direct_flow_trans_max_amount: 20,
                     auto_action_enabled: true,
                     sum_pack: 0,
+                    fbsCount: 2,
+                    fboCount: 1,
                 },
                 {
                     offer_id: "offer3",
                     marketing_price: 50,
                     incoming_price: 60,
+                    available_price: 0,
                     product_id: 3,
                     name: "Product 3",
                     marketing_seller_price: 45,
@@ -125,6 +134,8 @@ describe('PriceService', () => {
                     fbs_direct_flow_trans_max_amount: 10,
                     auto_action_enabled: false,
                     sum_pack: 0,
+                    fbsCount: 0,
+                    fboCount: 0,
                 },
             ],
             last_id: '3',
@@ -206,7 +217,7 @@ describe('PriceService', () => {
             .mockResolvedValueOnce({ items: [] });
         await service.updateAllPrices();
         expect(getPrices.mock.calls).toHaveLength(2);
-        expect(getPrices.mock.calls[0]).toEqual([{ last_id: '', limit: 1000, visibility: 'IN_SALE' }]);
+        expect(getPrices.mock.calls[0]).toEqual([{ cursor: '', limit: 1000, visibility: 'IN_SALE' }]);
         expect(updatePriceForService.mock.calls).toHaveLength(1);
     });
     it('getObtainCoeffs', () => {
