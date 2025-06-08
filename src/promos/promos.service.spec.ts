@@ -1,3 +1,5 @@
+// npx jest src/promos/promos.service.spec.ts --watch
+
 import { Test, TestingModule } from '@nestjs/testing';
 import { PromosService } from './promos.service';
 import { OzonApiService } from '../ozon.api/ozon.api.service';
@@ -6,12 +8,14 @@ import { ActivateActionProductsParamsDto } from './dto/activateActionProductsPar
 import { DeactivateActionProductsParamsDto } from './dto/deactivateActionProductsParams.dbo';
 import { ProductService } from '../product/product.service';
 import { ActionListProduct } from './dto/actionsCandidate.dto';
+import { PriceService } from '../price/price.service';
 
 describe('PromosService', () => {
     let service: PromosService;
 
     const method = jest.fn();
     const getPrices = jest.fn();
+    const index = jest.fn();
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
@@ -19,11 +23,13 @@ describe('PromosService', () => {
                 PromosService,
                 { provide: OzonApiService, useValue: { method } },
                 { provide: ProductService, useValue: { getPrices } },
+                { provide: PriceService, useValue: { index } },
             ],
         }).compile();
 
         method.mockClear();
         getPrices.mockClear();
+        index.mockClear();
         service = module.get<PromosService>(PromosService);
     });
 
@@ -109,7 +115,7 @@ describe('PromosService', () => {
         const limit = 2;
         const productsPage1 = { products: [{ id: 1 }, { id: 2 }], total: 4 };
         const productsPage2 = { products: [{ id: 3 }, { id: 4 }], total: 4 };
-        const productsPage3 = { products: []};
+        const productsPage3 = { products: [] };
 
         method
             .mockResolvedValueOnce({ result: productsPage1 })

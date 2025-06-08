@@ -3,6 +3,9 @@
     "editor.inlineSuggest.enabled": true,
     "github.copilot.editor.enableAutoCompletions": true,
     "github.copilot.enable": {
-        "*": true
-      }
+        "*": false,
+        "plaintext": false,
+        "markdown": false,
+        "scminput": false
+    }
 }

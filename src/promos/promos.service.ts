@@ -4,14 +4,48 @@ import { ActionsDto } from './dto/actions.dto';
 import { ActionListProduct, ActionsListDto } from './dto/actionsCandidate.dto';
 import { ActionsListParamsDto } from './dto/actionsCandidateParams.dto';
 import { ActivateActionProduct, ActivateActionProductsParamsDto } from './dto/activateActionProductsParams.dbo';
-import { ActivateOrDeactivateActionProductsDto } from './dto/activateOrDeactivateActionProducts.dbo';
+import { ActivateOrDeactivateActionProductsDto, RejectedProduct } from './dto/activateOrDeactivateActionProducts.dbo';
 import { DeactivateActionProductsParamsDto } from './dto/deactivateActionProductsParams.dbo';
 import { ProductService } from '../product/product.service';
 import { PriceRequestDto } from '../price/dto/price.request.dto';
 import { ProductVisibility } from '../product/product.visibility';
-import { ProductPriceDto } from 'src/price/dto/product.price.dto';
+import { ProductPriceDto } from '../price/dto/product.price.dto';
+import { PriceService } from '../price/price.service';
+import { PriceResponseDto } from '../price/dto/price.response.dto';
+import { PriceDto } from 'src/price/dto/price.dto';
 
 export type FitProductsStrategy = 'maxActionPrice' | 'maxFromActionActionPiceAndProdMinPrice' | 'minFromProdMinPrice';
+
+export type AddRemoveProductToAction = {
+    action_id: number;
+    added: {
+        success_ids: number[];
+        failed: RejectedProduct[];
+    };
+    removed: {
+        success_ids: number[];
+        failed: RejectedProduct[];
+    };
+};
+/**
+ * Splits an array into chunks of a specified size.
+ *
+ * @template T - The type of elements in the input array.
+ * @param arr - The array to be split into chunks.
+ * @param chunkSize - The maximum size of each chunk.
+ * @returns An array of arrays, where each sub-array is a chunk of the original array.
+ *
+ * @example
+ * ```typescript
+ * chunkArray([1, 2, 3, 4, 5], 2); // [[1, 2], [3, 4], [5]]
+ * ```
+ */
+export function chunkArray<T>(arr: T[], chunkSize: number): T[][] {
+    return arr.reduce((acc, _, i) => {
+        if (i % chunkSize === 0) acc.push(arr.slice(i, i + chunkSize));
+        return acc;
+    }, [] as T[][]);
+}
 
 /**
  * Service responsible for handling promotional actions.
@@ -32,6 +66,7 @@ export class PromosService {
     constructor(
         private ozonApiService: OzonApiService,
         private productService: ProductService,
+        private priceService: PriceService,
     ) {}
 
     /**
@@ -217,5 +252,109 @@ export class PromosService {
         }
 
         return actionProducts;
+    }
+
+    private async getActionListProduct(
+        source: (params: ActionsListParamsDto) => Promise<ActionsListDto>,
+        action_id: number,
+        limit: number,
+    ): Promise<ActionListProduct[]> {
+        const result: ActionListProduct[] = [];
+        let offset = 0;
+        let _total: number;
+        while (_total === undefined || offset >= _total) {
+            const actionsListParams: ActionsListParamsDto = { action_id, limit, offset };
+            const { products, total } = await source(actionsListParams);
+            result.push(...products);
+            if (_total === undefined) _total = total;
+            offset += products.length;
+        }
+
+        return result;
+    }
+
+    async addRemoveProductToActions(ids: string[], chunkLimit: number = 100): Promise<AddRemoveProductToAction[]> {
+        // возвращаемое значение
+        const result: AddRemoveProductToAction[] = [];
+        // получаем список акций
+        const actions = await this.getActions();
+        // чанкаем реквесты на получение цен
+        const chunkedIds = chunkArray(ids, chunkLimit);
+        const requests = chunkedIds.map(
+            (chunk) => <PriceRequestDto>{ offer_id: chunk, visibility: ProductVisibility.ALL, limit: chunkLimit },
+        );
+        // собираем массив PriceResponseDto
+        const priceResponses: PriceResponseDto[] = await Promise.all(
+            requests.map((chunk) => this.priceService.index(chunk)),
+        );
+        // мапим из него массив цен
+        const prices: PriceDto[] = priceResponses.map((p) => p.data).flat();
+        // для каждой акции
+        for (const action of actions) {
+            // получаем товары, которые участвуют (getActionsProducts)
+            const productsInAction: ActionListProduct[] = await this.getActionListProduct(
+                this.getActionsProducts,
+                action.id,
+                chunkLimit,
+            );
+            // получаем товары, которые можно добавить (getActionsCandidates)
+            const productsCanPromoted: ActionListProduct[] = await this.getActionListProduct(
+                this.getActionsCandidates,
+                action.id,
+                chunkLimit,
+            );
+            const removeList: PriceDto[] = [];
+            const addList: PriceDto[] = [];
+            // для каждого товара из списка прайсов
+            for (const price of prices) {
+                // если product_id в акции и actionRec.price <=❗️ price.min_price
+                // то вносим в список на исключение
+                const productInAction = productsInAction.find((p) => p.id === price.product_id);
+                if (productInAction && productInAction.price <= price.min_price) {
+                    removeList.push(price);
+                    continue;
+                }
+                // если product_id может быть добавлен и price.min_price <=❗️ список_кандидатов.max_action_price
+                // то вносим в список на добавление
+                const productCanPromoted = productsCanPromoted.find((p) => p.id === price.product_id);
+                if (productCanPromoted && productCanPromoted.max_action_price >= price.min_price) {
+                    price.price = productCanPromoted.max_action_price ; // ❗️ для добавления в акцию (activateActionProducts)
+                    addList.push(price);
+                }
+            }
+            const resultItem: AddRemoveProductToAction ={
+                action_id: action.id,
+                removed: {
+                    success_ids: [],
+                    failed: [],
+                },
+                added: {
+                    success_ids: [],
+                    failed: [],
+                }
+            }
+            // удаляем если есть что
+            if (removeList.length) {
+                const params: DeactivateActionProductsParamsDto = {
+                    action_id: action.id,
+                    product_ids: removeList.map((p) => p.product_id),
+                };
+                const removed = await this.deactivateActionProducts(params);
+                resultItem.removed.success_ids = removed.product_ids;
+                resultItem.removed.failed = removed.rejected
+            }
+            // добавляем если есть что
+            if (addList.length) {
+                const params: ActivateActionProductsParamsDto = {
+                    action_id: action.id,
+                    products: addList.map((p) => <ActivateActionProduct>{product_id: p.product_id, action_price: p.price, stock: p.}), // ❗️ используем price.price = productCanPromoted.max_action_price (см выше) 
+                };
+                const added = await this.activateActionProducts(params);
+                resultItem.removed.success_ids = removed.product_ids;
+                resultItem.removed.failed = removed.rejected
+            }
+            result.push(resultItem);
+        }
+        return result;
     }
 }
