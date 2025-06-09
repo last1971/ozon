@@ -353,6 +353,10 @@ export class PromosService {
             );
             const removeList: PriceDto[] = [];
             const addList: PriceDto[] = [];
+
+            // используем для кэширования productCanPromoted.max_action_price
+            const maxPrices: Record<number, number> = {};
+
             // для каждого товара из списка прайсов
             for (const price of prices) {
                 // если product_id в акции и actionRec.price <=❗️ price.min_price
@@ -366,7 +370,7 @@ export class PromosService {
                 // то вносим в список на добавление
                 const productCanPromoted = productsCanPromoted.find((p) => p.id === price.product_id);
                 if (productCanPromoted && productCanPromoted.max_action_price >= price.min_price) {
-                    price.price = productCanPromoted.max_action_price; // ❗️ для добавления в акцию (activateActionProducts)
+                    maxPrices[price.product_id] = productCanPromoted.max_action_price;
                     addList.push(price);
                 }
             }
@@ -381,6 +385,9 @@ export class PromosService {
                     failed: [],
                 },
             };
+
+            debugger;
+
             // удаляем если есть что
             if (removeList.length) {
                 const params: DeactivateActionProductsParamsDto = {
@@ -399,14 +406,14 @@ export class PromosService {
                         (p) =>
                             <ActivateActionProduct>{
                                 product_id: p.product_id,
-                                action_price: p.price,
+                                action_price: maxPrices[p.product_id],
                                 stock: p.fboCount + p.fbsCount,
                             },
-                    ), // ❗️ используем price.price = productCanPromoted.max_action_price (см выше)
+                    ),
                 };
                 const added = await this.activateActionProducts(params);
-                resultItem.removed.success_ids = added.product_ids;
-                resultItem.removed.failed = added.rejected;
+                resultItem.added.success_ids = added.product_ids; // Исправлено: было resultItem.removed
+                resultItem.added.failed = added.rejected;
             }
             result.push(resultItem);
         }

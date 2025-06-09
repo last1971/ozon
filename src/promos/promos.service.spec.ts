@@ -430,5 +430,138 @@ describe('PromosService', () => {
         expect(mockSource).toHaveBeenNthCalledWith(3, { action_id: actionId, limit, offset: 4 });
     });
 
-    it('addRemoveProductToActions should add and remove products correctly', async () => {});
+    it('addRemoveProductToActions should add and remove products correctly', async () => {
+        // Подготовка тестовых данных
+        const testIds = ['SKU1', 'SKU2', 'SKU3'];
+        const actions = [
+            {
+                id: 1,
+                title: 'Action 1',
+            },
+            {
+                id: 2,
+                title: 'Action 2',
+            },
+        ] as ActionsDto[];
+
+        // Моки для цен
+        const prices = [
+            { product_id: 1, min_price: 100, fboCount: 5, fbsCount: 3 },
+            { product_id: 2, min_price: 200, fboCount: 2, fbsCount: 1 },
+            { product_id: 3, min_price: 300, fboCount: 0, fbsCount: 4 },
+        ];
+
+        // Товары в акции
+        const productsInAction = [
+            {
+                id: 1,
+                price: 90,
+                action_price: 90,
+                max_action_price: 100,
+                add_mode: 'NORMAL',
+                min_stock: 1,
+                stock: 5,
+            },
+            {
+                id: 2,
+                price: 220,
+                action_price: 220,
+                max_action_price: 250,
+                add_mode: 'NORMAL',
+                min_stock: 1,
+                stock: 3,
+            },
+        ] as ActionListProduct[];
+
+        // Кандидаты на добавление
+        const productsCanPromoted = [
+            {
+                id: 2,
+                price: 220,
+                action_price: 220,
+                max_action_price: 250,
+                add_mode: 'NORMAL',
+                min_stock: 1,
+                stock: 3,
+            },
+            {
+                id: 3,
+                price: 300,
+                action_price: 300,
+                max_action_price: 350,
+                add_mode: 'NORMAL',
+                min_stock: 1,
+                stock: 4,
+            },
+        ] as ActionListProduct[];
+
+        // Мокируем методы сервиса
+        jest.spyOn(service, 'getActions').mockResolvedValue(actions);
+        jest.spyOn(service, 'getActionListProduct')
+            .mockResolvedValueOnce(productsInAction) // для первой акции - активные продукты
+            .mockResolvedValueOnce(productsCanPromoted) // для первой акции - кандидаты
+            .mockResolvedValueOnce([]) // для второй акции - активные продукты
+            .mockResolvedValueOnce([]); // для второй акции - кандидаты
+
+        jest.spyOn(service, 'deactivateActionProducts').mockResolvedValue({ product_ids: [1], rejected: [] });
+
+        jest.spyOn(service, 'activateActionProducts').mockResolvedValue({ product_ids: [3], rejected: [] });
+
+        // Мок для priceService
+        index.mockResolvedValue({ data: prices });
+
+        // Вызов тестируемого метода
+        const result = await service.addRemoveProductToActions(testIds);
+
+        // Проверки
+        expect(result).toHaveLength(2);
+
+        // Проверяем результат для первой акции
+        expect(result[0]).toEqual({
+            action_id: 1,
+            removed: {
+                success_ids: [1],
+                failed: [],
+            },
+            added: {
+                success_ids: [3],
+                failed: [],
+            },
+        });
+
+        // Проверяем результат для второй акции (пустой)
+        expect(result[1]).toEqual({
+            action_id: 2,
+            removed: {
+                success_ids: [],
+                failed: [],
+            },
+            added: {
+                success_ids: [],
+                failed: [],
+            },
+        });
+
+        // Проверяем вызовы методов
+        expect(service.getActions).toHaveBeenCalled();
+        expect(service.deactivateActionProducts).toHaveBeenCalledWith({
+            action_id: 1,
+            product_ids: [1],
+        });
+        expect(service.activateActionProducts).toHaveBeenCalledWith({
+            action_id: 1,
+            products: [
+                {
+                    product_id: 2,
+                    action_price: 250,
+                    stock: 3,
+                },
+                {
+                    product_id: 3,
+                    action_price: 350,
+                    stock: 4,
+                },
+            ],
+        });
+    });
 });
