@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { FitProductsStrategy, PromosService } from './promos.service';
+import { chunkArray, FitProductsStrategy, PromosService } from './promos.service';
 import { OzonApiService } from '../ozon.api/ozon.api.service';
 import { ActionsListParamsDto } from './dto/actionsCandidateParams.dto';
 import { ActivateActionProductsParamsDto } from './dto/activateActionProductsParams.dbo';
@@ -377,9 +377,58 @@ describe('PromosService', () => {
         });
     });
 
-    // TODO
-    it('addRemoveProductToActions should add and remove products correctly', async () => {
-        const test = true;
-        expect(test).toBe(true);
+    it('chunkArray should work correctly', async () => {
+        const testCases = [
+            {
+                input: [1, 2, 3, 4, 5],
+                size: 2,
+                expected: [[1, 2], [3, 4], [5]],
+            },
+            {
+                input: ['a', 'b', 'c'],
+                size: 1,
+                expected: [['a'], ['b'], ['c']],
+            },
+            {
+                input: [1, 2, 3, 4],
+                size: 4,
+                expected: [[1, 2, 3, 4]],
+            },
+            {
+                input: [],
+                size: 2,
+                expected: [],
+            },
+        ];
+
+        testCases.forEach(({ input, size, expected }) => {
+            const result = chunkArray<any>(input, size);
+            expect(result).toEqual(expected);
+        });
     });
+
+    it('getActionListProduct should work correctly', async () => {
+        const actionId = 1;
+        const limit = 2;
+        const mockSource = jest.fn();
+
+        // Имитируем постраничные ответы с общим количеством 5 элементов
+        mockSource
+            .mockResolvedValueOnce({ products: [{ id: 1 }, { id: 2 }], total: 5 })
+            .mockResolvedValueOnce({ products: [{ id: 3 }, { id: 4 }], total: 5 })
+            .mockResolvedValueOnce({ products: [{ id: 5 }], total: 5 });
+
+        const result = await service.getActionListProduct(mockSource, actionId, limit);
+
+        // Проверяем собранный результат
+        expect(result).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }]);
+
+        // Проверяем правильность вызовов с пагинацией
+        expect(mockSource).toHaveBeenCalledTimes(3);
+        expect(mockSource).toHaveBeenNthCalledWith(1, { action_id: actionId, limit, offset: 0 });
+        expect(mockSource).toHaveBeenNthCalledWith(2, { action_id: actionId, limit, offset: 2 });
+        expect(mockSource).toHaveBeenNthCalledWith(3, { action_id: actionId, limit, offset: 4 });
+    });
+
+    it('addRemoveProductToActions should add and remove products correctly', async () => {});
 });

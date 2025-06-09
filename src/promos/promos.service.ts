@@ -31,13 +31,14 @@ export type AddRemoveProductToAction = {
         failed: RejectedProduct[];
     };
 };
+
 /**
- * Splits an array into chunks of a specified size.
+ * Разбивает массив на чанки заданного размера.
  *
- * @template T - The type of elements in the input array.
- * @param arr - The array to be split into chunks.
- * @param chunkSize - The maximum size of each chunk.
- * @returns An array of arrays, where each sub-array is a chunk of the original array.
+ * @template T - Тип элементов входного массива.
+ * @param arr - Массив, который нужно разбить на чанки.
+ * @param chunkSize - Максимальный размер каждого чанка.
+ * @returns Массив массивов, где каждый подмассив — это чанк исходного массива.
  *
  * @example
  * ```typescript
@@ -52,20 +53,20 @@ export function chunkArray<T>(arr: T[], chunkSize: number): T[][] {
 }
 
 /**
- * Service responsible for handling promotional actions.
+ * Сервис, отвечающий за обработку промо-акций.
  *
  * @class PromosService
  */
 @Injectable()
 /**
- * Service for handling promotional actions.
+ * Сервис для работы с промо-акциями.
  */
 export class PromosService {
     /**
-     * Creates an instance of PromosService.
+     * Создаёт экземпляр PromosService.
      *
-     * @param {OzonApiService} ozonApiService - The Ozon API service.
-     * @param productService
+     * @param {OzonApiService} ozonApiService - Сервис Ozon API.
+     * @param productService - Сервис работы с товарами.
      */
     constructor(
         private ozonApiService: OzonApiService,
@@ -74,9 +75,9 @@ export class PromosService {
     ) {}
 
     /**
-     * Retrieves a list of actions.
+     * Получает список акций.
      *
-     * @returns {Promise<ActionsDto>} A promise that resolves to the list of actions.
+     * @returns {Promise<ActionsDto>} Промис, который возвращает список акций.
      */
     async getActions(): Promise<ActionsDto[]> {
         const res = await this.ozonApiService.method('/v1/actions', {}, 'get');
@@ -84,10 +85,10 @@ export class PromosService {
     }
 
     /**
-     * Retrieves a list of action candidates based on the provided parameters.
+     * Получает список кандидатов на участие в акции на основе предоставленных параметров.
      *
-     * @param {ActionsListParamsDto} params - The parameters for retrieving action candidates.
-     * @returns {Promise<ActionsListDto>} A promise that resolves to the list of action candidates.
+     * @param {ActionsListParamsDto} params - Параметры для получения кандидатов на акцию.
+     * @returns {Promise<ActionsListDto>} Промис, который возвращает список кандидатов на акцию.
      */
     async getActionsCandidates(params: ActionsListParamsDto): Promise<ActionsListDto> {
         const res = await this.ozonApiService.method('/v1/actions/candidates', params);
@@ -95,10 +96,10 @@ export class PromosService {
     }
 
     /**
-     * Retrieves a list of action products based on the provided parameters.
+     * Получает список товаров, участвующих в акции, на основе предоставленных параметров.
      *
-     * @param {ActionsListParamsDto} params - The parameters for retrieving action products.
-     * @returns {Promise<ActionsListDto>} A promise that resolves to the list of action products.
+     * @param {ActionsListParamsDto} params - Параметры для получения товаров акции.
+     * @returns {Promise<ActionsListDto>} Промис, который возвращает список товаров акции.
      */
     async getActionsProducts(params: ActionsListParamsDto): Promise<ActionsListDto> {
         const res = await this.ozonApiService.method('/v1/actions/products', params);
@@ -106,10 +107,10 @@ export class PromosService {
     }
 
     /**
-     * Activates action products based on the provided parameters.
+     * Активирует товары акции на основе предоставленных параметров.
      *
-     * @param {ActivateActionProductsParamsDto} params - The parameters for activating action products.
-     * @returns {Promise<ActivateOrDeactivateActionProductsDto>} A promise that resolves to the activation result.
+     * @param {ActivateActionProductsParamsDto} params - Параметры для активации товаров акции.
+     * @returns {Promise<ActivateOrDeactivateActionProductsDto>} Промис, который возвращает результат активации.
      */
     async activateActionProducts(
         params: ActivateActionProductsParamsDto,
@@ -119,10 +120,10 @@ export class PromosService {
     }
 
     /**
-     * Deactivates action products based on the provided parameters.
+     * Деактивирует товары акции на основе предоставленных параметров.
      *
-     * @param {DeactivateActionProductsParamsDto} params - The parameters for deactivating action products.
-     * @returns {Promise<ActivateOrDeactivateActionProductsDto>} A promise that resolves to the deactivation result.
+     * @param {DeactivateActionProductsParamsDto} params - Параметры для деактивации товаров акции.
+     * @returns {Promise<ActivateOrDeactivateActionProductsDto>} Промис, который возвращает результат деактивации.
      */
     async deactivateActionProducts(
         params: DeactivateActionProductsParamsDto,
@@ -132,15 +133,15 @@ export class PromosService {
     }
 
     /**
-     * Removes unfit products from an action based on their prices.
+     * Удаляет неподходящие товары из акции на основе их цен.
      *
-     * This method retrieves all products associated with a given action, checks their prices,
-     * and deactivates those that do not meet the required price criteria.
+     * Этот метод получает все товары, связанные с указанной акцией, проверяет их цены
+     * и деактивирует те, которые не соответствуют необходимым ценовым критериям.
      *
-     * @param {number} actionId - The ID of the action from which unfit products should be removed.
-     * @returns {Promise<number>} - A promise that resolves to the number of products that were deactivated.
+     * @param {number} actionId - Идентификатор акции, из которой нужно удалить неподходящие товары.
+     * @returns {Promise<number>} - Промис, который возвращает количество деактивированных товаров.
      *
-     * @throws {Error} - Throws an error if there is an issue retrieving products or prices, or deactivating products.
+     * @throws {Error} - Генерирует ошибку в случае проблем с получением товаров, цен или деактивацией товаров.
      */
     async unfitProductsRemoval(actionId: number): Promise<number> {
         const actionProducts = await this.getAllActionsProductsOrCandidates(actionId, 'products');
@@ -161,16 +162,16 @@ export class PromosService {
     }
 
     /**
-     * Fits products addition to an action based on the provided strategy.
+     * Добавляет подходящие товары в акцию на основе выбранной стратегии.
      *
-     * This method retrieves all products associated with a given action, checks their prices,
-     * and activates those that meet the required price criteria based on the provided strategy.
+     * Этот метод получает всех кандидатов на участие в акции, проверяет их цены
+     * и активирует те товары, которые соответствуют ценовым критериям согласно выбранной стратегии.
      *
-     * @param {number} actionId - The ID of the action to which products should be added.
-     * @param {FitProductsStrategy} strategy - The strategy to use when adding products.
-     * @returns {Promise<number>} - A promise that resolves to the number of products that were activated.
+     * @param {number} actionId - Идентификатор акции, в которую нужно добавить товары.
+     * @param {FitProductsStrategy} strategy - Стратегия, используемая для добавления товаров.
+     * @returns {Promise<number>} - Промис, который возвращает количество товаров, добавленных в акцию.
      *
-     * @throws {Error} - Throws an error if there is an issue retrieving products or prices, or activating products.
+     * @throws {Error} - Генерирует ошибку в случае проблем с получением товаров, цен или активацией товаров.
      */
     async fitProductsAddition(actionId: number, strategy: FitProductsStrategy): Promise<number> {
         const actionCandidates = await this.getAllActionsProductsOrCandidates(actionId, 'candidates');
@@ -210,11 +211,11 @@ export class PromosService {
     }
 
     /**
-     * Retrieves the prices for a list of action products, with pagination support.
+     * Получает цены для списка товаров акции с поддержкой постраничной выборки.
      *
-     * @param {ActionListProduct[]} actionProducts - The list of action products to retrieve prices for.
-     * @param {number} [limit=100] - The maximum number of products to process per request.
-     * @returns {Promise<{ id: number; price: ProductPriceDto['price'] }[]>} A promise that resolves to an array of objects containing product IDs and their corresponding prices.
+     * @param {ActionListProduct[]} actionProducts - Список товаров акции, для которых требуется получить цены.
+     * @param {number} [limit=100] - Максимальное количество товаров, обрабатываемых за один запрос.
+     * @returns {Promise<{ id: number; price: ProductPriceDto['price'] }[]>} Промис, который возвращает массив объектов с идентификаторами товаров и их ценами.
      */
     async getProductsPrices(
         actionProducts: ActionListProduct[],
@@ -236,12 +237,12 @@ export class PromosService {
     }
 
     /**
-     * Retrieves all products associated with a given action, with pagination support.
+     * Получает все товары, связанные с указанной акцией, с поддержкой постраничной выборки.
      *
-     * @param {number} actionId - The ID of the action to retrieve products for.
-     * @param {'products' | 'candidates'} type - The type of products to retrieve.
-     * @param {number} [limit=100] - The maximum number of products to process per request.
-     * @returns {Promise<ActionListProduct[]>} A promise that resolves to an array of action products.
+     * @param {number} actionId - Идентификатор акции, для которой требуется получить товары.
+     * @param {'products' | 'candidates'} type - Тип товаров для получения: участвующие в акции или кандидаты.
+     * @param {number} [limit=100] - Максимальное количество товаров, обрабатываемых за один запрос.
+     * @returns {Promise<ActionListProduct[]>} Промис, который возвращает массив товаров акции.
      */
     async getAllActionsProductsOrCandidates(
         actionId: number,
@@ -270,6 +271,14 @@ export class PromosService {
         return actionProducts;
     }
 
+    /**
+     * Получает полный список товаров, связанных с определённой акцией, используя постраничную выборку.
+     *
+     * @param source - Функция, которая возвращает постраничный список товаров для заданной акции. Принимает `ActionsListParamsDto` и возвращает `Promise<ActionsListDto>`.
+     * @param action_id - Идентификатор акции, для которой требуется получить товары.
+     * @param limit - Максимальное количество товаров, получаемых за один запрос (размер страницы).
+     * @returns Промис, который возвращает массив `ActionListProduct`, содержащий все товары для указанной акции.
+     */
     async getActionListProduct(
         source: (params: ActionsListParamsDto) => Promise<ActionsListDto>,
         action_id: number,
@@ -277,18 +286,41 @@ export class PromosService {
     ): Promise<ActionListProduct[]> {
         const result: ActionListProduct[] = [];
         let offset = 0;
-        let _total: number;
-        while (_total === undefined || offset >= _total) {
+        let _total: number | undefined;
+
+        do {
             const actionsListParams: ActionsListParamsDto = { action_id, limit, offset };
             const { products, total } = await source(actionsListParams);
             result.push(...products);
-            if (_total === undefined) _total = total;
-            offset += products.length;
-        }
+
+            if (_total === undefined) {
+                _total = total;
+            }
+
+            offset += limit;
+        } while (offset < (_total ?? 0));
 
         return result;
     }
 
+    /**
+     * Добавляет или удаляет товары из промо-акций на основе их текущих цен и условий участия.
+     *
+     * Этот метод обрабатывает список идентификаторов товаров, проверяет их цены и определяет для каждой акции:
+     * - Какие товары следует удалить из акции (если их цена больше не соответствует условиям).
+     * - Какие товары можно добавить в акцию (если их цена соответствует критериям).
+     *
+     * Обработка выполняется чанками, чтобы избежать перегрузки системы большими запросами.
+     *
+     * @param ids - Массив идентификаторов товаров для обработки.
+     * @param chunkLimit - Максимальное количество идентификаторов товаров в одном чанке (по умолчанию 100).
+     * @returns Промис, который возвращает массив результатов, каждый из которых описывает результат операций добавления/удаления для каждой акции.
+     *
+     * @remarks
+     * - Товары удаляются из акции, если их текущая цена больше либо равна цене акции.
+     * - Товары добавляются в акцию, если их минимальная цена меньше либо равна максимальной цене кандидата на акцию.
+     * - Метод собирает и возвращает успешные и неуспешные идентификаторы для операций добавления и удаления по каждой акции.
+     */
     async addRemoveProductToActions(ids: string[], chunkLimit: number = 100): Promise<AddRemoveProductToAction[]> {
         // возвращаемое значение
         const result: AddRemoveProductToAction[] = [];
