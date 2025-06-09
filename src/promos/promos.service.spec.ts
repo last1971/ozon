@@ -1,17 +1,20 @@
-import { Test, TestingModule } from "@nestjs/testing";
-import { FitProductsStrategy, PromosService } from "./promos.service";
-import { OzonApiService } from "../ozon.api/ozon.api.service";
-import { ActionsListParamsDto } from "./dto/actionsCandidateParams.dto";
-import { ActivateActionProductsParamsDto } from "./dto/activateActionProductsParams.dbo";
-import { DeactivateActionProductsParamsDto } from "./dto/deactivateActionProductsParams.dbo";
-import { ProductService } from "../product/product.service";
-import { ActionListProduct } from "./dto/actionsCandidate.dto";
+import { Test, TestingModule } from '@nestjs/testing';
+import { chunkArray, FitProductsStrategy, PromosService } from './promos.service';
+import { OzonApiService } from '../ozon.api/ozon.api.service';
+import { ActionsListParamsDto } from './dto/actionsCandidateParams.dto';
+import { ActivateActionProductsParamsDto } from './dto/activateActionProductsParams.dbo';
+import { DeactivateActionProductsParamsDto } from './dto/deactivateActionProductsParams.dbo';
+import { ProductService } from '../product/product.service';
+import { ActionListProduct } from './dto/actionsCandidate.dto';
+import { PriceService } from '../price/price.service';
+import { ActionsDto } from './dto/actions.dto';
 
 describe('PromosService', () => {
     let service: PromosService;
 
     const method = jest.fn();
     const getPrices = jest.fn();
+    const index = jest.fn();
     const getFreeProductCount = jest.fn();
 
     beforeEach(async () => {
@@ -19,12 +22,14 @@ describe('PromosService', () => {
             providers: [
                 PromosService,
                 { provide: OzonApiService, useValue: { method } },
+                { provide: PriceService, useValue: { index } },
                 { provide: ProductService, useValue: { getPrices, getFreeProductCount } },
             ],
         }).compile();
 
         method.mockClear();
         getPrices.mockClear();
+        index.mockClear();
         service = module.get<PromosService>(PromosService);
     });
 
@@ -110,7 +115,7 @@ describe('PromosService', () => {
         const limit = 2;
         const productsPage1 = { products: [{ id: 1 }, { id: 2 }], total: 4 };
         const productsPage2 = { products: [{ id: 3 }, { id: 4 }], total: 4 };
-        const productsPage3 = { products: []};
+        const productsPage3 = { products: [] };
 
         method
             .mockResolvedValueOnce({ result: productsPage1 })
@@ -249,7 +254,10 @@ describe('PromosService', () => {
         jest.spyOn(service, 'getProductsPrices').mockResolvedValueOnce(candidatesPrice);
         const activateActionProductsSpy = jest.spyOn(service, 'activateActionProducts').mockResolvedValueOnce(void 0);
 
-        const result = await service.fitProductsAddition(actionId, FitProductsStrategy.MAX_FROM_ACTION_PRICE_AND_MIN_PRICE);
+        const result = await service.fitProductsAddition(
+            actionId,
+            FitProductsStrategy.MAX_FROM_ACTION_PRICE_AND_MIN_PRICE,
+        );
 
         expect(result).toBe(2);
 
@@ -356,7 +364,9 @@ describe('PromosService', () => {
         jest.spyOn(service, 'getAllActionsProductsOrCandidates').mockResolvedValueOnce(products);
         jest.spyOn(service, 'getProductsPrices').mockResolvedValueOnce(prices);
         getFreeProductCount.mockResolvedValueOnce(freeCounts);
-        const deactivateActionProductsSpy = jest.spyOn(service, 'deactivateActionProducts').mockResolvedValueOnce(void 0);
+        const deactivateActionProductsSpy = jest
+            .spyOn(service, 'deactivateActionProducts')
+            .mockResolvedValueOnce(void 0);
 
         const result = await service.unfitProductsRemoval(actionId);
 
@@ -364,6 +374,194 @@ describe('PromosService', () => {
         expect(deactivateActionProductsSpy).toHaveBeenCalledWith({
             action_id: actionId,
             product_ids: [1, 3],
+        });
+    });
+
+    it('chunkArray should work correctly', async () => {
+        const testCases = [
+            {
+                input: [1, 2, 3, 4, 5],
+                size: 2,
+                expected: [[1, 2], [3, 4], [5]],
+            },
+            {
+                input: ['a', 'b', 'c'],
+                size: 1,
+                expected: [['a'], ['b'], ['c']],
+            },
+            {
+                input: [1, 2, 3, 4],
+                size: 4,
+                expected: [[1, 2, 3, 4]],
+            },
+            {
+                input: [],
+                size: 2,
+                expected: [],
+            },
+        ];
+
+        testCases.forEach(({ input, size, expected }) => {
+            const result = chunkArray<any>(input, size);
+            expect(result).toEqual(expected);
+        });
+    });
+
+    it('getActionListProduct should work correctly', async () => {
+        const actionId = 1;
+        const limit = 2;
+        const mockSource = jest.fn();
+
+        // Имитируем постраничные ответы с общим количеством 5 элементов
+        mockSource
+            .mockResolvedValueOnce({ products: [{ id: 1 }, { id: 2 }], total: 5 })
+            .mockResolvedValueOnce({ products: [{ id: 3 }, { id: 4 }], total: 5 })
+            .mockResolvedValueOnce({ products: [{ id: 5 }], total: 5 });
+
+        const result = await service.getActionListProduct(mockSource, actionId, limit);
+
+        // Проверяем собранный результат
+        expect(result).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }, { id: 4 }, { id: 5 }]);
+
+        // Проверяем правильность вызовов с пагинацией
+        expect(mockSource).toHaveBeenCalledTimes(3);
+        expect(mockSource).toHaveBeenNthCalledWith(1, { action_id: actionId, limit, offset: 0 });
+        expect(mockSource).toHaveBeenNthCalledWith(2, { action_id: actionId, limit, offset: 2 });
+        expect(mockSource).toHaveBeenNthCalledWith(3, { action_id: actionId, limit, offset: 4 });
+    });
+
+    it('addRemoveProductToActions should add and remove products correctly', async () => {
+        // Подготовка тестовых данных
+        const testIds = ['SKU1', 'SKU2', 'SKU3'];
+        const actions = [
+            {
+                id: 1,
+                title: 'Action 1',
+            },
+            {
+                id: 2,
+                title: 'Action 2',
+            },
+        ] as ActionsDto[];
+
+        // Моки для цен
+        const prices = [
+            { product_id: 1, min_price: 100, fboCount: 5, fbsCount: 3 },
+            { product_id: 2, min_price: 200, fboCount: 2, fbsCount: 1 },
+            { product_id: 3, min_price: 300, fboCount: 0, fbsCount: 4 },
+        ];
+
+        // Товары в акции
+        const productsInAction = [
+            {
+                id: 1,
+                price: 90,
+                action_price: 90,
+                max_action_price: 100,
+                add_mode: 'NORMAL',
+                min_stock: 1,
+                stock: 5,
+            },
+            {
+                id: 2,
+                price: 220,
+                action_price: 220,
+                max_action_price: 250,
+                add_mode: 'NORMAL',
+                min_stock: 1,
+                stock: 3,
+            },
+        ] as ActionListProduct[];
+
+        // Кандидаты на добавление
+        const productsCanPromoted = [
+            {
+                id: 2,
+                price: 220,
+                action_price: 220,
+                max_action_price: 250,
+                add_mode: 'NORMAL',
+                min_stock: 1,
+                stock: 3,
+            },
+            {
+                id: 3,
+                price: 300,
+                action_price: 300,
+                max_action_price: 350,
+                add_mode: 'NORMAL',
+                min_stock: 1,
+                stock: 4,
+            },
+        ] as ActionListProduct[];
+
+        // Мокируем методы сервиса
+        jest.spyOn(service, 'getActions').mockResolvedValue(actions);
+        jest.spyOn(service, 'getActionListProduct')
+            .mockResolvedValueOnce(productsInAction) // для первой акции - активные продукты
+            .mockResolvedValueOnce(productsCanPromoted) // для первой акции - кандидаты
+            .mockResolvedValueOnce([]) // для второй акции - активные продукты
+            .mockResolvedValueOnce([]); // для второй акции - кандидаты
+
+        jest.spyOn(service, 'deactivateActionProducts').mockResolvedValue({ product_ids: [1], rejected: [] });
+
+        jest.spyOn(service, 'activateActionProducts').mockResolvedValue({ product_ids: [3], rejected: [] });
+
+        // Мок для priceService
+        index.mockResolvedValue({ data: prices });
+
+        // Вызов тестируемого метода
+        const result = await service.addRemoveProductToActions(testIds);
+
+        // Проверки
+        expect(result).toHaveLength(2);
+
+        // Проверяем результат для первой акции
+        expect(result[0]).toEqual({
+            action_id: 1,
+            removed: {
+                success_ids: [1],
+                failed: [],
+            },
+            added: {
+                success_ids: [3],
+                failed: [],
+            },
+        });
+
+        // Проверяем результат для второй акции (пустой)
+        expect(result[1]).toEqual({
+            action_id: 2,
+            removed: {
+                success_ids: [],
+                failed: [],
+            },
+            added: {
+                success_ids: [],
+                failed: [],
+            },
+        });
+
+        // Проверяем вызовы методов
+        expect(service.getActions).toHaveBeenCalled();
+        expect(service.deactivateActionProducts).toHaveBeenCalledWith({
+            action_id: 1,
+            product_ids: [1],
+        });
+        expect(service.activateActionProducts).toHaveBeenCalledWith({
+            action_id: 1,
+            products: [
+                {
+                    product_id: 2,
+                    action_price: 250,
+                    stock: 3,
+                },
+                {
+                    product_id: 3,
+                    action_price: 350,
+                    stock: 4,
+                },
+            ],
         });
     });
 });

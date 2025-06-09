@@ -4,12 +4,15 @@ import { ActionsDto } from './dto/actions.dto';
 import { ActionListProduct, ActionsListDto } from './dto/actionsCandidate.dto';
 import { ActionsListParamsDto } from './dto/actionsCandidateParams.dto';
 import { ActivateActionProduct, ActivateActionProductsParamsDto } from './dto/activateActionProductsParams.dbo';
-import { ActivateOrDeactivateActionProductsDto } from './dto/activateOrDeactivateActionProducts.dbo';
+import { ActivateOrDeactivateActionProductsDto, RejectedProduct } from './dto/activateOrDeactivateActionProducts.dbo';
 import { DeactivateActionProductsParamsDto } from './dto/deactivateActionProductsParams.dbo';
 import { ProductService } from '../product/product.service';
 import { PriceRequestDto } from '../price/dto/price.request.dto';
 import { ProductVisibility } from '../product/product.visibility';
-import { ProductPriceDto } from 'src/price/dto/product.price.dto';
+import { ProductPriceDto } from '../price/dto/product.price.dto';
+import { PriceService } from '../price/price.service';
+import { PriceResponseDto } from '../price/dto/price.response.dto';
+import { PriceDto } from 'src/price/dto/price.dto';
 
 export enum FitProductsStrategy {
     MAX_ACTION_PRICE = 'maxActionPrice',
@@ -17,31 +20,64 @@ export enum FitProductsStrategy {
     MIN_FROM_MIN_PRICE = 'minFromProdMinPrice',
 }
 
+export type AddRemoveProductToAction = {
+    action_id: number;
+    added: {
+        success_ids: number[];
+        failed: RejectedProduct[];
+    };
+    removed: {
+        success_ids: number[];
+        failed: RejectedProduct[];
+    };
+};
+
 /**
- * Service responsible for handling promotional actions.
+ * Разбивает массив на чанки заданного размера.
+ *
+ * @template T - Тип элементов входного массива.
+ * @param arr - Массив, который нужно разбить на чанки.
+ * @param chunkSize - Максимальный размер каждого чанка.
+ * @returns Массив массивов, где каждый подмассив — это чанк исходного массива.
+ *
+ * @example
+ * ```typescript
+ * chunkArray([1, 2, 3, 4, 5], 2); // [[1, 2], [3, 4], [5]]
+ * ```
+ */
+export function chunkArray<T>(arr: T[], chunkSize: number): T[][] {
+    return arr.reduce((acc, _, i) => {
+        if (i % chunkSize === 0) acc.push(arr.slice(i, i + chunkSize));
+        return acc;
+    }, [] as T[][]);
+}
+
+/**
+ * Сервис, отвечающий за обработку промо-акций.
  *
  * @class PromosService
  */
 @Injectable()
 /**
- * Service for handling promotional actions.
+ * Сервис для работы с промо-акциями.
  */
 export class PromosService {
     /**
-     * Creates an instance of PromosService.
+     * Создаёт экземпляр PromosService.
      *
-     * @param {OzonApiService} ozonApiService - The Ozon API service.
-     * @param productService
+     * @param {OzonApiService} ozonApiService - Сервис Ozon API.
+     * @param productService - Сервис работы с товарами.
      */
     constructor(
         private ozonApiService: OzonApiService,
         private productService: ProductService,
+        private priceService: PriceService,
     ) {}
 
     /**
-     * Retrieves a list of actions.
+     * Получает список акций.
      *
-     * @returns {Promise<ActionsDto>} A promise that resolves to the list of actions.
+     * @returns {Promise<ActionsDto>} Промис, который возвращает список акций.
      */
     async getActions(): Promise<ActionsDto[]> {
         const res = await this.ozonApiService.method('/v1/actions', {}, 'get');
@@ -49,10 +85,10 @@ export class PromosService {
     }
 
     /**
-     * Retrieves a list of action candidates based on the provided parameters.
+     * Получает список кандидатов на участие в акции на основе предоставленных параметров.
      *
-     * @param {ActionsListParamsDto} params - The parameters for retrieving action candidates.
-     * @returns {Promise<ActionsListDto>} A promise that resolves to the list of action candidates.
+     * @param {ActionsListParamsDto} params - Параметры для получения кандидатов на акцию.
+     * @returns {Promise<ActionsListDto>} Промис, который возвращает список кандидатов на акцию.
      */
     async getActionsCandidates(params: ActionsListParamsDto): Promise<ActionsListDto> {
         const res = await this.ozonApiService.method('/v1/actions/candidates', params);
@@ -60,10 +96,10 @@ export class PromosService {
     }
 
     /**
-     * Retrieves a list of action products based on the provided parameters.
+     * Получает список товаров, участвующих в акции, на основе предоставленных параметров.
      *
-     * @param {ActionsListParamsDto} params - The parameters for retrieving action products.
-     * @returns {Promise<ActionsListDto>} A promise that resolves to the list of action products.
+     * @param {ActionsListParamsDto} params - Параметры для получения товаров акции.
+     * @returns {Promise<ActionsListDto>} Промис, который возвращает список товаров акции.
      */
     async getActionsProducts(params: ActionsListParamsDto): Promise<ActionsListDto> {
         const res = await this.ozonApiService.method('/v1/actions/products', params);
@@ -71,10 +107,10 @@ export class PromosService {
     }
 
     /**
-     * Activates action products based on the provided parameters.
+     * Активирует товары акции на основе предоставленных параметров.
      *
-     * @param {ActivateActionProductsParamsDto} params - The parameters for activating action products.
-     * @returns {Promise<ActivateOrDeactivateActionProductsDto>} A promise that resolves to the activation result.
+     * @param {ActivateActionProductsParamsDto} params - Параметры для активации товаров акции.
+     * @returns {Promise<ActivateOrDeactivateActionProductsDto>} Промис, который возвращает результат активации.
      */
     async activateActionProducts(
         params: ActivateActionProductsParamsDto,
@@ -84,10 +120,10 @@ export class PromosService {
     }
 
     /**
-     * Deactivates action products based on the provided parameters.
+     * Деактивирует товары акции на основе предоставленных параметров.
      *
-     * @param {DeactivateActionProductsParamsDto} params - The parameters for deactivating action products.
-     * @returns {Promise<ActivateOrDeactivateActionProductsDto>} A promise that resolves to the deactivation result.
+     * @param {DeactivateActionProductsParamsDto} params - Параметры для деактивации товаров акции.
+     * @returns {Promise<ActivateOrDeactivateActionProductsDto>} Промис, который возвращает результат деактивации.
      */
     async deactivateActionProducts(
         params: DeactivateActionProductsParamsDto,
@@ -97,15 +133,15 @@ export class PromosService {
     }
 
     /**
-     * Removes unfit products from an action based on their prices.
+     * Удаляет неподходящие товары из акции на основе их цен.
      *
-     * This method retrieves all products associated with a given action, checks their prices,
-     * and deactivates those that do not meet the required price criteria.
+     * Этот метод получает все товары, связанные с указанной акцией, проверяет их цены
+     * и деактивирует те, которые не соответствуют необходимым ценовым критериям.
      *
-     * @param {number} actionId - The ID of the action from which unfit products should be removed.
-     * @returns {Promise<number>} - A promise that resolves to the number of products that were deactivated.
+     * @param {number} actionId - Идентификатор акции, из которой нужно удалить неподходящие товары.
+     * @returns {Promise<number>} - Промис, который возвращает количество деактивированных товаров.
      *
-     * @throws {Error} - Throws an error if there is an issue retrieving products or prices, or deactivating products.
+     * @throws {Error} - Генерирует ошибку в случае проблем с получением товаров, цен или деактивацией товаров.
      */
     async unfitProductsRemoval(actionId: number): Promise<number> {
         const actionProducts = await this.getAllActionsProductsOrCandidates(actionId, 'products');
@@ -115,7 +151,10 @@ export class PromosService {
             .filter((actionProduct) => {
                 const productPrice = productsPrice.find((p) => p.id === actionProduct.id);
                 const productCount = productsCount.find((p) => p.id === actionProduct.id);
-                return productPrice && (actionProduct.action_price < Number(productPrice.price.min_price) || productCount.count === 0);
+                return (
+                    productPrice &&
+                    (actionProduct.action_price < Number(productPrice.price.min_price) || productCount.count === 0)
+                );
             })
             .map((p) => p.id);
         await this.deactivateActionProducts({ action_id: actionId, product_ids: unfitProductIds });
@@ -123,16 +162,16 @@ export class PromosService {
     }
 
     /**
-     * Fits products addition to an action based on the provided strategy.
+     * Добавляет подходящие товары в акцию на основе выбранной стратегии.
      *
-     * This method retrieves all products associated with a given action, checks their prices,
-     * and activates those that meet the required price criteria based on the provided strategy.
+     * Этот метод получает всех кандидатов на участие в акции, проверяет их цены
+     * и активирует те товары, которые соответствуют ценовым критериям согласно выбранной стратегии.
      *
-     * @param {number} actionId - The ID of the action to which products should be added.
-     * @param {FitProductsStrategy} strategy - The strategy to use when adding products.
-     * @returns {Promise<number>} - A promise that resolves to the number of products that were activated.
+     * @param {number} actionId - Идентификатор акции, в которую нужно добавить товары.
+     * @param {FitProductsStrategy} strategy - Стратегия, используемая для добавления товаров.
+     * @returns {Promise<number>} - Промис, который возвращает количество товаров, добавленных в акцию.
      *
-     * @throws {Error} - Throws an error if there is an issue retrieving products or prices, or activating products.
+     * @throws {Error} - Генерирует ошибку в случае проблем с получением товаров, цен или активацией товаров.
      */
     async fitProductsAddition(actionId: number, strategy: FitProductsStrategy): Promise<number> {
         const actionCandidates = await this.getAllActionsProductsOrCandidates(actionId, 'candidates');
@@ -143,8 +182,13 @@ export class PromosService {
                 const minPrice = Number(
                     candidatesPrice.find((product) => product.id === actionProduct.id)?.price.min_price,
                 );
-                const count= candidatesCount.find((product) => product.id === actionProduct.id)?.count;
-                return minPrice && actionProduct.max_action_price && actionProduct.max_action_price >= minPrice && count > 0;
+                const count = candidatesCount.find((product) => product.id === actionProduct.id)?.count;
+                return (
+                    minPrice &&
+                    actionProduct.max_action_price &&
+                    actionProduct.max_action_price >= minPrice &&
+                    count > 0
+                );
             })
             .map((p) => p.id);
         const products: ActivateActionProduct[] = fitProductIds
@@ -167,11 +211,11 @@ export class PromosService {
     }
 
     /**
-     * Retrieves the prices for a list of action products, with pagination support.
+     * Получает цены для списка товаров акции с поддержкой постраничной выборки.
      *
-     * @param {ActionListProduct[]} actionProducts - The list of action products to retrieve prices for.
-     * @param {number} [limit=100] - The maximum number of products to process per request.
-     * @returns {Promise<{ id: number; price: ProductPriceDto['price'] }[]>} A promise that resolves to an array of objects containing product IDs and their corresponding prices.
+     * @param {ActionListProduct[]} actionProducts - Список товаров акции, для которых требуется получить цены.
+     * @param {number} [limit=100] - Максимальное количество товаров, обрабатываемых за один запрос.
+     * @returns {Promise<{ id: number; price: ProductPriceDto['price'] }[]>} Промис, который возвращает массив объектов с идентификаторами товаров и их ценами.
      */
     async getProductsPrices(
         actionProducts: ActionListProduct[],
@@ -193,12 +237,12 @@ export class PromosService {
     }
 
     /**
-     * Retrieves all products associated with a given action, with pagination support.
+     * Получает все товары, связанные с указанной акцией, с поддержкой постраничной выборки.
      *
-     * @param {number} actionId - The ID of the action to retrieve products for.
-     * @param {'products' | 'candidates'} type - The type of products to retrieve.
-     * @param {number} [limit=100] - The maximum number of products to process per request.
-     * @returns {Promise<ActionListProduct[]>} A promise that resolves to an array of action products.
+     * @param {number} actionId - Идентификатор акции, для которой требуется получить товары.
+     * @param {'products' | 'candidates'} type - Тип товаров для получения: участвующие в акции или кандидаты.
+     * @param {number} [limit=100] - Максимальное количество товаров, обрабатываемых за один запрос.
+     * @returns {Promise<ActionListProduct[]>} Промис, который возвращает массив товаров акции.
      */
     async getAllActionsProductsOrCandidates(
         actionId: number,
@@ -225,5 +269,154 @@ export class PromosService {
         }
 
         return actionProducts;
+    }
+
+    /**
+     * Получает полный список товаров, связанных с определённой акцией, используя постраничную выборку.
+     *
+     * @param source - Функция, которая возвращает постраничный список товаров для заданной акции. Принимает `ActionsListParamsDto` и возвращает `Promise<ActionsListDto>`.
+     * @param action_id - Идентификатор акции, для которой требуется получить товары.
+     * @param limit - Максимальное количество товаров, получаемых за один запрос (размер страницы).
+     * @returns Промис, который возвращает массив `ActionListProduct`, содержащий все товары для указанной акции.
+     */
+    async getActionListProduct(
+        source: (params: ActionsListParamsDto) => Promise<ActionsListDto>,
+        action_id: number,
+        limit: number,
+    ): Promise<ActionListProduct[]> {
+        const result: ActionListProduct[] = [];
+        let offset = 0;
+        let _total: number | undefined;
+
+        do {
+            const actionsListParams: ActionsListParamsDto = { action_id, limit, offset };
+            const { products, total } = await source(actionsListParams);
+            result.push(...products);
+
+            if (_total === undefined) {
+                _total = total;
+            }
+
+            offset += limit;
+        } while (offset < (_total ?? 0));
+
+        return result;
+    }
+
+    /**
+     * Добавляет или удаляет товары из промо-акций на основе их текущих цен и условий участия.
+     *
+     * Этот метод обрабатывает список идентификаторов товаров, проверяет их цены и определяет для каждой акции:
+     * - Какие товары следует удалить из акции (если их цена больше не соответствует условиям).
+     * - Какие товары можно добавить в акцию (если их цена соответствует критериям).
+     *
+     * Обработка выполняется чанками, чтобы избежать перегрузки системы большими запросами.
+     *
+     * @param ids - Массив идентификаторов товаров для обработки.
+     * @param chunkLimit - Максимальное количество идентификаторов товаров в одном чанке (по умолчанию 100).
+     * @returns Промис, который возвращает массив результатов, каждый из которых описывает результат операций добавления/удаления для каждой акции.
+     *
+     * @remarks
+     * - Товары удаляются из акции, если их текущая цена больше либо равна цене акции.
+     * - Товары добавляются в акцию, если их минимальная цена меньше либо равна максимальной цене кандидата на акцию.
+     * - Метод собирает и возвращает успешные и неуспешные идентификаторы для операций добавления и удаления по каждой акции.
+     */
+    async addRemoveProductToActions(ids: string[], chunkLimit: number = 100): Promise<AddRemoveProductToAction[]> {
+        // возвращаемое значение
+        const result: AddRemoveProductToAction[] = [];
+        // получаем список акций
+        const actions = await this.getActions();
+        // чанкаем реквесты на получение цен
+        const chunkedIds = chunkArray(ids, chunkLimit);
+        const requests = chunkedIds.map(
+            (chunk) => <PriceRequestDto>{ offer_id: chunk, visibility: ProductVisibility.ALL, limit: chunkLimit },
+        );
+        // собираем массив PriceResponseDto
+        const priceResponses: PriceResponseDto[] = await Promise.all(
+            requests.map((chunk) => this.priceService.index(chunk)),
+        );
+        // мапим из него массив цен
+        const prices: PriceDto[] = priceResponses.map((p) => p.data).flat();
+        // для каждой акции
+        for (const action of actions) {
+            // получаем товары, которые участвуют (getActionsProducts)
+            const productsInAction: ActionListProduct[] = await this.getActionListProduct(
+                this.getActionsProducts,
+                action.id,
+                chunkLimit,
+            );
+            // получаем товары, которые можно добавить (getActionsCandidates)
+            const productsCanPromoted: ActionListProduct[] = await this.getActionListProduct(
+                this.getActionsCandidates,
+                action.id,
+                chunkLimit,
+            );
+            const removeList: PriceDto[] = [];
+            const addList: PriceDto[] = [];
+
+            // используем для кэширования productCanPromoted.max_action_price
+            const maxPrices: Record<number, number> = {};
+
+            // для каждого товара из списка прайсов
+            for (const price of prices) {
+                // если product_id в акции и actionRec.price <=❗️ price.min_price
+                // то вносим в список на исключение
+                const productInAction = productsInAction.find((p) => p.id === price.product_id);
+                if (productInAction && productInAction.price <= price.min_price) {
+                    removeList.push(price);
+                    continue;
+                }
+                // если product_id может быть добавлен и price.min_price <=❗️ список_кандидатов.max_action_price
+                // то вносим в список на добавление
+                const productCanPromoted = productsCanPromoted.find((p) => p.id === price.product_id);
+                if (productCanPromoted && productCanPromoted.max_action_price >= price.min_price) {
+                    maxPrices[price.product_id] = productCanPromoted.max_action_price;
+                    addList.push(price);
+                }
+            }
+            const resultItem: AddRemoveProductToAction = {
+                action_id: action.id,
+                removed: {
+                    success_ids: [],
+                    failed: [],
+                },
+                added: {
+                    success_ids: [],
+                    failed: [],
+                },
+            };
+
+            debugger;
+
+            // удаляем если есть что
+            if (removeList.length) {
+                const params: DeactivateActionProductsParamsDto = {
+                    action_id: action.id,
+                    product_ids: removeList.map((p) => p.product_id),
+                };
+                const removed = await this.deactivateActionProducts(params);
+                resultItem.removed.success_ids = removed.product_ids;
+                resultItem.removed.failed = removed.rejected;
+            }
+            // добавляем если есть что
+            if (addList.length) {
+                const params: ActivateActionProductsParamsDto = {
+                    action_id: action.id,
+                    products: addList.map(
+                        (p) =>
+                            <ActivateActionProduct>{
+                                product_id: p.product_id,
+                                action_price: maxPrices[p.product_id],
+                                stock: p.fboCount + p.fbsCount,
+                            },
+                    ),
+                };
+                const added = await this.activateActionProducts(params);
+                resultItem.added.success_ids = added.product_ids; // Исправлено: было resultItem.removed
+                resultItem.added.failed = added.rejected;
+            }
+            result.push(resultItem);
+        }
+        return result;
     }
 }
