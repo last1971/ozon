@@ -9,11 +9,11 @@ import { DeactivateActionProductsParamsDto } from './dto/deactivateActionProduct
 import { ProductService } from '../product/product.service';
 import { PriceRequestDto } from '../price/dto/price.request.dto';
 import { ProductVisibility } from '../product/product.visibility';
-import { ProductPriceDto } from '../price/dto/product.price.dto';
 import { PriceService } from '../price/price.service';
 import { PriceResponseDto } from '../price/dto/price.response.dto';
 import { PriceDto } from 'src/price/dto/price.dto';
 import { chunk as chunkArray } from 'lodash';
+import { OnEvent } from '@nestjs/event-emitter';
 
 export enum FitProductsStrategy {
     MAX_ACTION_PRICE = 'maxActionPrice',
@@ -368,5 +368,10 @@ export class PromosService {
             result.push(resultItem);
         }
         return result;
+    }
+
+    @OnEvent('update.promos')
+    async handleUpdatePromos(skus: string[]): Promise<void> {
+        await this.addRemoveProductToActions(skus);
     }
 }

@@ -114,35 +114,33 @@ export class ExtraPriceService {
         this.logger.log(`Processing incoming goods for ${skus.length} SKUs`);
 
         try {
+            // Получим коды ОЗОНа
+            const ozonSkus = this.extraGoodService.tradeSkusToServiceSkus(skus, GoodServiceEnum.OZON);
             // Сначала обнуляем available_price для всех поступивших товаров
             await this.goodService.resetAvailablePrice(skus);
             // Обновляем наценки для всех поступивших товаров
-            await this.updatePercentsForGoodSkus(skus);
+            await this.updatePercentsForGoodSkus(ozonSkus);
             // Обновляем цены для всех маркетплейсов на основе поступивших товаров
             await this.updatePriceForGoodSkus(skus);
             // Затем проверяем разницу цен и отправляем уведомление, если необходимо
-            await this.checkPriceDifferenceAndNotify(skus);
+            await this.checkPriceDifferenceAndNotify(ozonSkus);
             // Отправляем уведомление о завершении обработки
             this.logger.log(`Successfully updated prices for ${skus.length} SKUs after incoming goods event`);
+            // Отправляем событие для обновления промо
+            this.eventEmitter.emit('update.promos', ozonSkus);
         } catch (error) {
             this.logger.error(`Error updating prices after incoming goods: ${error.message}`, error.stack);
         }
     }
 
-    async checkPriceDifferenceAndNotify(tradeSkus: string[]): Promise<void> {
+    async checkPriceDifferenceAndNotify(ozonSkus: string[]): Promise<void> {
         // 1. Получаем порог разницы из конфигурации (в процентах)
         const thresholdPercent = this.configService.get<number>('PRICE_DIFF_THRESHOLD_PERCENT', 5);
-        if (!tradeSkus || tradeSkus.length === 0) {
+        if (!ozonSkus || ozonSkus.length === 0) {
             this.logger.warn('No trade SKUs provided for price difference check.');
             return;
         }
         try {
-            // 2. Преобразуем Trade SKU в Ozon SKU
-            const ozonSkus = this.extraGoodService.tradeSkusToServiceSkus(tradeSkus, GoodServiceEnum.OZON);
-            if (ozonSkus.length === 0) {
-                this.logger.warn('No Ozon SKUs found for the provided trade SKUs.');
-                return;
-            }
             // 3. Получаем цены для Ozon SKUs
             const priceResponse = await this.service.index({
                 offer_id: ozonSkus,
@@ -217,8 +215,11 @@ export class ExtraPriceService {
         )) as GoodPercentDto;
     }
 
-    public async updatePercentsForGoodSkus(skus: string[]): Promise<void> {
-        const serviceSkus = this.extraGoodService.tradeSkusToServiceSkus(skus, GoodServiceEnum.OZON);
-        await this.goodService.updatePercentsForService(this.getService(GoodServiceEnum.OZON), serviceSkus);
+    /**
+     * 
+     * @param ozonSkus коды озона
+     */
+    public async updatePercentsForGoodSkus(ozonSkus: string[]): Promise<void> {
+        await this.goodService.updatePercentsForService(this.getService(GoodServiceEnum.OZON), ozonSkus);
     }
 }

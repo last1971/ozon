@@ -599,4 +599,26 @@ describe('PromosService', () => {
             ],
         });
     });
+
+    describe('handleUpdatePromos', () => {
+        it('should call addRemoveProductToActions with received SKUs', async () => {
+            const skus = ['sku1', 'sku2'];
+            const addRemoveProductToActionsSpy = jest.spyOn(service, 'addRemoveProductToActions')
+                .mockResolvedValue([]);
+
+            await service.handleUpdatePromos(skus);
+
+            expect(addRemoveProductToActionsSpy).toHaveBeenCalledWith(skus);
+        });
+
+        it('should handle empty SKUs array', async () => {
+            const skus: string[] = [];
+            const addRemoveProductToActionsSpy = jest.spyOn(service, 'addRemoveProductToActions')
+                .mockResolvedValue([]);
+
+            await service.handleUpdatePromos(skus);
+
+            expect(addRemoveProductToActionsSpy).toHaveBeenCalledWith(skus);
+        });
+    });
 });
