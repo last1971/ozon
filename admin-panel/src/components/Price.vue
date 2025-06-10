@@ -37,6 +37,10 @@ const minPerc = computed(() => {
     if (!pays.value?.[props.ind]?.[0] || !incomingPrice.value) return 0;
     return Math.ceil(((parseInt(pays.value[props.ind][0]) - incomingPrice.value) / incomingPrice.value) * 100);
 });
+
+const isSumZero = (index: number) => {
+    return props.value.fbsCount + props.value.fboCount === 0;
+};
 </script>
 
 <template>
@@ -58,6 +62,7 @@ const minPerc = computed(() => {
                             prepend-icon="mdi-calculator"
                             @click="priceStore().calculatePercents(props.ind)"
                             :loading="isLoadingPrice[props.ind]"
+                            :disabled="isSumZero(props.ind)"
                         >
                             Рассчитать проценты
                         </v-btn>
