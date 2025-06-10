@@ -1,12 +1,13 @@
 import { Controller, Get, Post, Query } from '@nestjs/common';
 import { ApiOkResponse, ApiQuery, ApiTags } from '@nestjs/swagger';
-import { FitProductsStrategy, PromosService } from './promos.service';
+import { FitProductsStrategy, PromosService, AddRemoveProductToAction } from './promos.service';
 import { ActionsDto } from './dto/actions.dto';
 import { ActionsListParamsDto } from './dto/actionsCandidateParams.dto';
 import { ActionsListDto } from './dto/actionsCandidate.dto';
 import { ActivateActionProductsParamsDto } from './dto/activateActionProductsParams.dbo';
 import { ActivateOrDeactivateActionProductsDto } from './dto/activateOrDeactivateActionProducts.dbo';
 import { DeactivateActionProductsParamsDto } from './dto/deactivateActionProductsParams.dbo';
+import { AddRemoveProductToActionsParamsDto } from './dto/addRemoveProductToActionsParams.dto';
 
 /**
  * Controller for handling promo-related endpoints.
@@ -145,5 +146,21 @@ export class PromosController {
         @Query('strategy') strategy: FitProductsStrategy,
     ): Promise<number> {
         return this.service.fitProductsAddition(actionId, strategy);
+    }
+
+    /**
+     * Добавляет и удаляет товары в акциях на основе их цен.
+     * @param {AddRemoveProductToActionsParamsDto} params - Параметры для добавления и удаления товаров.
+     * @returns {Promise<AddRemoveProductToAction[]>} Промис, который возвращает массив результатов по каждой акции.
+     */
+    @ApiOkResponse({
+        description: 'Метод для добавления и удаления товаров в акциях на основе их цен.',
+        type: [Object],
+    })
+    @Post('actions/products/add-remove')
+    async addRemoveProductToActions(
+        @Query() params: AddRemoveProductToActionsParamsDto,
+    ): Promise<AddRemoveProductToAction[]> {
+        return this.service.addRemoveProductToActions(params.ids, params.chunkLimit);
     }
 }

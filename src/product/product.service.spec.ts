@@ -6,12 +6,13 @@ import { StockType } from './stock.type';
 import { ConfigService } from '@nestjs/config';
 import { ProductFilterDto } from "./dto/product.filter.dto";
 import { VaultService } from "vault-module/lib/vault.service";
+import { ActionListProduct } from 'src/promos/dto/actionsCandidate.dto';
 
 describe('ProductService', () => {
     let service: ProductService;
 
     const method = jest.fn();
-
+    
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
@@ -169,4 +170,54 @@ describe('ProductService', () => {
         await expect(service.getFreeProductCount([1, 2])).rejects.toThrow("API Error");
     });
 
+    it('getProductsPrices works', async () => {
+        const actionProducts = [
+            { id: 1, action_price: 50 },
+            { id: 2, action_price: 100 },
+            { id: 3, action_price: 150 },
+            { id: 4, action_price: 100 },
+        ] as ActionListProduct[];
+        const productPrices = [
+            { product_id: 1, price: { min_price: 50 } },
+            { product_id: 2, price: { min_price: 100 } },
+            { product_id: 3, price: { min_price: 150 } },
+        ];
+        const getPricesParams = {
+            filter: {
+                product_id: [1, 2, 3, 4],
+                offer_id: null,
+                visibility: 'ALL'
+            },
+            limit: 100,
+            cursor: null
+        };
+
+        method.mockResolvedValue({ items: productPrices, cursor: '' });
+
+        const result = await service.getProductsPrices(actionProducts);
+
+        expect(result).toEqual(productPrices.map((i) => ({ id: i.product_id, price: i.price })));
+        expect(method.mock.calls[0]).toEqual(['/v5/product/info/prices', getPricesParams]);
+    });
+
+    it('getProductsPrices should handle multiple pages', async () => {
+        const actionProducts = Array.from({ length: 250 }, (_, i) => ({
+            id: i + 1,
+            action_price: 100,
+        })) as ActionListProduct[];
+        const productPrices = actionProducts.map((product) => ({ product_id: product.id, price: { min_price: 100 } }));
+        
+        method
+            .mockResolvedValueOnce({ items: productPrices.slice(0, 100), cursor: '' })
+            .mockResolvedValueOnce({ items: productPrices.slice(100, 200), cursor: '' })
+            .mockResolvedValueOnce({ items: productPrices.slice(200), cursor: '' });
+
+        const result = await service.getProductsPrices(actionProducts, 100);
+
+        expect(result.length).toEqual(productPrices.length);
+        expect(method).toHaveBeenCalledTimes(3);
+        expect(method.mock.calls[0][0]).toBe('/v5/product/info/prices');
+        expect(method.mock.calls[1][0]).toBe('/v5/product/info/prices');
+        expect(method.mock.calls[2][0]).toBe('/v5/product/info/prices');
+    });
 });

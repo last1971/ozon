@@ -13,6 +13,7 @@ import { ProductPriceDto } from '../price/dto/product.price.dto';
 import { PriceService } from '../price/price.service';
 import { PriceResponseDto } from '../price/dto/price.response.dto';
 import { PriceDto } from 'src/price/dto/price.dto';
+import { chunk as chunkArray } from 'lodash';
 
 export enum FitProductsStrategy {
     MAX_ACTION_PRICE = 'maxActionPrice',
@@ -31,26 +32,6 @@ export type AddRemoveProductToAction = {
         failed: RejectedProduct[];
     };
 };
-
-/**
- * Разбивает массив на чанки заданного размера.
- *
- * @template T - Тип элементов входного массива.
- * @param arr - Массив, который нужно разбить на чанки.
- * @param chunkSize - Максимальный размер каждого чанка.
- * @returns Массив массивов, где каждый подмассив — это чанк исходного массива.
- *
- * @example
- * ```typescript
- * chunkArray([1, 2, 3, 4, 5], 2); // [[1, 2], [3, 4], [5]]
- * ```
- */
-export function chunkArray<T>(arr: T[], chunkSize: number): T[][] {
-    return arr.reduce((acc, _, i) => {
-        if (i % chunkSize === 0) acc.push(arr.slice(i, i + chunkSize));
-        return acc;
-    }, [] as T[][]);
-}
 
 /**
  * Сервис, отвечающий за обработку промо-акций.
@@ -145,7 +126,7 @@ export class PromosService {
      */
     async unfitProductsRemoval(actionId: number): Promise<number> {
         const actionProducts = await this.getAllActionsProductsOrCandidates(actionId, 'products');
-        const productsPrice = await this.getProductsPrices(actionProducts);
+        const productsPrice = await this.productService.getProductsPrices(actionProducts);
         const productsCount = await this.productService.getFreeProductCount(actionProducts.map((p) => p.id));
         const unfitProductIds = actionProducts
             .filter((actionProduct) => {
@@ -175,7 +156,7 @@ export class PromosService {
      */
     async fitProductsAddition(actionId: number, strategy: FitProductsStrategy): Promise<number> {
         const actionCandidates = await this.getAllActionsProductsOrCandidates(actionId, 'candidates');
-        const candidatesPrice = await this.getProductsPrices(actionCandidates);
+        const candidatesPrice = await this.productService.getProductsPrices(actionCandidates);
         const candidatesCount = await this.productService.getFreeProductCount(actionCandidates.map((p) => p.id));
         const fitProductIds = actionCandidates
             .filter((actionProduct) => {
@@ -208,32 +189,6 @@ export class PromosService {
             .filter((p) => p.action_price > 0);
         await this.activateActionProducts({ action_id: actionId, products });
         return fitProductIds.length;
-    }
-
-    /**
-     * Получает цены для списка товаров акции с поддержкой постраничной выборки.
-     *
-     * @param {ActionListProduct[]} actionProducts - Список товаров акции, для которых требуется получить цены.
-     * @param {number} [limit=100] - Максимальное количество товаров, обрабатываемых за один запрос.
-     * @returns {Promise<{ id: number; price: ProductPriceDto['price'] }[]>} Промис, который возвращает массив объектов с идентификаторами товаров и их ценами.
-     */
-    async getProductsPrices(
-        actionProducts: ActionListProduct[],
-        limit: number = 100,
-    ): Promise<{ id: number; price: ProductPriceDto['price'] }[]> {
-        const productPrices: { id: number; price: ProductPriceDto['price'] }[] = [];
-        const pages = Math.ceil(actionProducts.length / limit);
-        for (let i = 0; i < pages; i++) {
-            const chunk = actionProducts.slice(i * limit, (i + 1) * limit);
-            const priceRequest: PriceRequestDto = {
-                product_id: chunk.map((product) => product.id),
-                visibility: ProductVisibility.ALL,
-                limit,
-            };
-            const pricesChunk = await this.productService.getPrices(priceRequest);
-            productPrices.push(...pricesChunk.items.map((item) => ({ id: item.product_id, price: item.price })));
-        }
-        return productPrices;
     }
 
     /**
@@ -272,35 +227,32 @@ export class PromosService {
     }
 
     /**
-     * Получает полный список товаров, связанных с определённой акцией, используя постраничную выборку.
+     * Получает все товары, связанные с указанной акцией, с поддержкой постраничной выборки.
      *
-     * @param source - Функция, которая возвращает постраничный список товаров для заданной акции. Принимает `ActionsListParamsDto` и возвращает `Promise<ActionsListDto>`.
-     * @param action_id - Идентификатор акции, для которой требуется получить товары.
-     * @param limit - Максимальное количество товаров, получаемых за один запрос (размер страницы).
-     * @returns Промис, который возвращает массив `ActionListProduct`, содержащий все товары для указанной акции.
+     * @param {number} actionId - Идентификатор акции, для которой требуется получить товары.
+     * @param {'products' | 'candidates'} type - Тип товаров для получения: участвующие в акции или кандидаты.
+     * @param {number} [limit=100] - Максимальное количество товаров, обрабатываемых за один запрос.
+     * @returns {Promise<ActionListProduct[]>} Промис, который возвращает массив товаров акции.
      */
     async getActionListProduct(
-        source: (params: ActionsListParamsDto) => Promise<ActionsListDto>,
-        action_id: number,
-        limit: number,
+        method: (params: ActionsListParamsDto) => Promise<ActionsListDto>,
+        actionId: number,
+        limit: number = 100,
     ): Promise<ActionListProduct[]> {
-        const result: ActionListProduct[] = [];
         let offset = 0;
-        let _total: number | undefined;
+        let actionProducts: ActionListProduct[] = [];
+        let isMoreDataAvailable = true;
 
-        do {
-            const actionsListParams: ActionsListParamsDto = { action_id, limit, offset };
-            const { products, total } = await source(actionsListParams);
-            result.push(...products);
-
-            if (_total === undefined) {
-                _total = total;
-            }
-
+        while (isMoreDataAvailable) {
+            const { products } = await method.call(this, { action_id: actionId, limit, offset });
+            actionProducts = actionProducts.concat(products);
             offset += limit;
-        } while (offset < (_total ?? 0));
 
-        return result;
+            // Если количество возвращённых продуктов меньше лимита, больше данных нет
+            isMoreDataAvailable = products.length === limit;
+        }
+
+        return actionProducts;
     }
 
     /**
@@ -359,10 +311,10 @@ export class PromosService {
 
             // для каждого товара из списка прайсов
             for (const price of prices) {
-                // если product_id в акции и actionRec.price <=❗️ price.min_price
+                // если product_id в акции и actionRec.action_price <=❗️ price.min_price
                 // то вносим в список на исключение
                 const productInAction = productsInAction.find((p) => p.id === price.product_id);
-                if (productInAction && productInAction.price <= price.min_price) {
+                if (productInAction && productInAction.action_price <= price.min_price) {
                     removeList.push(price);
                     continue;
                 }
@@ -385,8 +337,6 @@ export class PromosService {
                     failed: [],
                 },
             };
-
-            debugger;
 
             // удаляем если есть что
             if (removeList.length) {

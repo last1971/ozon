@@ -23,6 +23,8 @@ import { GoodServiceEnum } from "../good/good.service.enum";
 import { VaultService } from "vault-module/lib/vault.service";
 import { ProductListDto } from "./dto/product.list.dto";
 import { IProductable } from 'src/interfaces/i.productable';
+import { ActionListProduct } from 'src/promos/dto/actionsCandidate.dto';
+import { ProductPriceDto } from 'src/price/dto/product.price.dto';
 
 @Injectable()
 export class ProductService extends ICountUpdateable implements OnModuleInit, IProductable {
@@ -178,6 +180,32 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
     }
     async getStoreList(): Promise<any> {
         return this.ozonApiService.method('/v1/warehouse/list', {});
+    }
+
+    /**
+     * Получает цены для списка товаров акции с поддержкой постраничной выборки.
+     *
+     * @param {ActionListProduct[]} actionProducts - Список товаров акции, для которых требуется получить цены.
+     * @param {number} [limit=100] - Максимальное количество товаров, обрабатываемых за один запрос.
+     * @returns {Promise<{ id: number; price: ProductPriceDto['price'] }[]>} Промис, который возвращает массив объектов с идентификаторами товаров и их ценами.
+     */
+    async getProductsPrices(
+        actionProducts: ActionListProduct[],
+        limit: number = 100,
+    ): Promise<{ id: number; price: ProductPriceDto['price'] }[]> {
+        const productPrices: { id: number; price: ProductPriceDto['price'] }[] = [];
+        const pages = Math.ceil(actionProducts.length / limit);
+        for (let i = 0; i < pages; i++) {
+            const chunk = actionProducts.slice(i * limit, (i + 1) * limit);
+            const priceRequest: PriceRequestDto = {
+                product_id: chunk.map((product) => product.id),
+                visibility: ProductVisibility.ALL,
+                limit,
+            };
+            const pricesChunk = await this.getPrices(priceRequest);
+            productPrices.push(...pricesChunk.items.map((item) => ({ id: item.product_id, price: item.price })));
+        }
+        return productPrices;
     }
 
 }
