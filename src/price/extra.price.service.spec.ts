@@ -369,17 +369,20 @@ describe("ExtraPriceService", () => {
     describe("ExtraPriceService - handleIncomingGoods", () => {
         it("should reset available prices, update percents, update prices, and check price differences", async () => {
             const skus = ["sku1", "sku2"];
+            const ozonSkus = ["ozon-sku1", "ozon-sku2"];
             mockGoodService.resetAvailablePrice.mockResolvedValue({});
             jest.spyOn(extraPriceService, "updatePercentsForGoodSkus").mockResolvedValue(undefined);
             jest.spyOn(extraPriceService, "updatePriceForGoodSkus").mockResolvedValue({});
             jest.spyOn(extraPriceService, "checkPriceDifferenceAndNotify").mockResolvedValue(undefined);
+            mockExtraGoodService.tradeSkusToServiceSkus.mockReturnValue(ozonSkus);
 
             await extraPriceService.handleIncomingGoods(skus);
 
             expect(mockGoodService.resetAvailablePrice).toHaveBeenCalledWith(skus);
-            expect(extraPriceService.updatePercentsForGoodSkus).toHaveBeenCalledWith(skus);
+            expect(extraPriceService.updatePercentsForGoodSkus).toHaveBeenCalledWith(ozonSkus);
             expect(extraPriceService.updatePriceForGoodSkus).toHaveBeenCalledWith(skus);
-            expect(extraPriceService.checkPriceDifferenceAndNotify).toHaveBeenCalledWith(skus);
+            expect(extraPriceService.checkPriceDifferenceAndNotify).toHaveBeenCalledWith(ozonSkus);
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith('update.promos', ozonSkus);
         });
 
         it("should log a warning if no SKUs are provided", async () => {
@@ -394,41 +397,35 @@ describe("ExtraPriceService", () => {
 
     describe("ExtraPriceService - updatePercentsForGoodSkus", () => {
         it("should call generatePercentsForService with correct parameters", async () => {
-            const skus = ["sku1", "sku2"];
-            const serviceSkus = ["ozon-sku1", "ozon-sku2"];
+            const ozonSkus = ["ozon-sku1", "ozon-sku2"];
             
-            mockExtraGoodService.tradeSkusToServiceSkus.mockReturnValue(serviceSkus);
             mockGoodService.updatePercentsForService.mockResolvedValue([]);
 
-            await extraPriceService.updatePercentsForGoodSkus(skus);
+            await extraPriceService.updatePercentsForGoodSkus(ozonSkus);
 
-            expect(mockExtraGoodService.tradeSkusToServiceSkus).toHaveBeenCalledWith(skus, GoodServiceEnum.OZON);
             expect(mockGoodService.updatePercentsForService).toHaveBeenCalledWith(
                 mockPriceService,
-                serviceSkus
+                ozonSkus
             );
         });
 
         it("should handle empty skus array", async () => {
-            const skus: string[] = [];
-            const serviceSkus: string[] = [];
+            const ozonSkus: string[] = [];
             
-            mockExtraGoodService.tradeSkusToServiceSkus.mockReturnValue(serviceSkus);
             mockGoodService.updatePercentsForService.mockResolvedValue([]);
 
-            await extraPriceService.updatePercentsForGoodSkus(skus);
+            await extraPriceService.updatePercentsForGoodSkus(ozonSkus);
 
-            expect(mockExtraGoodService.tradeSkusToServiceSkus).toHaveBeenCalledWith(skus, GoodServiceEnum.OZON);
             expect(mockGoodService.updatePercentsForService).toHaveBeenCalledWith(
                 mockPriceService,
-                serviceSkus
+                ozonSkus
             );
         });
     });
 
     describe("ExtraPriceService - checkPriceDifferenceAndNotify", () => {
         it("should emit an event if problematic products are found", async () => {
-            const skus = ["sku1", "sku2"];
+            const ozonSkus = ["ozon-sku1", "ozon-sku2"];
             const mockProducts = [
                 { marketing_seller_price: "200", min_price: "100", offer_id: "1" } as unknown as PriceDto,
                 { marketing_seller_price: "300", min_price: "200", offer_id: "2" } as unknown as PriceDto,
@@ -440,15 +437,13 @@ describe("ExtraPriceService", () => {
                 success: true,
             } as unknown as PriceResponseDto;
 
-            // Настраиваем моки
-            mockExtraGoodService.tradeSkusToServiceSkus.mockReturnValue(["ozon-sku1", "ozon-sku2"]);
             mockPriceService.index = jest.fn().mockResolvedValue(mockResponse);
             const eventEmitterSpy = jest.spyOn(mockEventEmitter, "emit");
 
-            await extraPriceService.checkPriceDifferenceAndNotify(skus);
+            await extraPriceService.checkPriceDifferenceAndNotify(ozonSkus);
 
             expect(mockPriceService.index).toHaveBeenCalledWith({
-                offer_id: ["ozon-sku1", "ozon-sku2"],
+                offer_id: ozonSkus,
                 limit: 4,
                 visibility: "ALL"
             });
@@ -456,10 +451,10 @@ describe("ExtraPriceService", () => {
         });
 
         it("should log a warning if no SKUs are provided", async () => {
-            const skus: string[] = [];
+            const ozonSkus: string[] = [];
             const loggerSpy = jest.spyOn(extraPriceService["logger"], "warn");
 
-            await extraPriceService.checkPriceDifferenceAndNotify(skus);
+            await extraPriceService.checkPriceDifferenceAndNotify(ozonSkus);
 
             expect(loggerSpy).toHaveBeenCalledWith("No trade SKUs provided for price difference check.");
         });
