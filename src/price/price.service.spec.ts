@@ -236,12 +236,69 @@ describe('PriceService', () => {
                 {
                     offer_id: '1',
                     price: {},
-                    commissions: { sales_percent_fbs: 1, fbs_direct_flow_trans_max_amount: 2 },
+                    commissions: { 
+                        sales_percent_fbs: 1, 
+                        sales_percent_fbo: 2,
+                        fbs_direct_flow_trans_max_amount: 2 
+                    },
                 },
             ],
         });
+
+        const mockInfoList = jest.fn().mockResolvedValueOnce([{
+            sku: '1',
+            fbsCount: 5,
+            fboCount: 3
+        }]);
+
+        const module: TestingModule = await Test.createTestingModule({
+            providers: [
+                PriceService,
+                { 
+                    provide: ProductService, 
+                    useValue: { 
+                        getPrices, 
+                        setPrice, 
+                        skuList: ['sku1', 'sku2', 'sku3'],
+                        infoList: mockInfoList
+                    } 
+                },
+                { provide: GOOD_SERVICE, useValue: { prices, getPerc, updatePriceForService } },
+                { provide: Cache, useValue: { get: () => [], set: () => {}}},
+                {
+                    provide: ConfigService,
+                    useValue: {
+                        get: (key: string) => {
+                            switch (key) {
+                                case 'PERC_MIN':
+                                    return 1;
+                                case 'PERC_NOR':
+                                    return 2;
+                                case 'PERC_MAX':
+                                    return 3;
+                                case 'PERC_MIL':
+                                    return 5.5;
+                                case 'PERC_EKV':
+                                    return 1.5;
+                                case 'SUM_OBTAIN':
+                                    return 25;
+                                case 'SUM_PACK':
+                                    return 13;
+                                case 'TAX_UNIT':
+                                    return 6;
+                                default:
+                                    return null;
+                            }
+                        },
+                    },
+                },
+            ],
+        }).compile();
+
+        service = module.get<PriceService>(PriceService);
         const res = await service.getProductsWithCoeffs(['1']);
         expect(res[0]).toBeInstanceOf(OzonProductCoeffsAdapter);
         expect(getPrices.mock.calls[0]).toEqual([{ limit: 1000, offer_id: ['1'], visibility: 'IN_SALE' }]);
+        expect(mockInfoList).toHaveBeenCalledWith(['1']);
     });
 });

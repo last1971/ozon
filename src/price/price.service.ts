@@ -70,6 +70,7 @@ export class PriceService implements IPriceUpdateable {
                     min_perc: this.configService.get<number>('PERC_MIN', 15),
                     available_price: 0,
                 };
+                const productInfo = productsInfos.find((info) => info.sku === item.offer_id);
                 return {
                     product_id: item.product_id,
                     offer_id: item.offer_id,
@@ -85,7 +86,7 @@ export class PriceService implements IPriceUpdateable {
                     perc: percent.perc,
                     old_perc: percent.old_perc,
                     adv_perc: percent.adv_perc,
-                    sales_percent: item.commissions.sales_percent_fbs,
+                    sales_percent: OzonProductCoeffsAdapter.calculateSalesPercent(item, productInfo),
                     fbs_direct_flow_trans_max_amount:
                         (item.commissions.fbs_direct_flow_trans_max_amount
                         +
@@ -93,8 +94,8 @@ export class PriceService implements IPriceUpdateable {
                         / 2 * percDirectFlow,
                     auto_action_enabled: item.price.auto_action_enabled,
                     sum_pack: percent.packing_price,
-                    fbsCount: productsInfos.find((info) => info.sku === item.offer_id)?.fbsCount || 0,
-                    fboCount: productsInfos.find((info) => info.sku === item.offer_id)?.fboCount || 0,
+                    fbsCount: productInfo?.fbsCount || 0,
+                    fboCount: productInfo?.fboCount || 0,
                 };
             }),
         };
@@ -145,8 +146,12 @@ export class PriceService implements IPriceUpdateable {
             this.logger.error('Invalid response from Ozon API', { response, skus });
             return [];
         }
+        const counts = await this.product.infoList(skus);
         
-        return response.items.map((product) => new OzonProductCoeffsAdapter(product, percDirectFlow));
+        return response.items.map((product) => {
+            const productInfo = counts.find((info) => info.sku === product.offer_id);
+            return new OzonProductCoeffsAdapter(product, percDirectFlow, productInfo);
+        });
     }
 
     async updatePrices(updatePrices: UpdatePriceDto[]): Promise<any> {
