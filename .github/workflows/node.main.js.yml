@@ -52,6 +52,9 @@ jobs:
             npm install 
             npm run build
             pm2 restart ozon --update-env
+            # Запускаем watchdog
+            pm2 delete ozon-watchdog || true
+            pm2 start npm --name ozon-watchdog -- run watchdog
             cd ~/ozon/admin-panel
             npm install 
             npm run build
