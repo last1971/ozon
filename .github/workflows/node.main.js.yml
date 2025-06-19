@@ -10,7 +10,6 @@ on:
 
 jobs:
   test:
-
     runs-on: ubuntu-latest
 
     strategy:
@@ -54,7 +53,7 @@ jobs:
             pm2 restart ozon --update-env
             # Запускаем watchdog
             pm2 delete ozon-watchdog || true
-            pm2 start npm --name ozon-watchdog -- run watchdog
+            pm2 start "npx ts-node tools/watchdog.ts" --name ozon-watchdog
             cd ~/ozon/admin-panel
             npm install 
             npm run build
