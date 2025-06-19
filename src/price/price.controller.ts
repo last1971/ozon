@@ -268,4 +268,46 @@ export class PriceController {
     ): Promise<GoodPercentDto> {
         return this.extraService.generatePercentsForOzon(sku, goodPercentDto);
     }
+    @Post('incoming-goods')
+    @ApiOperation({ summary: 'Ручной запуск обработки входящих товаров' })
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                skus: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Массив SKU товаров для обработки',
+                    example: ['SKU123', 'SKU456']
+                }
+            }
+        }
+    })
+    @ApiResponse({ 
+        status: 200, 
+        description: 'Обработка входящих товаров успешно запущена',
+        schema: {
+            type: 'object',
+            properties: {
+                success: { type: 'boolean' },
+                message: { type: 'string' }
+            }
+        }
+    })
+    async handleIncomingGoods(
+        @Body('skus') skus: string[]
+    ): Promise<{ success: boolean; message: string }> {
+        try {
+            await this.extraService.handleIncomingGoods(skus);
+            return {
+                success: true,
+                message: `Обработка ${skus.length} товаров успешно запущена`
+            };
+        } catch (error) {
+            return {
+                success: false,
+                message: `Ошибка при обработке товаров: ${error.message}`
+            };
+        }
+    }
 }
