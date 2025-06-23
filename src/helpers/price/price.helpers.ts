@@ -37,7 +37,7 @@ export const calculatePay = (
     return (
         sum -
         fixedCosts -
-        (mil < percents.minMil ? toNumber(percents.minMil) : 0) -
+        (mil === 0 ? 0 : (mil < percents.minMil ? toNumber(percents.minMil) : 0)) -
         (sum * (dynamicCosts + (mil < percents.minMil ? 0 : toNumber(percents.percMil)))) / 100
     );
 };
@@ -60,7 +60,7 @@ export const calculatePrice = (
             (1 - (dynamicCosts + toNumber(percents.percMil)) / 100)
         );
         const mil = calcPrice * (percents.percMil / 100);
-        if (mil < percents.minMil) {
+        if (mil > 0 && mil < percents.minMil) {
             calcPrice = Math.ceil(
                 (toNumber(incoming_price) * (1 + toNumber(percent) / 100) + toNumber(percents.minMil) + fixedCosts)
                 /

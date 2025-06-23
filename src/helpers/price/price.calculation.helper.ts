@@ -170,7 +170,7 @@ export class PriceCalculationHelper {
             service.getObtainCoeffs(),  // получаем коэффициенты
             minPrice  // передаем минимальную цену
         ) - (initialPrice.available_price || initialPrice.incoming_price);
-        return profit < (this.PRICE_DIFF_THRESHOLD / 2 + 1); // Минимальный порог
+        return profit < (this.PRICE_DIFF_THRESHOLD / 4 + 1); // Минимальный порог
     }
 
     private shouldAdjustNormalPrice(price: UpdatePriceDto): boolean {
