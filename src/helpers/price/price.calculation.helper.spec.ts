@@ -29,6 +29,7 @@ describe("PriceCalculationHelper", () => {
                                 "MIN_PROFIT_PERC": 10,
                                 "MIN_PROFIT_TARGET": 103,
                                 "PRICE_SMOOTHING_OFFSET": 500,
+                                "MIN_PROFIT_RUB": 10,
                             };
                             return config[key] || defaultValue;
                         })

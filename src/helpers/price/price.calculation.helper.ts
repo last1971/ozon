@@ -14,11 +14,11 @@ import { toNumber } from "lodash";
 @Injectable()
 export class PriceCalculationHelper {
     private readonly PERCENT_STEP = 10;
-    private PRICE_DIFF_THRESHOLD: number;
+    private MIN_PROFIT_RUB: number;
     constructor(
         private readonly configService: ConfigService
     ) {
-        this.PRICE_DIFF_THRESHOLD = this.configService.get<number>('MIN_MIL', 20);
+        this.MIN_PROFIT_RUB = this.configService.get<number>('MIN_PROFIT_RUB', 20);
     }
 
     async preparePricesContext(
@@ -170,14 +170,14 @@ export class PriceCalculationHelper {
             service.getObtainCoeffs(),  // получаем коэффициенты
             minPrice  // передаем минимальную цену
         ) - (initialPrice.available_price || initialPrice.incoming_price);
-        return profit < (this.PRICE_DIFF_THRESHOLD / 4 + 1); // Минимальный порог
+        return profit < (this.MIN_PROFIT_RUB); // Минимальный порог
     }
 
     private shouldAdjustNormalPrice(price: UpdatePriceDto): boolean {
-        return (toNumber(price.price) - toNumber(price.min_price)) < (this.PRICE_DIFF_THRESHOLD + 1);
+        return (toNumber(price.price) - toNumber(price.min_price)) < (this.MIN_PROFIT_RUB * 2);
     }
 
     private shouldAdjustOldPrice(price: UpdatePriceDto): boolean {
-        return (toNumber(price.old_price) - toNumber(price.price)) < (this.PRICE_DIFF_THRESHOLD * 2 + 1);
+        return (toNumber(price.old_price) - toNumber(price.price)) < (this.MIN_PROFIT_RUB * 4);
     }
 }

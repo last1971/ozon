@@ -168,6 +168,10 @@ class EnvironmentVariables {
     @IsOptional()
     @IsNumber()
     MAX_DAILY_SPEND: number;
+
+    @IsOptional()
+    @IsNumber()
+    MIN_PROFIT_RUB: number;
 }
 
 export function configValidate(config: Record<string, unknown>) {
