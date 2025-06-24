@@ -57,7 +57,7 @@ export const cronConfig: Record<string, CronSetup> = {
         production: {
             enabled: true,
             settings: {
-                time: CronExpression.EVERY_HOUR,
+                time: CronExpression.EVERY_10_MINUTES,
             },
         },
         development: {
