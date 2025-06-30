@@ -3,7 +3,7 @@
 @apiKey = {{$dotenv OZON_API_KEY}}
 
 ### Получение списка складов
-POST {{baseUrl}}/v1/warehouse/list
+POST https://api-seller.ozon.ru/v1/warehouse/list
 Content-Type: application/json
 Client-Id: {{clientId}}
 Api-Key: {{apiKey}}

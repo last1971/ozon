@@ -43,7 +43,7 @@ export const cronConfig: Record<string, CronSetup> = {
         production: {
             enabled: true,
             settings: {
-                time: CronExpression.EVERY_DAY_AT_MIDNIGHT,
+                time: CronExpression.EVERY_DAY_AT_6AM,
             },
         },
         development: {
