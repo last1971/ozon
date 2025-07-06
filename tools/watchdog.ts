@@ -1,12 +1,16 @@
 import axios from 'axios';
 import { exec } from 'child_process';
 import { promisify } from 'util';
+import * as dotenv from 'dotenv';
+
+// Загружаем переменные окружения из .env файла
+dotenv.config();
 
 const execAsync = promisify(exec);
 
 const CONFIG = {
     APP_NAME: 'ozon',
-    API_URL: 'http://localhost:3002/api',
+    API_URL: `http://${process.env.APP_HOST || 'localhost'}:${process.env.APP_PORT || '3002'}/api`,
     CPU_THRESHOLD: 90,
     CHECK_INTERVAL: 60000, // 1 минута
     RESTART_DELAY: 5000,   // 5 секунд после рестарта

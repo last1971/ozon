@@ -29,6 +29,8 @@ import { WbOrderModule } from './wb.order/wb.order.module';
 import { WbPriceModule } from './wb.price/wb.price.module';
 import { MailModule } from './mail/mail.module';
 import { CacheModule } from '@nestjs/cache-manager';
+import { CacheStore } from '@nestjs/cache-manager';
+import { redisStore } from 'cache-manager-redis-yet';
 import { WbSupplyModule } from './wb.supply/wb.supply.module';
 import { SupplyModule } from './supply/supply.module';
 import { LabelModule } from './label/label.module';
@@ -40,11 +42,26 @@ import { PerformanceModule } from "./performance/performance.module";
 
 @Module({
     imports: [
-        CacheModule.register({
-            isGlobal: true,
-        }),
         EventEmitterModule.forRoot(),
         ConfigModule.forRoot({ isGlobal: true, validate: configValidate }),
+        CacheModule.registerAsync({
+            isGlobal: true,
+            imports: [ConfigModule],
+            useFactory: async (configService: ConfigService) => {
+               const store = await redisStore({
+                 socket: {
+                   host: configService.get<string>('REDIS_HOST', 'localhost'),
+                   port: configService.get<number>('REDIS_PORT', 6379),
+                 },
+                 // Убираем TTL - кэш будет храниться навсегда
+               });
+          
+              return {
+                store: store as unknown as CacheStore,
+              };
+            },
+            inject: [ConfigService],
+          }),
         HttpModule.registerAsync({
             imports: [ConfigModule],
             useFactory: async (configService: ConfigService) => {

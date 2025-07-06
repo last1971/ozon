@@ -172,6 +172,22 @@ class EnvironmentVariables {
     @IsOptional()
     @IsNumber()
     MIN_PROFIT_RUB: number;
+
+    @IsOptional()
+    @IsString()
+    REDIS_HOST: string;
+
+    @IsOptional()
+    @IsNumber()
+    REDIS_PORT: number;
+
+    @IsOptional()
+    @IsString()
+    REDIS_PASSWORD: string;
+
+    @IsOptional()
+    @IsNumber()
+    REDIS_DB: number;
 }
 
 export function configValidate(config: Record<string, unknown>) {
