@@ -44,10 +44,21 @@ class Watchdog {
 
     async checkHealth(): Promise<boolean> {
         try {
-            const response = await axios.get(CONFIG.API_URL, {
-                timeout: 5000,
+            // Принудительный timeout через Promise.race
+            const controller = new AbortController();
+            const timeoutPromise = new Promise((_, reject) => {
+                setTimeout(() => {
+                    controller.abort();
+                    reject(new Error('Health check timeout'));
+                }, 2000);
+            });
+
+            const requestPromise = axios.get(CONFIG.API_URL, {
+                signal: controller.signal,
                 validateStatus: (status) => status === 200
             });
+
+            const response = await Promise.race([requestPromise, timeoutPromise]) as any;
             return typeof response.data === 'string'; // проверяем, что получили строку от getHello()
         } catch (error) {
             console.error('Health check failed:', error.message);
@@ -86,23 +97,24 @@ class Watchdog {
         const cpuUsage = await this.getCpuUsage(pid);
         console.log(`[${new Date().toISOString()}] Current CPU usage: ${cpuUsage}%`);
 
-        if (cpuUsage > CONFIG.CPU_THRESHOLD) {
-            console.log(`[${new Date().toISOString()}] High CPU usage detected, checking health...`);
-            const isHealthy = await this.checkHealth();
+        // Всегда проверяем health независимо от CPU
+        const isHealthy = await this.checkHealth();
 
-            if (!isHealthy) {
-                this.failedChecks++;
-                console.log(`[${new Date().toISOString()}] Health check failed (attempt ${this.failedChecks}/${CONFIG.MAX_RETRIES})`);
+        if (!isHealthy) {
+            this.failedChecks++;
+            console.log(`[${new Date().toISOString()}] Health check failed (attempt ${this.failedChecks}/${CONFIG.MAX_RETRIES})`);
 
-                if (this.failedChecks >= CONFIG.MAX_RETRIES) {
-                    await this.restartApp();
-                }
-            } else {
-                this.failedChecks = 0;
+            if (this.failedChecks >= CONFIG.MAX_RETRIES) {
+                await this.restartApp();
             }
         } else {
-            // Сбрасываем счетчик неудачных проверок если CPU в норме
+            console.log(`[${new Date().toISOString()}] Health check passed`);
             this.failedChecks = 0;
+        }
+
+        // Дополнительная проверка при высоком CPU
+        if (cpuUsage > CONFIG.CPU_THRESHOLD) {
+            console.log(`[${new Date().toISOString()}] High CPU usage detected: ${cpuUsage}%`);
         }
     }
 
