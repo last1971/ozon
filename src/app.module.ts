@@ -39,6 +39,7 @@ import { Trade2006IncomingModule } from "./trade2006.incoming/trade2006.incoming
 import { HttpModule } from '@nestjs/axios';
 import { HelpersModule } from "./helpers/helpers.module";
 import { PerformanceModule } from "./performance/performance.module";
+import { DiscountRequestsModule } from './discount-requests/discount-requests.module';
 
 @Module({
     imports: [
@@ -55,7 +56,6 @@ import { PerformanceModule } from "./performance/performance.module";
                  },
                  // Убираем TTL - кэш будет храниться навсегда
                });
-          
               return {
                 store: store as unknown as CacheStore,
               };
@@ -124,6 +124,7 @@ import { PerformanceModule } from "./performance/performance.module";
         Trade2006IncomingModule,
         HelpersModule,
         PerformanceModule,
+        DiscountRequestsModule,
     ],
     controllers: [AppController],
     providers: [AppService, CronSetupProviderService],
