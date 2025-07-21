@@ -607,6 +607,59 @@ describe('Trade2006GoodService', () => {
         }]);
     });
 
+    it('generatePercentsForService returns empty array if products is empty', async () => {
+        mockPriceCalculationHelper.preparePricesContext.mockResolvedValue({
+            goods: [],
+            percents: [{ offer_id: '1', pieces: 1, adv_perc: 0, old_perc: 0, perc: 0, min_perc: 0, packing_price: 0, available_price: 0 }],
+            products: []
+        });
+        const result = await service.generatePercentsForService(priceUdateable, ['1']);
+        expect(result).toEqual([]);
+    });
+
+    it('generatePercentsForService returns empty array if percents is empty', async () => {
+        mockPriceCalculationHelper.preparePricesContext.mockResolvedValue({
+            goods: [],
+            percents: [],
+            products: [{ getSku: () => '1', getTransMaxAmount: () => 0, getSalesPercent: () => 0 }]
+        });
+        const result = await service.generatePercentsForService(priceUdateable, ['1']);
+        expect(result).toEqual([]);
+    });
+
+    it('generatePercentsForService uses percent values if goodPercentsDto does not contain sku', async () => {
+        mockPriceCalculationHelper.preparePricesContext.mockResolvedValue({
+            goods: [],
+            percents: [{ offer_id: '1', pieces: 1, adv_perc: 5, old_perc: 30, perc: 20, min_perc: 10, packing_price: 0, available_price: 150 }],
+            products: [{ getSku: () => '1', getTransMaxAmount: () => 40, getSalesPercent: () => 10 }]
+        });
+        mockPriceCalculationHelper.getIncomingPrice.mockReturnValue(100);
+        mockPriceCalculationHelper.adjustPercents.mockReturnValue({ min_perc: 10, perc: 20, old_perc: 30 });
+        const goodPercentsDto = new Map<string, Partial<GoodPercentDto>>(); // пустой
+        const result = await service.generatePercentsForService(priceUdateable, ['1'], goodPercentsDto);
+        expect(result).toEqual([{
+            offer_id: '1',
+            pieces: 1,
+            perc: 20,
+            adv_perc: 5,
+            min_perc: 10,
+            old_perc: 30,
+            packing_price: 0,
+            available_price: 150
+        }]);
+    });
+
+    it('generatePercentsForService returns empty array if no percent passes filter', async () => {
+        mockPriceCalculationHelper.preparePricesContext.mockResolvedValue({
+            goods: [],
+            percents: [{ offer_id: '1', pieces: 1, adv_perc: 0, old_perc: 0, perc: 0, min_perc: 0, packing_price: 0, available_price: 0 }],
+            products: [{ getSku: () => '2', getTransMaxAmount: () => 0, getSalesPercent: () => 0 }]
+        });
+        mockPriceCalculationHelper.getIncomingPrice.mockReturnValue(0); // не проходит фильтр
+        const result = await service.generatePercentsForService(priceUdateable, ['1']);
+        expect(result).toEqual([]);
+    });
+
     it('resetAvailablePrice', async () => {
         await service.resetAvailablePrice(['1', '2']);
         expect(execute.mock.calls[0]).toEqual([

@@ -40,6 +40,7 @@ import { HttpModule } from '@nestjs/axios';
 import { HelpersModule } from "./helpers/helpers.module";
 import { PerformanceModule } from "./performance/performance.module";
 import { DiscountRequestsModule } from './discount-requests/discount-requests.module';
+import JSONbig from 'json-bigint';
 
 @Module({
     imports: [
@@ -73,6 +74,13 @@ import { DiscountRequestsModule } from './discount-requests/discount-requests.mo
                 logger.log(`HttpModule registered with default timeout: ${defaultTimeout}ms`);
                 return {
                     timeout: defaultTimeout,
+                    transformResponse: [(data) => {
+                        try {
+                          return JSONbig({ storeAsString: true }).parse(data);
+                        } catch {
+                          return data;
+                        }
+                      }],
                 };
             },
             inject: [ConfigService],

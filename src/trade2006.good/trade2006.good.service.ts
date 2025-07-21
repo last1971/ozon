@@ -228,7 +228,8 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
 
         const filteredPercents = percents.filter(percent =>
             products.some(product =>
-                isSkuMatch(product.getSku(), percent.offer_id.toString(), percent.pieces)
+                isSkuMatch(product.getSku(), percent.offer_id.toString(), percent.pieces) &&
+                this.priceCalculationHelper.getIncomingPrice(product, goods) > 0
             )
         );
 
