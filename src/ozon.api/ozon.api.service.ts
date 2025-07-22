@@ -113,7 +113,6 @@ export class OzonApiService {
         } catch {
             data = text;
         }
-        this.logger.log(`[OZON RAW FETCH RESPONSE] ${text}`);
         if (!response.ok) {
             this.logger.error(`[OZON RAW FETCH ERROR] ${response.status} ${response.statusText}`);
             throw new Error(`Ozon API error: ${response.status} ${response.statusText}`);
