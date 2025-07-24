@@ -126,7 +126,7 @@ export class DiscountRequestsService {
         const originalOfferIds = this.extractOriginalOfferIds(tasks);
         
         // Обрабатываем входящие товары
-        await this.extraPriceService.handleIncomingGoods(originalOfferIds);
+        await this.extraPriceService.handleDiscounts(originalOfferIds);
         
         // Получаем цены
         const pricesMap = await this.getPricesMap(tasks.map(task => task.offer_id));

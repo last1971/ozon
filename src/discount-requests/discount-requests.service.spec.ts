@@ -80,6 +80,19 @@ describe('DiscountRequestsService', () => {
     expect(ozonApiService.rawFetch).toHaveBeenCalledTimes(1);
     expect(res).toEqual(singlePage);
   });
+
+  it('extractOriginalOfferIds strips suffixes and deduplicates', () => {
+    const tasks = [
+      { offer_id: '123-1' },
+      { offer_id: '123-2' },
+      { offer_id: '456' },
+      { offer_id: '123' },
+      { offer_id: '456-7' },
+    ];
+    // @ts-ignore
+    const result = (service as any).extractOriginalOfferIds(tasks);
+    expect(result).toEqual(['123', '456']);
+  });
 }); 
 
 describe('autoProcessDiscountRequests', () => {

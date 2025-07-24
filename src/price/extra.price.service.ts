@@ -15,6 +15,17 @@ import { toNumber, first } from "lodash";
 import { PriceDto } from "./dto/price.dto";
 import { ProductVisibility } from "../product/product.visibility";
 import { GoodPercentDto } from "../good/dto/good.percent.dto";
+import { CommandChainAsync } from '../helpers/command/command.chain.async';
+import { IGoodsProcessingContext } from 'src/interfaces/i.good.processing.context';
+import { TradeSkusCommand } from './commands/trade-skus.command';
+import { ResetAvailablePriceCommand } from './commands/reset-available-price.command';
+import { UpdatePercentsForGoodSkusCommand } from './commands/update-percents-for-good-skus.command';
+import { UpdatePriceForGoodSkusCommand } from './commands/update-price-for-good-skus.command';
+import { CheckPriceDifferenceAndNotifyCommand } from './commands/check-price-difference-and-notify.command';
+import { EmitUpdatePromosCommand } from './commands/emit-update-promos.command';
+import { LogResultProcessingMessageCommand } from './commands/log-result-processing-message.command';
+import { ValidateSkusNotEmptyCommand } from './commands/validate-skus-not-empty.command';
+import { SetResultProcessingMessageCommand } from './commands/set-result-processing-message.command';
 
 @Injectable()
 export class ExtraPriceService {
@@ -29,6 +40,15 @@ export class ExtraPriceService {
         private configService: ConfigService,
         private extraGoodService: ExtraGoodService,
         private eventEmitter: EventEmitter2,
+        private readonly tradeSkusCommand: TradeSkusCommand,
+        private readonly resetAvailablePriceCommand: ResetAvailablePriceCommand,
+        private readonly updatePercentsForGoodSkusCommand: UpdatePercentsForGoodSkusCommand,
+        private readonly updatePriceForGoodSkusCommand: UpdatePriceForGoodSkusCommand,
+        private readonly checkPriceDifferenceAndNotifyCommand: CheckPriceDifferenceAndNotifyCommand,
+        private readonly emitUpdatePromosCommand: EmitUpdatePromosCommand,
+        private readonly logResultProcessingMessageCommand: LogResultProcessingMessageCommand,
+        private readonly validateSkusNotEmptyCommand: ValidateSkusNotEmptyCommand,
+        private readonly setResultProcessingMessageCommand: SetResultProcessingMessageCommand,
     ) {
         this.services = new Map<GoodServiceEnum, IPriceUpdateable>();
         const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
@@ -105,31 +125,45 @@ export class ExtraPriceService {
      */
     @OnEvent('incoming.goods', { async: true })
     async handleIncomingGoods(skus: string[]): Promise<void> {
-
-        if (!skus || skus.length === 0) {
-            this.logger.log('No incoming goods SKUs provided');
-            return;
-        }
-
-        this.logger.log(`Processing incoming goods for ${skus.length} SKUs`);
-
+        const context: IGoodsProcessingContext = {
+            skus,
+            logger: this.logger,
+        };
+        const chain = new CommandChainAsync<IGoodsProcessingContext>([
+            this.validateSkusNotEmptyCommand,
+            this.tradeSkusCommand,
+            this.resetAvailablePriceCommand,
+            this.updatePercentsForGoodSkusCommand,
+            this.updatePriceForGoodSkusCommand,
+            this.checkPriceDifferenceAndNotifyCommand,
+            this.emitUpdatePromosCommand,
+            this.setResultProcessingMessageCommand,
+            this.logResultProcessingMessageCommand,
+        ]);
         try {
-            // Получим коды ОЗОНа
-            const ozonSkus = this.extraGoodService.tradeSkusToServiceSkus(skus, GoodServiceEnum.OZON);
-            // Сначала обнуляем available_price для всех поступивших товаров
-            await this.goodService.resetAvailablePrice(skus);
-            // Обновляем наценки для всех поступивших товаров
-            await this.updatePercentsForGoodSkus(ozonSkus);
-            // Обновляем цены для всех маркетплейсов на основе поступивших товаров
-            await this.updatePriceForGoodSkus(skus);
-            // Затем проверяем разницу цен и отправляем уведомление, если необходимо
-            await this.checkPriceDifferenceAndNotify(ozonSkus);
-            // Отправляем уведомление о завершении обработки
-            this.logger.log(`Successfully updated prices for ${skus.length} SKUs after incoming goods event`);
-            // Отправляем событие для обновления промо
-            this.eventEmitter.emit('update.promos', ozonSkus);
+            await chain.execute(context);
         } catch (error) {
             this.logger.error(`Error updating prices after incoming goods: ${error.message}`, error.stack);
+        }
+    }
+
+    async handleDiscounts(skus: string[]): Promise<void> {
+        const context: IGoodsProcessingContext = {
+            skus,
+            logger: this.logger,
+            resultProcessingMessage: 'Discounts updated',
+        };
+        const chain = new CommandChainAsync<IGoodsProcessingContext>([
+            this.validateSkusNotEmptyCommand,
+            this.tradeSkusCommand,
+            this.updatePriceForGoodSkusCommand,
+            this.checkPriceDifferenceAndNotifyCommand,
+            this.logResultProcessingMessageCommand,
+        ]);
+        try {
+            await chain.execute(context);
+        } catch (error) {
+            this.logger.error(`Error updating discounts: ${error.message}`, error.stack);
         }
     }
 
