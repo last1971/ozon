@@ -188,6 +188,14 @@ class EnvironmentVariables {
     @IsOptional()
     @IsNumber()
     REDIS_DB: number;
+
+    @IsOptional()
+    @IsNumber()
+    MIN_DISCOUNT_TASKS: number;
+
+    @IsOptional()
+    @IsNumber()
+    MAX_DISCOUNT_PERCENT: number;
 }
 
 export function configValidate(config: Record<string, unknown>) {

@@ -6,8 +6,6 @@ import { DiscountTaskApproveDto, DiscountTaskApproveResultDto } from './dto/disc
 import { DiscountTaskDeclineDto, DiscountTaskDeclineResultDto } from './dto/discount-task-decline.dto';
 import { DiscountTaskStatus } from './dto/discount-task-status.enum';
 import { DiscountTaskDto } from './dto/discount-task-list.dto';
-import { ExtraPriceService } from '../price/extra.price.service';
-import { PriceService } from '../price/price.service';
 import { CommandChainAsync } from '../helpers/command/command.chain.async';
 import { GetDiscountTasksCommand } from './commands/get-discount-tasks.command';
 import { ExtractOriginalOfferIdsCommand } from './commands/extract-original-offer-ids.command';
@@ -16,6 +14,11 @@ import { GetPricesMapCommand } from './commands/get-prices-map.command';
 import { MakeDecisionsCommand } from './commands/make-decisions.command';
 import { ApproveDiscountTasksCommand } from './commands/approve-discount-tasks.command';
 import { DeclineDiscountTasksCommand } from './commands/decline-discount-tasks.command';
+import { ConfigService } from '@nestjs/config';
+import { Logger } from '@nestjs/common';
+import { LogResultCommand } from './commands/log-result.command';
+import { EarlyExitCheckCommand } from './commands/early-exit-check.command';
+import { Cron, CronExpression } from '@nestjs/schedule';
 
 interface ProcessingResult {
     approved: number;
@@ -44,17 +47,20 @@ interface Decisions {
 
 @Injectable()
 export class DiscountRequestsService {
+    private readonly logger = new Logger(DiscountRequestsService.name);
+
     constructor(
         private ozonApiService: OzonApiService,
-        private extraPriceService: ExtraPriceService,
-        private priceService: PriceService,
         private readonly getDiscountTasksCommand: GetDiscountTasksCommand,
+        private readonly earlyExitCheckCommand: EarlyExitCheckCommand,
         private readonly extractOriginalOfferIdsCommand: ExtractOriginalOfferIdsCommand,
         private readonly handleDiscountsCommand: HandleDiscountsCommand,
         private readonly getPricesMapCommand: GetPricesMapCommand,
         private readonly makeDecisionsCommand: MakeDecisionsCommand,
         private readonly approveDiscountTasksCommand: ApproveDiscountTasksCommand,
         private readonly declineDiscountTasksCommand: DeclineDiscountTasksCommand,
+        private readonly configService: ConfigService,
+        private readonly logResultCommand: LogResultCommand,
     ) {}
 
     async getDiscountTasks(params: DiscountTaskListParamsDto): Promise<DiscountTaskListDto> {
@@ -102,10 +108,13 @@ export class DiscountRequestsService {
      * Автоматическая обработка заявок на скидку
      */
     async autoProcessDiscountRequests(): Promise<ProcessingResult> {
+        const minTaskCount = this.configService.get('MIN_DISCOUNT_TASKS') ?? 1;
         const context = {
             errors: [],
             approved: 0,
             declined: 0,
+            logger: this.logger,
+            threshold: minTaskCount,
         };
 
         const chain = new CommandChainAsync([
@@ -125,5 +134,31 @@ export class DiscountRequestsService {
             declined: resultContext.declined ?? 0,
             errors: resultContext.errors ?? [],
         };
+    }
+
+    @Cron(CronExpression.EVERY_HOUR, { name: 'processDiscountRequests' })
+    async processDiscountRequestsCron(): Promise<void> {
+        const minTaskCount = this.configService.get<number>('MIN_DISCOUNT_TASKS', 5);
+        const context = {
+            errors: [],
+            approved: 0,
+            declined: 0,
+            logger: this.logger,
+            threshold: minTaskCount,
+        };
+
+        const chain = new CommandChainAsync([
+            this.getDiscountTasksCommand,
+            this.earlyExitCheckCommand,
+            this.extractOriginalOfferIdsCommand,
+            this.handleDiscountsCommand,
+            this.getPricesMapCommand,
+            this.makeDecisionsCommand,
+            this.approveDiscountTasksCommand,
+            this.declineDiscountTasksCommand,
+            this.logResultCommand,
+        ]);
+
+        await chain.execute(context);
     }
 } 
