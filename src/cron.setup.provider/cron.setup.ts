@@ -67,6 +67,20 @@ export const cronConfig: Record<string, CronSetup> = {
             },
         },
     },
+    processDiscountRequests: {
+        production: {
+            enabled: true,
+            settings: {
+                time: CronExpression.EVERY_HOUR,
+            },
+        },  
+        development: {
+            enabled: false,
+            settings: {
+                time: CronExpression.EVERY_MINUTE,
+            },
+        },
+    },
     /*
     updateOzonPrices: {
         production: {

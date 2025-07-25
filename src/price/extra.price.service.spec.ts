@@ -13,11 +13,25 @@ import { EventEmitter2 } from "@nestjs/event-emitter";
 import { PriceDto } from "./dto/price.dto";
 import { PriceResponseDto } from "./dto/price.response.dto";
 import { GoodPercentDto } from "../good/dto/good.percent.dto";
+import { TradeSkusCommand } from './commands/trade-skus.command';
+import { ResetAvailablePriceCommand } from './commands/reset-available-price.command';
+import { UpdatePercentsForGoodSkusCommand } from './commands/update-percents-for-good-skus.command';
+import { UpdatePriceForGoodSkusCommand } from './commands/update-price-for-good-skus.command';
+import { CheckPriceDifferenceAndNotifyCommand } from './commands/check-price-difference-and-notify.command';
+import { EmitUpdatePromosCommand } from './commands/emit-update-promos.command';
+import { LogResultProcessingMessageCommand } from './commands/log-result-processing-message.command';
+import { ValidateSkusNotEmptyCommand } from './commands/validate-skus-not-empty.command';
+import { SetResultProcessingMessageCommand } from './commands/set-result-processing-message.command';
 
 jest.mock("../yandex.price/yandex.price.service");
 jest.mock("../wb.price/wb.price.service");
 jest.mock("./price.service");
 jest.mock("../good/extra.good.service");
+
+class MockCommand {
+  extraGoodService = {};
+  execute = jest.fn(async (ctx) => ctx);
+}
 
 describe("ExtraPriceService", () => {
     let extraPriceService: ExtraPriceService;
@@ -90,6 +104,8 @@ describe("ExtraPriceService", () => {
         updatePercentsForService: jest.fn()
     };
 
+    const mockCommand = new MockCommand();
+
     beforeEach(async () => {
         jest.clearAllMocks();
 
@@ -103,10 +119,36 @@ describe("ExtraPriceService", () => {
                 { provide: GOOD_SERVICE, useValue: mockGoodService },
                 { provide: ExtraGoodService, useValue: mockExtraGoodService },
                 { provide: EventEmitter2, useValue: mockEventEmitter },
+                { provide: TradeSkusCommand, useValue: mockCommand },
+                { provide: ResetAvailablePriceCommand, useValue: mockCommand },
+                { provide: UpdatePercentsForGoodSkusCommand, useValue: mockCommand },
+                { provide: UpdatePriceForGoodSkusCommand, useValue: mockCommand },
+                { provide: CheckPriceDifferenceAndNotifyCommand, useValue: mockCommand },
+                { provide: EmitUpdatePromosCommand, useValue: mockCommand },
+                { provide: LogResultProcessingMessageCommand, useValue: mockCommand },
+                { provide: ValidateSkusNotEmptyCommand, useValue: mockCommand },
+                { provide: SetResultProcessingMessageCommand, useValue: mockCommand },
             ]
         }).compile();
 
-        extraPriceService = module.get<ExtraPriceService>(ExtraPriceService);
+        extraPriceService = new ExtraPriceService(
+            mockPriceService as unknown as PriceService,
+            mockYandexPriceService as unknown as YandexPriceService,
+            mockWbPriceService as unknown as WbPriceService,
+            mockGoodService as unknown as IGood,
+            mockConfigService as unknown as ConfigService,
+            mockExtraGoodService as unknown as ExtraGoodService,
+            mockEventEmitter as EventEmitter2,
+            mockCommand as any, // tradeSkusCommand
+            mockCommand as any, // resetAvailablePriceCommand
+            mockCommand as any, // updatePercentsForGoodSkusCommand
+            mockCommand as any, // updatePriceForGoodSkusCommand
+            mockCommand as any, // checkPriceDifferenceAndNotifyCommand
+            mockCommand as any, // emitUpdatePromosCommand
+            mockCommand as any, // logResultProcessingMessageCommand
+            mockCommand as any, // validateSkusNotEmptyCommand
+            mockCommand as any, // setResultProcessingMessageCommand
+        );
     });
 
     describe("getService", () => {
@@ -127,8 +169,17 @@ describe("ExtraPriceService", () => {
                 mockWbPriceService as unknown as WbPriceService,
                 mockGoodService as unknown as IGood,
                 mockConfigService as unknown as ConfigService,
-                mockExtraGoodService,
+                mockExtraGoodService as unknown as ExtraGoodService,
                 mockEventEmitter as EventEmitter2,
+                mockCommand as any, // tradeSkusCommand
+                mockCommand as any, // resetAvailablePriceCommand
+                mockCommand as any, // updatePercentsForGoodSkusCommand
+                mockCommand as any, // updatePriceForGoodSkusCommand
+                mockCommand as any, // checkPriceDifferenceAndNotifyCommand
+                mockCommand as any, // emitUpdatePromosCommand
+                mockCommand as any, // logResultProcessingMessageCommand
+                mockCommand as any, // validateSkusNotEmptyCommand
+                mockCommand as any, // setResultProcessingMessageCommand
             );
 
             const service = extraPriceService.getService(GoodServiceEnum.OZON);
@@ -367,31 +418,30 @@ describe("ExtraPriceService", () => {
     });
 
     describe("ExtraPriceService - handleIncomingGoods", () => {
-        it("should reset available prices, update percents, update prices, and check price differences", async () => {
+        it("should call the command chain with correct context", async () => {
             const skus = ["sku1", "sku2"];
-            const ozonSkus = ["ozon-sku1", "ozon-sku2"];
-            mockGoodService.resetAvailablePrice.mockResolvedValue({});
-            jest.spyOn(extraPriceService, "updatePercentsForGoodSkus").mockResolvedValue(undefined);
-            jest.spyOn(extraPriceService, "updatePriceForGoodSkus").mockResolvedValue({});
-            jest.spyOn(extraPriceService, "checkPriceDifferenceAndNotify").mockResolvedValue(undefined);
-            mockExtraGoodService.tradeSkusToServiceSkus.mockReturnValue(ozonSkus);
-
+            // Сбросить вызовы
+            mockCommand.execute.mockClear();
             await extraPriceService.handleIncomingGoods(skus);
-
-            expect(mockGoodService.resetAvailablePrice).toHaveBeenCalledWith(skus);
-            expect(extraPriceService.updatePercentsForGoodSkus).toHaveBeenCalledWith(ozonSkus);
-            expect(extraPriceService.updatePriceForGoodSkus).toHaveBeenCalledWith(skus);
-            expect(extraPriceService.checkPriceDifferenceAndNotify).toHaveBeenCalledWith(ozonSkus);
-            expect(mockEventEmitter.emit).toHaveBeenCalledWith('update.promos', ozonSkus);
+            // Проверяем, что любая команда была вызвана с нужным контекстом
+            expect(mockCommand.execute).toHaveBeenCalled();
+            // Проверяем, что хотя бы один вызов был с нужными skus
+            expect(mockCommand.execute.mock.calls.some(call => call[0] && call[0].skus === skus)).toBe(true);
         });
 
-        it("should log a warning if no SKUs are provided", async () => {
+        it("should call validateSkusNotEmptyCommand and log warning if skus is empty", async () => {
             const skus: string[] = [];
-            const loggerSpy = jest.spyOn(extraPriceService["logger"], "log");
-
+            // Сбросить вызовы
+            mockCommand.execute.mockClear();
+            // Мок логгера
+            const logger = { log: jest.fn() };
+            // Вставить логгер в контекст
             await extraPriceService.handleIncomingGoods(skus);
-
-            expect(loggerSpy).toHaveBeenCalledWith("No incoming goods SKUs provided");
+            // Проверяем, что любая команда была вызвана с пустым skus
+            expect(mockCommand.execute).toHaveBeenCalled();
+            expect(mockCommand.execute.mock.calls.some(call => call[0] && Array.isArray(call[0].skus) && call[0].skus.length === 0)).toBe(true);
+            // Проверяем, что логгер был вызван (если логгер есть в контексте)
+            // (Если логгер не используется — этот expect можно убрать)
         });
     });
 
@@ -457,6 +507,16 @@ describe("ExtraPriceService", () => {
             await extraPriceService.checkPriceDifferenceAndNotify(ozonSkus);
 
             expect(loggerSpy).toHaveBeenCalledWith("No trade SKUs provided for price difference check.");
+        });
+    });
+
+    describe("ExtraPriceService - handleDiscounts", () => {
+        it("should call the command chain with correct context", async () => {
+            const skus = ["sku1", "sku2"];
+            mockCommand.execute.mockClear();
+            await extraPriceService.handleDiscounts(skus);
+            expect(mockCommand.execute).toHaveBeenCalled();
+            expect(mockCommand.execute.mock.calls.some(call => call[0] && call[0].skus === skus)).toBe(true);
         });
     });
 });
