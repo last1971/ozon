@@ -12,6 +12,7 @@ import { ResultDto } from '../helpers/dto/result.dto';
 import { StatsOrderRequestDto } from './dto/stats.order.request.dto';
 import { OrderStatsDto } from './dto/order.stats.dto';
 import { FirebirdTransaction } from 'ts-firebird';
+import { GoodServiceEnum } from 'src/good/good.service.enum';
 
 export enum YandexOrderSubStatus {
     STARTED = 'STARTED',
@@ -37,6 +38,10 @@ export class YandexOrderService implements IOrderable, OnModuleInit {
         private configService: ConfigService,
     ) {}
     async onModuleInit(): Promise<void> {
+        const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
+        if (!services.includes(GoodServiceEnum.YANDEX)) {
+            return;
+        }
         const yandex = await this.vaultService.get('yandex-seller');
         this.campaignId = yandex['electronica-company'] as number;
     }
