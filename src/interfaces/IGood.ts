@@ -17,7 +17,7 @@ export interface IGood {
     setWbData(data: GoodWbDto, t: FirebirdTransaction): Promise<void>;
     getWbData(ids: string[]): Promise<GoodWbDto[]>;
     getQuantities(goodCodes: string[], t: FirebirdTransaction): Promise<Map<string, number>>;
-    updateCountForService(service: ICountUpdateable, args: any): Promise<number>;
+    //updateCountForService(service: ICountUpdateable, args: any): Promise<number>;
     updateCountForSkus(service: ICountUpdateable, skus: string[]): Promise<number>;
     updatePriceForService(service: IPriceUpdateable, skus: string[], prices?: Map<string, UpdatePriceDto>): Promise<any>;
     generatePercentsForService(service: IPriceUpdateable, skus: string[], goodPercentsDto?: Map<string, Partial<GoodPercentDto>>): Promise<GoodPercentDto[]>;

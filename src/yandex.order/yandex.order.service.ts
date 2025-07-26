@@ -12,7 +12,7 @@ import { ResultDto } from '../helpers/dto/result.dto';
 import { StatsOrderRequestDto } from './dto/stats.order.request.dto';
 import { OrderStatsDto } from './dto/order.stats.dto';
 import { FirebirdTransaction } from 'ts-firebird';
-import { GoodServiceEnum } from 'src/good/good.service.enum';
+import { GoodServiceEnum } from '../good/good.service.enum';
 
 export enum YandexOrderSubStatus {
     STARTED = 'STARTED',

@@ -241,7 +241,7 @@ export class Trade2006InvoiceService implements IInvoice, ISuppliable {
         await workingTransaction.execute(
             'UPDATE OR INSERT INTO SCHET (MONEYSCHET, NS, DATA, POKUPATCODE, SCODE) VALUES (?, ?, ?, ?,' +
                 ' ?) MATCHING (SCODE)',
-            [amount, invoice.number, new Date(), this.configService.get<number>('BUYER_ID', 24416), invoice.id],
+            [amount, invoice.number, new Date(), this.configService.get<number>('OZON_BUYER_ID', 24416), invoice.id],
             !transaction,
         );
     }
@@ -354,9 +354,12 @@ export class Trade2006InvoiceService implements IInvoice, ISuppliable {
         }
     }
     async pickupInvoice(invoice: InvoiceDto, t: FirebirdTransaction = null): Promise<void> {
+        const attribute = this.configService.get<string>('STORAGE_TYPE', 'SHOPSKLAD').toUpperCase() === 'SHOPSKLAD'
+            ? 'SHOP'
+            : 'SKLAD';
         if (invoice.status === 3) {
             const transaction = t ?? (await this.pool.getTransaction());
-            await transaction.execute('UPDATE PODBPOS SET QUANSHOP = QUANSHOPNEED WHERE SCODE = ?', [invoice.id], !t);
+            await transaction.execute(`UPDATE PODBPOS SET QUAN${attribute}= QUAN${attribute}NEED WHERE SCODE = ?`, [invoice.id], !t);
             this.logger.log(`Order ${invoice.remark} has been pickuped`);
         }
     }
@@ -390,8 +393,11 @@ export class Trade2006InvoiceService implements IInvoice, ISuppliable {
         const workingTransaction = transaction || (await this.getTransaction());
         const code = goodCode(product);
         const quantity = product.quantity * goodQuantityCoeff(product);
+        const attribute = this.configService.get<string>('STORAGE_TYPE', 'SHOPSKLAD').toUpperCase() === 'SHOPSKLAD'
+            ? 'SHOP'
+            : 'SKLAD';
         const pickups = await workingTransaction.query(
-            'SELECT PODBPOSCODE, QUANSHOP FROM PODBPOS WHERE GOODSCODE = ? AND QUANSHOP >= ? AND SCODE IN (SELECT SCODE' +
+            `SELECT PODBPOSCODE, QUAN${attribute} FROM PODBPOS WHERE GOODSCODE = ? AND QUAN${attribute} >= ? AND SCODE IN (SELECT SCODE` +
                 ' FROM S WHERE S.STATUS = 1 AND S.PRIM CONTAINING ?)',
             [code, quantity, prim],
         );
@@ -406,7 +412,7 @@ export class Trade2006InvoiceService implements IInvoice, ISuppliable {
             return false;
         }
         // remove(this.fboErrors, { prim, code });
-        await workingTransaction.execute('UPDATE PODBPOS SET QUANSHOP = ? WHERE PODBPOSCODE = ?', [
+        await workingTransaction.execute(`UPDATE PODBPOS SET QUAN${attribute} = ? WHERE PODBPOSCODE = ?`, [
             pickups[0].QUANSHOP - quantity,
             pickups[0].PODBPOSCODE,
         ]);
@@ -416,9 +422,10 @@ export class Trade2006InvoiceService implements IInvoice, ISuppliable {
 
     async getLastIncomingPrice(id: string, transaction: FirebirdTransaction = null): Promise<number> {
         const workingTransaction = transaction || (await this.getTransaction());
+        const forPrih = this.configService.get<string>('STORAGE_TYPE', 'SHOPSKLAD').toUpperCase() === 'SHOPSKLAD' ? 1 : 0;
         const res = await workingTransaction.query(
-            'select first 1 * from trueprih where goodscode = ? and for_shop=1 order by data desc',
-            [id],
+            'select first 1 * from trueprih where goodscode = ? and for_shop = ? order by data desc',
+            [id, forPrih],
             !transaction,
         );
         return res ? res[0]?.PRICE : 0.01;
@@ -432,8 +439,11 @@ export class Trade2006InvoiceService implements IInvoice, ISuppliable {
     ): Promise<void> {
         const workingTransaction = transaction || (await this.getTransaction());
         const price = await this.getLastIncomingPrice(id, workingTransaction);
+        const procedure = this.configService.get<string>('STORAGE_TYPE', 'SHOPSKLAD').toUpperCase() === 'SHOPSKLAD'
+            ? 'deltaquanshopsklad4'
+            : 'deltaquansklad4';
         await workingTransaction.execute(
-            'execute procedure deltaquanshopsklad4 ?, ?, ?, ?, ?, null, 1',
+            `execute procedure ${procedure} ?, ?, ?, ?, ?, null, 1`,
             [id, Trade2006InvoiceService.name, -quantity, prim, price],
             !transaction,
         );

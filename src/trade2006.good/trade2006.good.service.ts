@@ -27,13 +27,14 @@ import { DateTime } from 'luxon';
 import { WbCardDto } from '../wb.card/dto/wb.card.dto';
 import { Cache } from '@nestjs/cache-manager';
 import { WbCommissionDto } from '../wb.card/dto/wb.commission.dto';
-import { WithTransactions } from "../helpers/mixin/transaction.mixin";
-import { PriceCalculationHelper } from "../helpers/price/price.calculation.helper";
+import { WithTransactions } from '../helpers/mixin/transaction.mixin';
+import { PriceCalculationHelper } from '../helpers/price/price.calculation.helper';
 
 @Injectable()
 export class Trade2006GoodService extends WithTransactions(class {}) implements IGood {
     private halfStoreMessages: string[] = [];
     private boundCheckMessages: string[] = [];
+    private storageTable: string;
     private readonly logger = new Logger(Trade2006GoodService.name);
     constructor(
         @Inject(FIREBIRD) private pool: FirebirdPool,
@@ -43,16 +44,28 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         private priceCalculationHelper: PriceCalculationHelper,
     ) {
         super();
+        this.storageTable = configService.get<string>('STORAGE_TYPE', 'SHOPSKLAD').toUpperCase();
     }
 
     async in(codes: string[], t: FirebirdTransaction = null): Promise<GoodDto[]> {
         if (codes.length === 0) return [];
         const transaction = t ?? (await this.pool.getTransaction());
         const response: any[] = await transaction.query(
-            `SELECT GOODS.GOODSCODE, SHOPSKLAD.QUAN, (SELECT SUM(QUANSHOP) + SUM(QUANSKLAD) from RESERVEDPOS where GOODS.GOODSCODE = RESERVEDPOS.GOODSCODE) AS RES, NAME.NAME AS NAME  FROM GOODS JOIN SHOPSKLAD ON GOODS.GOODSCODE = SHOPSKLAD.GOODSCODE JOIN NAME ON GOODS.NAMECODE = NAME.NAMECODE WHERE GOODS.GOODSCODE IN (${'?'
-                .repeat(codes.length)
-                .split('')
-                .join()})`,
+            `
+            SELECT
+                GOODS.GOODSCODE,
+                ${this.storageTable}.QUAN,
+                (
+                    SELECT SUM(QUANSHOP) + SUM(QUANSKLAD)
+                    FROM RESERVEDPOS
+                    WHERE GOODS.GOODSCODE = RESERVEDPOS.GOODSCODE
+                ) AS RES,
+                NAME.NAME AS NAME
+            FROM GOODS
+                JOIN ${this.storageTable} ON GOODS.GOODSCODE = ${this.storageTable}.GOODSCODE
+                JOIN NAME ON GOODS.NAMECODE = NAME.NAMECODE
+            WHERE GOODS.GOODSCODE IN (${codes.map(() => '?').join(',')})
+            `,
             codes,
             !t,
         );
@@ -64,13 +77,27 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
     async prices(codes: string[], t: FirebirdTransaction = null): Promise<GoodPriceDto[]> {
         if (codes.length === 0) return [];
         const transaction = t ?? (await this.pool.getTransaction());
+        const inCode = this.storageTable === 'SHOPSKLAD' ? 'shopincode' : 'skladincode';
         const response: any[] = await transaction.query(
-            'select g.goodscode, n.name, ' +
-                '( select sum(t.ost * t.price)/sum(t.ost) from (select price, quan -  COALESCE((select sum(quan) from fifo_t where fifo_t.pr_meta_in_id=pr_meta.id), 0) as ost' +
-                '  from pr_meta where pr_meta.goodscode=g.goodscode and pr_meta.shopincode is not null' +
-                '  and COALESCE((select sum(quan) from fifo_t where fifo_t.pr_meta_in_id=pr_meta.id), 0) < quan) t' +
-                ') as pric from goods g, name n ' +
-                `where g.namecode=n.namecode and g.goodscode in (${'?'.repeat(codes.length).split('').join()})`,
+            `SELECT
+                g.goodscode,
+                n.name,
+                (
+                    SELECT SUM(t.ost * t.price) / SUM(t.ost)
+                    FROM (
+                        SELECT
+                            price,
+                            quan - COALESCE((SELECT SUM(quan) FROM fifo_t WHERE fifo_t.pr_meta_in_id = pr_meta.id), 0) AS ost
+                        FROM pr_meta
+                        WHERE pr_meta.goodscode = g.goodscode
+                        AND pr_meta.${inCode} IS NOT NULL
+                        AND COALESCE((SELECT SUM(quan) FROM fifo_t WHERE fifo_t.pr_meta_in_id = pr_meta.id), 0) < quan
+                    ) t
+                ) AS pric
+            FROM goods g
+            JOIN name n ON g.namecode = n.namecode
+            WHERE g.goodscode IN (${codes.map(() => '?').join(',')})
+            `,
             codes,
             !t,
         );
@@ -183,6 +210,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
     }
 
     // Not used. Should be removed.
+    /*
     async updateCountForService(service: ICountUpdateable, args: any): Promise<number> {
         const serviceGoods = await service.getGoodIds(args);
         if (serviceGoods.goods.size === 0) return 0;
@@ -202,6 +230,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         }
         return count;
     }
+    */
 
     async updateCountForSkus(service: ICountUpdateable, skus: string[]): Promise<number> {
         const goodIds: string[] = skusToGoodIds(skus);
@@ -223,20 +252,27 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         return service.updateGoodCounts(updateGoods);
     }
 
-    async generatePercentsForService(service: IPriceUpdateable, skus: string[], goodPercentsDto?: Map<string, Partial<GoodPercentDto>>): Promise<GoodPercentDto[]> {
-        const { goods, percents, products } = await this.priceCalculationHelper.preparePricesContext(service, skus, this);
+    async generatePercentsForService(
+        service: IPriceUpdateable,
+        skus: string[],
+        goodPercentsDto?: Map<string, Partial<GoodPercentDto>>,
+    ): Promise<GoodPercentDto[]> {
+        const { goods, percents, products } = await this.priceCalculationHelper.preparePricesContext(
+            service,
+            skus,
+            this,
+        );
 
-        const filteredPercents = percents.filter(percent =>
-            products.some(product =>
-                isSkuMatch(product.getSku(), percent.offer_id.toString(), percent.pieces) &&
-                this.priceCalculationHelper.getIncomingPrice(product, goods) > 0
-            )
+        const filteredPercents = percents.filter((percent) =>
+            products.some(
+                (product) =>
+                    isSkuMatch(product.getSku(), percent.offer_id.toString(), percent.pieces) &&
+                    this.priceCalculationHelper.getIncomingPrice(product, goods) > 0,
+            ),
         );
 
         return filteredPercents.map((percent: GoodPercentDto) => {
-            const product = products.find((p) =>
-                isSkuMatch(p.getSku(), percent.offer_id.toString(), percent.pieces)
-            );
+            const product = products.find((p) => isSkuMatch(p.getSku(), percent.offer_id.toString(), percent.pieces));
             const sku = product.getSku();
             const dto = goodPercentsDto?.get(sku);
 
@@ -254,13 +290,10 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                 sum_pack: packing_price,
                 min_perc: 0,
                 perc: 0,
-                old_perc: 0
+                old_perc: 0,
             };
 
-            const { min_perc, perc, old_perc } = this.priceCalculationHelper.adjustPercents(
-                initialPrice,
-                service
-            );
+            const { min_perc, perc, old_perc } = this.priceCalculationHelper.adjustPercents(initialPrice, service);
 
             return {
                 ...percent,
@@ -274,7 +307,11 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         });
     }
 
-    async updatePercentsForService(service: IPriceUpdateable, skus: string[], goodPercentsDto?: Map<string, Partial<GoodPercentDto>>): Promise<void> {
+    async updatePercentsForService(
+        service: IPriceUpdateable,
+        skus: string[],
+        goodPercentsDto?: Map<string, Partial<GoodPercentDto>>,
+    ): Promise<void> {
         const updatedPercents = await this.generatePercentsForService(service, skus, goodPercentsDto);
         // Убираем дубли по GOODSCODE и PIECES, оставляя только первый
         const seen = new Set<string>();
@@ -288,7 +325,10 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
             try {
                 await this.setPercents(percent);
             } catch (err) {
-                this.logger?.error?.(`setPercents error for GOODSCODE=${percent.offer_id}, PIECES=${percent.pieces}: ${err?.message}`, err?.stack);
+                this.logger?.error?.(
+                    `setPercents error for GOODSCODE=${percent.offer_id}, PIECES=${percent.pieces}: ${err?.message}`,
+                    err?.stack,
+                );
                 // Продолжаем цикл
             }
         }
@@ -302,8 +342,16 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
      * @param {Map<string, UpdatePriceDto>} [prices] - An optional map of SKU to price update data (incoming prices).
      * @return {Promise<any>} Returns a promise that resolves with the result of the update operation, or null if no updates were needed.
      */
-    async updatePriceForService(service: IPriceUpdateable, skus: string[], prices?: Map<string, UpdatePriceDto>): Promise<any> {
-        const { goods, percents, products } = await this.priceCalculationHelper.preparePricesContext(service, skus, this);
+    async updatePriceForService(
+        service: IPriceUpdateable,
+        skus: string[],
+        prices?: Map<string, UpdatePriceDto>,
+    ): Promise<any> {
+        const { goods, percents, products } = await this.priceCalculationHelper.preparePricesContext(
+            service,
+            skus,
+            this,
+        );
         const updatePrices: UpdatePriceDto[] = [];
         products.forEach((product) => {
             const incoming_price = this.priceCalculationHelper.getIncomingPrice(product, goods, prices);
@@ -371,18 +419,22 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
             }),
         );
     }
+    
     @OnEvent('counts.changed', { async: true })
     async checkBounds(goods: GoodDto[]): Promise<void> {
         const t = await this.pool.getTransaction();
         const bounds = await t.query(
-            'select goodscode, sum(quan) as amount, count(quan) as quan, ' +
-                '(select bound_quan_shop from bound_quan where bound_quan.goodscode=pr_meta.goodscode) as bound ' +
-                'from pr_meta ' +
-                'where (shopoutcode is not null or podbposcode is not null or realpricefcode is not null) ' +
-                `and data >= ?  and data <= ? and goodscode in (${'?'
-                    .repeat(goods.length)
-                    .split('')
-                    .join()}) group by goodscode`,
+            `SELECT
+                goodscode,
+                sum(quan) as amount,
+                count(quan) as quan,
+                (SELECT bound_quan_shop FROM bound_quan WHERE bound_quan.goodscode = pr_meta.goodscode) as bound
+            FROM pr_meta
+            WHERE (shopoutcode IS NOT NULL OR podbposcode IS NOT NULL OR realpricefcode IS NOT NULL)
+                AND data >= ?
+                AND data <= ?
+                AND goodscode IN (${goods.map(() => '?').join(',')})
+            GROUP BY goodscode`,
             [DateTime.now().minus({ month: 1 }).toJSDate(), new Date(), ...goods.map((good) => good.code)],
             true,
         );

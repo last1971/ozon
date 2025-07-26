@@ -295,6 +295,9 @@ describe('PerformanceService', () => {
 
         describe('getCampaignIds', () => {
             it('should return array of valid campaign IDs', async () => {
+                service['ozon'] = {
+                    PERFOMACE_CAMPAIGN_IDS: '123,456,789'
+                };
                 const ids = await service['getCampaignIds']();
                 expect(ids).toEqual([123, 456, 789]);
             });
@@ -311,6 +314,12 @@ describe('PerformanceService', () => {
                 service['ozon'] = {
                     PERFOMACE_CAMPAIGN_IDS: ''
                 };
+                const ids = await service['getCampaignIds']();
+                expect(ids).toEqual([]);
+            });
+
+            it('should return empty array if PERFOMACE_CAMPAIGN_IDS is undefined', async () => {
+                service['ozon'] = {};
                 const ids = await service['getCampaignIds']();
                 expect(ids).toEqual([]);
             });

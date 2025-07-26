@@ -62,14 +62,20 @@ export class OzonApiService {
                       }))
                       .pipe(
                           catchError(async (error: AxiosError) => {
-                              this.logger.error(error.message + ' ' + error?.response?.data['message']);
-                              return {
-                                  result: null,
-                                  error: { service_message: error.message, message: error?.response?.data['message'] },
-                              };
+                              return this.handleApiError(error, ozon.URL + name, 'POST', options, headers);
                           }),
                       ),
               );
+    }
+
+    private handleApiError(error: AxiosError, url: string, method: string, body: any, headers: any) {
+        this.logger.error(
+            `${error.message} ${error?.response?.data['message']} | URL: ${url} | Method: ${method} | Body: ${JSON.stringify(body)} | Headers: ${JSON.stringify(headers)}`
+        );
+        return {
+            result: null,
+            error: { service_message: error.message, message: error?.response?.data['message'] },
+        };
     }
 
     /**

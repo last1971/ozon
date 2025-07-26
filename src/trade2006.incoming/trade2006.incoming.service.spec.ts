@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { Trade2006IncomingService } from './trade2006.incoming.service';
 import { FIREBIRD } from '../firebird/firebird.module';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { ConfigService } from '@nestjs/config';
 
 describe('Trade2006IncomingService', () => {
     let service: Trade2006IncomingService;
@@ -24,6 +25,15 @@ describe('Trade2006IncomingService', () => {
                 {
                     provide: EventEmitter2,
                     useValue: eventEmitterMock,
+                },
+                {
+                    provide: ConfigService,
+                    useValue: {
+                        get: (key: string) => {
+                            if (key === 'STORAGE_TYPE') return 'SHOPSKLAD';
+                            return null;
+                        },
+                    },
                 },
             ],
         }).compile();
@@ -74,8 +84,8 @@ describe('Trade2006IncomingService', () => {
     describe('checkNewGoods', () => {
         it('should emit event with array of GOODSCODE when new records found', async () => {
             const newRecords = [
-                { SHOPINCODE: 125, GOODSCODE: 'A001' },
-                { SHOPINCODE: 126, GOODSCODE: 'B002' },
+                { CODE: 125, GOODSCODE: 'A001' },
+                { CODE: 126, GOODSCODE: 'B002' },
             ];
 
             const query = jest.fn().mockReturnValue(newRecords);
@@ -91,7 +101,7 @@ describe('Trade2006IncomingService', () => {
             await service.checkNewGoods();
 
             expect(query).toHaveBeenCalledWith(
-                'SELECT SHOPINCODE, GOODSCODE FROM SHOPIN WHERE SHOPINCODE > ? ORDER BY SHOPINCODE',
+                'SELECT SHOPINCODE AS CODE, GOODSCODE FROM SHOPIN WHERE SHOPINCODE > ? ORDER BY SHOPINCODE',
                 [124]
             );
 
@@ -116,7 +126,7 @@ describe('Trade2006IncomingService', () => {
             await service.checkNewGoods();
 
             expect(query).toHaveBeenCalledWith(
-                'SELECT SHOPINCODE, GOODSCODE FROM SHOPIN WHERE SHOPINCODE > ? ORDER BY SHOPINCODE',
+                'SELECT SHOPINCODE AS CODE, GOODSCODE FROM SHOPIN WHERE SHOPINCODE > ? ORDER BY SHOPINCODE',
                 [124]
             );
 

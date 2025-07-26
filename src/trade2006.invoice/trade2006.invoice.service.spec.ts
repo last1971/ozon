@@ -34,7 +34,12 @@ describe('Trade2006InvoiceService', () => {
                 },
                 {
                     provide: ConfigService,
-                    useValue: { get },
+                    useValue: { 
+                        get: (key: string, defaultValue?: any) => {
+                            if (key === 'STORAGE_TYPE') return defaultValue || 'SHOPSKLAD';
+                            return get(key, defaultValue);
+                        }
+                    },
                 },
                 {
                     provide: EventEmitter2,
@@ -157,7 +162,7 @@ describe('Trade2006InvoiceService', () => {
     it('Test pickupInvoice', async () => {
         await service.pickupInvoice({ id: 1, date: new Date(), remark: '1', buyerId: 1, status: 3 });
         expect(execute.mock.calls[0]).toEqual([
-            'UPDATE PODBPOS SET QUANSHOP = QUANSHOPNEED WHERE SCODE = ?',
+            'UPDATE PODBPOS SET QUANSHOP= QUANSHOPNEED WHERE SCODE = ?',
             [1],
             true,
         ]);
@@ -307,8 +312,8 @@ describe('Trade2006InvoiceService', () => {
     it('getLastIncomingPrice', async () => {
         await service.getLastIncomingPrice('111', null);
         expect(query.mock.calls[0]).toEqual([
-            'select first 1 * from trueprih where goodscode = ? and for_shop=1 order by data desc',
-            ['111'],
+            'select first 1 * from trueprih where goodscode = ? and for_shop = ? order by data desc',
+            ['111', 1],
             true,
         ]);
     });

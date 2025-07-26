@@ -196,6 +196,18 @@ class EnvironmentVariables {
     @IsOptional()
     @IsNumber()
     MAX_DISCOUNT_PERCENT: number;
+
+    @IsOptional()
+    @IsNumber()
+    FIRM_ID: number;
+
+    @IsOptional()
+    @IsNumber()
+    STAFF_ID: number;
+
+    @IsOptional()
+    @IsString()
+    STORAGE_TYPE: string;
 }
 
 export function configValidate(config: Record<string, unknown>) {

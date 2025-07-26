@@ -14,7 +14,7 @@ import { VaultService } from 'vault-module/lib/vault.service';
 import { UpdateBusinessOfferPriceDto } from './dto/update.business.offer.price.dto';
 import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
 import Excel from 'exceljs';
-import { GoodServiceEnum } from 'src/good/good.service.enum';
+import { GoodServiceEnum } from '../good/good.service.enum';
 @Injectable()
 export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
     private logger = new Logger(YandexPriceService.name);
