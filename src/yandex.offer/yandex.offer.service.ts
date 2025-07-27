@@ -10,13 +10,13 @@ export class YandexOfferService extends AbstractOfferService implements OnModule
         throw new Error('Method not implemented.');
     }
     async onModuleInit(): Promise<any> {
+        const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
+        if (!services.includes(GoodServiceEnum.YANDEX)) {
+            return;
+        }
         const yandex = await this.vaultService.get('yandex-seller');
         this.campaignId = parseInt(yandex['electronica-company'] as string);
         this.warehouseId = parseInt(yandex['electronica-fbs-tomsk'] as string);
-        const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
-        await this.loadSkuList(
-            this.configService.get<Environment>('NODE_ENV') === 'production' &&
-                services.includes(GoodServiceEnum.YANDEX),
-        );
+        await this.loadSkuList(this.configService.get<Environment>('NODE_ENV') === 'production');
     }
 }

@@ -3,17 +3,23 @@ import { WithTransactions } from "../helpers/mixin/transaction.mixin";
 import { FIREBIRD } from "../firebird/firebird.module";
 import { FirebirdPool } from "ts-firebird";
 import { EventEmitter2 } from "@nestjs/event-emitter";
+import { ConfigService } from "@nestjs/config";
 
 @Injectable()
 export class Trade2006IncomingService extends WithTransactions(class {}) implements OnModuleInit {
     private readonly logger = new Logger(Trade2006IncomingService.name);
     private lastShopInCode: number = 0;
+    private storageTable: string;
 
     constructor(
         @Inject(FIREBIRD) private pool: FirebirdPool,
-        private eventEmitter: EventEmitter2
+        private eventEmitter: EventEmitter2,
+        private configService: ConfigService,
     ) {
         super();
+        this.storageTable = configService.get<string>('STORAGE_TYPE', 'SHOPSKLAD').toUpperCase() === 'SHOPSKLAD'
+            ? 'SHOPIN'
+            : 'SKLADIN';
     }
 
     // Инициализация при запуске модуля
@@ -21,7 +27,7 @@ export class Trade2006IncomingService extends WithTransactions(class {}) impleme
         // Получение максимального SHOPINCODE при старте
         await this.fetchLastShopInCode();
         // this.lastShopInCode = 415250;
-        this.logger.log(`Начальный SHOPINCODE: ${this.lastShopInCode}`);
+        this.logger.log(`Начальный ${this.storageTable}CODE: ${this.lastShopInCode}`);
     }
 
 
@@ -29,7 +35,7 @@ export class Trade2006IncomingService extends WithTransactions(class {}) impleme
     private async fetchLastShopInCode(): Promise<void> {
         return this.withTransaction(async (transaction) => {
             const result = await transaction.query(
-                'SELECT MAX(SHOPINCODE) AS MAX_CODE FROM SHOPIN', []
+                `SELECT MAX(${this.storageTable}CODE) AS MAX_CODE FROM ${this.storageTable}`, []
             );
 
             if (result && result[0] && result[0].MAX_CODE !== null) {
@@ -39,12 +45,12 @@ export class Trade2006IncomingService extends WithTransactions(class {}) impleme
     }
 
     async checkNewGoods() {
-        this.logger.debug(`Проверка новых товаров. Текущий SHOPINCODE: ${this.lastShopInCode}`);
+        this.logger.debug(`Проверка новых товаров. Текущий ${this.storageTable}CODE: ${this.lastShopInCode}`);
 
         return this.withTransaction(async (transaction) => {
             // Получаем новые записи с SHOPINCODE больше сохраненного
             const newRecords = await transaction.query(
-                'SELECT SHOPINCODE, GOODSCODE FROM SHOPIN WHERE SHOPINCODE > ? ORDER BY SHOPINCODE',
+                `SELECT ${this.storageTable}CODE AS CODE, GOODSCODE FROM ${this.storageTable} WHERE ${this.storageTable}CODE > ? ORDER BY ${this.storageTable}CODE`,
                 [this.lastShopInCode],
             );
 
@@ -58,9 +64,9 @@ export class Trade2006IncomingService extends WithTransactions(class {}) impleme
                 this.eventEmitter.emit('incoming.goods', goodsCodes);
 
                 // Обновляем lastShopInCode до максимального значения
-                this.lastShopInCode = Math.max(...newRecords.map(record => Number(record.SHOPINCODE)));
+                this.lastShopInCode = Math.max(...newRecords.map(record => Number(record.CODE)));
 
-                this.logger.debug(`Обновлен SHOPINCODE до: ${this.lastShopInCode}`);
+                this.logger.debug(`Обновлен ${this.storageTable}CODE до: ${this.lastShopInCode}`);
             } else {
                 this.logger.debug('Новых записей не найдено');
             }

@@ -28,12 +28,13 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
         this.productInfos = new Map<string, ProductInfoDto>();
     }
     async onModuleInit(): Promise<any> {
+        const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
+        if (!services.includes(GoodServiceEnum.WB)) {
+            return;
+        }
         const wb = await this.vault.get('wildberries');
         this.warehouseId = wb.WAREHOUSE_ID as number;
-        const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
-        await this.loadSkuList(
-            this.configService.get<Environment>('NODE_ENV') === 'production' && services.includes(GoodServiceEnum.WB),
-        );
+        await this.loadSkuList(this.configService.get<Environment>('NODE_ENV') === 'production');
     }
 
     public getNmID(sku: string): string {

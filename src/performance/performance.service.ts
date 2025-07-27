@@ -145,9 +145,11 @@ export class PerformanceService implements OnModuleInit {
     }
 
     private async getCampaignIds(): Promise<number[]> {
-        return this.ozon.PERFOMACE_CAMPAIGN_IDS.split(',')
-            .map((id) => parseInt(id, 10))
-            .filter(id => !isNaN(id));
+        return this.ozon.PERFOMACE_CAMPAIGN_IDS
+            ? this.ozon.PERFOMACE_CAMPAIGN_IDS.split(',')
+                  .map((id) => parseInt(id, 10))
+                  .filter((id) => !isNaN(id))
+            : [];
     }
 
     @Cron(CronExpression.EVERY_DAY_AT_MIDNIGHT, { name: 'enableOzonCampaigns' })

@@ -14,6 +14,7 @@ import { VaultService } from 'vault-module/lib/vault.service';
 import { UpdateBusinessOfferPriceDto } from './dto/update.business.offer.price.dto';
 import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
 import Excel from 'exceljs';
+import { GoodServiceEnum } from '../good/good.service.enum';
 @Injectable()
 export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
     private logger = new Logger(YandexPriceService.name);
@@ -26,6 +27,10 @@ export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
         @Inject(GOOD_SERVICE) private goodService: IGood,
     ) {}
     async onModuleInit(): Promise<void> {
+        const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
+        if (!services.includes(GoodServiceEnum.YANDEX)) {
+            return;
+        }
         const yandex = await this.vaultService.get('yandex-seller');
         this.businessId = yandex['electronica-business'] as string;
     }
