@@ -16,6 +16,8 @@ describe('Trade2006GoodService', () => {
     const query = jest.fn().mockReturnValue([{ GOODSCODE: 1, QUAN: 2, RES: 1, PIECES: 1 }]);
     const execute = jest.fn();
     const get = jest.fn();
+    const set = jest.fn();
+    const del = jest.fn();
     const getProductsWithCoeffsFirst = {
         getSku: () => '1',
         getTransMaxAmount: () => 40,
@@ -115,7 +117,7 @@ describe('Trade2006GoodService', () => {
                 },
                 {
                     provide: Cache,
-                    useValue: { get },
+                    useValue: { get, set, del },
                 },
                 {
                     provide: PriceCalculationHelper,
@@ -245,6 +247,9 @@ describe('Trade2006GoodService', () => {
     });
 
     it('checkBounds', async () => {
+        // Настройка мока кэша - возвращаем null для всех ключей (кэш пустой)
+        get.mockResolvedValue(null);
+        
         query
             .mockResolvedValueOnce([
                 { QUAN: 1, AMOUNT: 1, BOUND: null, GOODSCODE: '1' },
@@ -271,6 +276,15 @@ describe('Trade2006GoodService', () => {
             { code: '2', name: '222', quantity: 2, reserve: null },
             { QUAN: 2, AMOUNT: 10, BOUND: 5, GOODSCODE: '2' },
         ]);
+        
+        // Настройка мока кэша для второго вызова - возвращаем true для ключей, которые были записаны
+        get.mockImplementation((key: string) => {
+            if (key === 'half_store:2' || key === 'bound_check:2') {
+                return Promise.resolve(true);
+            }
+            return Promise.resolve(null);
+        });
+        
         await service.checkBounds([
             { code: '1', name: '111', quantity: 1, reserve: 1 },
             { code: '2', name: '222', quantity: 2, reserve: null },

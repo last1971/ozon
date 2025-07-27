@@ -32,8 +32,7 @@ import { PriceCalculationHelper } from '../helpers/price/price.calculation.helpe
 
 @Injectable()
 export class Trade2006GoodService extends WithTransactions(class {}) implements IGood {
-    private halfStoreMessages: string[] = [];
-    private boundCheckMessages: string[] = [];
+
     private storageTable: string;
     private readonly logger = new Logger(Trade2006GoodService.name);
     constructor(
@@ -438,26 +437,30 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
             [DateTime.now().minus({ month: 1 }).toJSDate(), new Date(), ...goods.map((good) => good.code)],
             true,
         );
-        bounds.forEach((bound) => {
+        for (const bound of bounds) {
             const good: GoodDto = find(goods, { code: bound.GOODSCODE });
             const quantity = good.quantity - (good.reserve ?? 0);
+            const halfStoreKey = `half_store:${good.code}`;
+            const boundCheckKey = `bound_check:${good.code}`;
+            
             if (quantity < bound.AMOUNT / 2 && bound.QUAN > 1) {
-                if (!this.halfStoreMessages.includes(good.code)) {
+                if (!(await this.cacheManager.get(halfStoreKey))) {
                     this.eventEmitter.emit('half.store', good, bound);
-                    this.halfStoreMessages.push(good.code);
+                    await this.cacheManager.set(halfStoreKey, true);
                 }
             } else {
-                remove(this.halfStoreMessages, (code) => code === good.code);
+                await this.cacheManager.del(halfStoreKey);
             }
-            if (bound.BOUND !== null && quantity <= bound.BOUND) {
-                if (!this.boundCheckMessages.includes(good.code)) {
+            
+            if (bound.BOUND !== null && quantity <= bound.BOUND) {    
+                if (!(await this.cacheManager.get(boundCheckKey))) {
                     this.eventEmitter.emit('bound.check', good, bound);
-                    this.boundCheckMessages.push(good.code);
+                    await this.cacheManager.set(boundCheckKey, true);
                 }
             } else {
-                remove(this.boundCheckMessages, (code) => code === good.code);
+                await this.cacheManager.del(boundCheckKey);
             }
-        });
+        }
     }
 
     async updateWbCategory(wbCard: WbCardDto): Promise<void> {
