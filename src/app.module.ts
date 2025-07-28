@@ -86,7 +86,8 @@ import JSONbig from 'json-bigint';
             inject: [ConfigService],
         }),
         ServeStaticModule.forRoot({
-            rootPath: join(__dirname, '..', 'admin-panel/dist'),
+            //rootPath: join(__dirname, '..', 'admin-panel/dist'),
+            rootPath: join(process.cwd(), 'admin-panel/dist'),
         }),
         ScheduleModule.forRoot(),
         OzonApiModule,

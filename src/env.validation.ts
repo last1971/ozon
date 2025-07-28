@@ -208,6 +208,14 @@ class EnvironmentVariables {
     @IsOptional()
     @IsString()
     STORAGE_TYPE: string;
+
+    @IsOptional()
+    @IsNumber()
+    VAT_RATE: number;
+
+    @IsOptional()
+    @IsNumber()
+    PROFIT_TAX_RATE: number;
 }
 
 export function configValidate(config: Record<string, unknown>) {
