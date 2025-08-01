@@ -24,9 +24,13 @@ import { GoodServiceEnum } from '../good/good.service.enum';
 import { SupplyPositionDto } from '../supply/dto/supply.position.dto';
 import { IProductable } from '../interfaces/i.productable';
 import { InvoiceUpdateDto } from "../invoice/dto/invoice.update.dto";
+import { TransferOutDTO } from "./dto/transfer.out.dto";
+import { TransferOutLineDTO } from "./dto/transfer.out.line.dto";
+import { plainToClass } from "class-transformer";
+import { WithTransactions } from "../helpers/mixin/transaction.mixin";
 
 @Injectable()
-export class Trade2006InvoiceService implements IInvoice, ISuppliable {
+export class Trade2006InvoiceService extends WithTransactions(class {}) implements IInvoice, ISuppliable {
     private logger = new Logger(Trade2006InvoiceService.name);
     // private fboErrors: { prim: string; code: string }[] = [];
     constructor(
@@ -34,7 +38,9 @@ export class Trade2006InvoiceService implements IInvoice, ISuppliable {
         private configService: ConfigService,
         private eventEmitter: EventEmitter2,
         private cacheManager: Cache,
-    ) {}
+    ) {
+        super();
+    }
 
     async getTransaction(): Promise<FirebirdTransaction> {
         return this.pool.getTransaction();
@@ -531,4 +537,104 @@ export class Trade2006InvoiceService implements IInvoice, ISuppliable {
             };
         });
     }
+
+    async getTransferOutByNumberAndDate(number: number, date: string, existingTransaction: FirebirdTransaction = null): Promise<TransferOutDTO> {
+        return this.withTransaction(async (transaction) => {
+            const res = await transaction.query(
+                'SELECT * FROM SF WHERE NSF = ? AND CAST(DATA AS DATE) = CAST(? AS DATE)',
+                [number, date],
+            );
+            if (res.length === 0) {
+                return null;
+            }
+            return plainToClass(TransferOutDTO, res[0]);
+        }, existingTransaction);
+    }
+
+    async getTransferOutLines(transferOutId: number, existingTransaction: FirebirdTransaction = null): Promise<TransferOutLineDTO[]> {
+        return this.withTransaction(async (transaction) => {
+            const res = await transaction.query(
+                'SELECT * FROM REALPRICEF WHERE SFCODE = ?',
+                [transferOutId],
+            );
+            return res.map(record => plainToClass(TransferOutLineDTO, record));
+        }, existingTransaction);
+    }
+
+    distributeAmountProportionally(amount: number, lines: TransferOutLineDTO[]): TransferOutLineDTO[] {
+        if (lines.length === 0) {
+            return [];
+        }
+
+        // Берем абсолютные значения сумм для пропорционального распределения
+        const totalCurrentAmount = lines.reduce((sum, line) => sum + Math.abs(line.totalAmount), 0);
+        
+        if (totalCurrentAmount <= 0) {
+            return lines;
+        }
+
+        return lines.map(line => ({
+            ...line,
+            totalAmount: (amount * Math.abs(line.totalAmount)) / totalCurrentAmount
+        }));
+    }
+
+    async updateTransferOutLinesAmounts(lines: TransferOutLineDTO[], existingTransaction: FirebirdTransaction = null): Promise<void> {
+        return this.withTransaction(async (transaction) => {
+            for (const line of lines) {
+                // Обновляем сумму в строке УПД (REALPRICEF)
+                await transaction.execute(
+                    'UPDATE REALPRICEF SET SUMMAP = ? WHERE REALPRICEFCODE = ?',
+                    [line.totalAmount, line.id]
+                );
+
+                // Если есть связь со строкой счета, обновляем и её
+                if (line.invoiceLineId) {
+                    await transaction.execute(
+                        'UPDATE REALPRICE SET SUMMAP = ? WHERE REALPRICECODE = ?',
+                        [line.totalAmount, line.invoiceLineId]
+                    );
+                }
+            }
+        }, existingTransaction);
+    }
+
+    async distributePaymentByUPD(updNumber: number, updDate: string, amount: number): Promise<ResultDto> {
+        return this.withTransaction(async (transaction) => {
+            try {
+                // 1. Получаем УПД
+                const transferOut = await this.getTransferOutByNumberAndDate(updNumber, updDate, transaction);
+                if (!transferOut) {
+                    throw new Error('404: УПД не найден');
+                }
+
+                // 2. Получаем строки УПД
+                const transferOutLines = await this.getTransferOutLines(transferOut.id, transaction);
+                if (transferOutLines.length === 0) {
+                    throw new Error('404: Строки УПД не найдены');
+                }
+
+                // 3. Меняем сумму (пропорционально распределяем)
+                const updatedLines = this.distributeAmountProportionally(amount, transferOutLines);
+
+                // 4. Сохраняем сумму в строки
+                await this.updateTransferOutLinesAmounts(updatedLines, transaction);
+
+                // 5. Обновляем сумму в деньгах
+                await this.upsertInvoiceCashFlow(
+                    { id: transferOut.invoiceId, buyerId: transferOut.buyerId, date: transferOut.date, remark: '', status: 0 },
+                    amount,
+                    transaction
+                );
+
+                return { isSuccess: true, message: 'Платеж успешно распределен' };
+            } catch (error) {
+                if (error.message.startsWith('404:')) {
+                    return { isSuccess: false, message: error.message };
+                }
+                return { isSuccess: false, message: `Ошибка при распределении платежа: ${error.message}` };
+            }
+        });
+    }
+
 }
