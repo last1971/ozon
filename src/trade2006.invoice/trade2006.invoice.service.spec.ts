@@ -118,6 +118,197 @@ describe('Trade2006InvoiceService', () => {
         expect(res).toBeFalsy();
         expect(rollback.mock.calls).toHaveLength(1);
     });
+
+    it('getTransferOutLines - found', async () => {
+        const mockRecords = [
+            {
+                REALPRICEFCODE: 1,
+                SFCODE: 123,
+                GOODSCODE: 456,
+                PRICE: 100.50,
+                QUAN: 5,
+                OPRIH: 1,
+                REALPRICECODE: 789,
+                DIRECTSKLADNEED: 0,
+                DIRECTSHOPNEED: 0,
+                DIRECTSHOP: 0,
+                DIRECTSKLAD: 0,
+                GTD: 'GTD123',
+                STRANA: 'Russia',
+                SUMMAP: 502.50,
+                SECONDINSERT: 0,
+                MARK1C: 0,
+                USERNAME: 'test_user',
+                SHOP_SALED_NAKL_D_ID: 0,
+                INSERT_ATTR: 'test_insert',
+                MODIFY_ATTR: 'test_modify'
+            },
+            {
+                REALPRICEFCODE: 2,
+                SFCODE: 123,
+                GOODSCODE: 789,
+                PRICE: 200.00,
+                QUAN: 2,
+                OPRIH: 1,
+                REALPRICECODE: 790,
+                DIRECTSKLADNEED: 0,
+                DIRECTSHOPNEED: 0,
+                DIRECTSHOP: 0,
+                DIRECTSKLAD: 0,
+                GTD: 'GTD456',
+                STRANA: 'Germany',
+                SUMMAP: 400.00,
+                SECONDINSERT: 0,
+                MARK1C: 0,
+                USERNAME: 'test_user',
+                SHOP_SALED_NAKL_D_ID: 0,
+                INSERT_ATTR: 'test_insert',
+                MODIFY_ATTR: 'test_modify'
+            }
+        ];
+        query.mockResolvedValueOnce(mockRecords);
+
+        const result = await service.getTransferOutLines(123);
+
+        expect(result).toBeDefined();
+        expect(result).toHaveLength(2);
+        expect(result[0].id).toBe(1);
+        expect(result[0].transferOutId).toBe(123);
+        expect(result[0].goodId).toBe(456);
+        expect(result[0].price).toBe(100.50);
+        expect(result[0].quantity).toBe(5);
+        expect(result[0].totalAmount).toBe(502.50);
+        expect(result[1].id).toBe(2);
+        expect(result[1].goodId).toBe(789);
+        expect(result[1].price).toBe(200.00);
+        expect(query).toHaveBeenCalledWith(
+            'SELECT * FROM REALPRICEF WHERE SFCODE = ?',
+            [123]
+        );
+    });
+
+    it('getTransferOutLines - empty', async () => {
+        query.mockResolvedValueOnce([]);
+
+        const result = await service.getTransferOutLines(999);
+
+        expect(result).toBeDefined();
+        expect(result).toHaveLength(0);
+        expect(query).toHaveBeenCalledWith(
+            'SELECT * FROM REALPRICEF WHERE SFCODE = ?',
+            [999]
+        );
+    });
+
+    it('updateTransferOutLinesAmounts - success', async () => {
+        const mockLines = [
+            {
+                id: 1,
+                transferOutId: 123,
+                goodId: '456',
+                price: 100.00,
+                quantity: 2,
+                totalAmount: 250.00,
+                operationType: 1,
+                invoiceLineId: 10,
+                directWarehouseNeed: 0,
+                directShopNeed: 0,
+                directShop: 0,
+                directWarehouse: 0,
+                gtd: '',
+                country: '',
+                secondInsert: 0,
+                mark1c: 0,
+                username: '',
+                shopSaledNaklDId: 0,
+                insertAttr: '',
+                modifyAttr: ''
+            },
+            {
+                id: 2,
+                transferOutId: 123,
+                goodId: '789',
+                price: 150.00,
+                quantity: 1,
+                totalAmount: 150.00,
+                operationType: 1,
+                invoiceLineId: 11,
+                directWarehouseNeed: 0,
+                directShopNeed: 0,
+                directShop: 0,
+                directWarehouse: 0,
+                gtd: '',
+                country: '',
+                secondInsert: 0,
+                mark1c: 0,
+                username: '',
+                shopSaledNaklDId: 0,
+                insertAttr: '',
+                modifyAttr: ''
+            }
+        ];
+
+        await service.updateTransferOutLinesAmounts(mockLines);
+
+        // Проверяем обновления строк УПД
+        expect(execute).toHaveBeenCalledWith(
+            'UPDATE REALPRICEF SET SUMMAP = ? WHERE REALPRICEFCODE = ?',
+            [250.00, 1]
+        );
+        expect(execute).toHaveBeenCalledWith(
+            'UPDATE REALPRICEF SET SUMMAP = ? WHERE REALPRICEFCODE = ?',
+            [150.00, 2]
+        );
+
+        // Проверяем обновления строк счета
+        expect(execute).toHaveBeenCalledWith(
+            'UPDATE REALPRICE SET SUMMAP = ? WHERE REALPRICECODE = ?',
+            [250.00, 10]
+        );
+        expect(execute).toHaveBeenCalledWith(
+            'UPDATE REALPRICE SET SUMMAP = ? WHERE REALPRICECODE = ?',
+            [150.00, 11]
+        );
+    });
+
+    it('updateTransferOutLinesAmounts - without invoice lines', async () => {
+        const mockLines = [
+            {
+                id: 1,
+                transferOutId: 123,
+                goodId: '456',
+                price: 100.00,
+                quantity: 2,
+                totalAmount: 250.00,
+                operationType: 1,
+                invoiceLineId: null,
+                directWarehouseNeed: 0,
+                directShopNeed: 0,
+                directShop: 0,
+                directWarehouse: 0,
+                gtd: '',
+                country: '',
+                secondInsert: 0,
+                mark1c: 0,
+                username: '',
+                shopSaledNaklDId: 0,
+                insertAttr: '',
+                modifyAttr: ''
+            }
+        ];
+
+        await service.updateTransferOutLinesAmounts(mockLines);
+
+        // Проверяем обновление только строки УПД
+        expect(execute).toHaveBeenCalledWith(
+            'UPDATE REALPRICEF SET SUMMAP = ? WHERE REALPRICEFCODE = ?',
+            [250.00, 1]
+        );
+
+        // Проверяем что строка счета не обновлялась
+        expect(execute).toHaveBeenCalledTimes(1);
+    });
+
     it('test isExists', async () => {
         query
             .mockResolvedValueOnce([
@@ -466,6 +657,347 @@ describe('Trade2006InvoiceService', () => {
             expect(result).toHaveLength(0);
             expect(query).toHaveBeenCalledWith('SELECT * FROM REALPRICE WHERE SCODE = ?', [123], true);
             expect(mockProductable.infoList).toHaveBeenCalledWith([]);
+        });
+    });
+
+    describe('distributePaymentByUPD', () => {
+        beforeEach(() => {
+            query.mockClear();
+            execute.mockClear();
+            commit.mockClear();
+            rollback.mockClear();
+        });
+
+        it('должен успешно распределить платеж по УПД', async () => {
+            // Подготовка данных
+            const updNumber = 1;
+            const updDate = '2024-01-01';
+            const amount = 1000;
+
+            const mockTransferOut = {
+                SFCODE: 1,
+                POKUPATCODE: 123,
+                SCODE: 456,
+                DATA: new Date(updDate),
+                NSF: updNumber
+            };
+
+            const mockTransferOutLines = [
+                { 
+                    REALPRICEFCODE: 1, 
+                    SFCODE: 1, 
+                    GOODSCODE: 'GOOD1', 
+                    PRICE: 100, 
+                    QUAN: 5, 
+                    OPRIH: 1, 
+                    REALPRICECODE: 10, 
+                    DIRECTSKLADNEED: 0, 
+                    DIRECTSHOPNEED: 0, 
+                    DIRECTSHOP: 0, 
+                    DIRECTSKLAD: 0, 
+                    GTD: '', 
+                    STRANA: '', 
+                    SUMMAP: 500, 
+                    SECONDINSERT: 0, 
+                    MARK1C: 0, 
+                    USERNAME: '', 
+                    SHOP_SALED_NAKL_D_ID: 0, 
+                    INSERT_ATTR: '', 
+                    MODIFY_ATTR: ''
+                },
+                { 
+                    REALPRICEFCODE: 2, 
+                    SFCODE: 1, 
+                    GOODSCODE: 'GOOD2', 
+                    PRICE: 60, 
+                    QUAN: 5, 
+                    OPRIH: 1, 
+                    REALPRICECODE: 11, 
+                    DIRECTSKLADNEED: 0, 
+                    DIRECTSHOPNEED: 0, 
+                    DIRECTSHOP: 0, 
+                    DIRECTSKLAD: 0, 
+                    GTD: '', 
+                    STRANA: '', 
+                    SUMMAP: 300, 
+                    SECONDINSERT: 0, 
+                    MARK1C: 0, 
+                    USERNAME: '', 
+                    SHOP_SALED_NAKL_D_ID: 0, 
+                    INSERT_ATTR: '', 
+                    MODIFY_ATTR: ''
+                },
+                { 
+                    REALPRICEFCODE: 3, 
+                    SFCODE: 1, 
+                    GOODSCODE: 'GOOD3', 
+                    PRICE: 40, 
+                    QUAN: 5, 
+                    OPRIH: 1, 
+                    REALPRICECODE: null, 
+                    DIRECTSKLADNEED: 0, 
+                    DIRECTSHOPNEED: 0, 
+                    DIRECTSHOP: 0, 
+                    DIRECTSKLAD: 0, 
+                    GTD: '', 
+                    STRANA: '', 
+                    SUMMAP: 200, 
+                    SECONDINSERT: 0, 
+                    MARK1C: 0, 
+                    USERNAME: '', 
+                    SHOP_SALED_NAKL_D_ID: 0, 
+                    INSERT_ATTR: '', 
+                    MODIFY_ATTR: ''
+                }
+            ];
+
+            // Мокаем получение УПД
+            query.mockResolvedValueOnce([mockTransferOut]);
+            
+            // Мокаем получение строк УПД
+            query.mockResolvedValueOnce(mockTransferOutLines);
+
+            // Мокаем обновление сумм в строках
+            execute.mockResolvedValue(undefined);
+
+            // Выполняем тест
+            const result = await service.distributePaymentByUPD(updNumber, updDate, amount);
+
+            // Проверяем результат
+            expect(result).toEqual({
+                isSuccess: true,
+                message: 'Платеж успешно распределен'
+            });
+
+            // Проверяем что методы были вызваны
+            expect(query).toHaveBeenCalledTimes(2);
+            expect(execute).toHaveBeenCalledTimes(6); // 3 строки УПД + 2 строки счета + 1 cash flow
+            expect(commit).toHaveBeenCalled();
+        });
+
+        it('должен вернуть ошибку 404 если УПД не найден', async () => {
+            // Подготовка данных
+            const updNumber = 1;
+            const updDate = '2024-01-01';
+            const amount = 1000;
+
+            // Мокаем пустой результат для УПД
+            query.mockResolvedValueOnce([]);
+
+            // Выполняем тест
+            const result = await service.distributePaymentByUPD(updNumber, updDate, amount);
+
+            // Проверяем результат
+            expect(result).toEqual({
+                isSuccess: false,
+                message: '404: УПД не найден'
+            });
+
+            // При ошибках 404 транзакция не откатывается, так как ошибка обрабатывается в catch
+            expect(rollback).not.toHaveBeenCalled();
+        });
+
+        it('должен вернуть ошибку 404 если строки УПД не найдены', async () => {
+            // Подготовка данных
+            const updNumber = 1;
+            const updDate = '2024-01-01';
+            const amount = 1000;
+
+            const mockTransferOut = {
+                SFCODE: 1,
+                POKUPATCODE: 123,
+                SCODE: 456,
+                DATA: new Date(updDate),
+                NSF: updNumber
+            };
+
+            // Мокаем получение УПД
+            query.mockResolvedValueOnce([mockTransferOut]);
+            
+            // Мокаем пустой результат для строк УПД
+            query.mockResolvedValueOnce([]);
+
+            // Выполняем тест
+            const result = await service.distributePaymentByUPD(updNumber, updDate, amount);
+
+            // Проверяем результат
+            expect(result).toEqual({
+                isSuccess: false,
+                message: '404: Строки УПД не найдены'
+            });
+
+            // При ошибках 404 транзакция не откатывается, так как ошибка обрабатывается в catch
+            expect(rollback).not.toHaveBeenCalled();
+        });
+
+        it('должен вернуть ошибку при проблемах с БД', async () => {
+            // Подготовка данных
+            const updNumber = 1;
+            const updDate = '2024-01-01';
+            const amount = 1000;
+
+            const mockTransferOut = {
+                SFCODE: 1,
+                POKUPATCODE: 123,
+                SCODE: 456,
+                DATA: new Date(updDate),
+                NSF: updNumber
+            };
+
+            const mockTransferOutLines = [
+                { 
+                    REALPRICEFCODE: 1, 
+                    SFCODE: 1, 
+                    GOODSCODE: 'GOOD1', 
+                    PRICE: 100, 
+                    QUAN: 5, 
+                    OPRIH: 1, 
+                    REALPRICECODE: 10, 
+                    DIRECTSKLADNEED: 0, 
+                    DIRECTSHOPNEED: 0, 
+                    DIRECTSHOP: 0, 
+                    DIRECTSKLAD: 0, 
+                    GTD: '', 
+                    STRANA: '', 
+                    SUMMAP: 500, 
+                    SECONDINSERT: 0, 
+                    MARK1C: 0, 
+                    USERNAME: '', 
+                    SHOP_SALED_NAKL_D_ID: 0, 
+                    INSERT_ATTR: '', 
+                    MODIFY_ATTR: ''
+                }
+            ];
+
+            // Мокаем успешные запросы
+            query.mockResolvedValueOnce([mockTransferOut]);
+            query.mockResolvedValueOnce(mockTransferOutLines);
+            
+            // Мокаем ошибку БД в execute
+            execute.mockRejectedValueOnce(new Error('Database connection failed'));
+
+            // Выполняем тест
+            const result = await service.distributePaymentByUPD(updNumber, updDate, amount);
+
+            // Проверяем результат
+            expect(result).toEqual({
+                isSuccess: false,
+                message: 'Ошибка при распределении платежа: Database connection failed'
+            });
+
+            // Ошибка обрабатывается в catch блоке, rollback не вызывается
+            expect(rollback).not.toHaveBeenCalled();
+        });
+
+        it('должен корректно распределять суммы пропорционально', async () => {
+            // Подготовка данных
+            const updNumber = 1;
+            const updDate = '2024-01-01';
+            const amount = 1000;
+
+            const mockTransferOut = {
+                SFCODE: 1,
+                POKUPATCODE: 123,
+                SCODE: 456,
+                DATA: new Date(updDate),
+                NSF: updNumber
+            };
+
+            // Мокаем данные из БД с правильными полями
+            const mockTransferOutLines = [
+                { 
+                    REALPRICEFCODE: 1, 
+                    SFCODE: 1, 
+                    GOODSCODE: 'GOOD1', 
+                    PRICE: 100, 
+                    QUAN: 5, 
+                    OPRIH: 1, 
+                    REALPRICECODE: 10, 
+                    DIRECTSKLADNEED: 0, 
+                    DIRECTSHOPNEED: 0, 
+                    DIRECTSHOP: 0, 
+                    DIRECTSKLAD: 0, 
+                    GTD: '', 
+                    STRANA: '', 
+                    SUMMAP: 500, 
+                    SECONDINSERT: 0, 
+                    MARK1C: 0, 
+                    USERNAME: '', 
+                    SHOP_SALED_NAKL_D_ID: 0, 
+                    INSERT_ATTR: '', 
+                    MODIFY_ATTR: ''
+                },
+                { 
+                    REALPRICEFCODE: 2, 
+                    SFCODE: 1, 
+                    GOODSCODE: 'GOOD2', 
+                    PRICE: 60, 
+                    QUAN: 5, 
+                    OPRIH: 1, 
+                    REALPRICECODE: 11, 
+                    DIRECTSKLADNEED: 0, 
+                    DIRECTSHOPNEED: 0, 
+                    DIRECTSHOP: 0, 
+                    DIRECTSKLAD: 0, 
+                    GTD: '', 
+                    STRANA: '', 
+                    SUMMAP: 300, 
+                    SECONDINSERT: 0, 
+                    MARK1C: 0, 
+                    USERNAME: '', 
+                    SHOP_SALED_NAKL_D_ID: 0, 
+                    INSERT_ATTR: '', 
+                    MODIFY_ATTR: ''
+                },
+                { 
+                    REALPRICEFCODE: 3, 
+                    SFCODE: 1, 
+                    GOODSCODE: 'GOOD3', 
+                    PRICE: 40, 
+                    QUAN: 5, 
+                    OPRIH: 1, 
+                    REALPRICECODE: null, 
+                    DIRECTSKLADNEED: 0, 
+                    DIRECTSHOPNEED: 0, 
+                    DIRECTSHOP: 0, 
+                    DIRECTSKLAD: 0, 
+                    GTD: '', 
+                    STRANA: '', 
+                    SUMMAP: 200, 
+                    SECONDINSERT: 0, 
+                    MARK1C: 0, 
+                    USERNAME: '', 
+                    SHOP_SALED_NAKL_D_ID: 0, 
+                    INSERT_ATTR: '', 
+                    MODIFY_ATTR: ''
+                }
+            ];
+
+            // Мокаем запросы
+            query.mockResolvedValueOnce([mockTransferOut]);
+            query.mockResolvedValueOnce(mockTransferOutLines);
+            execute.mockResolvedValue(undefined);
+
+            // Выполняем тест
+            const result = await service.distributePaymentByUPD(updNumber, updDate, amount);
+
+            // Проверяем результат
+            expect(result.isSuccess).toBe(true);
+
+            // Проверяем, что суммы были обновлены пропорционально
+            // 500/1000 * 1000 = 500, 300/1000 * 1000 = 300, 200/1000 * 1000 = 200
+            expect(execute).toHaveBeenCalledWith(
+                'UPDATE REALPRICEF SET SUMMAP = ? WHERE REALPRICEFCODE = ?',
+                [500, 1]
+            );
+            expect(execute).toHaveBeenCalledWith(
+                'UPDATE REALPRICEF SET SUMMAP = ? WHERE REALPRICEFCODE = ?',
+                [300, 2]
+            );
+            expect(execute).toHaveBeenCalledWith(
+                'UPDATE REALPRICEF SET SUMMAP = ? WHERE REALPRICEFCODE = ?',
+                [200, 3]
+            );
         });
     });
 });
