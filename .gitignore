@@ -40,3 +40,4 @@ lerna-debug.log*
 #ENV
 .env
 .env.elcopro 
+.env.magazin
