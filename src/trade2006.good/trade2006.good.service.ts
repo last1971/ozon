@@ -81,20 +81,37 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
             `SELECT
                 g.goodscode,
                 n.name,
-                (
-                    SELECT SUM(t.ost * t.price) / SUM(t.ost)
-                    FROM (
-                        SELECT
-                            price,
-                            quan - COALESCE((SELECT SUM(quan) FROM fifo_t WHERE fifo_t.pr_meta_in_id = pr_meta.id), 0) AS ost
-                        FROM pr_meta
-                        WHERE pr_meta.goodscode = g.goodscode
-                        AND pr_meta.${inCode} IS NOT NULL
-                        AND COALESCE((SELECT SUM(quan) FROM fifo_t WHERE fifo_t.pr_meta_in_id = pr_meta.id), 0) < quan
-                    ) t
-                ) AS pric
+                CASE
+                    WHEN s.quan - COALESCE(r.res, 0) > 0 THEN COALESCE(
+                        (
+                            SELECT SUM(t.ost * t.price) / NULLIF(SUM(t.ost), 0)
+                            FROM (
+                                SELECT
+                                    pm.price,
+                                    pm.quan - COALESCE((SELECT SUM(f.quan) FROM fifo_t f WHERE f.pr_meta_in_id = pm.id), 0) AS ost
+                                FROM pr_meta pm
+                                WHERE pm.goodscode = g.goodscode
+                                    AND pm.${inCode} IS NOT NULL
+                                    AND COALESCE((SELECT SUM(f.quan) FROM fifo_t f WHERE f.pr_meta_in_id = pm.id), 0) < pm.quan
+                            ) t
+                        ),
+                        (SELECT MAX(AVAILABLE_PRICE) FROM OZON_PERC WHERE GOODSCODE = g.GOODSCODE),
+                        (SELECT FIRST 1 pm2.price
+                            FROM pr_meta pm2
+                            WHERE pm2.goodscode = g.goodscode AND pm2.${inCode} IS NOT NULL
+                            ORDER BY pm2.data DESC),
+                        1
+                    )
+                    ELSE NULL
+                END AS pric
             FROM goods g
             JOIN name n ON g.namecode = n.namecode
+            JOIN ${this.storageTable} s ON s.goodscode = g.goodscode
+            LEFT JOIN (
+                SELECT goodscode, SUM(QUANSHOP) + SUM(QUANSKLAD) AS res
+                FROM RESERVEDPOS
+                GROUP BY goodscode
+            ) r ON r.goodscode = g.goodscode
             WHERE g.goodscode IN (${codes.map(() => '?').join(',')})
             `,
             codes,
