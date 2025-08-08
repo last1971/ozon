@@ -47,8 +47,9 @@ export class PriceCalculationHelper {
     ): number {
         const gCode = goodCode({ offer_id: product.getSku() });
         const gCoeff = goodQuantityCoeff({ offer_id: product.getSku() });
-        return prices?.get(product.getSku())?.incoming_price
-            ? prices.get(product.getSku()).incoming_price
+        const incoming_price = prices?.get(product.getSku())?.incoming_price;
+        return incoming_price
+            ? incoming_price
             : goods.find((g) => g.code.toString() === gCode)?.price * gCoeff;
     }
 
