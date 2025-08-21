@@ -43,7 +43,9 @@ export class PostingFboService implements IOrderable {
                 await this.invoiceService.deltaGood(id, quantity, posting.analytics_data.warehouse_name, transaction);
             }
         }
-        return this.invoiceService.createInvoiceFromPostingDto(buyerId, posting, transaction);
+        const invoice = await this.invoiceService.createInvoiceFromPostingDto(buyerId, posting, transaction); 
+        await this.invoiceService.update(invoice, { IGK: 'NOT1C' }, transaction);
+        return invoice;
     }
 
     async list(status: string, day = 2): Promise<PostingDto[]> {

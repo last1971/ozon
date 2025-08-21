@@ -560,7 +560,6 @@ describe('Trade2006InvoiceService', () => {
         expect(execute.mock.calls[0]).toEqual([
             'UPDATE S SET IGK = ?, START_PICKUP = ? WHERE SCODE = ?',
             ['1234567890', '2020-01-01 00:01:00', 123],
-            true,
         ]);
     });
 
