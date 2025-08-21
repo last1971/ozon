@@ -117,6 +117,7 @@ export class OrderService {
 
     async cancelOrder(order: PostingDto, transaction: FirebirdTransaction): Promise<void> {
         const invoice = await this.invoiceService.getByPosting(order, transaction);
+        await this.invoiceService.update(invoice, { IGK: 'NOT1C' }, transaction);
         if (order.isFbo) {
             await this.invoiceService.pickupInvoice(invoice, transaction);
             await this.invoiceService.updatePrim(

@@ -84,25 +84,24 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         }
     }
 
-    async update(invoice: InvoiceDto, invoiceUpdateDto: InvoiceUpdateDto): Promise<boolean> {
-        const transaction = await this.pool.getTransaction();
-
-        const fieldsToUpdate = Object.entries(invoiceUpdateDto) // Перебираем все пары ключ-значение
-            .filter(([key, value]) => value !== undefined) // Оставляем только поля, где значение не undefined
-            .map(([key, value]) => ({ field: key, value })); // Преобразуем в массив объектов с полями и значениями
-
-        // Если нет полей для обновления, выбрасываем ошибку
-        if (fieldsToUpdate.length === 0) {
-            return false;
-        }
-
-        // Строим SQL-запрос динамически
-        const setClauses = fieldsToUpdate.map(f => `${f.field} = ?`).join(', ');
-        const values = fieldsToUpdate.map(f => f.value);
-        const updateQuery = `UPDATE S SET ${setClauses} WHERE SCODE = ?`;
-        values.push(invoice.id); // Добавляем значение SCODE для WHERE
-        await transaction.execute(updateQuery, values, true);
-        return true;
+    async update(invoice: InvoiceDto, invoiceUpdateDto: InvoiceUpdateDto, t?: FirebirdTransaction): Promise<boolean> {
+        return this.withTransaction(async (transaction) => {
+            const fieldsToUpdate = Object.entries(invoiceUpdateDto)
+                .filter(([key, value]) => value !== undefined)
+                .map(([key, value]) => ({ field: key, value }));
+    
+            if (fieldsToUpdate.length === 0) {
+                return false;
+            }
+    
+            const setClauses = fieldsToUpdate.map(f => `${f.field} = ?`).join(', ');
+            const values = fieldsToUpdate.map(f => f.value);
+            const updateQuery = `UPDATE S SET ${setClauses} WHERE SCODE = ?`;
+            values.push(invoice.id);
+            
+            await transaction.execute(updateQuery, values);
+            return true;
+        }, t);
     }
 
     async isExists(remark: string, t: FirebirdTransaction = null): Promise<boolean> {

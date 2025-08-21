@@ -37,6 +37,7 @@ describe('PostingFboService', () => {
                         getByPosting,
                         pickupInvoice,
                         updatePrim,
+                        update: jest.fn(),
                     },
                 },
                 {
