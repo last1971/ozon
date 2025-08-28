@@ -418,7 +418,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         }
         // remove(this.fboErrors, { prim, code });
         await workingTransaction.execute(`UPDATE PODBPOS SET QUAN${attribute} = ? WHERE PODBPOSCODE = ?`, [
-            pickups[0].QUANSHOP - quantity,
+            pickups[0][`QUAN${attribute}`] - quantity,
             pickups[0].PODBPOSCODE,
         ]);
         if (!transaction) await workingTransaction.commit(true);
