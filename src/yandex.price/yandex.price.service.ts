@@ -64,7 +64,8 @@ export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
             (price): UpdateOfferDto => ({
                 offerId: price.offer_id,
                 cofinancePrice: { value: parseInt(price.min_price), currencyId: 'RUR' },
-                purchasePrice: { value: Math.ceil(price.incoming_price), currencyId: 'RUR' },
+                purchasePrice: { value: parseInt(price.min_price), currencyId: 'RUR' },
+                // { value: Math.ceil(price.incoming_price), currencyId: 'RUR' },
                 additionalExpenses: { value: packing + (price.sum_pack || 0), currencyId: 'RUR' },
             }),
         );
@@ -112,9 +113,9 @@ export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
         response
             .map((value) => value.result?.offerMappings ?? [])
             .flat()
-            .filter((value) => !!value.offer.cofinancePrice)
+            .filter((value) => !!value.offer.purchasePrice)
             .forEach((value) => {
-                res.set(value.offer.offerId, [value.offer.cofinancePrice.value, value.offer.basicPrice.discountBase]);
+                res.set(value.offer.offerId, [value.offer.purchasePrice.value, value.offer.basicPrice.discountBase]);
             });
         return res;
     }
