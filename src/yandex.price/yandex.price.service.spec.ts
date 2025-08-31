@@ -97,7 +97,7 @@ describe('YandexPriceService', () => {
                             additionalExpenses: { currencyId: 'RUR', value: 25 },
                             cofinancePrice: { currencyId: 'RUR', value: 30 },
                             offerId: '1',
-                            purchasePrice: { currencyId: 'RUR', value: 20 },
+                            purchasePrice: { currencyId: 'RUR', value: 30 },
                         },
                     },
                 ],
@@ -135,8 +135,8 @@ describe('YandexPriceService', () => {
         method.mockResolvedValueOnce({
             result: {
                 offerMappings: [
-                    { offer: { offerId: '123', cofinancePrice: { value: 123 }, basicPrice: { discountBase: 223 } } },
-                    { offer: { offerId: '321', cofinancePrice: { value: 321 }, basicPrice: { discountBase: 421 } } },
+                    { offer: { offerId: '123', purchasePrice: { value: 123 }, basicPrice: { discountBase: 223 } } },
+                    { offer: { offerId: '321', purchasePrice: { value: 321 }, basicPrice: { discountBase: 421 } } },
                 ],
             },
         });
