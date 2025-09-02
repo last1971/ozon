@@ -1,21 +1,21 @@
-import { Inject, Injectable, Logger } from "@nestjs/common";
-import { ProductService } from "../product/product.service";
-import { PriceRequestDto } from "./dto/price.request.dto";
-import { PricePresetDto } from "./dto/price.preset.dto";
-import { ConfigService } from "@nestjs/config";
-import { GOOD_SERVICE, IGood } from "../interfaces/IGood";
-import { PriceResponseDto } from "./dto/price.response.dto";
-import { calculatePay, goodCode, goodQuantityCoeff } from "../helpers";
-import { GoodPercentDto } from "../good/dto/good.percent.dto";
-import { UpdatePriceDto, UpdatePricesDto } from "./dto/update.price.dto";
-import { chunk, toNumber } from "lodash";
-import { ProductVisibility } from "../product/product.visibility";
-import { IPriceUpdateable } from "../interfaces/i.price.updateable";
-import { ObtainCoeffsDto } from "../helpers/dto/obtain.coeffs.dto";
-import { IProductCoeffsable } from "../interfaces/i.product.coeffsable";
-import { OzonProductCoeffsAdapter } from "./ozon.product.coeffs.adapter";
+import { Inject, Injectable, Logger } from '@nestjs/common';
+import { ProductService } from '../product/product.service';
+import { PriceRequestDto } from './dto/price.request.dto';
+import { PricePresetDto } from './dto/price.preset.dto';
+import { ConfigService } from '@nestjs/config';
+import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
+import { PriceResponseDto } from './dto/price.response.dto';
+import { calculatePay, goodCode, goodQuantityCoeff } from '../helpers';
+import { GoodPercentDto } from '../good/dto/good.percent.dto';
+import { UpdatePriceDto, UpdatePricesDto } from './dto/update.price.dto';
+import { chunk, toNumber } from 'lodash';
+import { ProductVisibility } from '../product/product.visibility';
+import { IPriceUpdateable } from '../interfaces/i.price.updateable';
+import { ObtainCoeffsDto } from '../helpers/dto/obtain.coeffs.dto';
+import { IProductCoeffsable } from '../interfaces/i.product.coeffsable';
+import { OzonProductCoeffsAdapter } from './ozon.product.coeffs.adapter';
 import { Cache } from '@nestjs/cache-manager';
-import Excel from "exceljs";
+import Excel from 'exceljs';
 
 @Injectable()
 export class PriceService implements IPriceUpdateable {
@@ -24,7 +24,7 @@ export class PriceService implements IPriceUpdateable {
         private product: ProductService,
         @Inject(GOOD_SERVICE) private goodService: IGood,
         private configService: ConfigService,
-        private cacheManager: Cache
+        private cacheManager: Cache,
     ) {}
     async preset(): Promise<PricePresetDto> {
         return {
@@ -42,19 +42,14 @@ export class PriceService implements IPriceUpdateable {
     }
 
     async index(request: PriceRequestDto): Promise<PriceResponseDto> {
-        const infoListPromise = request.offer_id
-            ? this.product.infoList(request.offer_id)
-            : Promise.resolve([]);
-        const [productsInfos, products] = await Promise.all([
-            infoListPromise,
-            this.product.getPrices(request),
-        ]);
+        const infoListPromise = request.offer_id ? this.product.infoList(request.offer_id) : Promise.resolve([]);
+        const [productsInfos, products] = await Promise.all([infoListPromise, this.product.getPrices(request)]);
         const codes = products.items.map((item) => goodCode(item));
         const [goods, percents] = await Promise.all([
             this.goodService.prices(codes, null),
             this.goodService.getPerc(codes, null),
         ]);
-        const percDirectFlow = 1 + this.configService.get<number>('PERC_DIRECT_FLOW', 0)/100;
+        const percDirectFlow = 1 + this.configService.get<number>('PERC_DIRECT_FLOW', 0) / 100;
         return {
             last_id: products.cursor,
             data: products.items.map((item) => {
@@ -88,10 +83,10 @@ export class PriceService implements IPriceUpdateable {
                     adv_perc: percent.adv_perc,
                     sales_percent: OzonProductCoeffsAdapter.calculateSalesPercent(item, productInfo),
                     fbs_direct_flow_trans_max_amount:
-                        (item.commissions.fbs_direct_flow_trans_max_amount
-                        +
-                        item.commissions.fbs_direct_flow_trans_min_amount)
-                        / 2 * percDirectFlow,
+                        ((item.commissions.fbs_direct_flow_trans_max_amount +
+                            item.commissions.fbs_direct_flow_trans_min_amount) /
+                            2) *
+                        percDirectFlow,
                     auto_action_enabled: item.price.auto_action_enabled,
                     sum_pack: percent.packing_price,
                     fbsCount: productInfo?.fbsCount || 0,
@@ -135,19 +130,19 @@ export class PriceService implements IPriceUpdateable {
     }
 
     async getProductsWithCoeffs(skus: string[]): Promise<IProductCoeffsable[]> {
-        const percDirectFlow = 1 + this.configService.get<number>('PERC_DIRECT_FLOW', 0)/100;
+        const percDirectFlow = 1 + this.configService.get<number>('PERC_DIRECT_FLOW', 0) / 100;
         const response = await this.product.getPrices({
             offer_id: skus,
             limit: 1000,
             visibility: ProductVisibility.IN_SALE,
         });
-        
+
         if (!response?.items) {
             this.logger.error('Invalid response from Ozon API', { response, skus });
             return [];
         }
         const counts = await this.product.infoList(skus);
-        
+
         return response.items.map((product) => {
             const productInfo = counts.find((info) => info.sku === product.offer_id);
             return new OzonProductCoeffsAdapter(product, percDirectFlow, productInfo);
@@ -161,15 +156,18 @@ export class PriceService implements IPriceUpdateable {
     createAction(): Promise<Excel.Buffer> {
         return Promise.resolve(undefined);
     }
-    
+
     async getLowPrices(minProfit: number, minPercent: number, count: number): Promise<string[]> {
         const cachedLowPrices = await this.cacheManager.get<string[]>('lowPrices');
-        const skus = this.product.skuList.filter(sku => !cachedLowPrices?.includes(sku));
+        const skus = this.product.skuList.filter((sku) => !cachedLowPrices?.includes(sku));
         const lowPrices: string[] = [];
         const percents: ObtainCoeffsDto = this.getObtainCoeffs();
         for (const offerIdChunk of chunk(skus, count)) {
-            const prices: PriceResponseDto =
-                await this.index({ offer_id: offerIdChunk, visibility: ProductVisibility.VISIBLE, limit: count });
+            const prices: PriceResponseDto = await this.index({
+                offer_id: offerIdChunk,
+                visibility: ProductVisibility.VISIBLE,
+                limit: count,
+            });
             for (const price of prices.data) {
                 const marketingPrice = toNumber(price.marketing_seller_price);
                 const incomingPrice = toNumber(price.incoming_price);
@@ -187,5 +185,29 @@ export class PriceService implements IPriceUpdateable {
         cachedLowPrices.push(...lowPrices);
         await this.cacheManager.set('lowPrices', cachedLowPrices, 1000 * 60 * 60);
         return lowPrices;
+    }
+
+    async checkVatForAll(
+        expectedVat: number,
+        limit = 1000,
+    ): Promise<Array<{ offer_id: string; current_vat: number; expected_vat: number }>> {
+        const mismatches: Array<{ offer_id: string; current_vat: number; expected_vat: number }> = [];
+        let cursor = '';
+
+        do {
+            const page = await this.product.getPrices({ limit, cursor, visibility: ProductVisibility.ALL }); // /v5/product/info/prices
+            const items = page?.items ?? [];
+
+            for (const item of items) {
+                const currentVat = item?.price?.vat ?? 0; // если vat окажется вложенным в price
+                if (typeof currentVat === 'number' && currentVat !== expectedVat) {
+                    mismatches.push({ offer_id: item.offer_id, current_vat: currentVat, expected_vat: expectedVat });
+                }
+            }
+
+            cursor = page?.cursor || '';
+        } while (cursor);
+
+        return mismatches;
     }
 }
