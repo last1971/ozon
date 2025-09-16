@@ -301,4 +301,33 @@ describe('PriceService', () => {
         expect(getPrices.mock.calls[0]).toEqual([{ limit: 1000, offer_id: ['1'], visibility: 'IN_SALE' }]);
         expect(mockInfoList).toHaveBeenCalledWith(['1']);
     });
+
+    it('checkVatForAll collects mismatches across pages', async () => {
+        // page 1
+        getPrices
+          .mockResolvedValueOnce({
+            items: [
+              { offer_id: 'A', price: { vat: 20 } }, // ok
+              { offer_id: 'B', price: { vat: 10 } }, // mismatch
+            ],
+            cursor: 'next',
+          })
+          // page 2
+          .mockResolvedValueOnce({
+            items: [{ offer_id: 'C', price: { vat: 0 } }], // mismatch
+            cursor: '',
+          });
+      
+        const expectedVat = 20;
+        const res = await service.checkVatForAll(expectedVat, 1000);
+      
+        expect(res).toEqual([
+          { offer_id: 'B', current_vat: 10, expected_vat: 20 },
+          { offer_id: 'C', current_vat: 0, expected_vat: 20 },
+        ]);
+      
+        // called twice with visibility ALL and correct cursors
+        expect(getPrices.mock.calls[0]).toEqual([{ limit: 1000, cursor: '', visibility: 'ALL' }]);
+        expect(getPrices.mock.calls[1]).toEqual([{ limit: 1000, cursor: 'next', visibility: 'ALL' }]);
+      });
 });

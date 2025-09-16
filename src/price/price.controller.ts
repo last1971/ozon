@@ -8,8 +8,8 @@ import {
     Query,
     Res,
     UploadedFile,
-    UseInterceptors
-} from "@nestjs/common";
+    UseInterceptors,
+} from '@nestjs/common';
 import {
     ApiBody,
     ApiConsumes,
@@ -19,23 +19,23 @@ import {
     ApiProduces,
     ApiQuery,
     ApiResponse,
-    ApiTags
-} from "@nestjs/swagger";
-import { PriceRequestDto } from "./dto/price.request.dto";
-import { PricePresetDto } from "./dto/price.preset.dto";
-import { PriceService } from "./price.service";
-import { PriceResponseDto } from "./dto/price.response.dto";
-import { UpdatePriceDto, UpdatePricesDto } from "./dto/update.price.dto";
-import { FileInterceptor } from "@nestjs/platform-express";
-import { Response } from "express";
-import { GoodServiceEnum } from "../good/good.service.enum";
-import { IPriceable } from "../interfaces/i.priceable";
-import { ObtainCoeffsDto } from "../helpers/dto/obtain.coeffs.dto";
-import { calculatePay, calculatePrice } from "../helpers";
-import { WbCommissionDto } from "../wb.card/dto/wb.commission.dto";
-import { ExtraPriceService } from "./extra.price.service";
-import { WbPriceService } from "../wb.price/wb.price.service";
-import { GoodPercentDto } from "../good/dto/good.percent.dto";
+    ApiTags,
+} from '@nestjs/swagger';
+import { PriceRequestDto } from './dto/price.request.dto';
+import { PricePresetDto } from './dto/price.preset.dto';
+import { PriceService } from './price.service';
+import { PriceResponseDto } from './dto/price.response.dto';
+import { UpdatePriceDto, UpdatePricesDto } from './dto/update.price.dto';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { Response } from 'express';
+import { GoodServiceEnum } from '../good/good.service.enum';
+import { IPriceable } from '../interfaces/i.priceable';
+import { ObtainCoeffsDto } from '../helpers/dto/obtain.coeffs.dto';
+import { calculatePay, calculatePrice } from '../helpers';
+import { WbCommissionDto } from '../wb.card/dto/wb.commission.dto';
+import { ExtraPriceService } from './extra.price.service';
+import { WbPriceService } from '../wb.price/wb.price.service';
+import { GoodPercentDto } from '../good/dto/good.percent.dto';
 
 @ApiTags('price')
 @Controller('price')
@@ -257,14 +257,14 @@ export class PriceController {
         type: GoodPercentDto,
         description: 'Partial update of GoodPercentDto',
     })
-    @ApiResponse({ 
-        status: 200, 
+    @ApiResponse({
+        status: 200,
         description: 'Percents calculated and updated successfully',
         type: GoodPercentDto,
     })
     async calculatePercents(
         @Param('sku') sku: string,
-        @Body() goodPercentDto: Partial<GoodPercentDto>
+        @Body() goodPercentDto: Partial<GoodPercentDto>,
     ): Promise<GoodPercentDto> {
         return this.extraService.generatePercentsForOzon(sku, goodPercentDto);
     }
@@ -278,36 +278,66 @@ export class PriceController {
                     type: 'array',
                     items: { type: 'string' },
                     description: 'Массив SKU товаров для обработки',
-                    example: ['SKU123', 'SKU456']
-                }
-            }
-        }
+                    example: ['SKU123', 'SKU456'],
+                },
+            },
+        },
     })
-    @ApiResponse({ 
-        status: 200, 
+    @ApiResponse({
+        status: 200,
         description: 'Обработка входящих товаров успешно запущена',
         schema: {
             type: 'object',
             properties: {
                 success: { type: 'boolean' },
-                message: { type: 'string' }
-            }
-        }
+                message: { type: 'string' },
+            },
+        },
     })
-    async handleIncomingGoods(
-        @Body('skus') skus: string[]
-    ): Promise<{ success: boolean; message: string }> {
+    async handleIncomingGoods(@Body('skus') skus: string[]): Promise<{ success: boolean; message: string }> {
         try {
             await this.extraService.handleIncomingGoods(skus);
             return {
                 success: true,
-                message: `Обработка ${skus.length} товаров успешно запущена`
+                message: `Обработка ${skus.length} товаров успешно запущена`,
             };
         } catch (error) {
             return {
                 success: false,
-                message: `Ошибка при обработке товаров: ${error.message}`
+                message: `Ошибка при обработке товаров: ${error.message}`,
             };
         }
+    }
+
+    @Post('check-vat')
+    @ApiOperation({ summary: 'Проверить несоответствие НДС по всем товарам (Ozon /v5/product/info/prices)' })
+    @ApiBody({
+        schema: {
+            type: 'object',
+            required: ['vat'],
+            properties: {
+                vat: { type: 'number', description: 'Ожидаемая ставка НДС (например 0, 10, 20)' },
+                limit: { type: 'number', default: 1000, description: 'Размер страницы при обходе товаров' },
+            },
+        },
+    })
+    @ApiOkResponse({
+        description: 'Список офферов, у которых НДС не совпадает с ожидаемым',
+        schema: {
+            type: 'array',
+            items: {
+                type: 'object',
+                properties: {
+                    offer_id: { type: 'string' },
+                    current_vat: { type: 'number' },
+                    expected_vat: { type: 'number' },
+                },
+            },
+        },
+    })
+    async checkVat(
+        @Body() body: { vat: number; limit?: number }
+    ): Promise<Array<{ offer_id: string; current_vat: number; expected_vat: number }>> {
+        return this.service.checkVatForAll(body.vat, body.limit ?? 1000);
     }
 }

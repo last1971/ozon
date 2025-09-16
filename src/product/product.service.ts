@@ -129,7 +129,7 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
         const res = await this.ozonApiService.method('/v5/product/info/prices', options);
         return res || { items: [], cursor: '' };
     }
-    async setPrice(prices: UpdatePricesDto): Promise<any> {
+    async   setPrice(prices: UpdatePricesDto): Promise<any> {
         return this.ozonApiService.method('/v1/product/import/prices', prices);
     }
     async getTransactionList(filter: TransactionFilterDto, page = 1): Promise<any> {
@@ -140,7 +140,7 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
                 posting_number: operation.posting.posting_number,
             }),
         );
-        if (page !== res.result.page_count) {
+        if (page !== res.result.page_count && res.result.page_count > 1) {
             response.concat(await this.getTransactionList(filter, page + 1));
         }
         return response;
