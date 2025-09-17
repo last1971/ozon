@@ -11,7 +11,9 @@ export class UpdatePriceForGoodSkusCommand implements ICommandAsync<IGoodsProces
   ) {}
 
   async execute(context: IGoodsProcessingContext): Promise<IGoodsProcessingContext> {
+    context.logger?.log(`Начинаем обновление цен для ${context.skus?.length || 0} товаров`);
     await this.extraPriceService.updatePriceForGoodSkus(context.skus);
+    context.logger?.log(`Завершено обновление цен для ${context.skus?.length || 0} товаров`);
     return context;
   }
 } 

@@ -20,6 +20,8 @@ import { IGoodsProcessingContext } from 'src/interfaces/i.good.processing.contex
 import { TradeSkusCommand } from './commands/trade-skus.command';
 import { ResetAvailablePriceCommand } from './commands/reset-available-price.command';
 import { UpdatePercentsForGoodSkusCommand } from './commands/update-percents-for-good-skus.command';
+import { GetAllOzonSkusCommand } from './commands/get-all-ozon-skus.command';
+import { OzonSkusToTradeSkusCommand } from './commands/ozon-skus-to-trade-skus.command';
 import { UpdatePriceForGoodSkusCommand } from './commands/update-price-for-good-skus.command';
 import { CheckPriceDifferenceAndNotifyCommand } from './commands/check-price-difference-and-notify.command';
 import { EmitUpdatePromosCommand } from './commands/emit-update-promos.command';
@@ -43,6 +45,8 @@ export class ExtraPriceService {
         private readonly tradeSkusCommand: TradeSkusCommand,
         private readonly resetAvailablePriceCommand: ResetAvailablePriceCommand,
         private readonly updatePercentsForGoodSkusCommand: UpdatePercentsForGoodSkusCommand,
+        private readonly getAllOzonSkusCommand: GetAllOzonSkusCommand,
+        private readonly ozonSkusToTradeSkusCommand: OzonSkusToTradeSkusCommand,
         private readonly updatePriceForGoodSkusCommand: UpdatePriceForGoodSkusCommand,
         private readonly checkPriceDifferenceAndNotifyCommand: CheckPriceDifferenceAndNotifyCommand,
         private readonly emitUpdatePromosCommand: EmitUpdatePromosCommand,
@@ -255,5 +259,34 @@ export class ExtraPriceService {
      */
     public async updatePercentsForGoodSkus(ozonSkus: string[]): Promise<void> {
         await this.goodService.updatePercentsForService(this.getService(GoodServiceEnum.OZON), ozonSkus);
+    }
+
+    /**
+     * Массовое обновление процентов и цен для всех товаров Ozon
+     * Получает все SKU из системы, обновляет проценты и цены
+     */
+    async updateAllPercentsAndPrices(): Promise<void> {
+        const context: IGoodsProcessingContext = {
+            skus: [],
+            ozonSkus: [],
+            logger: this.logger,
+        };
+
+        const chain = new CommandChainAsync<IGoodsProcessingContext>([
+            this.getAllOzonSkusCommand,
+            this.ozonSkusToTradeSkusCommand,
+            this.updatePercentsForGoodSkusCommand,
+            this.updatePriceForGoodSkusCommand,
+            this.emitUpdatePromosCommand,
+            this.setResultProcessingMessageCommand,
+            this.logResultProcessingMessageCommand,
+        ]);
+
+        try {
+            await chain.execute(context);
+        } catch (error) {
+            this.logger.error(`Ошибка при массовом обновлении процентов и цен: ${error.message}`, error.stack);
+            throw error;
+        }
     }
 }

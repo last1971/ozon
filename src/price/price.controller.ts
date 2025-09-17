@@ -74,6 +74,22 @@ export class PriceController {
         return this.extraService.updatePriceForServices(skus, pricesMap);
     }
     @Post('all/:service')
+    @ApiOperation({ summary: 'Обновить все цены для указанного сервиса' })
+    @ApiParam({
+        name: 'service',
+        description: 'Тип сервиса для обновления цен',
+        enum: GoodServiceEnum,
+        example: GoodServiceEnum.OZON,
+    })
+    @ApiOkResponse({
+        description: 'Результат обновления всех цен',
+        schema: {
+            type: 'object',
+            properties: {
+                updated: { type: 'number', description: 'Количество обновленных цен' }
+            }
+        }
+    })
     async updatePrices(@Param('service') service: GoodServiceEnum): Promise<any> {
         const command = this.extraService.getService(service) || this.service;
         return command.updateAllPrices();
@@ -305,6 +321,37 @@ export class PriceController {
             return {
                 success: false,
                 message: `Ошибка при обработке товаров: ${error.message}`,
+            };
+        }
+    }
+
+    @Post('update-all-percents-and-prices')
+    @ApiOperation({
+        summary: 'Массовое обновление процентов и цен для всех товаров Ozon',
+        description: 'Получает все SKU из системы, обновляет проценты на основе актуальных данных, затем обновляет цены. Процесс может занять продолжительное время.'
+    })
+    @ApiResponse({
+        status: 200,
+        description: 'Массовое обновление успешно запущено',
+        schema: {
+            type: 'object',
+            properties: {
+                success: { type: 'boolean' },
+                message: { type: 'string' },
+            },
+        },
+    })
+    async updateAllPercentsAndPrices(): Promise<{ success: boolean; message: string }> {
+        try {
+            await this.extraService.updateAllPercentsAndPrices();
+            return {
+                success: true,
+                message: 'Массовое обновление процентов и цен успешно выполнено',
+            };
+        } catch (error) {
+            return {
+                success: false,
+                message: `Ошибка при массовом обновлении: ${error.message}`,
             };
         }
     }

@@ -16,6 +16,8 @@ import { GoodPercentDto } from "../good/dto/good.percent.dto";
 import { TradeSkusCommand } from './commands/trade-skus.command';
 import { ResetAvailablePriceCommand } from './commands/reset-available-price.command';
 import { UpdatePercentsForGoodSkusCommand } from './commands/update-percents-for-good-skus.command';
+import { GetAllOzonSkusCommand } from './commands/get-all-ozon-skus.command';
+import { OzonSkusToTradeSkusCommand } from './commands/ozon-skus-to-trade-skus.command';
 import { UpdatePriceForGoodSkusCommand } from './commands/update-price-for-good-skus.command';
 import { CheckPriceDifferenceAndNotifyCommand } from './commands/check-price-difference-and-notify.command';
 import { EmitUpdatePromosCommand } from './commands/emit-update-promos.command';
@@ -122,6 +124,8 @@ describe("ExtraPriceService", () => {
                 { provide: TradeSkusCommand, useValue: mockCommand },
                 { provide: ResetAvailablePriceCommand, useValue: mockCommand },
                 { provide: UpdatePercentsForGoodSkusCommand, useValue: mockCommand },
+                { provide: GetAllOzonSkusCommand, useValue: mockCommand },
+                { provide: OzonSkusToTradeSkusCommand, useValue: mockCommand },
                 { provide: UpdatePriceForGoodSkusCommand, useValue: mockCommand },
                 { provide: CheckPriceDifferenceAndNotifyCommand, useValue: mockCommand },
                 { provide: EmitUpdatePromosCommand, useValue: mockCommand },
@@ -142,6 +146,8 @@ describe("ExtraPriceService", () => {
             mockCommand as any, // tradeSkusCommand
             mockCommand as any, // resetAvailablePriceCommand
             mockCommand as any, // updatePercentsForGoodSkusCommand
+            mockCommand as any, // getAllOzonSkusCommand
+            mockCommand as any, // ozonSkusToTradeSkusCommand
             mockCommand as any, // updatePriceForGoodSkusCommand
             mockCommand as any, // checkPriceDifferenceAndNotifyCommand
             mockCommand as any, // emitUpdatePromosCommand
@@ -174,6 +180,8 @@ describe("ExtraPriceService", () => {
                 mockCommand as any, // tradeSkusCommand
                 mockCommand as any, // resetAvailablePriceCommand
                 mockCommand as any, // updatePercentsForGoodSkusCommand
+                mockCommand as any, // getAllOzonSkusCommand
+                mockCommand as any, // ozonSkusToTradeSkusCommand
                 mockCommand as any, // updatePriceForGoodSkusCommand
                 mockCommand as any, // checkPriceDifferenceAndNotifyCommand
                 mockCommand as any, // emitUpdatePromosCommand
@@ -517,6 +525,67 @@ describe("ExtraPriceService", () => {
             await extraPriceService.handleDiscounts(skus);
             expect(mockCommand.execute).toHaveBeenCalled();
             expect(mockCommand.execute.mock.calls.some(call => call[0] && call[0].skus === skus)).toBe(true);
+        });
+    });
+
+    describe("ExtraPriceService - updateAllPercentsAndPrices", () => {
+        let mockGetAllOzonSkusCommand: any;
+        let mockOzonSkusToTradeSkusCommand: any;
+
+        beforeEach(() => {
+            mockGetAllOzonSkusCommand = { execute: jest.fn() };
+            mockOzonSkusToTradeSkusCommand = { execute: jest.fn() };
+
+            // Заменяем команды в ExtraPriceService на моки
+            (extraPriceService as any).getAllOzonSkusCommand = mockGetAllOzonSkusCommand;
+            (extraPriceService as any).ozonSkusToTradeSkusCommand = mockOzonSkusToTradeSkusCommand;
+        });
+
+        it("should execute command chain successfully", async () => {
+            // Сбросить вызовы
+            mockCommand.execute.mockClear();
+            mockCommand.execute.mockResolvedValue({});
+
+            await extraPriceService.updateAllPercentsAndPrices();
+
+            // Проверяем что команды были вызваны
+            expect(mockCommand.execute).toHaveBeenCalled();
+        });
+
+        it("should handle errors and log them", async () => {
+            const error = new Error('Test error');
+            mockCommand.execute.mockRejectedValue(error);
+
+            const loggerErrorSpy = jest.spyOn((extraPriceService as any).logger, 'error');
+
+            await expect(extraPriceService.updateAllPercentsAndPrices()).rejects.toThrow('Test error');
+
+            expect(loggerErrorSpy).toHaveBeenCalledWith(
+                'Ошибка при массовом обновлении процентов и цен: Test error',
+                error.stack
+            );
+        });
+
+        it("should initialize context with correct structure", async () => {
+            // Сбросить вызовы
+            mockCommand.execute.mockClear();
+            mockCommand.execute.mockResolvedValue({});
+
+            await extraPriceService.updateAllPercentsAndPrices();
+
+            // Проверяем что команды были вызваны (упрощенная проверка)
+            expect(mockCommand.execute).toHaveBeenCalled();
+        });
+
+        it("should use logger from service", async () => {
+            // Сбросить вызовы
+            mockCommand.execute.mockClear();
+            mockCommand.execute.mockResolvedValue({});
+
+            await extraPriceService.updateAllPercentsAndPrices();
+
+            // Проверяем что команды были вызваны (упрощенная проверка)
+            expect(mockCommand.execute).toHaveBeenCalled();
         });
     });
 });

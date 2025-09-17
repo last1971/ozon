@@ -11,7 +11,9 @@ export class UpdatePercentsForGoodSkusCommand implements ICommandAsync<IGoodsPro
   ) {}
 
   async execute(context: IGoodsProcessingContext): Promise<IGoodsProcessingContext> {
+    context.logger?.log(`Начинаем обновление процентов для ${context.ozonSkus?.length || 0} товаров`);
     await this.extraPriceService.updatePercentsForGoodSkus(context.ozonSkus);
+    context.logger?.log(`Завершено обновление процентов для ${context.ozonSkus?.length || 0} товаров`);
     return context;
   }
 } 
