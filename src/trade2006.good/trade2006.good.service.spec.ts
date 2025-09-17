@@ -163,11 +163,11 @@ describe('Trade2006GoodService', () => {
             'SELECT G.GOODSCODE, N.NAME, CASE WHEN S.QUAN - COALESCE(R.RES, 0) > 0 THEN COALESCE( ( SELECT SUM(T.OST * T.PRICE) / NULLIF(SUM(T.OST), 0) FROM ( SELECT PM.PRICE, PM.QUAN - COALESCE((SELECT SUM(F.QUAN) FROM FIFO_T F WHERE F.PR_META_IN_ID = PM.ID), 0) AS OST FROM PR_META PM WHERE PM.GOODSCODE = G.GOODSCODE AND PM.SHOPINCODE IS NOT NULL AND COALESCE((SELECT SUM(F.QUAN) FROM FIFO_T F WHERE F.PR_META_IN_ID = PM.ID), 0) < PM.QUAN ) T ), (SELECT MAX(AVAILABLE_PRICE) FROM OZON_PERC WHERE GOODSCODE = G.GOODSCODE), (SELECT FIRST 1 PM2.PRICE FROM PR_META PM2 WHERE PM2.GOODSCODE = G.GOODSCODE AND PM2.SHOPINCODE IS NOT NULL ORDER BY PM2.DATA DESC), 1 ) ELSE NULL END AS PRIC FROM GOODS G JOIN NAME N ON G.NAMECODE = N.NAMECODE JOIN SHOPSKLAD S ON S.GOODSCODE = G.GOODSCODE LEFT JOIN ( SELECT GOODSCODE, SUM(QUANSHOP) + SUM(QUANSKLAD) AS RES FROM RESERVEDPOS GROUP BY GOODSCODE ) R ON R.GOODSCODE = G.GOODSCODE WHERE G.GOODSCODE IN (?,?)'
         );
         expect(query.mock.calls[0][1]).toEqual(['1', '2']);
-        expect(query.mock.calls[0][2]).toBe(true);
+        expect(query.mock.calls[0][2]).toBe(false);
     });
     it('test getPerc', async () => {
         await service.getPerc(['3']);
-        expect(query.mock.calls[0]).toEqual(['select * from ozon_perc where goodscode in (?)', ['3'], true]);
+        expect(query.mock.calls[0]).toEqual(['select * from ozon_perc where goodscode in (?)', ['3'], false]);
     });
     it('test setPerc', async () => {
         await service.setPercents({ offer_id: '123', adv_perc: 10 });

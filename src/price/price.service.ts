@@ -131,22 +131,32 @@ export class PriceService implements IPriceUpdateable {
 
     async getProductsWithCoeffs(skus: string[]): Promise<IProductCoeffsable[]> {
         const percDirectFlow = 1 + this.configService.get<number>('PERC_DIRECT_FLOW', 0) / 100;
-        const response = await this.product.getPrices({
-            offer_id: skus,
-            limit: 1000,
-            visibility: ProductVisibility.IN_SALE,
-        });
+        const batchSize = 1000;
+        const allResults: IProductCoeffsable[] = [];
 
-        if (!response?.items) {
-            this.logger.error('Invalid response from Ozon API', { response, skus });
-            return [];
+        for (const skusBatch of chunk(skus, batchSize)) {
+            const response = await this.product.getPrices({
+                offer_id: skusBatch,
+                limit: batchSize,
+                visibility: ProductVisibility.IN_SALE,
+            });
+
+            if (!response?.items) {
+                this.logger.error('Invalid response from Ozon API', { response, skus: skusBatch });
+                continue;
+            }
+
+            const counts = await this.product.infoList(skusBatch);
+
+            const batchResults = response.items.map((product) => {
+                const productInfo = counts.find((info) => info.sku === product.offer_id);
+                return new OzonProductCoeffsAdapter(product, percDirectFlow, productInfo);
+            });
+
+            allResults.push(...batchResults);
         }
-        const counts = await this.product.infoList(skus);
 
-        return response.items.map((product) => {
-            const productInfo = counts.find((info) => info.sku === product.offer_id);
-            return new OzonProductCoeffsAdapter(product, percDirectFlow, productInfo);
-        });
+        return allResults;
     }
 
     async updatePrices(updatePrices: UpdatePriceDto[]): Promise<any> {

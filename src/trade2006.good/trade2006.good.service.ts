@@ -75,74 +75,105 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
 
     async prices(codes: string[], t: FirebirdTransaction = null): Promise<GoodPriceDto[]> {
         if (codes.length === 0) return [];
-        const transaction = t ?? (await this.pool.getTransaction());
-        const inCode = this.storageTable === 'SHOPSKLAD' ? 'shopincode' : 'skladincode';
-        const response: any[] = await transaction.query(
-            `SELECT
-                g.goodscode,
-                n.name,
-                CASE
-                    WHEN s.quan - COALESCE(r.res, 0) > 0 THEN COALESCE(
-                        (
-                            SELECT SUM(t.ost * t.price) / NULLIF(SUM(t.ost), 0)
-                            FROM (
-                                SELECT
-                                    pm.price,
-                                    pm.quan - COALESCE((SELECT SUM(f.quan) FROM fifo_t f WHERE f.pr_meta_in_id = pm.id), 0) AS ost
-                                FROM pr_meta pm
-                                WHERE pm.goodscode = g.goodscode
-                                    AND pm.${inCode} IS NOT NULL
-                                    AND COALESCE((SELECT SUM(f.quan) FROM fifo_t f WHERE f.pr_meta_in_id = pm.id), 0) < pm.quan
-                            ) t
-                        ),
-                        (SELECT MAX(AVAILABLE_PRICE) FROM OZON_PERC WHERE GOODSCODE = g.GOODSCODE),
-                        (SELECT FIRST 1 pm2.price
-                            FROM pr_meta pm2
-                            WHERE pm2.goodscode = g.goodscode AND pm2.${inCode} IS NOT NULL
-                            ORDER BY pm2.data DESC),
-                        1
-                    )
-                    ELSE NULL
-                END AS pric
-            FROM goods g
-            JOIN name n ON g.namecode = n.namecode
-            JOIN ${this.storageTable} s ON s.goodscode = g.goodscode
-            LEFT JOIN (
-                SELECT goodscode, SUM(QUANSHOP) + SUM(QUANSKLAD) AS res
-                FROM RESERVEDPOS
-                GROUP BY goodscode
-            ) r ON r.goodscode = g.goodscode
-            WHERE g.goodscode IN (${codes.map(() => '?').join(',')})
-            `,
-            codes,
-            !t,
-        );
-        return response.map(
-            (good: any): GoodPriceDto => ({
-                code: good.GOODSCODE,
-                name: good.NAME,
-                price: good.PRIC,
-            }),
-        );
+
+        return this.withTransaction(async (transaction) => {
+            const allResults: GoodPriceDto[] = [];
+            const batchSize = 50; // Как в resetAvailablePrice
+            const inCode = this.storageTable === 'SHOPSKLAD' ? 'shopincode' : 'skladincode';
+
+            // Разбиваем на батчи
+            for (let i = 0; i < codes.length; i += batchSize) {
+                const batch = codes.slice(i, i + batchSize);
+                const placeholders = batch.map(() => '?').join(',');
+
+                const response: any[] = await transaction.query(
+                    `SELECT
+                        g.goodscode,
+                        n.name,
+                        CASE
+                            WHEN s.quan - COALESCE(r.res, 0) > 0 THEN COALESCE(
+                                (
+                                    SELECT SUM(t.ost * t.price) / NULLIF(SUM(t.ost), 0)
+                                    FROM (
+                                        SELECT
+                                            pm.price,
+                                            pm.quan - COALESCE((SELECT SUM(f.quan) FROM fifo_t f WHERE f.pr_meta_in_id = pm.id), 0) AS ost
+                                        FROM pr_meta pm
+                                        WHERE pm.goodscode = g.goodscode
+                                            AND pm.${inCode} IS NOT NULL
+                                            AND COALESCE((SELECT SUM(f.quan) FROM fifo_t f WHERE f.pr_meta_in_id = pm.id), 0) < pm.quan
+                                    ) t
+                                ),
+                                (SELECT MAX(AVAILABLE_PRICE) FROM OZON_PERC WHERE GOODSCODE = g.GOODSCODE),
+                                (SELECT FIRST 1 pm2.price
+                                    FROM pr_meta pm2
+                                    WHERE pm2.goodscode = g.goodscode AND pm2.${inCode} IS NOT NULL
+                                    ORDER BY pm2.data DESC),
+                                1
+                            )
+                            ELSE NULL
+                        END AS pric
+                    FROM goods g
+                    JOIN name n ON g.namecode = n.namecode
+                    JOIN ${this.storageTable} s ON s.goodscode = g.goodscode
+                    LEFT JOIN (
+                        SELECT goodscode, SUM(QUANSHOP) + SUM(QUANSKLAD) AS res
+                        FROM RESERVEDPOS
+                        GROUP BY goodscode
+                    ) r ON r.goodscode = g.goodscode
+                    WHERE g.goodscode IN (${placeholders})`,
+                    batch,
+                    false
+                );
+
+                const batchResults = response.map(
+                    (good: any): GoodPriceDto => ({
+                        code: good.GOODSCODE,
+                        name: good.NAME,
+                        price: good.PRIC,
+                    })
+                );
+
+                allResults.push(...batchResults);
+            }
+
+            return allResults;
+        }, t);
     }
     async getPerc(codes: string[], t: FirebirdTransaction = null): Promise<GoodPercentDto[]> {
         if (codes.length === 0) return [];
-        const transaction = t ?? (await this.pool.getTransaction());
-        const pecents = await transaction.query(
-            `select * from ozon_perc where goodscode in (${'?'.repeat(codes.length).split('').join()})`,
-            codes,
-            !t,
-        );
-        return pecents.map((percent) => ({
-            offer_id: percent.GOODSCODE,
-            pieces: percent.PIECES,
-            perc: percent.PERC_NOR,
-            adv_perc: percent.PERC_ADV,
-            old_perc: percent.PERC_MAX,
-            min_perc: percent.PERC_MIN,
-            packing_price: percent.PACKING_PRICE ?? this.configService.get<number>('SUM_PACK', 10),
-            available_price: percent.AVAILABLE_PRICE,
-        }));
+
+        return this.withTransaction(async (transaction) => {
+            const allResults: GoodPercentDto[] = [];
+            const batchSize = 50; // Как в других методах
+
+            // Разбиваем на батчи
+            for (let i = 0; i < codes.length; i += batchSize) {
+                const batch = codes.slice(i, i + batchSize);
+                const placeholders = batch.map(() => '?').join(',');
+
+                const pecents = await transaction.query(
+                    `select * from ozon_perc where goodscode in (${placeholders})`,
+                    batch,
+                    false
+                );
+
+                const batchResults = pecents.map((percent: any) => ({
+                    offer_id: percent.GOODSCODE,
+                    pieces: percent.PIECES,
+                    perc: percent.PERC_NOR,
+                    adv_perc: percent.PERC_ADV,
+                    old_perc: percent.PERC_MAX,
+                    min_perc: percent.PERC_MIN,
+                    packing_price: percent.PACKING_PRICE ?? this.configService.get<number>('SUM_PACK', 10),
+                    available_price: percent.AVAILABLE_PRICE,
+                }));
+
+                allResults.push(...batchResults);
+            }
+
+            return allResults;
+        }, t);
     }
     async setPercents(perc: GoodPercentDto, t: FirebirdTransaction = null): Promise<void> {
         const transaction = t ?? (await this.pool.getTransaction());
@@ -337,16 +368,20 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
             seen.add(key);
             return true;
         });
-        for (const percent of uniquePercents) {
-            try {
-                await this.setPercents(percent);
-            } catch (err) {
-                this.logger?.error?.(
-                    `setPercents error for GOODSCODE=${percent.offer_id}, PIECES=${percent.pieces}: ${err?.message}`,
-                    err?.stack,
-                );
-                // Продолжаем цикл
-            }
+        for (const batch of chunk(uniquePercents, 50)) {
+            await Promise.all(
+                batch.map(async (percent) => {
+                    try {
+                        await this.setPercents(percent);
+                    } catch (err) {
+                        this.logger?.error?.(
+                            `setPercents error for GOODSCODE=${percent.offer_id}, PIECES=${percent.pieces}: ${err?.message}`,
+                            err?.stack,
+                        );
+                        // Продолжаем с остальными
+                    }
+                })
+            );
         }
     }
 
