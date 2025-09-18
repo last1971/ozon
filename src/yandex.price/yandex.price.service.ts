@@ -47,6 +47,11 @@ export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
 
     async getProductsWithCoeffs(skus: string[]): Promise<IProductCoeffsable[]> {
         const data: GoodsStatsDto = await this.offerService.getSkus(skus);
+
+        if (!data || !data.shopSkus) {
+            return [];
+        }
+
         return data.shopSkus.map((shopSku) => new YandexProductCoeffsAdapter(shopSku));
     }
 
