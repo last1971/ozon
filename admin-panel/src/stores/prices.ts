@@ -130,8 +130,8 @@ export const priceStore = defineStore("priceStore", {
                 const res = await axios.post<any[]>('/api/price', {
                     prices: [{ offer_id, min_price: '0', price: '0', old_price: '0', incoming_price: edit ? available_price : 0 }]
                 });
-                if (!res.data?.[0]?.result?.[0]?.updated) {
-                    throw new Error(res.data?.[0]?.result?.[0]?.errors?.toString() || 'Unknown error in first response');
+                if (!res.data?.[0]?.[0]?.result?.[0]?.updated) {
+                    throw new Error(res.data?.[0]?.[0]?.result?.[0]?.errors?.toString() || 'Unknown error in first response');
                 }
                 if (res.data?.[1]?.offerUpdate?.status !== 'OK') {
                     throw new Error(res.data?.[1]?.toString() || 'Unknown error in second response');

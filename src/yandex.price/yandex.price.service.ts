@@ -127,7 +127,7 @@ export class YandexPriceService implements IPriceUpdateable, OnModuleInit {
 
     async createAction(file: Express.Multer.File): Promise<Excel.Buffer> {
         const workbook = new Excel.Workbook();
-        await workbook.xlsx.load(file.buffer);
+        await workbook.xlsx.load(file.buffer as any);
         const worksheet = workbook.getWorksheet('Товары и цены');
         const skus: string[] = [];
         let i = 11;
