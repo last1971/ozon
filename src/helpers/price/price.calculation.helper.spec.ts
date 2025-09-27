@@ -83,6 +83,8 @@ describe("PriceCalculationHelper", () => {
                 setPercents: jest.fn(),
                 setWbData: jest.fn(),
                 getWbData: jest.fn(),
+                setAvitoData: jest.fn(),
+                getAvitoData: jest.fn(),
                 // updateCountForService: jest.fn(),
                 updateCountForSkus: jest.fn(),
                 updatePriceForService: jest.fn(),

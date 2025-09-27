@@ -4,6 +4,7 @@ import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
 import { GoodPercentDto } from './dto/good.percent.dto';
 import { ResultDto } from '../helpers/dto/result.dto';
 import { GoodWbDto } from './dto/good.wb.dto';
+import { GoodAvitoDto } from './dto/good.avito.dto';
 import { ExtraGoodService } from './extra.good.service';
 import { GoodServiceEnum } from './good.service.enum';
 import { IsSwitchedDto } from './dto/is.switched.dto';
@@ -35,8 +36,61 @@ export class GoodController {
         return this.extraService.updateService(params.service);
     }
     @Put('wb')
-    async setWb(@Query() dto: GoodWbDto): Promise<void> {
+    @ApiOperation({ summary: 'Установить данные Wildberries для товара' })
+    @ApiBody({
+        description: 'Данные товара для Wildberries',
+        type: GoodWbDto,
+        required: true,
+    })
+    @ApiResponse({
+        status: 200,
+        description: 'Данные успешно сохранены',
+    })
+    async setWb(@Body() dto: GoodWbDto): Promise<void> {
         await this.goodService.setWbData(dto, null);
+    }
+
+    @Put('avito')
+    @ApiOperation({ summary: 'Установить данные Avito для товара' })
+    @ApiBody({
+        description: 'Данные товара для Avito',
+        type: GoodAvitoDto,
+        required: true,
+    })
+    @ApiResponse({
+        status: 200,
+        description: 'Данные успешно сохранены',
+    })
+    async setAvito(@Body() dto: GoodAvitoDto): Promise<void> {
+        await this.goodService.setAvitoData(dto, null);
+    }
+
+    @Post('avito/data')
+    @ApiOperation({ summary: 'Получить данные Avito по списку ID' })
+    @ApiBody({
+        description: 'Список ID товаров в Avito',
+        schema: {
+            type: 'object',
+            properties: {
+                ids: {
+                    type: 'array',
+                    items: {
+                        type: 'string',
+                    },
+                    example: ['avito123', 'avito456'],
+                    description: 'Список ID товаров в Avito',
+                },
+            },
+            required: ['ids'],
+        },
+    })
+    @ApiResponse({
+        status: 200,
+        description: 'Данные товаров Avito',
+        type: [GoodAvitoDto],
+    })
+    async getAvitoData(@Body('ids') ids: string[]): Promise<GoodAvitoDto[]> {
+        return this.goodService.getAvitoData(ids);
     }
 
     @Post('is-switched')

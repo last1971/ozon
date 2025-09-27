@@ -40,6 +40,8 @@ import { HttpModule } from '@nestjs/axios';
 import { HelpersModule } from "./helpers/helpers.module";
 import { PerformanceModule } from "./performance/performance.module";
 import { DiscountRequestsModule } from './discount-requests/discount-requests.module';
+import { AvitoApiModule } from './avito.api/avito.api.module';
+import { AvitoCardModule } from './avito.card/avito.card.module';
 import JSONbig from 'json-bigint';
 
 @Module({
@@ -134,6 +136,8 @@ import JSONbig from 'json-bigint';
         HelpersModule,
         PerformanceModule,
         DiscountRequestsModule,
+        AvitoApiModule,
+        AvitoCardModule,
     ],
     controllers: [AppController],
     providers: [AppService, CronSetupProviderService],

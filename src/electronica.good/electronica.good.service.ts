@@ -7,6 +7,7 @@ import { GoodPercentDto } from '../good/dto/good.percent.dto';
 import { ICountUpdateable } from '../interfaces/ICountUpdatebale';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
 import { GoodWbDto } from '../good/dto/good.wb.dto';
+import { GoodAvitoDto } from '../good/dto/good.avito.dto';
 import { WbCommissionDto } from '../wb.card/dto/wb.commission.dto';
 import { FirebirdTransaction } from "ts-firebird";
 import { UpdatePriceDto } from 'src/price/dto/update.price.dto';
@@ -73,6 +74,14 @@ export class ElectronicaGoodService implements IGood {
     }
 
     setWbData(data: GoodWbDto): Promise<void> {
+        return Promise.resolve(undefined);
+    }
+
+    getAvitoData(ids: string[]): Promise<GoodAvitoDto[]> {
+        return Promise.resolve([]);
+    }
+
+    setAvitoData(data: GoodAvitoDto): Promise<void> {
         return Promise.resolve(undefined);
     }
 

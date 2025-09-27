@@ -3,4 +3,5 @@ export enum GoodServiceEnum {
     YANDEX = 'yandex',
     EXPRESS = 'express',
     WB = 'wb',
+    AVITO = 'avito',
 }
