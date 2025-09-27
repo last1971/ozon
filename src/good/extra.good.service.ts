@@ -3,6 +3,7 @@ import { ProductService } from "../product/product.service";
 import { YandexOfferService } from "../yandex.offer/yandex.offer.service";
 import { ExpressOfferService } from "../yandex.offer/express.offer.service";
 import { WbCardService } from "../wb.card/wb.card.service";
+import { AvitoCardService } from "../avito.card/avito.card.service";
 import { GOOD_SERVICE, IGood } from "../interfaces/IGood";
 import { ICountUpdateable } from "../interfaces/ICountUpdatebale";
 import { GoodServiceEnum } from "./good.service.enum";
@@ -25,6 +26,7 @@ export class ExtraGoodService {
         private yandexOffer: YandexOfferService,
         private expressOffer: ExpressOfferService,
         private wbCard: WbCardService,
+        private avitoCard: AvitoCardService,
         @Inject(GOOD_SERVICE) private goodService: IGood,
         private configService: ConfigService,
     ) {
@@ -38,6 +40,8 @@ export class ExtraGoodService {
             this.services.set(GoodServiceEnum.EXPRESS, { service: this.expressOffer, isSwitchedOn: true });
         if (services.includes(GoodServiceEnum.YANDEX))
             this.services.set(GoodServiceEnum.YANDEX, { service: this.yandexOffer, isSwitchedOn: true });
+        if (services.includes(GoodServiceEnum.AVITO))
+            this.services.set(GoodServiceEnum.AVITO, { service: this.avitoCard, isSwitchedOn: true });
     }
 
     /**

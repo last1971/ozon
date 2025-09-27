@@ -295,6 +295,13 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         );
     }
 
+    async getAllAvitoIds(): Promise<string[]> {
+        return this.withTransaction(async (transaction) => {
+            const result = await transaction.query('SELECT ID FROM AVITO_GOOD', [], false);
+            return result.map((row: any) => row.ID);
+        });
+    }
+
     async getQuantities(goodCodes: string[], t: FirebirdTransaction = null): Promise<Map<string, number>> {
         return new Map(
             (await this.in(goodCodes, t)).map((good) => [good.code.toString(), good.quantity - good.reserve]),

@@ -764,4 +764,17 @@ describe('Trade2006GoodService', () => {
         // Should not call the service's execute
         expect(execute).not.toHaveBeenCalled();
     });
+
+    it('getAllAvitoIds', async () => {
+        query.mockReturnValue([
+            { ID: 'avito123' },
+            { ID: 'avito456' },
+            { ID: 'avito789' }
+        ]);
+
+        const result = await service.getAllAvitoIds();
+
+        expect(query).toHaveBeenCalledWith('SELECT ID FROM AVITO_GOOD', [], false);
+        expect(result).toEqual(['avito123', 'avito456', 'avito789']);
+    });
 });

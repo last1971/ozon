@@ -4,6 +4,7 @@ import { YandexOfferService } from "../yandex.offer/yandex.offer.service";
 import { ExpressOfferService } from "../yandex.offer/express.offer.service";
 import { ProductService } from "../product/product.service";
 import { WbCardService } from "../wb.card/wb.card.service";
+import { AvitoCardService } from "../avito.card/avito.card.service";
 import { ExtraGoodService } from "./extra.good.service";
 import { GoodServiceEnum } from "./good.service.enum";
 import { ConfigService } from "@nestjs/config";
@@ -30,6 +31,7 @@ describe('ExtraGoodService', () => {
                 { provide: ExpressOfferService, useValue: { skuList: [], getGoodIds } },
                 { provide: ProductService, useValue: { skuList: ["222", "222-10"], updateGoodCounts, getGoodIds } },
                 { provide: WbCardService, useValue: { loadSkuList, skuList: ["111"], updateGoodCounts, getGoodIds } },
+                { provide: AvitoCardService, useValue: { skuList: [], updateGoodCounts, getGoodIds } },
                 { provide: ConfigService, useValue: { get: () => Object.values(GoodServiceEnum) } }
             ],
         }).compile();
@@ -62,12 +64,12 @@ describe('ExtraGoodService', () => {
 
     it("test checkGoodCount", async () => {
         await service.checkGoodCount();
-        expect(getGoodIds.mock.calls).toHaveLength(4);
+        expect(getGoodIds.mock.calls).toHaveLength(5);
     });
 
     it("reserveCreated", async () => {
         await service.reserveCreated(["1", "2"]);
-        expect(updateCountForSkus.mock.calls).toHaveLength(4);
+        expect(updateCountForSkus.mock.calls).toHaveLength(5);
     });
 
     it("serviceIsSwitchedOn", async () => {

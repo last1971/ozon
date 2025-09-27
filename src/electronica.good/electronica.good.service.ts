@@ -85,6 +85,10 @@ export class ElectronicaGoodService implements IGood {
         return Promise.resolve(undefined);
     }
 
+    getAllAvitoIds(): Promise<string[]> {
+        return Promise.resolve([]);
+    }
+
     getWbCategoryByName(name: string): Promise<WbCommissionDto> {
         return Promise.resolve(undefined);
     }
