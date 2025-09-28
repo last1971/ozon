@@ -295,10 +295,15 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         );
     }
 
-    async getAllAvitoIds(): Promise<string[]> {
+    async getAllAvitoGoods(): Promise<GoodAvitoDto[]> {
         return this.withTransaction(async (transaction) => {
-            const result = await transaction.query('SELECT ID FROM AVITO_GOOD', [], false);
-            return result.map((row: any) => row.ID);
+            const result = await transaction.query('SELECT * FROM AVITO_GOOD', [], false);
+            return result.map((row: any) => ({
+                id: row.ID,
+                goodsCode: row.GOODSCODE,
+                coeff: row.COEFF,
+                commission: row.COMMISSION,
+            }));
         });
     }
 

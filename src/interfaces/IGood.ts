@@ -19,7 +19,7 @@ export interface IGood {
     getWbData(ids: string[]): Promise<GoodWbDto[]>;
     setAvitoData(data: GoodAvitoDto, t: FirebirdTransaction): Promise<void>;
     getAvitoData(ids: string[]): Promise<GoodAvitoDto[]>;
-    getAllAvitoIds(): Promise<string[]>;
+    getAllAvitoGoods(): Promise<GoodAvitoDto[]>;
     getQuantities(goodCodes: string[], t: FirebirdTransaction): Promise<Map<string, number>>;
     //updateCountForService(service: ICountUpdateable, args: any): Promise<number>;
     updateCountForSkus(service: ICountUpdateable, skus: string[]): Promise<number>;

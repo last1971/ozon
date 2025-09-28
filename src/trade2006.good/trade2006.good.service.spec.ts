@@ -767,14 +767,18 @@ describe('Trade2006GoodService', () => {
 
     it('getAllAvitoIds', async () => {
         query.mockReturnValue([
-            { ID: 'avito123' },
-            { ID: 'avito456' },
-            { ID: 'avito789' }
+            { ID: 'avito123', GOODSCODE: '456', COEFF: 2, COMMISSION: 15.5 },
+            { ID: 'avito456', GOODSCODE: '789', COEFF: 1, COMMISSION: 10.0 },
+            { ID: 'avito789', GOODSCODE: '101', COEFF: 1, COMMISSION: 12.0 },
         ]);
 
-        const result = await service.getAllAvitoIds();
+        const result = await service.getAllAvitoGoods();
 
-        expect(query).toHaveBeenCalledWith('SELECT ID FROM AVITO_GOOD', [], false);
-        expect(result).toEqual(['avito123', 'avito456', 'avito789']);
+        expect(query).toHaveBeenCalledWith('SELECT * FROM AVITO_GOOD', [], false);
+        expect(result).toEqual([
+            { id: 'avito123', goodsCode: '456', coeff: 2, commission: 15.5 },
+            { id: 'avito456', goodsCode: '789', coeff: 1, commission: 10.0 },
+            { id: 'avito789', goodsCode: '101', coeff: 1, commission: 12.0 },
+        ]);
     });
 });

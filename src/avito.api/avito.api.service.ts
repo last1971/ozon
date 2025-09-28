@@ -130,7 +130,7 @@ export class AvitoApiService {
         const bufferMs = 60_000; // refresh 60s early
 
         if (!forceRefresh && this.accessToken && this.accessTokenExpiresAt && now + bufferMs < this.accessTokenExpiresAt) {
-            return this.accessToken;
+                return this.accessToken;
         }
 
         const { token, expiresAt } = await this.fetchNewToken(cfg);

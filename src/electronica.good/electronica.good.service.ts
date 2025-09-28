@@ -85,7 +85,7 @@ export class ElectronicaGoodService implements IGood {
         return Promise.resolve(undefined);
     }
 
-    getAllAvitoIds(): Promise<string[]> {
+    getAllAvitoGoods(): Promise<GoodAvitoDto[]> {
         return Promise.resolve([]);
     }
 

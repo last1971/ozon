@@ -11,6 +11,8 @@ import { Environment } from '../env.validation';
 
 @Injectable()
 export class AvitoCardService extends ICountUpdateable implements IProductable, OnModuleInit {
+
+    private skuAvitoIdPair: Map<string, string> = new Map<string, string>();
     constructor(
         private readonly api: AvitoApiService,
         @Inject(GOOD_SERVICE) private readonly goodService: IGood,
@@ -29,21 +31,24 @@ export class AvitoCardService extends ICountUpdateable implements IProductable, 
 
     // Load and map SKUs to Avito item IDs; return nextArgs for pagination if applicable
     async getGoodIds(args: any): Promise<GoodCountsDto<number>> {
-        const avitoIds = await this.goodService.getAllAvitoIds();
+        const avitoGoods = await this.goodService.getAllAvitoGoods();
         const goods = new Map<string, number>();
 
-        if (avitoIds.length === 0) {
+        if (avitoGoods.length === 0) {
             return { goods, nextArgs: null };
         }
 
-        const chunks = chunk(avitoIds.map(id => parseInt(id)), 100);
+        const chunks = chunk(avitoGoods.map(avito => parseInt(avito.id)), 100);
 
         for (const chunkIds of chunks) {
             const stockResponse = await this.getStock(chunkIds);
             stockResponse.stocks.forEach(stock => {
                 if (!stock.is_out_of_stock) {
                     const quantity = stock.is_unlimited ? 999999 : stock.quantity;
-                    goods.set(stock.item_id.toString(), quantity);
+                    const avito = avitoGoods.find(avito => avito.id === stock.item_id.toString());
+                    const sku = `${avito.goodsCode}${avito.coeff === 1 ? '' : '-' + avito.coeff}`;
+                    this.skuAvitoIdPair.set(sku, avito.id);
+                    goods.set(sku, quantity);
                 }
             });
         }
@@ -53,9 +58,39 @@ export class AvitoCardService extends ICountUpdateable implements IProductable, 
 
     // Push stock levels to Avito for provided goods map (offer_id -> amount)
     async updateGoodCounts(goods: Map<string, number>): Promise<number> {
-        // TODO: call Avito stock update endpoint, batching as needed
-        // Placeholder: pretend nothing updated yet
-        return 0;
+        if (goods.size === 0) return 0;
+
+        const stocks = Array.from(goods.entries()).map(([sku, quantity]) => ({
+            item_id: parseInt(this.skuAvitoIdPair.get(sku)),
+            quantity: Math.min(quantity, 999999)
+        })).filter(stock => !isNaN(stock.item_id));
+
+        if (stocks.length === 0) return 0;
+
+        const chunks = chunk(stocks, 200);
+        let updatedCount = 0;
+
+        for (const stockChunk of chunks) {
+            try {
+                const response = await this.api.request<{
+                    stocks: Array<{
+                        errors: string[];
+                        external_id?: string;
+                        item_id: number;
+                        success: boolean;
+                    }>
+                }>(
+                    '/stock-management/1/stocks',
+                    { stocks: stockChunk },
+                    'put',
+                );
+                updatedCount += response.stocks.filter(r => r.success).length;
+            } catch (error) {
+                console.error('Failed to update Avito stocks:', error);
+            }
+        }
+
+        return updatedCount;
     }
 
     async infoList(offer_id: string[]): Promise<ProductInfoDto[]> {
@@ -74,7 +109,7 @@ export class AvitoCardService extends ICountUpdateable implements IProductable, 
 
     async getStock(item_ids: number[], strong_consistency = true): Promise<{ stocks: Array<{ item_id: number; quantity: number; is_out_of_stock: boolean; is_unlimited: boolean; is_multiple: boolean }> }> {
         return this.api.request(
-            `/core/v1/accounts/self/items/stock`,
+            `/stock-management/1/info`,
             { item_ids, strong_consistency },
             'post'
         );
