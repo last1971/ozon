@@ -4,6 +4,7 @@ import { IPriceUpdateable } from "../interfaces/i.price.updateable";
 import { PriceService } from "./price.service";
 import { YandexPriceService } from "../yandex.price/yandex.price.service";
 import { WbPriceService } from "../wb.price/wb.price.service";
+import { AvitoPriceService } from "../avito.price/avito.price.service";
 import { GOOD_SERVICE, IGood } from "../interfaces/IGood";
 import { ConfigService } from "@nestjs/config";
 import { UpdatePriceDto } from "./dto/update.price.dto";
@@ -38,6 +39,7 @@ export class ExtraPriceService {
         private service: PriceService,
         @Inject(forwardRef(() => YandexPriceService)) private yandexPriceService: YandexPriceService,
         private wb: WbPriceService,
+        private avitoPriceService: AvitoPriceService,
         @Inject(GOOD_SERVICE) private goodService: IGood,
         private configService: ConfigService,
         private extraGoodService: ExtraGoodService,
@@ -59,6 +61,7 @@ export class ExtraPriceService {
         if (services.includes(GoodServiceEnum.OZON)) this.services.set(GoodServiceEnum.OZON, service);
         if (services.includes(GoodServiceEnum.YANDEX)) this.services.set(GoodServiceEnum.YANDEX, yandexPriceService);
         if (services.includes(GoodServiceEnum.WB)) this.services.set(GoodServiceEnum.WB, wb);
+        if (services.includes(GoodServiceEnum.AVITO)) this.services.set(GoodServiceEnum.AVITO, avitoPriceService);
     }
 
     /**

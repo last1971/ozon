@@ -130,14 +130,37 @@ export const priceStore = defineStore("priceStore", {
                 const res = await axios.post<any[]>('/api/price', {
                     prices: [{ offer_id, min_price: '0', price: '0', old_price: '0', incoming_price: edit ? available_price : 0 }]
                 });
-                if (!res.data?.[0]?.[0]?.result?.[0]?.updated) {
-                    throw new Error(res.data?.[0]?.[0]?.result?.[0]?.errors?.toString() || 'Unknown error in first response');
-                }
-                if (res.data?.[1]?.offerUpdate?.status !== 'OK') {
-                    throw new Error(res.data?.[1]?.toString() || 'Unknown error in second response');
-                }
-                if (res.data?.[2]?.status === 'NotOk') {
-                    throw new Error(res.data?.[2]?.error?.service_message || res.data?.[2]?.error?.message || 'Unknown error in third response');
+                const errors: string[] = [];
+
+                res.data?.forEach((serviceResponse, index) => {
+                    if (!serviceResponse) return; // Пропускаем null/undefined ответы
+
+                    // Проверяем формат с result (Ozon)
+                    if (serviceResponse?.[0]?.result) {
+                        const results = serviceResponse[0].result;
+                        const failedResults = results.filter((r: any) => !r.updated && r.errors?.length > 0);
+                        if (failedResults.length > 0) {
+                            errors.push(`Service ${index + 1}: ${failedResults.map((r: any) => r.errors.join(', ')).join('; ')}`);
+                        }
+                    }
+                    // Проверяем формат с updated/errors (Avito)
+                    else if (serviceResponse.hasOwnProperty('updated') && serviceResponse.hasOwnProperty('errors')) {
+                        if (serviceResponse.errors?.length > 0) {
+                            errors.push(`Service ${index + 1}: ${serviceResponse.errors.join(', ')}`);
+                        }
+                    }
+                    // Проверяем формат с offerUpdate (Yandex)
+                    else if (serviceResponse.offerUpdate?.status !== 'OK') {
+                        errors.push(`Service ${index + 1}: ${serviceResponse.offerUpdate?.message || 'Update failed'}`);
+                    }
+                    // Проверяем формат с status NotOk (Wildberries)
+                    else if (serviceResponse.status === 'NotOk') {
+                        errors.push(`Service ${index + 1}: ${serviceResponse.error?.service_message || serviceResponse.error?.message || 'Unknown error'}`);
+                    }
+                });
+
+                if (errors.length > 0) {
+                    throw new Error(errors.join('; '));
                 }
                 this.successSave = true;
             } catch (e: any) {

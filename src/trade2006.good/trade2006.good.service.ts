@@ -20,6 +20,7 @@ import { IPriceUpdateable } from '../interfaces/i.price.updateable';
 import { UpdatePriceDto } from '../price/dto/update.price.dto';
 import { ConfigService } from '@nestjs/config';
 import { GoodWbDto } from '../good/dto/good.wb.dto';
+import { GoodAvitoDto } from '../good/dto/good.avito.dto';
 import { chunk, find, flatten, remove, snakeCase, toUpper } from 'lodash';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
@@ -217,6 +218,16 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         );
     }
 
+    async setAvitoData(data: GoodAvitoDto, t: FirebirdTransaction = null): Promise<void> {
+        return this.withTransaction(async (transaction) => {
+            await transaction.execute(
+                'UPDATE OR INSERT INTO AVITO_GOOD (ID, GOODSCODE, COEFF, COMMISSION) VALUES (?, ?, ?, ?) MATCHING (ID)',
+                [data.id, data.goodsCode, data.coeff, data.commission],
+                false,
+            );
+        }, t);
+    }
+
     /**
      * Fetches data from the Wildberries database for the given IDs.
      * The data is retrieved in chunks to optimize the query performance
@@ -248,6 +259,52 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                 minPrice: data.MIN_PRICE,
             }),
         );
+    }
+
+    /**
+     * Fetches data from the Avito database for the given IDs.
+     * The data is retrieved in chunks to optimize the query performance
+     * and then flattened into a single array of results.
+     *
+     * @param {string[]} ids - An array of IDs corresponding to the Avito data to be retrieved.
+     * @return {Promise<GoodAvitoDto[]>} A promise that resolves to an array of GoodAvitoDto objects containing the retrieved data.
+     */
+    async getAvitoData(ids: string[]): Promise<GoodAvitoDto[]> {
+        const avitoData: any[] = flatten(
+            await Promise.all(
+                chunk(ids, 50).map(async (part: string[]) => {
+                    return this.withTransaction(async (transaction) => {
+                        return transaction.query(
+                            `SELECT ID, GOODSCODE, COEFF, COMMISSION
+                     FROM AVITO_GOOD
+                     WHERE ID IN (${'?'.repeat(part.length).split('').join()})`,
+                            part,
+                            false,
+                        );
+                    });
+                }),
+            ),
+        );
+        return avitoData.map(
+            (data): GoodAvitoDto => ({
+                id: data.ID,
+                goodsCode: data.GOODSCODE,
+                coeff: data.COEFF,
+                commission: data.COMMISSION,
+            }),
+        );
+    }
+
+    async getAllAvitoGoods(): Promise<GoodAvitoDto[]> {
+        return this.withTransaction(async (transaction) => {
+            const result = await transaction.query('SELECT * FROM AVITO_GOOD', [], false);
+            return result.map((row: any) => ({
+                id: row.ID,
+                goodsCode: row.GOODSCODE,
+                coeff: row.COEFF,
+                commission: row.COMMISSION,
+            }));
+        });
     }
 
     async getQuantities(goodCodes: string[], t: FirebirdTransaction = null): Promise<Map<string, number>> {

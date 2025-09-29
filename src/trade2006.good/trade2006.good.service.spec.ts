@@ -682,4 +682,103 @@ describe('Trade2006GoodService', () => {
             ['1', '2'],
         ]);
     });
+
+    it('getAvitoData', async () => {
+        query.mockReturnValue([
+            { ID: 'avito123', GOODSCODE: '456', COEFF: 2, COMMISSION: 15.5 },
+            { ID: 'avito789', GOODSCODE: '101', COEFF: 1, COMMISSION: 12.0 }
+        ]);
+        
+        const result = await service.getAvitoData(['avito123', 'avito789']);
+        
+        expect(query).toHaveBeenCalledWith(
+            'SELECT ID, GOODSCODE, COEFF, COMMISSION\n                     FROM AVITO_GOOD\n                     WHERE ID IN (?,?)',
+            ['avito123', 'avito789'],
+            false
+        );
+        
+        expect(result).toEqual([
+            { id: 'avito123', goodsCode: '456', coeff: 2, commission: 15.5 },
+            { id: 'avito789', goodsCode: '101', coeff: 1, commission: 12.0 }
+        ]);
+    });
+
+    it('getAvitoData with chunks', async () => {
+        const ids = Array.from({ length: 60 }, (_, i) => `avito${i}`);
+        query.mockReturnValue([]);
+        
+        await service.getAvitoData(ids);
+        
+        // Should make 2 calls (50 + 10 items)
+        expect(query).toHaveBeenCalledTimes(2);
+        
+        // First call with 50 items
+        expect(query).toHaveBeenNthCalledWith(1,
+            expect.stringContaining('WHERE ID IN (' + '?'.repeat(50).split('').join(',') + ')'),
+            expect.arrayContaining(ids.slice(0, 50)),
+            false
+        );
+        
+        // Second call with remaining 10 items
+        expect(query).toHaveBeenNthCalledWith(2,
+            expect.stringContaining('WHERE ID IN (' + '?'.repeat(10).split('').join(',') + ')'),
+            expect.arrayContaining(ids.slice(50, 60)),
+            false
+        );
+    });
+
+    it('setAvitoData', async () => {
+        const avitoData = {
+            id: 'avito123',
+            goodsCode: '456',
+            coeff: 2,
+            commission: 15.5
+        };
+        
+        await service.setAvitoData(avitoData);
+        
+        expect(execute).toHaveBeenCalledWith(
+            'UPDATE OR INSERT INTO AVITO_GOOD (ID, GOODSCODE, COEFF, COMMISSION) VALUES (?, ?, ?, ?) MATCHING (ID)',
+            ['avito123', '456', 2, 15.5],
+            false
+        );
+    });
+
+    it('setAvitoData with transaction', async () => {
+        const mockTransaction = { execute: jest.fn() };
+        const avitoData = {
+            id: 'avito456',
+            goodsCode: '789',
+            coeff: 1,
+            commission: 10.0
+        };
+        
+        await service.setAvitoData(avitoData, mockTransaction as any);
+        
+        expect(mockTransaction.execute).toHaveBeenCalledWith(
+            'UPDATE OR INSERT INTO AVITO_GOOD (ID, GOODSCODE, COEFF, COMMISSION) VALUES (?, ?, ?, ?) MATCHING (ID)',
+            ['avito456', '789', 1, 10.0],
+            false
+        );
+        
+        // Should not call the service's execute
+        expect(execute).not.toHaveBeenCalled();
+    });
+
+    it('getAllAvitoIds', async () => {
+        query.mockReturnValue([
+            { ID: 'avito123', GOODSCODE: '456', COEFF: 2, COMMISSION: 15.5 },
+            { ID: 'avito456', GOODSCODE: '789', COEFF: 1, COMMISSION: 10.0 },
+            { ID: 'avito789', GOODSCODE: '101', COEFF: 1, COMMISSION: 12.0 },
+        ]);
+
+        const result = await service.getAllAvitoGoods();
+
+        expect(query).toHaveBeenCalledWith('SELECT * FROM AVITO_GOOD', [], false);
+        expect(result).toEqual([
+            { id: 'avito123', goodsCode: '456', coeff: 2, commission: 15.5 },
+            { id: 'avito456', goodsCode: '789', coeff: 1, commission: 10.0 },
+            { id: 'avito789', goodsCode: '101', coeff: 1, commission: 12.0 },
+        ]);
+    });
 });

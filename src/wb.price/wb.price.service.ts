@@ -90,7 +90,12 @@ export class WbPriceService implements IPriceUpdateable {
             updateDiscounts: await this.updateDiscounts(discounts),
         };
          */
-        return this.api.method('https://discounts-prices-api.wildberries.ru/api/v2/upload/task', 'post', { data }, true);
+        return this.api.method(
+            'https://discounts-prices-api.wildberries.ru/api/v2/upload/task',
+            'post',
+            { data },
+            true,
+        );
     }
 
     // Not using remove
@@ -105,7 +110,7 @@ export class WbPriceService implements IPriceUpdateable {
 
     async createAction(file: Express.Multer.File): Promise<any> {
         const workbook = new Excel.Workbook();
-        await workbook.xlsx.load(file.buffer);
+        await workbook.xlsx.load(file.buffer as any);
         const worksheet: Excel.Worksheet = first(workbook.worksheets);
         const newWorkbook = new Excel.Workbook();
         const newWorksheet = newWorkbook.addWorksheet(worksheet.name);
@@ -128,11 +133,9 @@ export class WbPriceService implements IPriceUpdateable {
         let i = 1;
         worksheet.eachRow((row: Excel.Row, rowNumber) => {
             if (
-                rowNumber === 1
-                ||
-                parseInt(row.getCell(targetColumns['Плановая цена для акции']).value as string)
-                >=
-                discounts.get(row.getCell(targetColumns['Артикул поставщика']).value as string)
+                rowNumber === 1 ||
+                parseInt(row.getCell(targetColumns['Плановая цена для акции']).value as string) >=
+                    discounts.get(row.getCell(targetColumns['Артикул поставщика']).value as string)
             ) {
                 newWorksheet.insertRow(i++, row.values);
             }

@@ -8,6 +8,7 @@ import { FirebirdTransaction } from 'ts-firebird';
 import { WbCardDto } from '../wb.card/dto/wb.card.dto';
 import { WbCommissionDto } from '../wb.card/dto/wb.commission.dto';
 import { UpdatePriceDto } from "../price/dto/update.price.dto";
+import { GoodAvitoDto } from '../good/dto/good.avito.dto';
 
 export interface IGood {
     in(codes: string[], t: FirebirdTransaction): Promise<GoodDto[]>;
@@ -16,6 +17,9 @@ export interface IGood {
     getPerc(codes: string[], t: FirebirdTransaction): Promise<GoodPercentDto[]>;
     setWbData(data: GoodWbDto, t: FirebirdTransaction): Promise<void>;
     getWbData(ids: string[]): Promise<GoodWbDto[]>;
+    setAvitoData(data: GoodAvitoDto, t: FirebirdTransaction): Promise<void>;
+    getAvitoData(ids: string[]): Promise<GoodAvitoDto[]>;
+    getAllAvitoGoods(): Promise<GoodAvitoDto[]>;
     getQuantities(goodCodes: string[], t: FirebirdTransaction): Promise<Map<string, number>>;
     //updateCountForService(service: ICountUpdateable, args: any): Promise<number>;
     updateCountForSkus(service: ICountUpdateable, skus: string[]): Promise<number>;

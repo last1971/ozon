@@ -24,6 +24,7 @@ import { EmitUpdatePromosCommand } from './commands/emit-update-promos.command';
 import { LogResultProcessingMessageCommand } from './commands/log-result-processing-message.command';
 import { ValidateSkusNotEmptyCommand } from './commands/validate-skus-not-empty.command';
 import { SetResultProcessingMessageCommand } from './commands/set-result-processing-message.command';
+import { AvitoPriceService } from "../avito.price/avito.price.service";
 
 jest.mock("../yandex.price/yandex.price.service");
 jest.mock("../wb.price/wb.price.service");
@@ -118,6 +119,7 @@ describe("ExtraPriceService", () => {
                 { provide: PriceService, useValue: mockPriceService },
                 { provide: YandexPriceService, useValue: mockYandexPriceService },
                 { provide: WbPriceService, useValue: mockWbPriceService },
+                { provide: AvitoPriceService, useValue: mockCommand },
                 { provide: GOOD_SERVICE, useValue: mockGoodService },
                 { provide: ExtraGoodService, useValue: mockExtraGoodService },
                 { provide: EventEmitter2, useValue: mockEventEmitter },
@@ -131,7 +133,7 @@ describe("ExtraPriceService", () => {
                 { provide: EmitUpdatePromosCommand, useValue: mockCommand },
                 { provide: LogResultProcessingMessageCommand, useValue: mockCommand },
                 { provide: ValidateSkusNotEmptyCommand, useValue: mockCommand },
-                { provide: SetResultProcessingMessageCommand, useValue: mockCommand },
+                { provide: SetResultProcessingMessageCommand, useValue: mockCommand },                
             ]
         }).compile();
 
@@ -139,6 +141,7 @@ describe("ExtraPriceService", () => {
             mockPriceService as unknown as PriceService,
             mockYandexPriceService as unknown as YandexPriceService,
             mockWbPriceService as unknown as WbPriceService,
+            {} as any, // avitoPriceService
             mockGoodService as unknown as IGood,
             mockConfigService as unknown as ConfigService,
             mockExtraGoodService as unknown as ExtraGoodService,
@@ -173,6 +176,7 @@ describe("ExtraPriceService", () => {
                 mockPriceService as unknown as PriceService,
                 mockYandexPriceService as unknown as YandexPriceService,
                 mockWbPriceService as unknown as WbPriceService,
+                {} as any, // avitoPriceService
                 mockGoodService as unknown as IGood,
                 mockConfigService as unknown as ConfigService,
                 mockExtraGoodService as unknown as ExtraGoodService,
