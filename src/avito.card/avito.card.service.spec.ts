@@ -159,7 +159,7 @@ describe('AvitoCardService', () => {
         });
 
         it('should handle chunking for large number of ids', async () => {
-            const largeIdArray = Array.from({ length: 250 }, (_, i) => ({
+            const largeIdArray = Array.from({ length: 25 }, (_, i) => ({
                 id: (i + 1).toString(),
                 goodsCode: `goods${i + 1}`,
                 coeff: 1,
@@ -169,27 +169,27 @@ describe('AvitoCardService', () => {
 
             avitoApiService.request
                 .mockResolvedValueOnce({
-                    stocks: Array.from({ length: 100 }, (_, i) => ({
+                    stocks: Array.from({ length: 10 }, (_, i) => ({
                         item_id: i + 1,
-                        quantity: i + 1,
+                        quantity: (i + 1) * 10,
                         is_out_of_stock: false,
                         is_unlimited: false,
                         is_multiple: true,
                     })),
                 })
                 .mockResolvedValueOnce({
-                    stocks: Array.from({ length: 100 }, (_, i) => ({
-                        item_id: i + 101,
-                        quantity: i + 101,
+                    stocks: Array.from({ length: 10 }, (_, i) => ({
+                        item_id: i + 11,
+                        quantity: (i + 11) * 10,
                         is_out_of_stock: false,
                         is_unlimited: false,
                         is_multiple: true,
                     })),
                 })
                 .mockResolvedValueOnce({
-                    stocks: Array.from({ length: 50 }, (_, i) => ({
-                        item_id: i + 201,
-                        quantity: i + 201,
+                    stocks: Array.from({ length: 5 }, (_, i) => ({
+                        item_id: i + 21,
+                        quantity: (i + 21) * 10,
                         is_out_of_stock: false,
                         is_unlimited: false,
                         is_multiple: true,
@@ -199,9 +199,9 @@ describe('AvitoCardService', () => {
             const result = await service.getGoodIds(null);
 
             expect(avitoApiService.request).toHaveBeenCalledTimes(3);
-            expect(result.goods.size).toBe(250);
-            expect(result.goods.get('goods1')).toBe(1);
-            expect(result.goods.get('goods250')).toBe(250);
+            expect(result.goods.size).toBe(25);
+            expect(result.goods.get('goods1')).toBe(10);
+            expect(result.goods.get('goods25')).toBe(250);
         });
     });
 
