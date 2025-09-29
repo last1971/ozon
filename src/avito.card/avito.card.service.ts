@@ -39,7 +39,7 @@ export class AvitoCardService extends ICountUpdateable implements IProductable, 
 
         const chunks = chunk(
             avitoGoods.map((avito) => parseInt(avito.id)),
-            100,
+            10,
         );
 
         for (const chunkIds of chunks) {
