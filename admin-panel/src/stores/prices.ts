@@ -153,9 +153,9 @@ export const priceStore = defineStore("priceStore", {
                     else if (serviceResponse.offerUpdate?.status !== 'OK') {
                         errors.push(`Service ${index + 1}: ${serviceResponse.offerUpdate?.message || 'Update failed'}`);
                     }
-                    // Проверяем формат с status NotOk (Wildberries)
-                    else if (serviceResponse.status === 'NotOk') {
-                        errors.push(`Service ${index + 1}: ${serviceResponse.error?.service_message || serviceResponse.error?.message || 'Unknown error'}`);
+                    // Проверяем формат с error: true (Wildberries)
+                    else if (serviceResponse.error === true) {
+                        errors.push(`Service ${index + 1}: ${serviceResponse.errorText || 'Unknown error'}`);
                     }
                 });
 
