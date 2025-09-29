@@ -5,6 +5,7 @@ import { ProductModule } from '../product/product.module';
 import { GoodModule } from '../good/good.module';
 import { YandexPriceModule } from '../yandex.price/yandex.price.module';
 import { WbPriceModule } from '../wb.price/wb.price.module';
+import { AvitoPriceModule } from '../avito.price/avito.price.module';
 import { ExtraPriceService } from "./extra.price.service";
 import { ResetAvailablePriceCommand } from './commands/reset-available-price.command';
 import { TradeSkusCommand } from './commands/trade-skus.command';
@@ -19,7 +20,7 @@ import { ValidateSkusNotEmptyCommand } from './commands/validate-skus-not-empty.
 import { SetResultProcessingMessageCommand } from './commands/set-result-processing-message.command';
 
 @Module({
-    imports: [ProductModule, GoodModule, YandexPriceModule, WbPriceModule],
+    imports: [ProductModule, GoodModule, YandexPriceModule, WbPriceModule, AvitoPriceModule],
     providers: [
         PriceService,
         ExtraPriceService,

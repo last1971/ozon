@@ -151,8 +151,8 @@ describe('AvitoCardService', () => {
 
             const expectedMap = new Map([
                 ['456', 5],
-                ['101', 999999], // unlimited
-                // '456' not included because is_out_of_stock = true
+                ['101', 999999], 
+                ['789', 0],
             ]);
             expect(result.goods).toEqual(expectedMap);
             expect(result.nextArgs).toBeNull();
