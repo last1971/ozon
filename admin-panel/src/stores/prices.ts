@@ -135,27 +135,38 @@ export const priceStore = defineStore("priceStore", {
                 res.data?.forEach((serviceResponse, index) => {
                     if (!serviceResponse) return; // Пропускаем null/undefined ответы
 
+                    let serviceName = `Service ${index + 1}`;
+
                     // Проверяем формат с result (Ozon)
                     if (serviceResponse?.[0]?.result) {
+                        serviceName = 'Ozon';
                         const results = serviceResponse[0].result;
                         const failedResults = results.filter((r: any) => !r.updated && r.errors?.length > 0);
                         if (failedResults.length > 0) {
-                            errors.push(`Service ${index + 1}: ${failedResults.map((r: any) => r.errors.join(', ')).join('; ')}`);
+                            errors.push(`${serviceName}: ${failedResults.map((r: any) => r.errors.join(', ')).join('; ')}`);
                         }
                     }
                     // Проверяем формат с updated/errors (Avito)
                     else if (serviceResponse.hasOwnProperty('updated') && serviceResponse.hasOwnProperty('errors')) {
+                        serviceName = 'Avito';
                         if (serviceResponse.errors?.length > 0) {
-                            errors.push(`Service ${index + 1}: ${serviceResponse.errors.join(', ')}`);
+                            errors.push(`${serviceName}: ${serviceResponse.errors.join(', ')}`);
                         }
                     }
                     // Проверяем формат с offerUpdate (Yandex)
-                    else if (serviceResponse.offerUpdate?.status !== 'OK') {
-                        errors.push(`Service ${index + 1}: ${serviceResponse.offerUpdate?.message || 'Update failed'}`);
+                    else if (serviceResponse.offerUpdate && serviceResponse.offerUpdate.status !== 'OK') {
+                        serviceName = 'Yandex';
+                        errors.push(`${serviceName}: ${serviceResponse.offerUpdate?.message || 'Update failed'}`);
+                    }
+                    // Проверяем формат с status NotOk (Wildberries)
+                    else if (serviceResponse.status === 'NotOk') {
+                        serviceName = 'WB';
+                        errors.push(`${serviceName}: ${serviceResponse.error?.data?.errorText || serviceResponse.error?.service_message || 'Unknown error'}`);
                     }
                     // Проверяем формат с error: true (Wildberries)
                     else if (serviceResponse.error === true) {
-                        errors.push(`Service ${index + 1}: ${serviceResponse.errorText || 'Unknown error'}`);
+                        serviceName = 'WB';
+                        errors.push(`${serviceName}: ${serviceResponse.errorText || 'Unknown error'}`);
                     }
                 });
 
