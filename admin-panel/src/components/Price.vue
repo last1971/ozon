@@ -5,6 +5,10 @@ import { priceStore } from '@/stores/prices';
 import { computed, ref, watch } from 'vue';
 import { debounce } from 'lodash';
 import { tariffStore } from '@/stores/tariffStore';
+import { useInfoSnackbar } from '@/composable/useInfoSnackbar'
+
+const { showSuccess, showError } = useInfoSnackbar()
+
 
 const props = defineProps<{ value: PriceDto; ind: number }>();
 const { pays, isLoadingPrice } = storeToRefs(priceStore());
@@ -14,6 +18,16 @@ const edit = ref(false);
 const updateAvailablePrice = (newValue: string) => {
     props.value.available_price = parseFloat(newValue) || 0; // Преобразование строки в число
 };
+
+const handleSave = async () => {
+    try {
+        const result = await priceStore().save(props.ind, edit.value)
+        showSuccess('Цены сохранены', 'Данные успешно обновлены', result?.serviceResults)
+    } catch (error: any) {
+        showError('Ошибка сохранения', error.message)
+    }
+}
+
 
 watch(
     () =>
@@ -71,7 +85,7 @@ const isSumZero = (index: number) => {
                         <v-btn
                             block
                             prepend-icon="mdi-content-save"
-                            @click="priceStore().save(props.ind, edit)"
+                            @click="handleSave"
                             :loading="isLoadingPrice[props.ind]"
                         >
                             Сохранить

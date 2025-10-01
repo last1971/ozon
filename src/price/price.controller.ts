@@ -64,7 +64,7 @@ export class PriceController {
         description: 'Обновить цены',
     })
     @Post()
-    async update(@Body() prices: UpdatePricesDto): Promise<any> {
+    async update(@Body() prices: UpdatePricesDto): Promise<{ service: GoodServiceEnum, result: any }[]> {
         const skus: string[] = [];
         const pricesMap = new Map<string, UpdatePriceDto>();
         prices.prices.forEach((price) => {

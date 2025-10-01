@@ -90,14 +90,15 @@ export class ExtraPriceService {
      * and the corresponding price update data as values.
      * @return {Promise<any>} A promise that resolves when the price update operation completes for all services.
      */
-    public updatePriceForServices(skus: string[], pricesMap?: Map<string, UpdatePriceDto>): Promise<any> {
+    public updatePriceForServices(skus: string[], pricesMap?: Map<string, UpdatePriceDto>): Promise<{ service: GoodServiceEnum, result: any }[]> {
+        const serviceEntries = [...this.services.entries()];
         return Promise.all(
-            this.getServices()
-                .map(
-                    (service) =>
-                        this.goodService.updatePriceForService(service, skus, pricesMap)
-                ),
+            serviceEntries.map(async ([serviceEnum, service]) => ({
+                service: serviceEnum, // это и есть GoodServiceEnum!
+                result: await this.goodService.updatePriceForService(service, skus, pricesMap)
+            }))
         );
+
     }
 
     public updatePriceForGoodSkus(skus: string[]): Promise<any> {

@@ -10,7 +10,6 @@ import { GoodWbDto } from '../good/dto/good.wb.dto';
 import { GoodAvitoDto } from '../good/dto/good.avito.dto';
 import { WbCommissionDto } from '../wb.card/dto/wb.commission.dto';
 import { FirebirdTransaction } from "ts-firebird";
-import { UpdatePriceDto } from 'src/price/dto/update.price.dto';
 
 @Injectable()
 export class ElectronicaGoodService implements IGood {

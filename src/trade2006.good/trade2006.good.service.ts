@@ -21,7 +21,7 @@ import { UpdatePriceDto } from '../price/dto/update.price.dto';
 import { ConfigService } from '@nestjs/config';
 import { GoodWbDto } from '../good/dto/good.wb.dto';
 import { GoodAvitoDto } from '../good/dto/good.avito.dto';
-import { chunk, find, flatten, remove, snakeCase, toUpper } from 'lodash';
+import { chunk, find, flatten, snakeCase, toUpper } from 'lodash';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import { DateTime } from 'luxon';

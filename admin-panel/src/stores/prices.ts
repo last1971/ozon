@@ -3,6 +3,8 @@ import axios from "../axios.config";
 import { articulesStore } from "@/stores/articules";
 import { tariffStore } from "@/stores/tariffStore";
 import type { PriceDto } from "@/contracts/price.dto";
+import type { ServiceResult } from '@/contracts/service.result';
+
 
 // const url = import.meta.env.VITE_URL;
 
@@ -106,7 +108,7 @@ export const priceStore = defineStore("priceStore", {
             this.isLoadingPrice[index] = false;
         },
     
-        async save(index: number, edit: boolean): Promise<void> {
+        async save(index: number, edit: boolean): Promise<{ serviceResults: ServiceResult[] } | undefined> {
             this.isLoadingPrice[index] = true;
             this.successSave = false;
             this.failSave = false;
@@ -127,53 +129,72 @@ export const priceStore = defineStore("priceStore", {
                         offer_id, min_perc, perc, old_perc, adv_perc, packing_price: sum_pack, available_price,
                     }
                 });
-                const res = await axios.post<any[]>('/api/price', {
+                const res = await axios.post<{ service: string, result: any }[]>('/api/price', {
                     prices: [{ offer_id, min_price: '0', price: '0', old_price: '0', incoming_price: edit ? available_price : 0 }]
                 });
+
+                const serviceResults: ServiceResult[] = [];
                 const errors: string[] = [];
 
-                res.data?.forEach((serviceResponse, index) => {
-                    if (!serviceResponse) return; // Пропускаем null/undefined ответы
+                res.data?.forEach((serviceResponse) => {
+                    if (!serviceResponse) return;
 
-                    let serviceName = `Service ${index + 1}`;
+                    const serviceName = serviceResponse.service;
+                    const result = serviceResponse.result;
+                    let errorMessage: string | undefined;
 
-                    // Проверяем формат с result (Ozon)
-                    if (serviceResponse?.[0]?.result) {
-                        serviceName = 'Ozon';
-                        const results = serviceResponse[0].result;
-                        const failedResults = results.filter((r: any) => !r.updated && r.errors?.length > 0);
-                        if (failedResults.length > 0) {
-                            errors.push(`${serviceName}: ${failedResults.map((r: any) => r.errors.join(', ')).join('; ')}`);
+                    // result === null - сервис не нашел товары
+                    if (result === null) {
+                        serviceResults.push({
+                            service: serviceName,
+                            result: null,
+                        });
+                        return;
+                    }
+
+                    // Обрабатываем ответ в зависимости от сервиса
+                    if (serviceName === 'ozon') {
+                        if (result?.[0]?.result) {
+                            const results = result[0].result;
+                            const failedResults = results.filter((r: any) => !r.updated && r.errors?.length > 0);
+                            if (failedResults.length > 0) {
+                                errorMessage = failedResults.map((r: any) => r.errors.join(', ')).join('; ');
+                                errors.push(`${serviceName}: ${errorMessage}`);
+                            }
+                        }
+                    } else if (serviceName === 'avito') {
+                        if (result.errors?.length > 0) {
+                            errorMessage = result.errors.join(', ');
+                            errors.push(`${serviceName}: ${errorMessage}`);
+                        }
+                    } else if (serviceName === 'yandex') {
+                        if (result.offerUpdate && result.offerUpdate.status !== 'OK') {
+                            errorMessage = result.offerUpdate?.message || 'Update failed';
+                            errors.push(`${serviceName}: ${errorMessage}`);
+                        }
+                    } else if (serviceName === 'wb') {
+                        if (result.status === 'NotOk') {
+                            errorMessage = result.error?.data?.errorText || result.error?.service_message || 'Unknown error';
+                            errors.push(`${serviceName}: ${errorMessage}`);
+                        } else if (result.error === true) {
+                            errorMessage = result.errorText || 'Unknown error';
+                            errors.push(`${serviceName}: ${errorMessage}`);
                         }
                     }
-                    // Проверяем формат с updated/errors (Avito)
-                    else if (serviceResponse.hasOwnProperty('updated') && serviceResponse.hasOwnProperty('errors')) {
-                        serviceName = 'Avito';
-                        if (serviceResponse.errors?.length > 0) {
-                            errors.push(`${serviceName}: ${serviceResponse.errors.join(', ')}`);
-                        }
-                    }
-                    // Проверяем формат с offerUpdate (Yandex)
-                    else if (serviceResponse.offerUpdate && serviceResponse.offerUpdate.status !== 'OK') {
-                        serviceName = 'Yandex';
-                        errors.push(`${serviceName}: ${serviceResponse.offerUpdate?.message || 'Update failed'}`);
-                    }
-                    // Проверяем формат с status NotOk (Wildberries)
-                    else if (serviceResponse.status === 'NotOk') {
-                        serviceName = 'WB';
-                        errors.push(`${serviceName}: ${serviceResponse.error?.data?.errorText || serviceResponse.error?.service_message || 'Unknown error'}`);
-                    }
-                    // Проверяем формат с error: true (Wildberries)
-                    else if (serviceResponse.error === true) {
-                        serviceName = 'WB';
-                        errors.push(`${serviceName}: ${serviceResponse.errorText || 'Unknown error'}`);
-                    }
+
+                    serviceResults.push({
+                        service: serviceName,
+                        result,
+                        error: errorMessage,
+                    });
                 });
 
+                this.successSave = errors.length === 0;
+                this.failSave = errors.length > 0;
                 if (errors.length > 0) {
-                    throw new Error(errors.join('; '));
+                    this.failMessage = errors.join('; ');
                 }
-                this.successSave = true;
+                return { serviceResults };
             } catch (e: any) {
                 if (e.response?.data?.message) {
                     this.failMessage = e.response.data.message;
@@ -181,8 +202,10 @@ export const priceStore = defineStore("priceStore", {
                     this.failMessage = e.message;
                 }
                 this.failSave = true;
+                throw e;
+            } finally {
+                this.isLoadingPrice[index] = false;
             }
-            this.isLoadingPrice[index] = false;
         }
     }
 });
