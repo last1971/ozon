@@ -221,9 +221,8 @@ describe('OrderService', () => {
             ]),
         };
 
-        // Мокируем кеш: заказ '002' уже обработан
-        const processedSet = new Set<string>(['002']);
-        cacheGet.mockResolvedValueOnce(processedSet);
+        // Мокируем кеш: заказ '002' уже обработан (строка с разделителями)
+        cacheGet.mockResolvedValueOnce('002');
 
         const processor = jest.fn().mockResolvedValue(undefined);
 
@@ -240,16 +239,16 @@ describe('OrderService', () => {
         expect(processor).toHaveBeenCalledWith({ posting_number: '001', products: [] });
         expect(processor).toHaveBeenCalledWith({ posting_number: '003', products: [] });
 
-        // Проверяем что все 3 заказа теперь в кеше
+        // Проверяем что все 3 заказа теперь в кеше как строка
         expect(cacheSet).toHaveBeenCalledWith(
             'processed:test:TestService',
-            expect.any(Set),
+            expect.any(String),
             14 * 24 * 60 * 60 * 1000,
         );
 
-        const savedSet = cacheSet.mock.calls[0][1];
-        expect(savedSet.has('001')).toBe(true);
-        expect(savedSet.has('002')).toBe(true);
-        expect(savedSet.has('003')).toBe(true);
+        const savedString = cacheSet.mock.calls[0][1];
+        expect(savedString).toContain('001');
+        expect(savedString).toContain('002');
+        expect(savedString).toContain('003');
     });
 });

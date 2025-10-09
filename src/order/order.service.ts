@@ -96,7 +96,11 @@ export class OrderService {
         const cacheKey = `processed:${cacheName}:${serviceName}`;
         const cacheTtlDays = this.configService.get<number>('CACHE_TTL_DAYS', 14);
 
-        const processedSet = await this.cacheManager.get<Set<string>>(cacheKey) || new Set<string>();
+        this.logger.log(`${serviceName} start ${cacheName}`);
+
+        // Redis хранит строку с разделителями, конвертируем в Set
+        const cachedString = await this.cacheManager.get<string>(cacheKey) || '';
+        const processedSet = new Set<string>(cachedString ? cachedString.split(',') : []);
 
         for (const item of items) {
             if (processedSet.has(item.posting_number)) {
@@ -107,11 +111,13 @@ export class OrderService {
             processedSet.add(item.posting_number);
         }
 
-        await this.cacheManager.set(cacheKey, processedSet, cacheTtlDays * 24 * 60 * 60 * 1000);
+        // Сохраняем как строку с разделителями
+        await this.cacheManager.set(cacheKey, Array.from(processedSet).join(','), cacheTtlDays * 24 * 60 * 60 * 1000);
+
+        this.logger.log(`${serviceName} finish ${cacheName}`);
     }
 
     async deliveryOrders(service: IOrderable, transaction: FirebirdTransaction): Promise<void> {
-        this.logger.log('Start delivery orders');
         const deliveringPostings = await service.listAwaitingDelivering();
 
         await this.processWithCache('delivery', service, deliveringPostings, async (posting) => {
@@ -123,12 +129,9 @@ export class OrderService {
                 await this.invoiceService.pickupInvoice(invoice, transaction);
             }
         });
-
-        this.logger.log('Finish delivery orders');
     }
 
     async packageOrders(service: IOrderable, transaction: FirebirdTransaction): Promise<void> {
-        this.logger.log('Start package orders');
         const packagingPostings = await service.listAwaitingPackaging();
 
         await this.processWithCache('packaging', service, packagingPostings, async (posting) => {
@@ -136,12 +139,9 @@ export class OrderService {
                 await service.createInvoice(posting, transaction);
             }
         });
-
-        this.logger.log('Finish package orders');
     }
 
     async cancelOrders(service: IOrderable, transaction: FirebirdTransaction): Promise<void> {
-        this.logger.log('Start cancel orders');
         const orders = await service.listCanceled();
 
         await this.processWithCache('cancellations', service, orders, async (order) => {
@@ -149,8 +149,6 @@ export class OrderService {
                 await this.cancelOrder(order, transaction);
             }
         });
-
-        this.logger.log('Finish cancel orders');
     }
 
     async cancelOrder(order: PostingDto, transaction: FirebirdTransaction): Promise<void> {
