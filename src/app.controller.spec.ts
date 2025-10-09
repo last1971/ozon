@@ -8,6 +8,7 @@ import { ExpressOfferService } from './yandex.offer/express.offer.service';
 import { WbCardService } from './wb.card/wb.card.service';
 import { ConfigService } from '@nestjs/config';
 import { VaultService } from 'vault-module/lib/vault.service';
+import { FIREBIRD } from './firebird/firebird.module';
 
 describe('AppController', () => {
     let appController: AppController;
@@ -28,6 +29,15 @@ describe('AppController', () => {
                     provide: VaultService,
                     useValue: {
                         clearCache: jest.fn(),
+                    },
+                },
+                {
+                    provide: FIREBIRD,
+                    useValue: {
+                        getMaxConnections: jest.fn().mockReturnValue(10),
+                        getActiveConnectionsCount: jest.fn().mockReturnValue(5),
+                        getAvailableConnectionsCount: jest.fn().mockReturnValue(5),
+                        getActiveTransactionsCount: jest.fn().mockReturnValue(2),
                     },
                 },
             ],

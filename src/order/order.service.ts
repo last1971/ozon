@@ -71,16 +71,21 @@ export class OrderService {
     @Cron('0 */5 * * * *', { name: 'checkNewOrders' })
     async checkNewOrders(): Promise<void> {
         for (const service of this.orderServices) {
+            this.logger.log(service.constructor.name + ' start checkNewOrders');
             const transaction = await this.invoiceService.getTransaction();
             try {
+                this.logger.log('Cancel orders');
                 await this.cancelOrders(service, transaction);
+                this.logger.log('Packadge orders');
                 await this.packageOrders(service, transaction);
+                this.logger.log('Delivery orders');
                 await this.deliveryOrders(service, transaction);
                 await transaction.commit(true);
             } catch (e) {
                 await transaction.rollback(true);
                 this.logger.error(e.message + ' IN ' + service.constructor.name);
             }
+            this.logger.log(service.constructor.name + ' finish checkNewOrders');
         }
     }
 

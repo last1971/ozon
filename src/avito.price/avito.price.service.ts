@@ -26,7 +26,7 @@ export class AvitoPriceService implements IPriceUpdateable {
             minMil: this.configService.get<number>('AVITO_MIN_MIL', 0),
             percMil: this.configService.get<number>('AVITO_PERC_MIL', 0),
             percEkv: this.configService.get<number>('AVITO_PERC_EKV', 0),
-            sumObtain: this.configService.get<number>('AVITO_SUM_OBTAIN', 0),
+            sumObtain: this.configService.get<number>('AVITO_SUM_OBTAIN', 100),
             sumLabel: this.configService.get<number>('SUM_LABEL', 2),
             taxUnit: this.configService.get<number>('TAX_UNIT', 6),
         };

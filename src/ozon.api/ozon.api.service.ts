@@ -18,11 +18,8 @@ export class OzonApiService {
         const headers = {
             'Client-Id': ozon.CLIENT_ID as string,
             'Api-Key': ozon.API_KEY as string,
+            'Content-Type': 'application/json',
         };
-
-//        this.logger.log(`[OZON API REQUEST] ${httpMethod.toUpperCase()} ${ozon.URL + name}`);
-//        this.logger.log(`[OZON API REQUEST BODY] ${JSON.stringify(options)}`);
-//        this.logger.log(`[OZON API HEADERS] ${JSON.stringify(headers)}`);
 
         return httpMethod === 'get'
             ? firstValueFrom(
@@ -50,10 +47,7 @@ export class OzonApiService {
             : firstValueFrom(
                   this.httpService
                       .post(ozon.URL + name, options, {
-                          headers: {
-                              'Client-Id': ozon.CLIENT_ID as string,
-                              'Api-Key': ozon.API_KEY as string,
-                          },
+                          headers,
                       })
                       .pipe(map((res) => {
                         // ЛОГИРУЕМ ОТВЕТ
@@ -69,12 +63,24 @@ export class OzonApiService {
     }
 
     private handleApiError(error: AxiosError, url: string, method: string, body: any, headers: any) {
+        const responseData = error?.response?.data;
+        const errorDetails = {
+            message: error.message,
+            status: error?.response?.status,
+            statusText: error?.response?.statusText,
+            responseData: responseData,
+            responseHeaders: error?.response?.headers,
+            requestBody: body,
+            requestHeaders: headers,
+        };
+
         this.logger.error(
-            `${error.message} ${error?.response?.data['message']} | URL: ${url} | Method: ${method} | Body: ${JSON.stringify(body)} | Headers: ${JSON.stringify(headers)}`
+            `API Error | URL: ${url} | Method: ${method} | Status: ${error?.response?.status} | Details: ${JSON.stringify(errorDetails, null, 2)}`
         );
+
         return {
             result: null,
-            error: { service_message: error.message, message: error?.response?.data['message'] },
+            error: { service_message: error.message, message: responseData?.['message'] || responseData },
         };
     }
 

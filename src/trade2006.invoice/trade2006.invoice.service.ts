@@ -189,7 +189,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
                     status: invoice.STATUS,
                 })));
             }
-            await t.commit(false);
+            await t.commit(true);
 
             return allInvoices;
         }

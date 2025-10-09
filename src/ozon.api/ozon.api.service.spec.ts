@@ -32,7 +32,7 @@ describe('OzonApiService', () => {
         expect(post.mock.calls[0]).toEqual([
             'gettest',
             { option: 'option ' },
-            { headers: { 'Client-Id': 'get', 'Api-Key': 'get' } },
+            { headers: { 'Client-Id': 'get', 'Api-Key': 'get', 'Content-Type': 'application/json' } },
         ]);
     });
 
@@ -43,7 +43,7 @@ describe('OzonApiService', () => {
             'gettest',
             {
                 params: { option: 'option ' },
-                headers: { 'Client-Id': 'get', 'Api-Key': 'get' },
+                headers: { 'Client-Id': 'get', 'Api-Key': 'get', 'Content-Type': 'application/json' },
             },
         ]);
     });

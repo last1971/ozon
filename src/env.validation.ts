@@ -216,6 +216,10 @@ class EnvironmentVariables {
     @IsOptional()
     @IsNumber()
     PROFIT_TAX_RATE: number;
+
+    @IsOptional()
+    @IsNumber()
+    AVITO_SUM_OBTAIN: number;
 }
 
 export function configValidate(config: Record<string, unknown>) {

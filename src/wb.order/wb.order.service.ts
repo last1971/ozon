@@ -230,7 +230,7 @@ export class WbOrderService implements IOrderable {
 
     async getTransactionsFromFile(file: Express.Multer.File): Promise<Array<WbTransactionDto>> {
         const workbook = new Excel.Workbook();
-        await workbook.xlsx.load(file.buffer);
+        await workbook.xlsx.load(file.buffer as any);
         const worksheet: Excel.Worksheet = first(workbook.worksheets);
         const ret: WbTransactionDto[] = [];
         worksheet.eachRow((row: Excel.Row, rowNumber) => {

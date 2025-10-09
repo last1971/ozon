@@ -77,6 +77,7 @@ import JSONbig from 'json-bigint';
                 logger.log(`HttpModule registered with default timeout: ${defaultTimeout}ms`);
                 return {
                     timeout: defaultTimeout,
+                    proxy: false,
                     transformResponse: [(data) => {
                         try {
                           return JSONbig({ storeAsString: true }).parse(data);
