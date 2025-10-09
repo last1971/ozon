@@ -220,6 +220,10 @@ class EnvironmentVariables {
     @IsOptional()
     @IsNumber()
     AVITO_SUM_OBTAIN: number;
+
+    @IsOptional()
+    @IsNumber()
+    CACHE_TTL_DAYS: number;
 }
 
 export function configValidate(config: Record<string, unknown>) {

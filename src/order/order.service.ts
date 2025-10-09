@@ -14,6 +14,7 @@ import { GoodServiceEnum } from '../good/good.service.enum';
 import { FirebirdTransaction } from "ts-firebird";
 import { PostingDto } from "../posting/dto/posting.dto";
 import { find } from 'lodash';
+import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
 
 @Injectable()
 export class OrderService {
@@ -33,6 +34,7 @@ export class OrderService {
         private postingFboService: PostingFboService,
         private wbOrder: WbOrderService,
         private configService: ConfigService,
+        @Inject(CACHE_MANAGER) private cacheManager: Cache,
     ) {
         const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
         if (services.includes(GoodServiceEnum.WB)) this.orderServices.push(wbOrder);
@@ -70,28 +72,49 @@ export class OrderService {
 
     @Cron('0 */5 * * * *', { name: 'checkNewOrders' })
     async checkNewOrders(): Promise<void> {
-        for (const service of this.orderServices) {
-            this.logger.log(service.constructor.name + ' start checkNewOrders');
+        for (const service of this.orderServices) {        
             const transaction = await this.invoiceService.getTransaction();
             try {
-                this.logger.log('Cancel orders');
                 await this.cancelOrders(service, transaction);
-                this.logger.log('Packadge orders');
                 await this.packageOrders(service, transaction);
-                this.logger.log('Delivery orders');
                 await this.deliveryOrders(service, transaction);
                 await transaction.commit(true);
             } catch (e) {
                 await transaction.rollback(true);
                 this.logger.error(e.message + ' IN ' + service.constructor.name);
-            }
-            this.logger.log(service.constructor.name + ' finish checkNewOrders');
+            }            
         }
     }
 
+    private async processWithCache<T extends PostingDto>(
+        cacheName: string,
+        service: IOrderable,
+        items: T[],
+        processor: (item: T) => Promise<void>,
+    ): Promise<void> {
+        const serviceName = service.constructor.name;
+        const cacheKey = `processed:${cacheName}:${serviceName}`;
+        const cacheTtlDays = this.configService.get<number>('CACHE_TTL_DAYS', 14);
+
+        const processedSet = await this.cacheManager.get<Set<string>>(cacheKey) || new Set<string>();
+
+        for (const item of items) {
+            if (processedSet.has(item.posting_number)) {
+                continue;
+            }
+
+            await processor(item);
+            processedSet.add(item.posting_number);
+        }
+
+        await this.cacheManager.set(cacheKey, processedSet, cacheTtlDays * 24 * 60 * 60 * 1000);
+    }
+
     async deliveryOrders(service: IOrderable, transaction: FirebirdTransaction): Promise<void> {
+        this.logger.log('Start delivery orders');
         const deliveringPostings = await service.listAwaitingDelivering();
-        for (const posting of deliveringPostings) {
+
+        await this.processWithCache('delivery', service, deliveringPostings, async (posting) => {
             let invoice = await this.invoiceService.getByPosting(posting, transaction);
             if (!invoice) {
                 invoice = await service.createInvoice(posting, transaction);
@@ -99,25 +122,35 @@ export class OrderService {
             if (invoice) {
                 await this.invoiceService.pickupInvoice(invoice, transaction);
             }
-        }
+        });
+
+        this.logger.log('Finish delivery orders');
     }
 
     async packageOrders(service: IOrderable, transaction: FirebirdTransaction): Promise<void> {
+        this.logger.log('Start package orders');
         const packagingPostings = await service.listAwaitingPackaging();
-        for (const posting of packagingPostings) {
+
+        await this.processWithCache('packaging', service, packagingPostings, async (posting) => {
             if (!(await this.invoiceService.isExists(posting.posting_number, transaction))) {
                 await service.createInvoice(posting, transaction);
             }
-        }
+        });
+
+        this.logger.log('Finish package orders');
     }
 
     async cancelOrders(service: IOrderable, transaction: FirebirdTransaction): Promise<void> {
+        this.logger.log('Start cancel orders');
         const orders = await service.listCanceled();
-        for (const order of orders) {
+
+        await this.processWithCache('cancellations', service, orders, async (order) => {
             if (await this.invoiceService.isExists(order.posting_number, transaction)) {
                 await this.cancelOrder(order, transaction);
             }
-        }
+        });
+
+        this.logger.log('Finish cancel orders');
     }
 
     async cancelOrder(order: PostingDto, transaction: FirebirdTransaction): Promise<void> {

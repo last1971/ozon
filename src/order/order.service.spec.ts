@@ -8,6 +8,7 @@ import { PostingFboService } from '../posting.fbo/posting.fbo.service';
 import { WbOrderService } from '../wb.order/wb.order.service';
 import { ConfigService } from '@nestjs/config';
 import { GoodServiceEnum } from '../good/good.service.enum';
+import { CACHE_MANAGER } from '@nestjs/cache-manager';
 
 describe('OrderService', () => {
     let service: OrderService;
@@ -26,12 +27,23 @@ describe('OrderService', () => {
     const rollback = jest.fn();
     const getTransaction = () => ({ commit, rollback });
     const date = new Date();
+    const cacheGet = jest.fn().mockResolvedValue(new Set<string>());
+    const cacheSet = jest.fn().mockResolvedValue(undefined);
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 OrderService,
                 { provide: ProductService, useValue: { getTransactionList } },
-                { provide: ConfigService, useValue: { get: () => Object.values(GoodServiceEnum) } },
+                {
+                    provide: ConfigService,
+                    useValue: {
+                        get: (key: string, defaultValue?: any) => {
+                            if (key === 'SERVICES') return Object.values(GoodServiceEnum);
+                            if (key === 'CACHE_TTL_DAYS') return 14;
+                            return defaultValue;
+                        }
+                    }
+                },
                 {
                     provide: INVOICE_SERVICE,
                     useValue: {
@@ -115,6 +127,13 @@ describe('OrderService', () => {
                         ],
                     },
                 },
+                {
+                    provide: CACHE_MANAGER,
+                    useValue: {
+                        get: cacheGet,
+                        set: cacheSet,
+                    },
+                },
             ],
         }).compile();
 
@@ -189,5 +208,48 @@ describe('OrderService', () => {
     it('should return null when name is not a valid GoodServiceEnum value', () => {
         const result = service.getServiceByName(GoodServiceEnum.EXPRESS);
         expect(result).toBeNull();
+    });
+
+    it('should process orders with cache and skip already processed', async () => {
+        // Подготовка: создаем мок сервиса
+        const mockService = {
+            constructor: { name: 'TestService' },
+            listAwaitingPackaging: jest.fn().mockResolvedValue([
+                { posting_number: '001', products: [] },
+                { posting_number: '002', products: [] },
+                { posting_number: '003', products: [] },
+            ]),
+        };
+
+        // Мокируем кеш: заказ '002' уже обработан
+        const processedSet = new Set<string>(['002']);
+        cacheGet.mockResolvedValueOnce(processedSet);
+
+        const processor = jest.fn().mockResolvedValue(undefined);
+
+        // Вызываем метод processWithCache напрямую
+        await service['processWithCache'](
+            'test',
+            mockService as any,
+            await mockService.listAwaitingPackaging(),
+            processor,
+        );
+
+        // Проверяем что processor был вызван только для '001' и '003' (пропустили '002')
+        expect(processor).toHaveBeenCalledTimes(2);
+        expect(processor).toHaveBeenCalledWith({ posting_number: '001', products: [] });
+        expect(processor).toHaveBeenCalledWith({ posting_number: '003', products: [] });
+
+        // Проверяем что все 3 заказа теперь в кеше
+        expect(cacheSet).toHaveBeenCalledWith(
+            'processed:test:TestService',
+            expect.any(Set),
+            14 * 24 * 60 * 60 * 1000,
+        );
+
+        const savedSet = cacheSet.mock.calls[0][1];
+        expect(savedSet.has('001')).toBe(true);
+        expect(savedSet.has('002')).toBe(true);
+        expect(savedSet.has('003')).toBe(true);
     });
 });
