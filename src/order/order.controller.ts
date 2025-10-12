@@ -7,12 +7,15 @@ import {
     ParseEnumPipe,
     ParseIntPipe,
     Post,
+    Query,
     UploadedFile,
     UseInterceptors
 } from "@nestjs/common";
 import { OrderService } from './order.service';
 import { ResultDto } from '../helpers/dto/result.dto';
 import { TransactionFilterDate, TransactionFilterDto } from '../posting/dto/transaction.filter.dto';
+import { WbInvoiceQueryDto } from './dto/wb-invoice-query.dto';
+import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import {
     ApiBody,
     ApiConsumes,
@@ -136,6 +139,24 @@ export class OrderController {
         @Body() request: TransactionFilterDate,
     ): Promise<ResultDto> {
         return this.wbOrder.updateTransactions(request, file);
+    }
+
+    @ApiOkResponse({
+        description: 'Накладная найдена по стикеру WB',
+        type: InvoiceDto,
+        schema: {
+            oneOf: [
+                { $ref: getSchemaPath(InvoiceDto) },
+                { type: 'null' },
+            ],
+        },
+    })
+    @ApiOperation({ summary: 'Найти накладную по стикеру Wildberries' })
+    @Get('wb-invoice')
+    async getWbInvoiceBySticker(
+        @Query() query: WbInvoiceQueryDto,
+    ): Promise<InvoiceDto | null> {
+        return this.wbOrder.getInvoiceBySticker(query);
     }
 
     @ApiOkResponse({

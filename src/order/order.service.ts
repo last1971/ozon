@@ -96,8 +96,6 @@ export class OrderService {
         const cacheKey = `processed:${cacheName}:${serviceName}`;
         const cacheTtlDays = this.configService.get<number>('CACHE_TTL_DAYS', 14);
 
-        this.logger.log(`${serviceName} start ${cacheName}`);
-
         // Redis хранит строку с разделителями, конвертируем в Set
         const cachedString = await this.cacheManager.get<string>(cacheKey) || '';
         const processedSet = new Set<string>(cachedString ? cachedString.split(',') : []);
@@ -113,8 +111,6 @@ export class OrderService {
 
         // Сохраняем как строку с разделителями
         await this.cacheManager.set(cacheKey, Array.from(processedSet).join(','), cacheTtlDays * 24 * 60 * 60 * 1000);
-
-        this.logger.log(`${serviceName} finish ${cacheName}`);
     }
 
     async deliveryOrders(service: IOrderable, transaction: FirebirdTransaction): Promise<void> {

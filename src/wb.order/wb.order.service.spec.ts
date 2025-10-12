@@ -6,9 +6,15 @@ import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DateTime } from 'luxon';
 import { WbOrderDto } from "./dto/wb.order.dto";
+import { FetchSalesByStickerCommand } from './commands/fetch-sales-by-sticker.command';
+import { FetchOrdersByStickerCommand } from './commands/fetch-orders-by-sticker.command';
+import { FetchTransactionsCommand } from './commands/fetch-transactions.command';
+import { SelectBestIdCommand } from './commands/select-best-id.command';
+import { FetchInvoiceByRemarkCommand } from './commands/fetch-invoice-by-remark.command';
 
 describe('WbOrderService', () => {
     let service: WbOrderService;
+    let module: TestingModule;
     const createInvoiceFromPostingDto = jest.fn();
     const method = jest.fn();
     const updateByCommissions = jest.fn();
@@ -19,10 +25,16 @@ describe('WbOrderService', () => {
     const getTransaction = jest.fn();
     const commit = jest.fn();
     const updatePrim = jest.fn();
+    const getByPosting = jest.fn();
+    const fetchSalesByStickerExecute = jest.fn();
+    const fetchOrdersByStickerExecute = jest.fn();
+    const fetchTransactionsExecute = jest.fn();
+    const selectBestIdExecute = jest.fn();
+    const fetchInvoiceByRemarkExecute = jest.fn();
     getTransaction.mockResolvedValue({ commit });
 
     beforeEach(async () => {
-        const module: TestingModule = await Test.createTestingModule({
+        module = await Test.createTestingModule({
             providers: [
                 WbOrderService,
                 {
@@ -35,6 +47,7 @@ describe('WbOrderService', () => {
                         pickupInvoice,
                         getTransaction,
                         updatePrim,
+                        getByPosting,
                     },
                 },
                 {
@@ -49,12 +62,45 @@ describe('WbOrderService', () => {
                     provide: EventEmitter2,
                     useValue: { emit },
                 },
+                {
+                    provide: FetchSalesByStickerCommand,
+                    useValue: { execute: fetchSalesByStickerExecute },
+                },
+                {
+                    provide: FetchOrdersByStickerCommand,
+                    useValue: { execute: fetchOrdersByStickerExecute },
+                },
+                {
+                    provide: FetchTransactionsCommand,
+                    useValue: { execute: fetchTransactionsExecute },
+                },
+                {
+                    provide: SelectBestIdCommand,
+                    useValue: { execute: selectBestIdExecute },
+                },
+                {
+                    provide: FetchInvoiceByRemarkCommand,
+                    useValue: { execute: fetchInvoiceByRemarkExecute },
+                },
             ],
         }).compile();
         method.mockClear();
         createInvoiceFromPostingDto.mockClear();
         commit.mockClear();
         isExists.mockClear();
+        getByPosting.mockClear();
+        fetchSalesByStickerExecute.mockClear();
+        fetchOrdersByStickerExecute.mockClear();
+        fetchTransactionsExecute.mockClear();
+        selectBestIdExecute.mockClear();
+        fetchInvoiceByRemarkExecute.mockClear();
+
+        // Настраиваем команды так, чтобы они передавали контекст дальше по цепочке
+        fetchSalesByStickerExecute.mockImplementation((ctx) => Promise.resolve(ctx));
+        fetchOrdersByStickerExecute.mockImplementation((ctx) => Promise.resolve(ctx));
+        fetchTransactionsExecute.mockImplementation((ctx) => Promise.resolve(ctx));
+        selectBestIdExecute.mockImplementation((ctx) => Promise.resolve(ctx));
+        fetchInvoiceByRemarkExecute.mockImplementation((ctx) => Promise.resolve(ctx));
 
         service = module.get<WbOrderService>(WbOrderService);
     });
@@ -391,5 +437,96 @@ describe('WbOrderService', () => {
             success: false,
             error: "Failed to fetch stickers"
         });
+    });
+
+    it('getOrders', async () => {
+        method.mockResolvedValueOnce([
+            { id: 1, sticker: '123', srid: 'srid1' },
+            { id: 2, sticker: '456', srid: 'srid2' }
+        ]);
+        const result = await service.getOrders('2025-09-21', 0);
+        expect(method.mock.calls[0]).toEqual([
+            '/api/v1/supplier/orders',
+            'statistics',
+            { dateFrom: '2025-09-21', flag: 0 }
+        ]);
+        expect(result).toEqual([
+            { id: 1, sticker: '123', srid: 'srid1' },
+            { id: 2, sticker: '456', srid: 'srid2' }
+        ]);
+    });
+
+    it('getSales', async () => {
+        const dateFrom = '2025-09-21';
+        method.mockResolvedValueOnce([
+            { srid: 'sale1', sticker: '111' },
+            { srid: 'sale2', sticker: '222' }
+        ]);
+        const result = await service.getSales(dateFrom);
+        expect(method.mock.calls[0]).toEqual([
+            '/api/v1/supplier/sales',
+            'statistics',
+            { dateFrom }
+        ]);
+        expect(result).toEqual([
+            { srid: 'sale1', sticker: '111' },
+            { srid: 'sale2', sticker: '222' }
+        ]);
+    });
+
+    it('getInvoiceBySticker should find invoice through command chain', async () => {
+        const mockInvoice = {
+            id: 123,
+            buyerId: 456,
+            number: 1,
+            status: 1,
+            remark: 'WB 5001',
+            date: new Date(),
+        };
+
+        // Переопределяем моки команд для этого теста
+        fetchSalesByStickerExecute.mockImplementationOnce((ctx) =>
+            Promise.resolve({ ...ctx, srid: 'SRID123' })
+        );
+        fetchTransactionsExecute.mockImplementationOnce((ctx) =>
+            Promise.resolve({ ...ctx, transactions: [] })
+        );
+        selectBestIdExecute.mockImplementationOnce((ctx) =>
+            Promise.resolve({ ...ctx, selectedId: '5001', selectedIdType: 'assembly_id' })
+        );
+        fetchInvoiceByRemarkExecute.mockImplementationOnce((ctx) =>
+            Promise.resolve({ ...ctx, invoice: mockInvoice })
+        );
+
+        const result = await service.getInvoiceBySticker({
+            dateFrom: '2025-09-21',
+            stickerId: '42197484529',
+        });
+
+        expect(result).toEqual(mockInvoice);
+        expect(fetchSalesByStickerExecute).toHaveBeenCalled();
+        expect(fetchInvoiceByRemarkExecute).toHaveBeenCalled();
+    });
+
+    it('getInvoiceBySticker should return null if not found', async () => {
+        // Переопределяем моки команд для этого теста - ничего не находим
+        fetchSalesByStickerExecute.mockImplementationOnce((ctx) =>
+            Promise.resolve({ ...ctx }) // srid не найден
+        );
+        fetchOrdersByStickerExecute.mockImplementationOnce((ctx) =>
+            Promise.resolve({ ...ctx }) // srid не найден
+        );
+        fetchTransactionsExecute.mockImplementationOnce((ctx) =>
+            Promise.resolve({ ...ctx, stopChain: true }) // останавливаем цепочку
+        );
+
+        const result = await service.getInvoiceBySticker({
+            dateFrom: '2025-09-21',
+            stickerId: '99999999999',
+        });
+
+        expect(result).toBeNull();
+        expect(fetchSalesByStickerExecute).toHaveBeenCalled();
+        expect(fetchOrdersByStickerExecute).toHaveBeenCalled();
     });
 });
