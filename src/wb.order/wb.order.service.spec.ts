@@ -533,4 +533,56 @@ describe('WbOrderService', () => {
         expect(fetchSalesByStickerExecute).toHaveBeenCalled();
         expect(fetchOrdersByStickerExecute).toHaveBeenCalled();
     });
+
+    it('getInvoiceBySrid should find invoice directly by srid', async () => {
+        const mockInvoice = {
+            id: 456,
+            buyerId: 789,
+            number: 2,
+            status: 1,
+            remark: 'WB 6002',
+            date: new Date(),
+        };
+
+        // Моки для команд (без sales/orders)
+        fetchTransactionsExecute.mockImplementationOnce((ctx) =>
+            Promise.resolve({ ...ctx, transactions: [{ assembly_id: 6002 }] })
+        );
+        selectBestIdExecute.mockImplementationOnce((ctx) =>
+            Promise.resolve({ ...ctx, selectedId: '6002', selectedIdType: 'assembly_id' })
+        );
+        fetchInvoiceByRemarkExecute.mockImplementationOnce((ctx) =>
+            Promise.resolve({ ...ctx, invoice: mockInvoice })
+        );
+
+        const result = await service.getInvoiceBySrid({
+            dateFrom: '2025-09-21',
+            srid: 'SRID-TEST-123',
+        });
+
+        expect(result).toEqual(mockInvoice);
+        // Проверяем, что sales/orders НЕ вызывались
+        expect(fetchSalesByStickerExecute).not.toHaveBeenCalled();
+        expect(fetchOrdersByStickerExecute).not.toHaveBeenCalled();
+        // Проверяем, что транзакции искались
+        expect(fetchTransactionsExecute).toHaveBeenCalled();
+        expect(selectBestIdExecute).toHaveBeenCalled();
+        expect(fetchInvoiceByRemarkExecute).toHaveBeenCalled();
+    });
+
+    it('getInvoiceBySrid should return null if not found', async () => {
+        // Моки для команд - ничего не находим
+        fetchTransactionsExecute.mockImplementationOnce((ctx) =>
+            Promise.resolve({ ...ctx, stopChain: true })
+        );
+
+        const result = await service.getInvoiceBySrid({
+            dateFrom: '2025-09-21',
+            srid: 'UNKNOWN-SRID',
+        });
+
+        expect(result).toBeNull();
+        expect(fetchSalesByStickerExecute).not.toHaveBeenCalled();
+        expect(fetchOrdersByStickerExecute).not.toHaveBeenCalled();
+    });
 });

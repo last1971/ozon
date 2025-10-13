@@ -26,6 +26,7 @@ import { FetchTransactionsCommand } from './commands/fetch-transactions.command'
 import { SelectBestIdCommand } from './commands/select-best-id.command';
 import { FetchInvoiceByRemarkCommand } from './commands/fetch-invoice-by-remark.command';
 import { WbInvoiceQueryDto } from '../order/dto/wb-invoice-query.dto';
+import { WbInvoiceSridQueryDto } from '../order/dto/wb-invoice-srid-query.dto';
 import { RateLimit } from '../helpers/decorators/rate-limit.decorator';
 
 @Injectable()
@@ -398,6 +399,24 @@ export class WbOrderService implements IOrderable {
         const context = await chain.execute({
             dateFrom: new Date(dateFrom),
             stickerId,
+        });
+
+        return context.invoice || null;
+    }
+
+    async getInvoiceBySrid(query: WbInvoiceSridQueryDto): Promise<InvoiceDto | null> {
+        const { dateFrom, srid } = query;
+
+        // Цепочка без поиска в sales/orders, т.к. srid уже известен
+        const chain = new CommandChainAsync([
+            this.fetchTransactionsCommand,        // Получаем assembly_id по srid
+            this.selectBestIdCommand,             // Выбираем assembly_id или srid
+            this.fetchInvoiceByRemarkCommand,     // Ищем накладную
+        ]);
+
+        const context = await chain.execute({
+            dateFrom: new Date(dateFrom),
+            srid,
         });
 
         return context.invoice || null;

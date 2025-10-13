@@ -4,7 +4,7 @@ import { InvoiceDto } from '../invoice/dto/invoice.dto';
 export interface IWbTransactionProcessingContext {
     dateFrom: Date;
     dateTo?: Date;
-    stickerId: string;
+    stickerId?: string;
     sales?: any[];
     srid?: string;
     transactions?: WbTransactionDto[];

@@ -15,6 +15,7 @@ import { OrderService } from './order.service';
 import { ResultDto } from '../helpers/dto/result.dto';
 import { TransactionFilterDate, TransactionFilterDto } from '../posting/dto/transaction.filter.dto';
 import { WbInvoiceQueryDto } from './dto/wb-invoice-query.dto';
+import { WbInvoiceSridQueryDto } from './dto/wb-invoice-srid-query.dto';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import {
     ApiBody,
@@ -157,6 +158,24 @@ export class OrderController {
         @Query() query: WbInvoiceQueryDto,
     ): Promise<InvoiceDto | null> {
         return this.wbOrder.getInvoiceBySticker(query);
+    }
+
+    @ApiOkResponse({
+        description: 'Накладная найдена по SRID WB',
+        type: InvoiceDto,
+        schema: {
+            oneOf: [
+                { $ref: getSchemaPath(InvoiceDto) },
+                { type: 'null' },
+            ],
+        },
+    })
+    @ApiOperation({ summary: 'Найти накладную по SRID Wildberries' })
+    @Get('wb-invoice-by-srid')
+    async getWbInvoiceBySrid(
+        @Query() query: WbInvoiceSridQueryDto,
+    ): Promise<InvoiceDto | null> {
+        return this.wbOrder.getInvoiceBySrid(query);
     }
 
     @ApiOkResponse({
