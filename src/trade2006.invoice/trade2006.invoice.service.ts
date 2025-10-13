@@ -121,15 +121,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         const postingNumber = typeof posting === 'string' ? posting : posting.posting_number;
         const operator = containing ? 'CONTAINING' : '=';
         const res = await transaction.query(`SELECT * FROM S WHERE PRIM ${operator} ?`, [postingNumber], !t);
-        return res.length > 0
-            ? {
-                  id: res[0].SCODE,
-                  buyerId: res[0].POKUPATCODE,
-                  date: new Date(res[0].DATA),
-                  remark: res[0].PRIM,
-                  status: res[0].STATUS,
-              }
-            : null;
+        return res.length > 0 ? InvoiceDto.map(res)[0] : null;
     }
     async getByPostingNumbers(postingNumbers: string[]): Promise<InvoiceDto[]> {
         const invoices = flatten(

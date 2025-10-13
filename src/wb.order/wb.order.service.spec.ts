@@ -11,6 +11,7 @@ import { FetchOrdersByStickerCommand } from './commands/fetch-orders-by-sticker.
 import { FetchTransactionsCommand } from './commands/fetch-transactions.command';
 import { SelectBestIdCommand } from './commands/select-best-id.command';
 import { FetchInvoiceByRemarkCommand } from './commands/fetch-invoice-by-remark.command';
+import { clearRateLimitCache } from '../helpers/decorators/rate-limit.decorator';
 
 describe('WbOrderService', () => {
     let service: WbOrderService;
@@ -34,6 +35,9 @@ describe('WbOrderService', () => {
     getTransaction.mockResolvedValue({ commit });
 
     beforeEach(async () => {
+        // Clear rate limit cache before each test to prevent timeouts
+        clearRateLimitCache();
+
         module = await Test.createTestingModule({
             providers: [
                 WbOrderService,

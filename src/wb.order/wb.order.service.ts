@@ -26,6 +26,7 @@ import { FetchTransactionsCommand } from './commands/fetch-transactions.command'
 import { SelectBestIdCommand } from './commands/select-best-id.command';
 import { FetchInvoiceByRemarkCommand } from './commands/fetch-invoice-by-remark.command';
 import { WbInvoiceQueryDto } from '../order/dto/wb-invoice-query.dto';
+import { RateLimit } from '../helpers/decorators/rate-limit.decorator';
 
 @Injectable()
 export class WbOrderService implements IOrderable {
@@ -225,6 +226,7 @@ export class WbOrderService implements IOrderable {
         return newOrders.concat(confirmOrders);
     }
 
+    @RateLimit(60000)
     async getTransactions(data: TransactionFilterDate, rrdid = 0): Promise<Array<WbTransactionDto>> {
         return this.api.method(
             '/api/v5/supplier/reportDetailByPeriod',
@@ -284,10 +286,12 @@ export class WbOrderService implements IOrderable {
         };
     }
 
+    @RateLimit(60000)
     async getSales(dateFrom: string): Promise<any> {
         return this.api.method('/api/v1/supplier/sales', 'statistics', { dateFrom });
     }
 
+    @RateLimit(60000)
     async getOrders(dateFrom: string, flag: number = 0): Promise<any> {
         return this.api.method('/api/v1/supplier/orders', 'statistics', { dateFrom, flag });
     }
