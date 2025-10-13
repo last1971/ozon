@@ -9,12 +9,14 @@ import { YandexOrderService } from '../yandex.order/yandex.order.service';
 import { IOrderable } from '../interfaces/IOrderable';
 import { PostingFboService } from '../posting.fbo/posting.fbo.service';
 import { WbOrderService } from '../wb.order/wb.order.service';
+import { WbCustomerService } from '../wb.customer/wb.customer.service';
 import { ConfigService } from '@nestjs/config';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { FirebirdTransaction } from "ts-firebird";
 import { PostingDto } from "../posting/dto/posting.dto";
 import { find } from 'lodash';
 import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
+import { InvoiceDto } from '../invoice/dto/invoice.dto';
 
 @Injectable()
 export class OrderService {
@@ -33,6 +35,7 @@ export class OrderService {
         private yandexOrder: YandexOrderService,
         private postingFboService: PostingFboService,
         private wbOrder: WbOrderService,
+        private wbCustomer: WbCustomerService,
         private configService: ConfigService,
         @Inject(CACHE_MANAGER) private cacheManager: Cache,
     ) {
@@ -96,8 +99,6 @@ export class OrderService {
         const cacheKey = `processed:${cacheName}:${serviceName}`;
         const cacheTtlDays = this.configService.get<number>('CACHE_TTL_DAYS', 14);
 
-        this.logger.log(`${serviceName} start ${cacheName}`);
-
         // Redis хранит строку с разделителями, конвертируем в Set
         const cachedString = await this.cacheManager.get<string>(cacheKey) || '';
         const processedSet = new Set<string>(cachedString ? cachedString.split(',') : []);
@@ -113,8 +114,6 @@ export class OrderService {
 
         // Сохраняем как строку с разделителями
         await this.cacheManager.set(cacheKey, Array.from(processedSet).join(','), cacheTtlDays * 24 * 60 * 60 * 1000);
-
-        this.logger.log(`${serviceName} finish ${cacheName}`);
     }
 
     async deliveryOrders(service: IOrderable, transaction: FirebirdTransaction): Promise<void> {
@@ -192,5 +191,35 @@ export class OrderService {
                 quantity: line.quantity,
             })),
         }
+    }
+
+    /**
+     * Получить накладную по ID претензии WB
+     * 1. Получаем претензию по ID
+     * 2. Извлекаем srid и order_dt
+     * 3. Получаем накладную через getInvoiceBySrid
+     * @param claimId - UUID претензии
+     * @returns Накладная или null
+     */
+    async getInvoiceByClaimId(claimId: string): Promise<InvoiceDto | null> {
+        // Получаем претензию
+        const claim = await this.wbCustomer.getClaimById(claimId);
+
+        if (!claim) {
+            return null;
+        }
+
+        // Извлекаем srid и order_dt из претензии
+        const { srid, order_dt } = claim;
+
+        if (!srid || !order_dt) {
+            return null;
+        }
+
+        // Получаем накладную через WbOrderService
+        return this.wbOrder.getInvoiceBySrid({
+            dateFrom: order_dt.substring(0, 10), // Берем только дату YYYY-MM-DD
+            srid,
+        });
     }
 }

@@ -7,4 +7,5 @@ export class WbTransactionDto {
     penalty: number;
     rrd_id: number;
     assembly_id: number;
+    sticker_id?: string;
 }

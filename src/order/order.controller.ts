@@ -6,13 +6,18 @@ import {
     Param,
     ParseEnumPipe,
     ParseIntPipe,
+    ParseUUIDPipe,
     Post,
+    Query,
     UploadedFile,
     UseInterceptors
 } from "@nestjs/common";
 import { OrderService } from './order.service';
 import { ResultDto } from '../helpers/dto/result.dto';
 import { TransactionFilterDate, TransactionFilterDto } from '../posting/dto/transaction.filter.dto';
+import { WbInvoiceQueryDto } from './dto/wb-invoice-query.dto';
+import { WbInvoiceSridQueryDto } from './dto/wb-invoice-srid-query.dto';
+import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import {
     ApiBody,
     ApiConsumes,
@@ -139,6 +144,42 @@ export class OrderController {
     }
 
     @ApiOkResponse({
+        description: 'Накладная найдена по стикеру WB',
+        type: InvoiceDto,
+        schema: {
+            oneOf: [
+                { $ref: getSchemaPath(InvoiceDto) },
+                { type: 'null' },
+            ],
+        },
+    })
+    @ApiOperation({ summary: 'Найти накладную по стикеру Wildberries' })
+    @Get('wb-invoice')
+    async getWbInvoiceBySticker(
+        @Query() query: WbInvoiceQueryDto,
+    ): Promise<InvoiceDto | null> {
+        return this.wbOrder.getInvoiceBySticker(query);
+    }
+
+    @ApiOkResponse({
+        description: 'Накладная найдена по SRID WB',
+        type: InvoiceDto,
+        schema: {
+            oneOf: [
+                { $ref: getSchemaPath(InvoiceDto) },
+                { type: 'null' },
+            ],
+        },
+    })
+    @ApiOperation({ summary: 'Найти накладную по SRID Wildberries' })
+    @Get('wb-invoice-by-srid')
+    async getWbInvoiceBySrid(
+        @Query() query: WbInvoiceSridQueryDto,
+    ): Promise<InvoiceDto | null> {
+        return this.wbOrder.getInvoiceBySrid(query);
+    }
+
+    @ApiOkResponse({
         description: 'Заказы ожидающие сборки',
         type: PostingDto,
         isArray: true, // указывает, что возвращается массив объектов
@@ -146,6 +187,30 @@ export class OrderController {
     @Get('awaiting-packaging/:service')
     async getAwaitingPackaging(@Param('service', new ParseEnumPipe(GoodServiceEnum)) service: GoodServiceEnum): Promise<PostingDto[]> {
         return this.orderService.getServiceByName(service).listAwaitingPackaging();
+    }
+
+    @Get('wb-invoice-by-claim/:claimId')
+    @ApiOperation({ summary: 'Найти накладную WB по ID претензии покупателя' })
+    @ApiParam({
+        name: 'claimId',
+        description: 'UUID претензии покупателя',
+        type: 'string',
+        format: 'uuid',
+    })
+    @ApiOkResponse({
+        description: 'Накладная найдена',
+        type: InvoiceDto,
+        schema: {
+            oneOf: [
+                { $ref: getSchemaPath(InvoiceDto) },
+                { type: 'null' },
+            ],
+        },
+    })
+    async getInvoiceByWbClaimId(
+        @Param('claimId', ParseUUIDPipe) claimId: string,
+    ): Promise<InvoiceDto | null> {
+        return this.orderService.getInvoiceByClaimId(claimId);
     }
 
     @Get(':buyerId/:postingNumber')

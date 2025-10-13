@@ -19,6 +19,15 @@ import { WbFboOrder } from './dto/wb.fbo.order';
 import { ProductPostingDto } from '../product/dto/product.posting.dto';
 import Excel from 'exceljs';
 import { WbOrderStickersDto } from "./dto/wb.order.stickers.dto";
+import { CommandChainAsync } from '../helpers/command/command.chain.async';
+import { FetchSalesByStickerCommand } from './commands/fetch-sales-by-sticker.command';
+import { FetchOrdersByStickerCommand } from './commands/fetch-orders-by-sticker.command';
+import { FetchTransactionsCommand } from './commands/fetch-transactions.command';
+import { SelectBestIdCommand } from './commands/select-best-id.command';
+import { FetchInvoiceByRemarkCommand } from './commands/fetch-invoice-by-remark.command';
+import { WbInvoiceQueryDto } from '../order/dto/wb-invoice-query.dto';
+import { WbInvoiceSridQueryDto } from '../order/dto/wb-invoice-srid-query.dto';
+import { RateLimit } from '../helpers/decorators/rate-limit.decorator';
 
 @Injectable()
 export class WbOrderService implements IOrderable {
@@ -29,6 +38,11 @@ export class WbOrderService implements IOrderable {
         @Inject(INVOICE_SERVICE) private invoiceService: IInvoice,
         private configService: ConfigService,
         private eventEmitter: EventEmitter2,
+        private readonly fetchSalesByStickerCommand: FetchSalesByStickerCommand,
+        private readonly fetchOrdersByStickerCommand: FetchOrdersByStickerCommand,
+        private readonly fetchTransactionsCommand: FetchTransactionsCommand,
+        private readonly selectBestIdCommand: SelectBestIdCommand,
+        private readonly fetchInvoiceByRemarkCommand: FetchInvoiceByRemarkCommand,
     ) {
         this.postingDtos = new Map<string, PostingDto>();
     }
@@ -213,6 +227,7 @@ export class WbOrderService implements IOrderable {
         return newOrders.concat(confirmOrders);
     }
 
+    @RateLimit(60000)
     async getTransactions(data: TransactionFilterDate, rrdid = 0): Promise<Array<WbTransactionDto>> {
         return this.api.method(
             '/api/v5/supplier/reportDetailByPeriod',
@@ -272,8 +287,14 @@ export class WbOrderService implements IOrderable {
         };
     }
 
+    @RateLimit(60000)
     async getSales(dateFrom: string): Promise<any> {
         return this.api.method('/api/v1/supplier/sales', 'statistics', { dateFrom });
+    }
+
+    @RateLimit(60000)
+    async getOrders(dateFrom: string, flag: number = 0): Promise<any> {
+        return this.api.method('/api/v1/supplier/orders', 'statistics', { dateFrom, flag });
     }
     // @Timeout(0)
     // Not test
@@ -362,5 +383,42 @@ export class WbOrderService implements IOrderable {
                 error: (e as Error).message || 'Неизвестная ошибка',
             };
         }
+    }
+
+    async getInvoiceBySticker(query: WbInvoiceQueryDto): Promise<InvoiceDto | null> {
+        const { dateFrom, stickerId } = query;
+
+        const chain = new CommandChainAsync([
+            this.fetchSalesByStickerCommand,      // Ищем в sales
+            this.fetchOrdersByStickerCommand,     // Ищем в orders (только если не нашли в sales)
+            this.fetchTransactionsCommand,        // Получаем assembly_id по srid
+            this.selectBestIdCommand,             // Выбираем assembly_id или srid
+            this.fetchInvoiceByRemarkCommand,     // Ищем накладную
+        ]);
+
+        const context = await chain.execute({
+            dateFrom: new Date(dateFrom),
+            stickerId,
+        });
+
+        return context.invoice || null;
+    }
+
+    async getInvoiceBySrid(query: WbInvoiceSridQueryDto): Promise<InvoiceDto | null> {
+        const { dateFrom, srid } = query;
+
+        // Цепочка без поиска в sales/orders, т.к. srid уже известен
+        const chain = new CommandChainAsync([
+            this.fetchTransactionsCommand,        // Получаем assembly_id по srid
+            this.selectBestIdCommand,             // Выбираем assembly_id или srid
+            this.fetchInvoiceByRemarkCommand,     // Ищем накладную
+        ]);
+
+        const context = await chain.execute({
+            dateFrom: new Date(dateFrom),
+            srid,
+        });
+
+        return context.invoice || null;
     }
 }

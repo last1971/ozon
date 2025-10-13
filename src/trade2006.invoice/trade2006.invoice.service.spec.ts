@@ -345,9 +345,13 @@ describe('Trade2006InvoiceService', () => {
         expect(res).toEqual({
             id: 2,
             buyerId: 1,
-            date: new Date('2020-01-01'),
+            date: '2020-01-01',
             remark: 'test1',
             status: 0,
+            number: undefined,
+            barcode: undefined,
+            assemblyStart: undefined,
+            assemblyEnd: undefined,
         });
     });
     it('Test pickupInvoice', async () => {
