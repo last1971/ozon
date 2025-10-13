@@ -6,6 +6,7 @@ import { PostingService } from '../posting/posting.service';
 import { YandexOrderService } from '../yandex.order/yandex.order.service';
 import { PostingFboService } from '../posting.fbo/posting.fbo.service';
 import { WbOrderService } from '../wb.order/wb.order.service';
+import { WbCustomerService } from '../wb.customer/wb.customer.service';
 import { ConfigService } from '@nestjs/config';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
@@ -81,6 +82,13 @@ describe('OrderService', () => {
                         listAwaitingPackaging: () => [],
                         listAwaitingDelivering: () => [],
                         listCanceled: () => [],
+                        getInvoiceBySrid: jest.fn(),
+                    },
+                },
+                {
+                    provide: WbCustomerService,
+                    useValue: {
+                        getClaimById: jest.fn(),
                     },
                 },
                 {
@@ -250,5 +258,103 @@ describe('OrderService', () => {
         expect(savedString).toContain('001');
         expect(savedString).toContain('002');
         expect(savedString).toContain('003');
+    });
+
+    describe('getInvoiceByClaimId', () => {
+        let mockGetClaimById: jest.Mock;
+        let mockGetInvoiceBySrid: jest.Mock;
+
+        beforeEach(() => {
+            mockGetClaimById = jest.fn();
+            mockGetInvoiceBySrid = jest.fn();
+            service['wbCustomer'].getClaimById = mockGetClaimById;
+            service['wbOrder'].getInvoiceBySrid = mockGetInvoiceBySrid;
+        });
+
+        it('should return invoice when claim is found', async () => {
+            const mockClaim = {
+                id: 'claim-uuid',
+                srid: 'test-srid-123',
+                order_dt: '2024-03-26T17:06:12.245611',
+            };
+
+            const mockInvoice = {
+                id: 123,
+                buyerId: 456,
+                status: 1,
+                remark: 'test-srid-123',
+            };
+
+            mockGetClaimById.mockResolvedValue(mockClaim);
+            mockGetInvoiceBySrid.mockResolvedValue(mockInvoice);
+
+            const result = await service.getInvoiceByClaimId('claim-uuid');
+
+            expect(result).toEqual(mockInvoice);
+            expect(mockGetClaimById).toHaveBeenCalledWith('claim-uuid');
+            expect(mockGetInvoiceBySrid).toHaveBeenCalledWith({
+                dateFrom: '2024-03-26',
+                srid: 'test-srid-123',
+            });
+        });
+
+        it('should return null when claim not found', async () => {
+            mockGetClaimById.mockResolvedValue(null);
+
+            const result = await service.getInvoiceByClaimId('non-existent-uuid');
+
+            expect(result).toBeNull();
+            expect(mockGetClaimById).toHaveBeenCalledWith('non-existent-uuid');
+            expect(mockGetInvoiceBySrid).not.toHaveBeenCalled();
+        });
+
+        it('should return null when claim has no srid', async () => {
+            const mockClaim = {
+                id: 'claim-uuid',
+                srid: null,
+                order_dt: '2024-03-26T17:06:12.245611',
+            };
+
+            mockGetClaimById.mockResolvedValue(mockClaim);
+
+            const result = await service.getInvoiceByClaimId('claim-uuid');
+
+            expect(result).toBeNull();
+            expect(mockGetInvoiceBySrid).not.toHaveBeenCalled();
+        });
+
+        it('should return null when claim has no order_dt', async () => {
+            const mockClaim = {
+                id: 'claim-uuid',
+                srid: 'test-srid',
+                order_dt: null,
+            };
+
+            mockGetClaimById.mockResolvedValue(mockClaim);
+
+            const result = await service.getInvoiceByClaimId('claim-uuid');
+
+            expect(result).toBeNull();
+            expect(mockGetInvoiceBySrid).not.toHaveBeenCalled();
+        });
+
+        it('should return null when invoice not found by srid', async () => {
+            const mockClaim = {
+                id: 'claim-uuid',
+                srid: 'test-srid-123',
+                order_dt: '2024-03-26T17:06:12.245611',
+            };
+
+            mockGetClaimById.mockResolvedValue(mockClaim);
+            mockGetInvoiceBySrid.mockResolvedValue(null);
+
+            const result = await service.getInvoiceByClaimId('claim-uuid');
+
+            expect(result).toBeNull();
+            expect(mockGetInvoiceBySrid).toHaveBeenCalledWith({
+                dateFrom: '2024-03-26',
+                srid: 'test-srid-123',
+            });
+        });
     });
 });

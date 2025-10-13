@@ -7,9 +7,10 @@ import { PostingModule } from '../posting/posting.module';
 import { YandexOrderModule } from '../yandex.order/yandex.order.module';
 import { PostingFboModule } from '../posting.fbo/posting.fbo.module';
 import { WbOrderModule } from '../wb.order/wb.order.module';
+import { WbCustomerModule } from '../wb.customer/wb.customer.module';
 
 @Module({
-    imports: [ProductModule, PostingModule, InvoiceModule, YandexOrderModule, PostingFboModule, WbOrderModule],
+    imports: [ProductModule, PostingModule, InvoiceModule, YandexOrderModule, PostingFboModule, WbOrderModule, WbCustomerModule],
     providers: [OrderService],
     controllers: [OrderController],
 })

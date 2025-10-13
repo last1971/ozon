@@ -6,6 +6,7 @@ import {
     Param,
     ParseEnumPipe,
     ParseIntPipe,
+    ParseUUIDPipe,
     Post,
     Query,
     UploadedFile,
@@ -186,6 +187,30 @@ export class OrderController {
     @Get('awaiting-packaging/:service')
     async getAwaitingPackaging(@Param('service', new ParseEnumPipe(GoodServiceEnum)) service: GoodServiceEnum): Promise<PostingDto[]> {
         return this.orderService.getServiceByName(service).listAwaitingPackaging();
+    }
+
+    @Get('wb-invoice-by-claim/:claimId')
+    @ApiOperation({ summary: 'Найти накладную WB по ID претензии покупателя' })
+    @ApiParam({
+        name: 'claimId',
+        description: 'UUID претензии покупателя',
+        type: 'string',
+        format: 'uuid',
+    })
+    @ApiOkResponse({
+        description: 'Накладная найдена',
+        type: InvoiceDto,
+        schema: {
+            oneOf: [
+                { $ref: getSchemaPath(InvoiceDto) },
+                { type: 'null' },
+            ],
+        },
+    })
+    async getInvoiceByWbClaimId(
+        @Param('claimId', ParseUUIDPipe) claimId: string,
+    ): Promise<InvoiceDto | null> {
+        return this.orderService.getInvoiceByClaimId(claimId);
     }
 
     @Get(':buyerId/:postingNumber')

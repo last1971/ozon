@@ -67,7 +67,7 @@ describe('WbCustomerService', () => {
         const result = await service.getClaims(query);
 
         expect(mockMethod).toHaveBeenCalledWith(
-            'https://feedbacks-api.wildberries.ru/api/v1/claims',
+            'https://returns-api.wildberries.ru/api/v1/claims',
             'get',
             query,
             true,
@@ -93,7 +93,7 @@ describe('WbCustomerService', () => {
         const result = await service.getClaims(query);
 
         expect(mockMethod).toHaveBeenCalledWith(
-            'https://feedbacks-api.wildberries.ru/api/v1/claims',
+            'https://returns-api.wildberries.ru/api/v1/claims',
             'get',
             query,
             true,
@@ -113,13 +113,87 @@ describe('WbCustomerService', () => {
             is_archive: true,
         };
 
-        const result = await service.getClaims(query);
+        await service.getClaims(query);
 
         expect(mockMethod).toHaveBeenCalledWith(
-            'https://feedbacks-api.wildberries.ru/api/v1/claims',
+            'https://returns-api.wildberries.ru/api/v1/claims',
             'get',
             query,
             true,
         );
+    });
+
+    it('should get claim by id from active claims', async () => {
+        const mockClaim = {
+            id: 'fe3e9337-e9f9-423c-8930-946a8ebef80',
+            claim_type: 1,
+            status: 2,
+            status_ex: 8,
+            nm_id: 196320101,
+            user_comment: 'Test comment',
+            wb_comment: null,
+            dt: '2024-03-26T17:06:12.245611',
+            imt_name: 'Test product',
+            order_dt: '2020-10-27T05:18:56',
+            dt_update: '2024-05-10T18:01:06.999613',
+            photos: [],
+            video_paths: [],
+            actions: [],
+            price: 157,
+            currency_code: '643',
+            srid: 'v5o_7143225816503318733.0.0',
+        };
+
+        mockMethod.mockResolvedValueOnce({ claims: [mockClaim], total: 1 });
+
+        const result = await service.getClaimById('fe3e9337-e9f9-423c-8930-946a8ebef80');
+
+        expect(result).toEqual(mockClaim);
+        expect(mockMethod).toHaveBeenCalledTimes(1);
+        expect(mockMethod).toHaveBeenCalledWith(
+            'https://returns-api.wildberries.ru/api/v1/claims',
+            'get',
+            { is_archive: false, id: 'fe3e9337-e9f9-423c-8930-946a8ebef80' },
+            true,
+        );
+    });
+
+    it('should get claim by id from archived claims if not found in active', async () => {
+        const mockClaim = {
+            id: 'archived-claim-id',
+            claim_type: 1,
+            status: 2,
+            status_ex: 10,
+            nm_id: 123456,
+            user_comment: 'Archived claim',
+            wb_comment: null,
+            dt: '2024-01-01T12:00:00',
+            imt_name: 'Archived product',
+            order_dt: '2023-12-01T12:00:00',
+            dt_update: '2024-01-10T12:00:00',
+            photos: [],
+            video_paths: [],
+            actions: [],
+            price: 100,
+            currency_code: '643',
+            srid: 'archived-srid',
+        };
+
+        mockMethod.mockResolvedValueOnce({ claims: [], total: 0 });
+        mockMethod.mockResolvedValueOnce({ claims: [mockClaim], total: 1 });
+
+        const result = await service.getClaimById('archived-claim-id');
+
+        expect(result).toEqual(mockClaim);
+        expect(mockMethod).toHaveBeenCalledTimes(2);
+    });
+
+    it('should return null if claim not found', async () => {
+        mockMethod.mockResolvedValue({ claims: [], total: 0 });
+
+        const result = await service.getClaimById('non-existent-id');
+
+        expect(result).toBeNull();
+        expect(mockMethod).toHaveBeenCalledTimes(2);
     });
 });
