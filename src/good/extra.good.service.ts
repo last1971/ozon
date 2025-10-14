@@ -165,4 +165,9 @@ export class ExtraGoodService {
                 (serviceSku) => tradeSkus.some((tradeSku) => serviceSku.startsWith(tradeSku))
             );
     }
+
+    getSkuList(serviceEnum: GoodServiceEnum): string[] {
+        const service = this.getCountUpdateableService(serviceEnum);
+        return service?.skuList || [];
+    }
 }

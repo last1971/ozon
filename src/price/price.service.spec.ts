@@ -317,17 +317,40 @@ describe('PriceService', () => {
             items: [{ offer_id: 'C', price: { vat: 0 } }], // mismatch
             cursor: '',
           });
-      
+
         const expectedVat = 20;
         const res = await service.checkVatForAll(expectedVat, 1000);
-      
+
         expect(res).toEqual([
           { offer_id: 'B', current_vat: 10, expected_vat: 20 },
           { offer_id: 'C', current_vat: 0, expected_vat: 20 },
         ]);
-      
+
         // called twice with visibility ALL and correct cursors
         expect(getPrices.mock.calls[0]).toEqual([{ limit: 1000, cursor: '', visibility: 'ALL' }]);
         expect(getPrices.mock.calls[1]).toEqual([{ limit: 1000, cursor: 'next', visibility: 'ALL' }]);
       });
+
+    it('updateVat should call update with correct prices structure', async () => {
+        const offerIds = ['SKU123', 'SKU456', 'SKU789'];
+        const vat = '0.2';
+
+        await service.updateVat(offerIds, vat as any);
+
+        expect(setPrice).toHaveBeenCalledWith({
+            prices: [
+                { offer_id: 'SKU123', vat: '0.2', currency_code: 'RUB' },
+                { offer_id: 'SKU456', vat: '0.2', currency_code: 'RUB' },
+                { offer_id: 'SKU789', vat: '0.2', currency_code: 'RUB' },
+            ]
+        });
+    });
+
+    it('updateVat should handle empty offer ids array', async () => {
+        await service.updateVat([], '0' as any);
+
+        expect(setPrice).toHaveBeenCalledWith({
+            prices: []
+        });
+    });
 });

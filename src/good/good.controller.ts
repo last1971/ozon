@@ -1,4 +1,4 @@
-import { Body, Controller, Inject, Param, ParseEnumPipe, Post, Put, Query } from "@nestjs/common";
+import { Body, Controller, Get, Inject, Param, ParseEnumPipe, Post, Put, Query } from "@nestjs/common";
 import { ApiBody, ApiOperation, ApiParam, ApiProperty, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
 import { GoodPercentDto } from './dto/good.percent.dto';
@@ -163,5 +163,30 @@ export class GoodController {
     async changeCount(@Body('skus') skus: string[]): Promise<void> {
         const goods = await this.goodService.in(skus, null);
         await this.extraService.countsChanged(goods);
+    }
+
+    @Get('sku-list/:service')
+    @ApiOperation({ summary: 'Получить список всех SKU для указанного сервиса' })
+    @ApiParam({
+        name: 'service',
+        enum: GoodServiceEnum,
+        description: 'Название сервиса (OZON, WB, YANDEX, EXPRESS, AVITO)',
+        example: GoodServiceEnum.OZON
+    })
+    @ApiResponse({
+        status: 200,
+        description: 'Список SKU',
+        schema: {
+            type: 'array',
+            items: {
+                type: 'string',
+            },
+            example: ['SKU123', 'SKU456', 'SKU789']
+        }
+    })
+    async getSkuList(
+        @Param('service', new ParseEnumPipe(GoodServiceEnum)) service: GoodServiceEnum
+    ): Promise<string[]> {
+        return this.extraService.getSkuList(service);
     }
 }
