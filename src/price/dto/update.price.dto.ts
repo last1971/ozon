@@ -7,6 +7,14 @@ export enum AutoAction {
     DISABLED = 'DISABLED',
     UNKNOWN = 'UNKNOWN',
 }
+
+export enum VatRateOzon {
+    NONE = '0',
+    RATE_5 = '0.05',
+    RATE_7 = '0.07',
+    RATE_10 = '0.1',
+    RATE_20 = '0.2',
+}
 export class UpdatePriceDto {
     @ApiProperty({
         description: 'Атрибут для включения и выключения автоприменения акций',
@@ -33,21 +41,21 @@ export class UpdatePriceDto {
     })
     @IsNotEmpty()
     @IsNumberString()
-    min_price: string;
+    min_price?: string;
     @ApiProperty({
         description: 'Цена до скидок (зачеркнута на карточке товара)',
         required: true,
     })
     @IsNumberString()
     @IsNotEmpty()
-    old_price: string;
+    old_price?: string;
     @ApiProperty({
         description: 'Цена товара с учётом скидок, отображается на карточке товара.',
         required: true,
     })
     @IsNumberString()
     @IsNotEmpty()
-    price: string;
+    price?: string;
     @ApiProperty({ description: 'Идентификатор товара в системе продавца.', required: true })
     @IsNotEmpty()
     offer_id: string;
@@ -60,6 +68,15 @@ export class UpdatePriceDto {
     @IsNumber()
     incoming_price?: number;
     sum_pack?: number;
+    @ApiProperty({
+        description: 'Ставка НДС',
+        required: false,
+        enum: VatRateOzon,
+        example: VatRateOzon.NONE
+    })
+    @IsOptional()
+    @IsEnum(VatRateOzon)
+    vat?: string;
 }
 
 export class UpdatePricesDto {

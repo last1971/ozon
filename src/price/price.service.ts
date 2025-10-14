@@ -7,7 +7,7 @@ import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
 import { PriceResponseDto } from './dto/price.response.dto';
 import { calculatePay, goodCode, goodQuantityCoeff } from '../helpers';
 import { GoodPercentDto } from '../good/dto/good.percent.dto';
-import { UpdatePriceDto, UpdatePricesDto } from './dto/update.price.dto';
+import { UpdatePriceDto, UpdatePricesDto, VatRateOzon } from './dto/update.price.dto';
 import { chunk, toNumber } from 'lodash';
 import { ProductVisibility } from '../product/product.visibility';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
@@ -97,6 +97,13 @@ export class PriceService implements IPriceUpdateable {
     }
     async update(prices: UpdatePricesDto): Promise<any> {
         return this.product.setPrice(prices);
+    }
+
+    async updateVat(offerIds: string[], vat: VatRateOzon): Promise<any> {
+        const prices: UpdatePricesDto = {
+            prices: offerIds.map(offer_id => ({ offer_id, vat, currency_code: 'RUB' }))
+        };
+        return this.update(prices);
     }
     // @Cron('0 0 0 * * 0', { name: 'updateOzonPrices' })
     async updateAllPrices(level = 0, cursor = '', visibility = ProductVisibility.IN_SALE, limit = 1000): Promise<any> {

@@ -25,7 +25,7 @@ import { PriceRequestDto } from './dto/price.request.dto';
 import { PricePresetDto } from './dto/price.preset.dto';
 import { PriceService } from './price.service';
 import { PriceResponseDto } from './dto/price.response.dto';
-import { UpdatePriceDto, UpdatePricesDto } from './dto/update.price.dto';
+import { UpdatePriceDto, UpdatePricesDto, VatRateOzon } from './dto/update.price.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
 import { GoodServiceEnum } from '../good/good.service.enum';
@@ -386,5 +386,36 @@ export class PriceController {
         @Body() body: { vat: number; limit?: number }
     ): Promise<Array<{ offer_id: string; current_vat: number; expected_vat: number }>> {
         return this.service.checkVatForAll(body.vat, body.limit ?? 1000);
+    }
+
+    @Post('update-vat')
+    @ApiOperation({ summary: 'Обновить ставку НДС для списка товаров' })
+    @ApiBody({
+        schema: {
+            type: 'object',
+            required: ['offerIds', 'vat'],
+            properties: {
+                offerIds: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Массив offer_id товаров для обновления НДС',
+                    example: ['SKU123', 'SKU456']
+                },
+                vat: {
+                    type: 'string',
+                    enum: ['0', '0.05', '0.07', '0.1', '0.2'],
+                    description: 'Ставка НДС: 0 - без НДС, 0.05 - 5%, 0.07 - 7%, 0.1 - 10%, 0.2 - 20%',
+                    example: '0'
+                },
+            },
+        },
+    })
+    @ApiOkResponse({
+        description: 'Результат обновления НДС',
+    })
+    async updateVat(
+        @Body() body: { offerIds: string[]; vat: VatRateOzon }
+    ): Promise<any> {
+        return this.service.updateVat(body.offerIds, body.vat);
     }
 }

@@ -132,4 +132,31 @@ describe('ExtraGoodService', () => {
         expect(result).toEqual([]);
     });
 
+    describe('getSkuList', () => {
+        it('should return SKU list for OZON service', () => {
+            const result = service.getSkuList(GoodServiceEnum.OZON);
+            expect(result).toEqual(["222", "222-10"]);
+        });
+
+        it('should return SKU list for WB service', () => {
+            const result = service.getSkuList(GoodServiceEnum.WB);
+            expect(result).toEqual(["111"]);
+        });
+
+        it('should return empty array for YANDEX service with no SKUs', () => {
+            const result = service.getSkuList(GoodServiceEnum.YANDEX);
+            expect(result).toEqual([]);
+        });
+
+        it('should return empty array for non-existent service', () => {
+            const result = service.getSkuList(null);
+            expect(result).toEqual([]);
+        });
+
+        it('should return empty array for EXPRESS service', () => {
+            const result = service.getSkuList(GoodServiceEnum.EXPRESS);
+            expect(result).toEqual([]);
+        });
+    });
+
 });
