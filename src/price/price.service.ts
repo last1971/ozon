@@ -7,7 +7,7 @@ import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
 import { PriceResponseDto } from './dto/price.response.dto';
 import { calculatePay, goodCode, goodQuantityCoeff } from '../helpers';
 import { GoodPercentDto } from '../good/dto/good.percent.dto';
-import { UpdatePriceDto, UpdatePricesDto, VatRateOzon } from './dto/update.price.dto';
+import { UpdatePriceDto, UpdatePricesDto } from './dto/update.price.dto';
 import { chunk, toNumber } from 'lodash';
 import { ProductVisibility } from '../product/product.visibility';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
@@ -16,9 +16,10 @@ import { IProductCoeffsable } from '../interfaces/i.product.coeffsable';
 import { OzonProductCoeffsAdapter } from './ozon.product.coeffs.adapter';
 import { Cache } from '@nestjs/cache-manager';
 import Excel from 'exceljs';
+import { IVatUpdateable } from 'src/interfaces/i.vat.updateable';
 
 @Injectable()
-export class PriceService implements IPriceUpdateable {
+export class PriceService implements IPriceUpdateable, IVatUpdateable {
     private logger = new Logger(PriceService.name);
     constructor(
         private product: ProductService,
@@ -26,6 +27,49 @@ export class PriceService implements IPriceUpdateable {
         private configService: ConfigService,
         private cacheManager: Cache,
     ) {}
+    /**
+     * Преобразует значение НДС Озона (строка как доля) в число (проценты)
+     * '0.05' -> 5, '0.07' -> 7, '0.1' -> 10, '0.2' -> 20, '0.22' -> 22, остальное -> 0
+     */
+    vatToNumber(vat: any): number {
+        const vatStr = typeof vat === 'number' ? vat.toString() : vat;
+
+        switch (vatStr) {
+            case '0.05':
+                return 5;
+            case '0.07':
+                return 7;
+            case '0.1':
+                return 10;
+            case '0.2':
+                return 20;
+            case '0.22':
+                return 22;
+            default:
+                return 0;
+        }
+    }
+
+    /**
+     * Преобразует число (проценты) в формат НДС для Озона (строка как доля)
+     * 5 -> '0.05', 7 -> '0.07', 10 -> '0.1', 20 -> '0.2', 22 -> '0.22', остальное -> '0'
+     */
+    numberToVat(vat: number): string {
+        switch (vat) {
+            case 5:
+                return '0.05';
+            case 7:
+                return '0.07';
+            case 10:
+                return '0.1';
+            case 20:
+                return '0.2';
+            case 22:
+                return '0.22';
+            default:
+                return '0';
+        }
+    }
     async preset(): Promise<PricePresetDto> {
         return {
             perc_min: toNumber(this.configService.get<number>('PERC_MIN', 15)),
@@ -99,9 +143,9 @@ export class PriceService implements IPriceUpdateable {
         return this.product.setPrice(prices);
     }
 
-    async updateVat(offerIds: string[], vat: VatRateOzon): Promise<any> {
+    async updateVat(offerIds: string[], vat: number): Promise<any> {
         const prices: UpdatePricesDto = {
-            prices: offerIds.map(offer_id => ({ offer_id, vat, currency_code: 'RUB' }))
+            prices: offerIds.map(offer_id => ({ offer_id, vat: this.numberToVat(vat), currency_code: 'RUB' }))
         };
         return this.update(prices);
     }
@@ -216,8 +260,8 @@ export class PriceService implements IPriceUpdateable {
             const items = page?.items ?? [];
 
             for (const item of items) {
-                const currentVat = item?.price?.vat ?? 0; // если vat окажется вложенным в price
-                if (typeof currentVat === 'number' && currentVat !== expectedVat) {
+                const currentVat = this.vatToNumber(item?.price?.vat ?? '0'); 
+                if (currentVat !== expectedVat) {
                     mismatches.push({ offer_id: item.offer_id, current_vat: currentVat, expected_vat: expectedVat });
                 }
             }

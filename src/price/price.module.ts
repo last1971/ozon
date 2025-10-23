@@ -18,6 +18,8 @@ import { EmitUpdatePromosCommand } from './commands/emit-update-promos.command';
 import { LogResultProcessingMessageCommand } from './commands/log-result-processing-message.command';
 import { ValidateSkusNotEmptyCommand } from './commands/validate-skus-not-empty.command';
 import { SetResultProcessingMessageCommand } from './commands/set-result-processing-message.command';
+import { CheckVatCommand } from './commands/check-vat.command';
+import { UpdateVatCommand } from './commands/update-vat.command';
 
 @Module({
     imports: [ProductModule, GoodModule, YandexPriceModule, WbPriceModule, AvitoPriceModule],
@@ -35,6 +37,8 @@ import { SetResultProcessingMessageCommand } from './commands/set-result-process
         LogResultProcessingMessageCommand,
         ValidateSkusNotEmptyCommand,
         SetResultProcessingMessageCommand,
+        CheckVatCommand,
+        UpdateVatCommand,
     ],
     controllers: [PriceController],
     exports: [
@@ -51,6 +55,8 @@ import { SetResultProcessingMessageCommand } from './commands/set-result-process
         LogResultProcessingMessageCommand,
         ValidateSkusNotEmptyCommand,
         SetResultProcessingMessageCommand,
+        CheckVatCommand,
+        UpdateVatCommand,
     ],
 })
 export class PriceModule {}

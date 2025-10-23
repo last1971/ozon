@@ -25,7 +25,7 @@ import { PriceRequestDto } from './dto/price.request.dto';
 import { PricePresetDto } from './dto/price.preset.dto';
 import { PriceService } from './price.service';
 import { PriceResponseDto } from './dto/price.response.dto';
-import { UpdatePriceDto, UpdatePricesDto, VatRateOzon } from './dto/update.price.dto';
+import { UpdatePriceDto, UpdatePricesDto } from './dto/update.price.dto';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Response } from 'express';
 import { GoodServiceEnum } from '../good/good.service.enum';
@@ -402,10 +402,10 @@ export class PriceController {
                     example: ['SKU123', 'SKU456']
                 },
                 vat: {
-                    type: 'string',
-                    enum: ['0', '0.05', '0.07', '0.1', '0.2'],
-                    description: 'Ставка НДС: 0 - без НДС, 0.05 - 5%, 0.07 - 7%, 0.1 - 10%, 0.2 - 20%',
-                    example: '0'
+                    type: 'number',
+                    enum: [0, 5, 7, 10, 20, 22],
+                    description: 'Ставка НДС в процентах: 0 - без НДС, 5 - 5%, 7 - 7%, 10 - 10%, 20 - 20%, 22 - 22%',
+                    example: 0
                 },
             },
         },
@@ -414,8 +414,61 @@ export class PriceController {
         description: 'Результат обновления НДС',
     })
     async updateVat(
-        @Body() body: { offerIds: string[]; vat: VatRateOzon }
+        @Body() body: { offerIds: string[]; vat: number }
     ): Promise<any> {
         return this.service.updateVat(body.offerIds, body.vat);
+    }
+
+    @Post('update-vat-all')
+    @ApiOperation({ summary: 'Проверить и обновить НДС для всех несоответствующих товаров' })
+    @ApiBody({
+        schema: {
+            type: 'object',
+            required: ['service', 'vat'],
+            properties: {
+                service: {
+                    type: 'string',
+                    enum: ['ozon', 'wb', 'yandex'],
+                    description: 'Маркетплейс',
+                    example: 'ozon'
+                },
+                vat: {
+                    type: 'number',
+                    enum: [0, 5, 7, 10, 20, 22],
+                    description: 'Ожидаемая ставка НДС в процентах: 0 - без НДС, 5 - 5%, 7 - 7%, 10 - 10%, 20 - 20%, 22 - 22%',
+                    example: 0
+                },
+                limit: {
+                    type: 'number',
+                    description: 'Лимит записей за запрос при проверке (опционально)',
+                    example: 1000
+                }
+            },
+        },
+    })
+    @ApiOkResponse({
+        description: 'Результат проверки и обновления НДС',
+        schema: {
+            type: 'object',
+            properties: {
+                mismatches: {
+                    type: 'array',
+                    items: {
+                        type: 'object',
+                        properties: {
+                            offer_id: { type: 'string' },
+                            current_vat: { type: 'number' },
+                            expected_vat: { type: 'number' },
+                        },
+                    },
+                },
+                updateResult: { type: 'object' },
+            },
+        },
+    })
+    async updateVatAll(
+        @Body() body: { service: GoodServiceEnum; vat: number; limit?: number }
+    ): Promise<{ mismatches: any[]; updateResult: any }> {
+        return this.extraService.updateVatForAllMismatches(body.service, body.vat, body.limit);
     }
 }

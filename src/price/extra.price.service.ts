@@ -29,6 +29,10 @@ import { EmitUpdatePromosCommand } from './commands/emit-update-promos.command';
 import { LogResultProcessingMessageCommand } from './commands/log-result-processing-message.command';
 import { ValidateSkusNotEmptyCommand } from './commands/validate-skus-not-empty.command';
 import { SetResultProcessingMessageCommand } from './commands/set-result-processing-message.command';
+import { CheckVatCommand } from './commands/check-vat.command';
+import { UpdateVatCommand } from './commands/update-vat.command';
+import { IVatProcessingContext } from '../interfaces/i.vat.processing.context';
+import { IVatUpdateable } from '../interfaces/i.vat.updateable';
 
 @Injectable()
 export class ExtraPriceService {
@@ -55,6 +59,8 @@ export class ExtraPriceService {
         private readonly logResultProcessingMessageCommand: LogResultProcessingMessageCommand,
         private readonly validateSkusNotEmptyCommand: ValidateSkusNotEmptyCommand,
         private readonly setResultProcessingMessageCommand: SetResultProcessingMessageCommand,
+        private readonly checkVatCommand: CheckVatCommand,
+        private readonly updateVatCommand: UpdateVatCommand,
     ) {
         this.services = new Map<GoodServiceEnum, IPriceUpdateable>();
         const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
@@ -292,5 +298,54 @@ export class ExtraPriceService {
             this.logger.error(`Ошибка при массовом обновлении процентов и цен: ${error.message}`, error.stack);
             throw error;
         }
+    }
+
+    /**
+     * Проверить и обновить НДС для всех несоответствующих товаров
+     * @param service - enum маркетплейса (OZON, WB, YANDEX)
+     * @param expectedVat - ожидаемая ставка НДС в процентах (0, 5, 7, 10, 20, 22)
+     * @param limit - лимит записей за запрос при проверке
+     * @returns результат проверки и обновления
+     */
+    async updateVatForAllMismatches(
+        service: GoodServiceEnum,
+        expectedVat: number,
+        limit?: number,
+    ): Promise<{ mismatches: any[]; updateResult: any }> {
+        const priceService = this.getService(service);
+
+        if (!priceService) {
+            throw new Error(`Service ${service} not found`);
+        }
+
+        if (!this.isVatUpdateable(priceService)) {
+            throw new Error(`Service ${service} does not support VAT operations`);
+        }
+
+        const context: IVatProcessingContext = {
+            service: priceService,
+            expectedVat,
+            limit: limit || 1000,
+            logger: this.logger,
+        };
+
+        const chain = new CommandChainAsync<IVatProcessingContext>([
+            this.checkVatCommand,
+            this.updateVatCommand,
+        ]);
+
+        const result = await chain.execute(context);
+
+        return {
+            mismatches: result.mismatches || [],
+            updateResult: result.updateResult,
+        };
+    }
+
+    /**
+     * Type guard для проверки, поддерживает ли сервис работу с НДС
+     */
+    private isVatUpdateable(service: IPriceUpdateable): service is IPriceUpdateable & IVatUpdateable {
+        return 'checkVatForAll' in service && 'updateVat' in service && 'vatToNumber' in service && 'numberToVat' in service;
     }
 }

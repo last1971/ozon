@@ -24,6 +24,8 @@ import { EmitUpdatePromosCommand } from './commands/emit-update-promos.command';
 import { LogResultProcessingMessageCommand } from './commands/log-result-processing-message.command';
 import { ValidateSkusNotEmptyCommand } from './commands/validate-skus-not-empty.command';
 import { SetResultProcessingMessageCommand } from './commands/set-result-processing-message.command';
+import { CheckVatCommand } from './commands/check-vat.command';
+import { UpdateVatCommand } from './commands/update-vat.command';
 import { AvitoPriceService } from "../avito.price/avito.price.service";
 
 jest.mock("../yandex.price/yandex.price.service");
@@ -133,7 +135,9 @@ describe("ExtraPriceService", () => {
                 { provide: EmitUpdatePromosCommand, useValue: mockCommand },
                 { provide: LogResultProcessingMessageCommand, useValue: mockCommand },
                 { provide: ValidateSkusNotEmptyCommand, useValue: mockCommand },
-                { provide: SetResultProcessingMessageCommand, useValue: mockCommand },                
+                { provide: SetResultProcessingMessageCommand, useValue: mockCommand },
+                { provide: CheckVatCommand, useValue: mockCommand },
+                { provide: UpdateVatCommand, useValue: mockCommand },
             ]
         }).compile();
 
@@ -157,6 +161,8 @@ describe("ExtraPriceService", () => {
             mockCommand as any, // logResultProcessingMessageCommand
             mockCommand as any, // validateSkusNotEmptyCommand
             mockCommand as any, // setResultProcessingMessageCommand
+            mockCommand as any, // checkVatCommand
+            mockCommand as any, // updateVatCommand
         );
     });
 
@@ -192,6 +198,8 @@ describe("ExtraPriceService", () => {
                 mockCommand as any, // logResultProcessingMessageCommand
                 mockCommand as any, // validateSkusNotEmptyCommand
                 mockCommand as any, // setResultProcessingMessageCommand
+                mockCommand as any, // checkVatCommand
+                mockCommand as any, // updateVatCommand
             );
 
             const service = extraPriceService.getService(GoodServiceEnum.OZON);
@@ -590,6 +598,147 @@ describe("ExtraPriceService", () => {
 
             // Проверяем что команды были вызваны (упрощенная проверка)
             expect(mockCommand.execute).toHaveBeenCalled();
+        });
+    });
+
+    describe('updateVatForAllMismatches', () => {
+        beforeEach(() => {
+            mockCommand.execute.mockClear();
+
+            // Настраиваем мок чтобы OZON был зарегистрирован
+            mockConfigService.get.mockImplementation((key, defaultValue) => {
+                if (key === 'SERVICES') return [GoodServiceEnum.OZON];
+                return defaultValue;
+            });
+
+            // Пересоздаем сервис с зарегистрированным OZON
+            extraPriceService = new ExtraPriceService(
+                mockPriceService as unknown as PriceService,
+                mockYandexPriceService as unknown as YandexPriceService,
+                mockWbPriceService as unknown as WbPriceService,
+                {} as any,
+                mockGoodService as unknown as IGood,
+                mockConfigService as unknown as ConfigService,
+                mockExtraGoodService as unknown as ExtraGoodService,
+                mockEventEmitter as EventEmitter2,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+            );
+        });
+
+        it('should check and update VAT for OZON service', async () => {
+            const mismatches = [
+                { offer_id: 'SKU1', current_vat: 10, expected_vat: 20 },
+                { offer_id: 'SKU2', current_vat: 0, expected_vat: 20 },
+            ];
+
+            mockCommand.execute.mockResolvedValue({
+                mismatches,
+                updateResult: { updated: true },
+            });
+
+            const result = await extraPriceService.updateVatForAllMismatches(GoodServiceEnum.OZON, 20, 1000);
+
+            expect(mockCommand.execute).toHaveBeenCalled();
+            expect(result.mismatches).toEqual(mismatches);
+            expect(result.updateResult).toEqual({ updated: true });
+        });
+
+        it('should throw error if service not found', async () => {
+            await expect(
+                extraPriceService.updateVatForAllMismatches('UNKNOWN' as any, 20)
+            ).rejects.toThrow('Service UNKNOWN not found');
+        });
+
+        it('should throw error if service does not support VAT operations', async () => {
+            // Создаем сервис без методов IVatUpdateable
+            const incompatibleService = {
+                getObtainCoeffs: jest.fn(),
+                getProductsWithCoeffs: jest.fn(),
+                updatePrices: jest.fn(),
+                updateAllPrices: jest.fn(),
+                createAction: jest.fn(),
+            };
+
+            mockConfigService.get.mockImplementation((key, defaultValue) => {
+                if (key === 'SERVICES') return [GoodServiceEnum.YANDEX];
+                return defaultValue;
+            });
+
+            extraPriceService = new ExtraPriceService(
+                mockPriceService as unknown as PriceService,
+                incompatibleService as any,
+                mockWbPriceService as unknown as WbPriceService,
+                {} as any,
+                mockGoodService as unknown as IGood,
+                mockConfigService as unknown as ConfigService,
+                mockExtraGoodService as unknown as ExtraGoodService,
+                mockEventEmitter as EventEmitter2,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+            );
+
+            await expect(
+                extraPriceService.updateVatForAllMismatches(GoodServiceEnum.YANDEX, 20)
+            ).rejects.toThrow('Service yandex does not support VAT operations');
+        });
+
+        it('should use default limit of 1000 if not provided', async () => {
+            mockCommand.execute.mockResolvedValue({
+                mismatches: [],
+                updateResult: null,
+            });
+
+            await extraPriceService.updateVatForAllMismatches(GoodServiceEnum.OZON, 0);
+
+            const executeCall = mockCommand.execute.mock.calls[0][0];
+            expect(executeCall.limit).toBe(1000);
+        });
+
+        it('should use provided limit', async () => {
+            mockCommand.execute.mockResolvedValue({
+                mismatches: [],
+                updateResult: null,
+            });
+
+            await extraPriceService.updateVatForAllMismatches(GoodServiceEnum.OZON, 0, 500);
+
+            const executeCall = mockCommand.execute.mock.calls[0][0];
+            expect(executeCall.limit).toBe(500);
+        });
+
+        it('should return empty mismatches if none found', async () => {
+            mockCommand.execute.mockResolvedValue({
+                mismatches: [],
+                updateResult: null,
+            });
+
+            const result = await extraPriceService.updateVatForAllMismatches(GoodServiceEnum.OZON, 20);
+
+            expect(result.mismatches).toEqual([]);
+            expect(result.updateResult).toBeNull();
         });
     });
 });
