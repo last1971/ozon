@@ -10,6 +10,7 @@ import { WbCardAnswerDto } from './dto/wb.card.answer.dto';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { ProductInfoDto } from "../product/dto/product.info.dto";
 import { IProductable } from '../interfaces/i.productable';
+import { RateLimit } from '../helpers/decorators/rate-limit.decorator';
 
 @Injectable()
 export class WbCardService extends ICountUpdateable implements OnModuleInit, IProductable {
@@ -54,6 +55,7 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
         }
     }
 
+    @RateLimit(600)
     async getWbCards(args: any): Promise<WbCardAnswerDto> {
         const res: WbCardAnswerDto = await this.api.method(
             'https://content-api.wildberries.ru/content/v2/get/cards/list',
@@ -77,7 +79,7 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
         });
         return res;
     }
-    async getAllWbCards(): Promise<WbCardDto[]> {
+    async getAllWbCards(limit: number = 100): Promise<WbCardDto[]> {
         const ret: WbCardDto[] = [];
         let cycle = true;
         let args: any = null;
@@ -86,11 +88,18 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
             ret.push(...cards);
             const { updatedAt, nmID, total } = cursor;
             args = {
-                limit: 100,
-                updatedAt,
-                nmID,
+                settings: {
+                    cursor: {
+                        limit,
+                        updatedAt,
+                        nmID,
+                    },
+                    filter: {
+                        withPhoto: -1,
+                    },
+                },
             };
-            cycle = total === 100;
+            cycle = total === limit;
         }
         return ret;
     }

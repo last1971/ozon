@@ -14,9 +14,11 @@ import { find, first } from 'lodash';
 import Excel from 'exceljs';
 import { GoodWbDto } from '../good/dto/good.wb.dto';
 import { WbCardDto } from '../wb.card/dto/wb.card.dto';
+import { IVatUpdateable } from 'src/interfaces/i.vat.updateable';
 
 @Injectable()
-export class WbPriceService implements IPriceUpdateable {
+export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
+    private static readonly VAT_CHARACTERISTIC_ID = 15001405;
     private logger = new Logger(WbPriceService.name);
     constructor(
         private configService: ConfigService,
@@ -24,6 +26,74 @@ export class WbPriceService implements IPriceUpdateable {
         private api: WbApiService,
         private cardService: WbCardService,
     ) {}
+    async checkVatForAll(expectedVat: number, limit?: number): Promise<Array<{ offer_id: string; current_vat: number; expected_vat: number; }>> {
+        const cards = await this.cardService.getAllWbCards();
+        const mismatches: Array<{ offer_id: string; current_vat: number; expected_vat: number }> = [];
+
+        for (const card of cards) {
+            // Находим характеристику с НДС
+            const vatCharacteristic = card.characteristics?.find(
+                (char) => char.id === WbPriceService.VAT_CHARACTERISTIC_ID
+            );
+
+            if (!vatCharacteristic) {
+                // Если нет характеристики НДС, считаем что текущий НДС = 0
+                if (expectedVat !== 0) {
+                    mismatches.push({
+                        offer_id: card.vendorCode,
+                        current_vat: 0,
+                        expected_vat: expectedVat,
+                    });
+                }
+                continue;
+            }
+
+            // Преобразуем значение НДС из API в число
+            const currentVat = this.vatToNumber(vatCharacteristic.value);
+
+            // Сравниваем с ожидаемым
+            if (currentVat !== expectedVat) {
+                mismatches.push({
+                    offer_id: card.vendorCode,
+                    current_vat: currentVat,
+                    expected_vat: expectedVat,
+                });
+            }
+        }
+
+        return mismatches;
+    }
+    updateVat(offerIds: string[], vat: number): Promise<any> {
+        throw new Error('Method not implemented.');
+    }
+    /**
+     * Преобразует значение НДС WB (строка) в стандартное число (проценты)
+     * WB использует строки: "0", "5", "7", "10", "12", "13", "20", "Без НДС"
+     * "Без НДС" -> -1, "10" -> 10, "0" -> 0
+     */
+    vatToNumber(vat: any): number {
+        const vatStr = String(vat).trim();
+
+        // Особый случай для "Без НДС"
+        if (vatStr === 'Без НДС') {
+            return -1;
+        }
+
+        // Преобразуем строку в число
+        const vatNum = parseInt(vatStr, 10);
+        return isNaN(vatNum) ? 0 : vatNum;
+    }
+
+    /**
+     * Преобразует число (проценты) в формат НДС для WB (строка)
+     * -1 -> "Без НДС", 0 -> "0", 5 -> "5", 10 -> "10", 20 -> "20"
+     */
+    numberToVat(vat: number): string {
+        if (vat === -1) {
+            return 'Без НДС';
+        }
+        return vat.toString();
+    }
     getObtainCoeffs(): ObtainCoeffsDto {
         return {
             minMil: 0,
