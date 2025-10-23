@@ -18,6 +18,7 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
     private skuBarcodePair: Map<string, string>;
     private skuNmIDPair: Map<string, string>;
     private productInfos: Map<string, ProductInfoDto>;
+    private wbCards: Map<string, WbCardDto>
     constructor(
         private api: WbApiService,
         private vault: VaultService,
@@ -27,6 +28,7 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
         this.skuBarcodePair = new Map<string, string>();
         this.skuNmIDPair = new Map<string, string>();
         this.productInfos = new Map<string, ProductInfoDto>();
+        this.clearWbCards();
     }
     async onModuleInit(): Promise<any> {
         const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
@@ -55,6 +57,30 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
         }
     }
 
+    @RateLimit(6000)
+    async updateCards(cards: WbCardDto[]): Promise<any> {
+        if (cards.length === 0) {
+            return [];
+        }
+
+        // WB API ограничения: максимум 3000 карточек или 10МБ в одном запросе
+        const CHUNK_SIZE = 1000; // Берем с запасом меньше 3000 для безопасности
+        const results = [];
+
+        for (let i = 0; i < cards.length; i += CHUNK_SIZE) {
+            const chunk = cards.slice(i, i + CHUNK_SIZE);
+            const result = await this.api.method(
+                'https://content-api.wildberries.ru/content/v2/cards/update',
+                'post',
+                chunk,
+                true,
+            );
+            results.push(result);
+        }
+
+        return results;
+    }
+
     @RateLimit(600)
     async getWbCards(args: any): Promise<WbCardAnswerDto> {
         const res: WbCardAnswerDto = await this.api.method(
@@ -76,6 +102,7 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
         );
         res.cards.forEach((card) => {
             this.productInfos.set(card.vendorCode, this.wbCardToProductInfo(card));
+            this.wbCards.set(card.vendorCode, card);
         });
         return res;
     }
@@ -163,4 +190,22 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
     async infoList(offer_id: string[]): Promise<ProductInfoDto[]> {
         return offer_id.map((id) => this.productInfos.get(id));
     }
+
+    getWbCard(sku: string): WbCardDto | null {
+        return this.wbCards.get(sku) ?? null;
+    }
+
+    async getWbCardAsync(sku: string): Promise<WbCardDto | null> {
+        let ret = this.getWbCard(sku);
+        if (!ret) {
+            await this.getAllWbCards();
+            ret = this.getWbCard(sku);
+        }
+        return ret;
+    }
+
+    clearWbCards(): void {
+        this.wbCards = new Map<string, WbCardDto>();
+    }
+
 }
