@@ -419,6 +419,37 @@ export class PriceController {
         return this.service.updateVat(body.offerIds, body.vat);
     }
 
+    @Post('wb/update-vat')
+    @ApiOperation({ summary: 'Обновить ставку НДС для списка товаров WB' })
+    @ApiBody({
+        schema: {
+            type: 'object',
+            required: ['offerIds', 'vat'],
+            properties: {
+                offerIds: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Массив артикулов (vendorCode) товаров WB для обновления НДС',
+                    example: ['TEST-001', 'TEST-002']
+                },
+                vat: {
+                    type: 'number',
+                    enum: [-1, 0, 5, 7, 10, 12, 13, 20],
+                    description: 'Ставка НДС в процентах: -1 - без НДС, 0 - 0%, 5 - 5%, 7 - 7%, 10 - 10%, 12 - 12%, 13 - 13%, 20 - 20%',
+                    example: 20
+                },
+            },
+        },
+    })
+    @ApiOkResponse({
+        description: 'Результат обновления НДС для WB',
+    })
+    async updateVatWb(
+        @Body() body: { offerIds: string[]; vat: number }
+    ): Promise<any> {
+        return (this.extraService.getService(GoodServiceEnum.WB) as WbPriceService).updateVat(body.offerIds, body.vat);
+    }
+
     @Post('update-vat-all')
     @ApiOperation({ summary: 'Проверить и обновить НДС для всех несоответствующих товаров' })
     @ApiBody({

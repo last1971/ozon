@@ -63,8 +63,33 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
 
         return mismatches;
     }
-    updateVat(offerIds: string[], vat: number): Promise<any> {
-        throw new Error('Method not implemented.');
+    
+    async updateVat(offerIds: string[], vat: number): Promise<any> {
+        const cards: WbCardDto[] = [];
+
+        for (const offerId of offerIds) {
+          const card = await this.cardService.getWbCardAsync(offerId);
+          cards.push(card);
+        }
+
+        const updatedCards = cards.map(card => {
+            const characteristics = card.characteristics || [];
+            const vatChar = characteristics.find(ch => ch.id === WbPriceService.VAT_CHARACTERISTIC_ID);
+
+            if (vatChar) {
+                vatChar.value = [this.numberToVat(vat)];
+            } else {
+                characteristics.push({
+                    id: WbPriceService.VAT_CHARACTERISTIC_ID,
+                    value: [this.numberToVat(vat)]
+                });
+            }
+
+            return { ...card, characteristics };
+        });
+
+        return this.cardService.updateCards(updatedCards);
+        
     }
     /**
      * Преобразует значение НДС WB (строка) в стандартное число (проценты)
