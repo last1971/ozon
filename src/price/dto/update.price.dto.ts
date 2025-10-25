@@ -8,13 +8,6 @@ export enum AutoAction {
     UNKNOWN = 'UNKNOWN',
 }
 
-export enum VatRateOzon {
-    NONE = '0',
-    RATE_5 = '0.05',
-    RATE_7 = '0.07',
-    RATE_10 = '0.1',
-    RATE_20 = '0.2',
-}
 export class UpdatePriceDto {
     @ApiProperty({
         description: 'Атрибут для включения и выключения автоприменения акций',
@@ -69,14 +62,12 @@ export class UpdatePriceDto {
     incoming_price?: number;
     sum_pack?: number;
     @ApiProperty({
-        description: 'Ставка НДС',
+        description: 'Ставка НДС (число или строка)',
         required: false,
-        enum: VatRateOzon,
-        example: VatRateOzon.NONE
+        example: 0
     })
     @IsOptional()
-    @IsEnum(VatRateOzon)
-    vat?: string;
+    vat?: string | number;
 }
 
 export class UpdatePricesDto {

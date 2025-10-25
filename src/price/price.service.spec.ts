@@ -307,18 +307,18 @@ describe('PriceService', () => {
         getPrices
           .mockResolvedValueOnce({
             items: [
-              { offer_id: 'A', price: { vat: 20 } }, // ok
-              { offer_id: 'B', price: { vat: 10 } }, // mismatch
+              { offer_id: 'A', price: { vat: '0.2' } }, // ok (20% = '0.2')
+              { offer_id: 'B', price: { vat: '0.1' } }, // mismatch (10% = '0.1')
             ],
             cursor: 'next',
           })
           // page 2
           .mockResolvedValueOnce({
-            items: [{ offer_id: 'C', price: { vat: 0 } }], // mismatch
+            items: [{ offer_id: 'C', price: { vat: '0' } }], // mismatch (0% = '0')
             cursor: '',
           });
 
-        const expectedVat = 20;
+        const expectedVat = 20; // ожидаем 20%
         const res = await service.checkVatForAll(expectedVat, 1000);
 
         expect(res).toEqual([
@@ -333,9 +333,9 @@ describe('PriceService', () => {
 
     it('updateVat should call update with correct prices structure', async () => {
         const offerIds = ['SKU123', 'SKU456', 'SKU789'];
-        const vat = '0.2';
+        const vat = 20; // 20%
 
-        await service.updateVat(offerIds, vat as any);
+        await service.updateVat(offerIds, vat);
 
         expect(setPrice).toHaveBeenCalledWith({
             prices: [
@@ -347,7 +347,7 @@ describe('PriceService', () => {
     });
 
     it('updateVat should handle empty offer ids array', async () => {
-        await service.updateVat([], '0' as any);
+        await service.updateVat([], 0);
 
         expect(setPrice).toHaveBeenCalledWith({
             prices: []

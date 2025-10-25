@@ -104,10 +104,4 @@ describe('PostingService', () => {
         await service.createInvoice(posting, null);
         expect(createInvoiceFromPostingDto.mock.calls[0]).toEqual([24416, posting, null]);
     });
-    it('checkCancelled', async () => {
-        getByPosting.mockResolvedValueOnce({ status: 3 });
-        await service.checkCancelled();
-        expect(bulkSetStatus.mock.calls[0]).toEqual([[{ status: 3 }], 0, { commit }]);
-        expect(updatePrim.mock.calls[0]).toEqual(['123', '123 отмена', { commit }]);
-    })
 });

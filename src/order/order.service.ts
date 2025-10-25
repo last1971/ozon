@@ -17,6 +17,7 @@ import { PostingDto } from "../posting/dto/posting.dto";
 import { find } from 'lodash';
 import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
+import { OZON_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
 
 @Injectable()
 export class OrderService {
@@ -157,14 +158,14 @@ export class OrderService {
             await this.invoiceService.pickupInvoice(invoice, transaction);
             await this.invoiceService.updatePrim(
                 order.posting_number,
-                order.posting_number + ' отмена FBO',
+                order.posting_number + OZON_ORDER_CANCELLATION_SUFFIX.FBO,
                 transaction,
             );
         } else {
             if (invoice.status === 3) {
                 await this.invoiceService.updatePrim(
                     order.posting_number,
-                    order.posting_number + ' отмена',
+                    order.posting_number + OZON_ORDER_CANCELLATION_SUFFIX.REGULAR,
                     transaction,
                 );
                 await this.invoiceService.bulkSetStatus([invoice], 0, transaction);

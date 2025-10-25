@@ -15,6 +15,8 @@ describe('WbPriceService', () => {
     const setWbData = jest.fn();
     const getNmID = jest.fn();
     const updateWbCategory = jest.fn();
+    const getWbCardAsync = jest.fn();
+    const updateCards = jest.fn();
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
@@ -34,13 +36,15 @@ describe('WbPriceService', () => {
                 },
                 {
                     provide: WbCardService,
-                    useValue: { getGoodIds, getNmID },
+                    useValue: { getGoodIds, getNmID, getWbCardAsync, updateCards },
                 },
             ],
         }).compile();
 
         method.mockClear();
         getWbData.mockClear();
+        getWbCardAsync.mockClear();
+        updateCards.mockClear();
         service = module.get<WbPriceService>(WbPriceService);
     });
 
@@ -155,5 +159,108 @@ describe('WbPriceService', () => {
                 subjectName: 'Защита радиатора',
             },
         ]);
+    });
+
+    describe('updateVat', () => {
+        it('should update VAT for existing characteristic', async () => {
+            const mockCard = {
+                vendorCode: 'TEST-001',
+                nmID: 12345,
+                characteristics: [
+                    { id: 15001405, value: ['10'] },
+                    { id: 999, value: ['other'] }
+                ]
+            };
+
+            getWbCardAsync.mockResolvedValue(mockCard);
+            updateCards.mockResolvedValue({ success: true });
+
+            const result = await service.updateVat(['TEST-001'], 20);
+
+            expect(getWbCardAsync).toHaveBeenCalledWith('TEST-001');
+            expect(updateCards).toHaveBeenCalledWith([{
+                ...mockCard,
+                characteristics: [
+                    { id: 15001405, value: ['20'] },
+                    { id: 999, value: ['other'] }
+                ]
+            }]);
+            expect(result).toEqual({ success: true });
+        });
+
+        it('should add VAT characteristic if not exists', async () => {
+            const mockCard = {
+                vendorCode: 'TEST-002',
+                nmID: 12346,
+                characteristics: [
+                    { id: 999, value: ['other'] }
+                ]
+            };
+
+            getWbCardAsync.mockResolvedValue(mockCard);
+            updateCards.mockResolvedValue({ success: true });
+
+            const result = await service.updateVat(['TEST-002'], 20);
+
+            expect(getWbCardAsync).toHaveBeenCalledWith('TEST-002');
+            expect(updateCards).toHaveBeenCalledWith([{
+                ...mockCard,
+                characteristics: [
+                    { id: 999, value: ['other'] },
+                    { id: 15001405, value: ['20'] }
+                ]
+            }]);
+            expect(result).toEqual({ success: true });
+        });
+
+        it('should handle multiple offer IDs', async () => {
+            const mockCard1 = {
+                vendorCode: 'TEST-001',
+                nmID: 12345,
+                characteristics: [{ id: 15001405, value: ['10'] }]
+            };
+            const mockCard2 = {
+                vendorCode: 'TEST-002',
+                nmID: 12346,
+                characteristics: []
+            };
+
+            getWbCardAsync
+                .mockResolvedValueOnce(mockCard1)
+                .mockResolvedValueOnce(mockCard2);
+            updateCards.mockResolvedValue({ success: true });
+
+            await service.updateVat(['TEST-001', 'TEST-002'], 20);
+
+            expect(getWbCardAsync).toHaveBeenCalledTimes(2);
+            expect(updateCards).toHaveBeenCalledWith([
+                {
+                    ...mockCard1,
+                    characteristics: [{ id: 15001405, value: ['20'] }]
+                },
+                {
+                    ...mockCard2,
+                    characteristics: [{ id: 15001405, value: ['20'] }]
+                }
+            ]);
+        });
+
+        it('should handle "Без НДС" case', async () => {
+            const mockCard = {
+                vendorCode: 'TEST-003',
+                nmID: 12347,
+                characteristics: [{ id: 15001405, value: ['20'] }]
+            };
+
+            getWbCardAsync.mockResolvedValue(mockCard);
+            updateCards.mockResolvedValue({ success: true });
+
+            await service.updateVat(['TEST-003'], -1);
+
+            expect(updateCards).toHaveBeenCalledWith([{
+                ...mockCard,
+                characteristics: [{ id: 15001405, value: ['Без НДС'] }]
+            }]);
+        });
     });
 });
