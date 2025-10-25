@@ -10,6 +10,7 @@ import { FirebirdTransaction } from 'ts-firebird';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 // import { Cron } from '@nestjs/schedule';
 import { goodCode, goodQuantityCoeff } from '../helpers';
+import { OZON_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
 
 @Injectable()
 export class PostingFboService implements IOrderable {
@@ -33,7 +34,7 @@ export class PostingFboService implements IOrderable {
                 transaction,
             );
             if (!res) {
-                res = await this.invoiceService.unPickupOzonFbo(product, 'отмена FBO', transaction);
+                res = await this.invoiceService.unPickupOzonFbo(product, OZON_ORDER_CANCELLATION_SUFFIX.FBO.trim(), transaction);
                 if (res)
                     this.eventEmitter.emit('error.message', 'FBO cancels clean', posting.analytics_data.warehouse_name);
             }
@@ -88,7 +89,7 @@ export class PostingFboService implements IOrderable {
                     await this.invoiceService.pickupInvoice(invoice, transaction);
                     await this.invoiceService.updatePrim(
                         order.posting_number,
-                        order.posting_number + ' отмена FBO',
+                        order.posting_number + OZON_ORDER_CANCELLATION_SUFFIX.FBO,
                         transaction,
                     );
                     cancelled.push({ prim: order.posting_number, offer_id: order.products[0].offer_id });

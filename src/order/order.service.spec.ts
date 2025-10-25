@@ -28,7 +28,7 @@ describe('OrderService', () => {
     const rollback = jest.fn();
     const getTransaction = () => ({ commit, rollback });
     const date = new Date();
-    const cacheGet = jest.fn().mockResolvedValue(new Set<string>());
+    const cacheGet = jest.fn().mockResolvedValue('');
     const cacheSet = jest.fn().mockResolvedValue(undefined);
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
@@ -167,6 +167,8 @@ describe('OrderService', () => {
         expect(updateByTransactions.mock.calls[0]).toEqual([[], null]);
     });
 
+    // TODO: этот тест устарел после рефакторинга с кэшированием
+    // Нужно переписать под новую логику processWithCache
     /*
     it('test checkNewOrders', async () => {
         await service.checkNewOrders();
@@ -183,7 +185,7 @@ describe('OrderService', () => {
                 ],
                 status: 'awaiting_packaging',
             },
-            { commit },
+            { commit, rollback },
         ]);
         expect(createInvoice.mock.calls[1]).toEqual([
             {
@@ -192,20 +194,21 @@ describe('OrderService', () => {
                 products: [],
                 status: 'awaiting_packaging',
             },
-            { commit },
+            { commit, rollback },
         ]);
         expect(pickupInvoice.mock.calls).toEqual([
-            [{ posting_number: '111'}, { commit }],
-            [1, { commit }],
-            [2, { commit }],
+            [{ posting_number: '111'}, { commit, rollback }],
+            [1, { commit, rollback }],
+            [2, { commit, rollback }],
         ]);
         expect(updatePrim.mock.calls[0]).toEqual([
            '111',
-           '111 отмена FBO',
-            { commit },
+           '111' + OZON_ORDER_CANCELLATION_SUFFIX.FBO,
+            { commit, rollback },
         ]);
         expect(commit.mock.calls).toHaveLength(4);
-    });*/
+    });
+    */
 
     it('should return PostingService when name is GoodServiceEnum.PostingService', () => {
         const result = service.getServiceByName(GoodServiceEnum.OZON);
@@ -248,16 +251,19 @@ describe('OrderService', () => {
         expect(processor).toHaveBeenCalledWith({ posting_number: '003', products: [] });
 
         // Проверяем что все 3 заказа теперь в кеше как строка
+        expect(cacheSet).toHaveBeenCalled();
         expect(cacheSet).toHaveBeenCalledWith(
             'processed:test:TestService',
             expect.any(String),
             14 * 24 * 60 * 60 * 1000,
         );
 
-        const savedString = cacheSet.mock.calls[0][1];
-        expect(savedString).toContain('001');
-        expect(savedString).toContain('002');
-        expect(savedString).toContain('003');
+        if (cacheSet.mock.calls.length > 0) {
+            const savedString = cacheSet.mock.calls[0][1];
+            expect(savedString).toContain('001');
+            expect(savedString).toContain('002');
+            expect(savedString).toContain('003');
+        }
     });
 
     describe('getInvoiceByClaimId', () => {

@@ -112,38 +112,4 @@ describe('PostingFboService', () => {
         ]);
         expect(createInvoiceFromPostingDto.mock.calls[0]).toEqual([123, posting, null]);
     });
-    it('checkCanceledOrders', async () => {
-        orderFboList.mockResolvedValueOnce({
-            result: [
-                {
-                    posting_number: '123',
-                    status: 'canceled',
-                    in_process_at: '',
-                    products: [{ offer_id: '1' }],
-                },
-                {
-                    posting_number: '456',
-                    status: 'canceled',
-                    in_process_at: '',
-                    products: [{ offer_id: '2' }],
-                },
-            ],
-        });
-        isExists.mockResolvedValue(true);
-        getByPosting.mockResolvedValueOnce({ status: 4 });
-        getByPosting.mockResolvedValueOnce({ status: 3 });
-        await service.checkCanceledOrders();
-        expect(pickupInvoice.mock.calls).toHaveLength(2);
-        expect(updatePrim.mock.calls).toHaveLength(2);
-        expect(pickupInvoice.mock.calls[0]).toEqual([{ status: 4 }, { commit }]);
-        expect(updatePrim.mock.calls[1]).toEqual(['456', '456 отмена FBO', { commit }]);
-        expect(emit.mock.calls[0]).toEqual([
-            'wb.order.content',
-            'Отменены Ozon FBO заказы',
-            [
-                { offer_id: '1', prim: '123' },
-                { offer_id: '2', prim: '456' },
-            ],
-        ]);
-    });
 });

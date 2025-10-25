@@ -67,6 +67,7 @@ export class PostingService implements IOrderable, ISuppliable {
     }
     // deprecated remove method and checkCanceledOzonOrders
     // @Cron('0 */5 * * * *', { name: 'checkCanceledOzonOrders' })
+    /*
     async checkCancelled(): Promise<void> {
         const orders = await this.listCanceled();
         const transaction = await this.invoiceService.getTransaction();
@@ -77,10 +78,17 @@ export class PostingService implements IOrderable, ISuppliable {
                     if (invoice.status === 3) {
                         await this.invoiceService.updatePrim(
                             order.posting_number,
-                            order.posting_number + ' отмена',
+                            order.posting_number + OZON_ORDER_CANCELLATION_SUFFIX.REGULAR,
                             transaction,
                         );
                         await this.invoiceService.bulkSetStatus([invoice], 0, transaction);
+                    }
+                    if (invoice.status === 4) {
+                        await this.invoiceService.updatePrim(
+                            order.posting_number,
+                            order.posting_number + OZON_ORDER_CANCELLATION_SUFFIX.FBO,
+                            transaction,
+                        );
                     }
                 }
             }
@@ -90,6 +98,7 @@ export class PostingService implements IOrderable, ISuppliable {
             console.error(e);
         }
     }
+    */
     async createInvoice(posting: PostingDto, transaction: FirebirdTransaction): Promise<InvoiceDto> {
         const buyerId = this.getBuyerId();
         return this.invoiceService.createInvoiceFromPostingDto(buyerId, posting, transaction);
