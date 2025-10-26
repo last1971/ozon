@@ -97,6 +97,9 @@ export class OrderService {
         processor: (item: T) => Promise<void>,
     ): Promise<void> {
         const serviceName = service.constructor.name;
+        if (serviceName === 'PostingService') {
+            console.log(1);
+        }
         const cacheKey = `processed:${cacheName}:${serviceName}`;
         const cacheTtlDays = this.configService.get<number>('CACHE_TTL_DAYS', 14);
 
@@ -108,7 +111,6 @@ export class OrderService {
             if (processedSet.has(item.posting_number)) {
                 continue;
             }
-
             await processor(item);
             processedSet.add(item.posting_number);
         }
@@ -161,6 +163,7 @@ export class OrderService {
                 order.posting_number + OZON_ORDER_CANCELLATION_SUFFIX.FBO,
                 transaction,
             );
+            this.logger.log(`FBO order ${order.posting_number} was cancelled`);
         } else {
             if (invoice.status === 3) {
                 await this.invoiceService.updatePrim(
@@ -169,6 +172,15 @@ export class OrderService {
                     transaction,
                 );
                 await this.invoiceService.bulkSetStatus([invoice], 0, transaction);
+                this.logger.log(`FBS (not pickuped) order ${order.posting_number} was cancelled`);
+            }
+            if (invoice.status === 4) {
+                await this.invoiceService.updatePrim(
+                    order.posting_number,
+                    order.posting_number + OZON_ORDER_CANCELLATION_SUFFIX.FBO,
+                    transaction,
+                );   
+                this.logger.log(`FBS (pickuped) order ${order.posting_number} was cancelled`);
             }
         }
     }
