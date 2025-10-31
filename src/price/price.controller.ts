@@ -357,14 +357,29 @@ export class PriceController {
     }
 
     @Post('check-vat')
-    @ApiOperation({ summary: 'Проверить несоответствие НДС по всем товарам (Ozon /v5/product/info/prices)' })
+    @ApiOperation({ summary: 'Проверить несоответствие НДС по всем товарам' })
     @ApiBody({
         schema: {
             type: 'object',
-            required: ['vat'],
+            required: ['service', 'vat'],
             properties: {
-                vat: { type: 'number', description: 'Ожидаемая ставка НДС (например 0, 10, 20)' },
-                limit: { type: 'number', default: 1000, description: 'Размер страницы при обходе товаров' },
+                service: {
+                    type: 'string',
+                    enum: ['ozon', 'wb', 'yandex'],
+                    description: 'Маркетплейс',
+                    example: 'ozon'
+                },
+                vat: {
+                    type: 'number',
+                    enum: [0, 5, 7, 10, 20, 22],
+                    description: 'Ожидаемая ставка НДС в процентах: 0 - без НДС, 5 - 5%, 7 - 7%, 10 - 10%, 20 - 20%, 22 - 22%',
+                    example: 0
+                },
+                limit: {
+                    type: 'number',
+                    description: 'Лимит записей за запрос при проверке (опционально, по умолчанию 1000)',
+                    example: 1000
+                }
             },
         },
     })
@@ -383,9 +398,10 @@ export class PriceController {
         },
     })
     async checkVat(
-        @Body() body: { vat: number; limit?: number }
+        @Body() body: { service: GoodServiceEnum; vat: number; limit?: number }
     ): Promise<Array<{ offer_id: string; current_vat: number; expected_vat: number }>> {
-        return this.service.checkVatForAll(body.vat, body.limit ?? 1000);
+        const priceService = this.extraService.getService(body.service) as any;
+        return priceService.checkVatForAll(body.vat, body.limit ?? 200);
     }
 
     @Post('update-vat')
@@ -393,18 +409,24 @@ export class PriceController {
     @ApiBody({
         schema: {
             type: 'object',
-            required: ['offerIds', 'vat'],
+            required: ['service', 'offerIds', 'vat'],
             properties: {
+                service: {
+                    type: 'string',
+                    enum: ['ozon', 'wb', 'yandex'],
+                    description: 'Маркетплейс',
+                    example: 'yandex'
+                },
                 offerIds: {
                     type: 'array',
                     items: { type: 'string' },
                     description: 'Массив offer_id товаров для обновления НДС',
-                    example: ['SKU123', 'SKU456']
+                    example: ['318888-10', '318888-5']
                 },
                 vat: {
                     type: 'number',
-                    enum: [0, 5, 7, 10, 20, 22],
-                    description: 'Ставка НДС в процентах: 0 - без НДС, 5 - 5%, 7 - 7%, 10 - 10%, 20 - 20%, 22 - 22%',
+                    enum: [-1, 0, 5, 7, 10, 12, 13, 20, 22],
+                    description: 'Ставка НДС в процентах: -1 - без НДС, 0 - 0%, 5 - 5%, 7 - 7%, 10 - 10%, 12 - 12%, 13 - 13%, 20 - 20%, 22 - 22%',
                     example: 0
                 },
             },
@@ -414,40 +436,10 @@ export class PriceController {
         description: 'Результат обновления НДС',
     })
     async updateVat(
-        @Body() body: { offerIds: string[]; vat: number }
+        @Body() body: { service: GoodServiceEnum; offerIds: string[]; vat: number }
     ): Promise<any> {
-        return this.service.updateVat(body.offerIds, body.vat);
-    }
-
-    @Post('wb/update-vat')
-    @ApiOperation({ summary: 'Обновить ставку НДС для списка товаров WB' })
-    @ApiBody({
-        schema: {
-            type: 'object',
-            required: ['offerIds', 'vat'],
-            properties: {
-                offerIds: {
-                    type: 'array',
-                    items: { type: 'string' },
-                    description: 'Массив артикулов (vendorCode) товаров WB для обновления НДС',
-                    example: ['TEST-001', 'TEST-002']
-                },
-                vat: {
-                    type: 'number',
-                    enum: [-1, 0, 5, 7, 10, 12, 13, 20],
-                    description: 'Ставка НДС в процентах: -1 - без НДС, 0 - 0%, 5 - 5%, 7 - 7%, 10 - 10%, 12 - 12%, 13 - 13%, 20 - 20%',
-                    example: 20
-                },
-            },
-        },
-    })
-    @ApiOkResponse({
-        description: 'Результат обновления НДС для WB',
-    })
-    async updateVatWb(
-        @Body() body: { offerIds: string[]; vat: number }
-    ): Promise<any> {
-        return (this.extraService.getService(GoodServiceEnum.WB) as WbPriceService).updateVat(body.offerIds, body.vat);
+        const priceService = this.extraService.getService(body.service) as any;
+        return priceService.updateVat(body.offerIds, body.vat);
     }
 
     @Post('update-vat-all')

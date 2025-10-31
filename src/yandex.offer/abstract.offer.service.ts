@@ -28,7 +28,7 @@ export abstract class AbstractOfferService extends ICountUpdateable {
     }
     async index(page_token = '', limit = 100): Promise<GetCampaignOffersResultDto> {
         const res = await this.yandexApi.method(
-            `campaigns/${this.campaignId}/offers?limit=${limit}&page_token=${page_token}`,
+            `v2/campaigns/${this.campaignId}/offers?limit=${limit}&page_token=${page_token}`,
             'post',
             {
                 statuses: ['PUBLISHED', 'NO_STOCKS', 'CHECKING'],

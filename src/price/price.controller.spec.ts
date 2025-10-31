@@ -11,11 +11,11 @@ import { ExtraPriceService } from "./extra.price.service";
 describe('PriceController', () => {
     let controller: PriceController;
     let extraPriceService: jest.Mocked<ExtraPriceService>;
-    let priceService: jest.Mocked<PriceService>;
 
     beforeEach(async () => {
         const mockExtraPriceService = {
             updateAllPercentsAndPrices: jest.fn(),
+            getService: jest.fn(),
         };
 
         const mockPriceService = {
@@ -36,7 +36,6 @@ describe('PriceController', () => {
 
         controller = module.get<PriceController>(PriceController);
         extraPriceService = module.get<ExtraPriceService>(ExtraPriceService) as jest.Mocked<ExtraPriceService>;
-        priceService = module.get<PriceService>(PriceService) as jest.Mocked<PriceService>;
     });
 
     it('should be defined', () => {
@@ -89,50 +88,58 @@ describe('PriceController', () => {
     });
 
     describe('updateVat', () => {
-        it('should call priceService.updateVat with correct parameters', async () => {
+        it('should call getService and updateVat with correct parameters', async () => {
             const body = {
+                service: GoodServiceEnum.OZON,
                 offerIds: ['SKU123', 'SKU456'],
-                vat: '0.2' as any
+                vat: 20
             };
             const expectedResult = { success: true };
-            priceService.updateVat.mockResolvedValue(expectedResult);
+            const mockServiceUpdateVat = jest.fn().mockResolvedValue(expectedResult);
+            extraPriceService.getService.mockReturnValue({ updateVat: mockServiceUpdateVat } as any);
 
             const result = await controller.updateVat(body);
 
-            expect(priceService.updateVat).toHaveBeenCalledWith(['SKU123', 'SKU456'], '0.2');
+            expect(extraPriceService.getService).toHaveBeenCalledWith(GoodServiceEnum.OZON);
+            expect(mockServiceUpdateVat).toHaveBeenCalledWith(['SKU123', 'SKU456'], 20);
             expect(result).toEqual(expectedResult);
         });
 
         it('should handle empty offerIds array', async () => {
             const body = {
+                service: GoodServiceEnum.WB,
                 offerIds: [],
-                vat: '0' as any
+                vat: 0
             };
-            priceService.updateVat.mockResolvedValue({ success: true });
+            const mockServiceUpdateVat = jest.fn().mockResolvedValue({ success: true });
+            extraPriceService.getService.mockReturnValue({ updateVat: mockServiceUpdateVat } as any);
 
             await controller.updateVat(body);
 
-            expect(priceService.updateVat).toHaveBeenCalledWith([], '0');
+            expect(mockServiceUpdateVat).toHaveBeenCalledWith([], 0);
         });
 
-        it('should handle different VAT rates', async () => {
+        it('should handle different VAT rates and services', async () => {
             const testCases = [
-                { vat: '0', description: 'no VAT' },
-                { vat: '0.05', description: '5% VAT' },
-                { vat: '0.1', description: '10% VAT' },
-                { vat: '0.2', description: '20% VAT' },
+                { service: GoodServiceEnum.OZON, vat: 0, description: 'Ozon no VAT' },
+                { service: GoodServiceEnum.WB, vat: 5, description: 'WB 5% VAT' },
+                { service: GoodServiceEnum.YANDEX, vat: 20, description: 'Yandex 20% VAT' },
             ];
 
             for (const testCase of testCases) {
-                priceService.updateVat.mockClear();
+                const mockServiceUpdateVat = jest.fn();
+                extraPriceService.getService.mockReturnValue({ updateVat: mockServiceUpdateVat } as any);
+
                 const body = {
+                    service: testCase.service,
                     offerIds: ['TEST'],
-                    vat: testCase.vat as any
+                    vat: testCase.vat
                 };
 
                 await controller.updateVat(body);
 
-                expect(priceService.updateVat).toHaveBeenCalledWith(['TEST'], testCase.vat);
+                expect(extraPriceService.getService).toHaveBeenCalledWith(testCase.service);
+                expect(mockServiceUpdateVat).toHaveBeenCalledWith(['TEST'], testCase.vat);
             }
         });
     });
