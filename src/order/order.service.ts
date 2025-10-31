@@ -97,9 +97,6 @@ export class OrderService {
         processor: (item: T) => Promise<void>,
     ): Promise<void> {
         const serviceName = service.constructor.name;
-        if (serviceName === 'PostingService') {
-            console.log(1);
-        }
         const cacheKey = `processed:${cacheName}:${serviceName}`;
         const cacheTtlDays = this.configService.get<number>('CACHE_TTL_DAYS', 14);
 

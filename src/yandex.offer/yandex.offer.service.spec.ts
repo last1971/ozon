@@ -48,7 +48,7 @@ describe('YandexOfferService', () => {
         const res = await service.index();
         expect(res).toEqual('test');
         expect(method.mock.calls[0]).toEqual([
-            'campaigns/undefined/offers?limit=100&page_token=',
+            'v2/campaigns/undefined/offers?limit=100&page_token=',
             'post',
             { statuses: ['PUBLISHED', 'NO_STOCKS', 'CHECKING'] },
         ]);
