@@ -185,19 +185,16 @@ export class YandexPriceService implements IPriceUpdateable, IVatUpdateable, OnM
 
         this.logger.log(`Получено офферов: ${allOffers.length}`);
 
-        // 2. Конвертируем ожидаемый НДС в Yandex VAT ID
-        const expectedVatId = parseInt(this.numberToVat(expectedVat), 10);
-
-        // 3. Фильтруем несоответствия
-        // Учитываем только офферы где НДС установлен (есть campaignPrice.vat)
+        // 2. Фильтруем несоответствия
+        // Если vat не установлен (undefined), vatToNumber вернет 0
         const mismatches = allOffers
             .filter(offer => {
-                const currentVatId = offer.campaignPrice?.vat;
-                return currentVatId !== undefined && currentVatId !== expectedVatId;
+                const currentVat = this.vatToNumber(offer.campaignPrice?.vat);
+                return currentVat !== expectedVat;
             })
             .map(offer => ({
                 offer_id: offer.offerId,
-                current_vat: this.vatToNumber(offer.campaignPrice.vat),
+                current_vat: this.vatToNumber(offer.campaignPrice?.vat),
                 expected_vat: expectedVat,
             }));
 
