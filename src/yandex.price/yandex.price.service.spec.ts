@@ -182,7 +182,7 @@ describe('YandexPriceService', () => {
                 offers: [
                     { offerId: '123', campaignPrice: { vat: 10 } }, // 5% НДС
                     { offerId: '456', campaignPrice: { vat: 7 } },  // 20% НДС
-                    { offerId: '789' },                              // Нет campaignPrice
+                    { offerId: '789' },                              // Нет campaignPrice (считается как 0%)
                 ],
                 paging: {},
             });
@@ -192,6 +192,7 @@ describe('YandexPriceService', () => {
             expect(index).toHaveBeenCalledWith('', 100);
             expect(result).toEqual([
                 { offer_id: '123', current_vat: 5, expected_vat: 20 },
+                { offer_id: '789', current_vat: 0, expected_vat: 20 }, // undefined → 0%
             ]);
         });
 

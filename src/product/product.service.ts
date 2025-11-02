@@ -136,10 +136,10 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
         for (const batch of chunk(prices.prices, batchSize)) {
             const batchRequest: UpdatePricesDto = { prices: batch };
             const result = await this.ozonApiService.method('/v1/product/import/prices', batchRequest);
-            results.push(result);
+            results.push(...result.result);
         }
 
-        return results;
+        return { result: results };
     }
     async getTransactionList(filter: TransactionFilterDto, page = 1): Promise<any> {
         const res = await this.ozonApiService.method('/v3/finance/transaction/list', { filter, page, page_size: 1000 });

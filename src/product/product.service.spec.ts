@@ -39,6 +39,18 @@ describe('ProductService', () => {
     });
 
     it('test listInfo', async () => {
+        method.mockResolvedValue({ 
+            items: [
+                { 
+                    offer_id: '123', 
+                    barcodes: ['barcode1'], 
+                    name: 'Product 1', 
+                    primary_image: 'image1.jpg',
+                    id: 1,
+                    stocks: { stocks: [] }
+                }
+            ] 
+        });
         await service.infoList(['123', '123-5']);
         expect(method.mock.calls[0]).toEqual(['/v3/product/info/list', { offer_id: ['123', '123-5'] }]);
     });
@@ -74,7 +86,8 @@ describe('ProductService', () => {
         ]);
     });
     it('test setPrice', async () => {
-        await service.setPrice({
+        method.mockResolvedValue({ result: [{ updated: true }] });
+        const result = await service.setPrice({
             prices: [{ min_price: '1', price: '2', old_price: '3', offer_id: '4', currency_code: 'RUB' }],
         });
         expect(method.mock.calls[0]).toEqual([
@@ -83,6 +96,7 @@ describe('ProductService', () => {
                 prices: [{ min_price: '1', price: '2', old_price: '3', offer_id: '4', currency_code: 'RUB' }],
             },
         ]);
+        expect(result).toEqual({ result: [{ updated: true }] });
     });
     it('test getTransaction', async () => {
         const date = new Date();
