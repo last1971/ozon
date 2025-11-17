@@ -166,11 +166,13 @@ export class PriceCalculationHelper {
 
     private shouldAdjustMinPrice(price: UpdatePriceDto, initialPrice: IPriceable, service: IPriceUpdateable): boolean {
         const minPrice = toNumber(price.min_price);
-        const profit = calculatePay(
+        const payResult = calculatePay(
             initialPrice,  // нужно передать IPriceable
             service.getObtainCoeffs(),  // получаем коэффициенты
             minPrice  // передаем минимальную цену
-        ) - (initialPrice.available_price || initialPrice.incoming_price);
+        );
+        const incomingPrice = initialPrice.available_price || initialPrice.incoming_price;
+        const profit = payResult.netProfit !== undefined ? payResult.netProfit : payResult.pay - incomingPrice;
         return profit < (this.MIN_PROFIT_RUB); // Минимальный порог
     }
 

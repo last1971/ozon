@@ -46,7 +46,10 @@ describe('Price helpers', () => {
             taxUnit: 6,
         };
         const result = calculatePay(price as any, percents as any, 250);
-        expect(result).toBe(105);
+        expect(result).toHaveProperty('pay');
+        expect(result.pay).toBe(105);
+        expect(result.netProfit).toBeUndefined(); // Для УСН netProfit не вычисляется
+        expect(result.netProfitPercent).toBeUndefined();
     });
 
     it('calculatePrice', () => {
@@ -183,14 +186,25 @@ describe('Price helpers', () => {
                 sumObtain: 5,
                 sumLabel: 3,
                 percEkv: 4,
+                percMil: 0,
+                minMil: 20,
                 taxUnit: 0, // ОСНО
             };
-            const sum = 120;
-            
+            const sum = 500; // Увеличиваем сумму для положительной прибыли
+
             const result = calculatePay(price as any, percents as any, sum);
-            
-            expect(typeof result).toBe('number');
-            // При ОСНО результат должен отличаться от УСН
+
+            expect(result).toHaveProperty('pay');
+            expect(result).toHaveProperty('netProfit');
+            expect(result).toHaveProperty('netProfitPercent');
+            expect(typeof result.pay).toBe('number');
+            expect(typeof result.netProfit).toBe('number');
+            expect(typeof result.netProfitPercent).toBe('number');
+            // Для ОСНО netProfit должна быть определена
+            expect(result.netProfit).toBeDefined();
+            // Чистая прибыль должна быть МЕНЬШЕ валовой (pay - incoming_price)
+            // т.к. из неё вычитаются НДС и налог на прибыль
+            expect(result.netProfit).toBeLessThan(result.pay - price.incoming_price);
         });
 
         it('calculatePrice with OSNO (taxUnit = 0)', () => {

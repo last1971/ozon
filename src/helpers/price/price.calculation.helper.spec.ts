@@ -313,21 +313,21 @@ describe("PriceCalculationHelper", () => {
             });
 
             it('returns true if profit (using available_price) is less than threshold', () => {
-                jest.spyOn(helpers, 'calculatePay').mockReturnValue(125); // profit = 125 - 120 = 5 < 11
+                jest.spyOn(helpers, 'calculatePay').mockReturnValue({ pay: 125 }); // profit = 125 - 120 = 5 < 11
                 const price: UpdatePriceDto = { min_price: 100 } as any;
                 const initialPrice: any = { available_price: 120, incoming_price: 80 };
                 expect((helper as any).shouldAdjustMinPrice(price, initialPrice, service)).toBe(true);
             });
 
             it('returns true if profit (using incoming_price) is less than threshold', () => {
-                jest.spyOn(helpers, 'calculatePay').mockReturnValue(85); // profit = 85 - 80 = 5 < 11
+                jest.spyOn(helpers, 'calculatePay').mockReturnValue({ pay: 85 }); // profit = 85 - 80 = 5 < 11
                 const price: UpdatePriceDto = { min_price: 100 } as any;
                 const initialPrice: any = { available_price: 0, incoming_price: 80 };
                 expect((helper as any).shouldAdjustMinPrice(price, initialPrice, service)).toBe(true);
             });
 
             it('returns false if profit is greater than threshold', () => {
-                jest.spyOn(helpers, 'calculatePay').mockReturnValue(200); // profit = 200 - 120 = 80 > 11
+                jest.spyOn(helpers, 'calculatePay').mockReturnValue({ pay: 200 }); // profit = 200 - 120 = 80 > 11
                 const price: UpdatePriceDto = { min_price: 100 } as any;
                 const initialPrice: any = { available_price: 120, incoming_price: 80 };
                 expect((helper as any).shouldAdjustMinPrice(price, initialPrice, service)).toBe(false);

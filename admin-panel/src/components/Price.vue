@@ -45,11 +45,23 @@ watch(
 const incomingPrice = computed(() => (edit.value ? props.value.available_price : props.value.incoming_price));
 const profit = computed(() => {
     if (!pays.value?.[props.ind]?.[0]) return 0;
-    return Math.ceil(parseInt(pays.value[props.ind][0]) - incomingPrice.value);
+    const payResult = pays.value[props.ind][0];
+    // Для ОСНО используем чистую прибыль, если она есть
+    if (payResult.netProfit !== undefined) {
+        return Math.round(payResult.netProfit);
+    }
+    // Для УСН - обычный расчет
+    return Math.round(payResult.pay - incomingPrice.value);
 });
 const minPerc = computed(() => {
     if (!pays.value?.[props.ind]?.[0] || !incomingPrice.value) return 0;
-    return Math.ceil(((parseInt(pays.value[props.ind][0]) - incomingPrice.value) / incomingPrice.value) * 100);
+    const payResult = pays.value[props.ind][0];
+    // Для ОСНО используем процент чистой прибыли, если он есть
+    if (payResult.netProfitPercent !== undefined) {
+        return Math.round(payResult.netProfitPercent);
+    }
+    // Для УСН - обычный расчет
+    return Math.round(((payResult.pay - incomingPrice.value) / incomingPrice.value) * 100);
 });
 
 const isSumZero = (index: number) => {
@@ -117,7 +129,7 @@ const isSumZero = (index: number) => {
                     <td>{{ value.fboCount }}</td>
                     <td>{{ Math.ceil(value.marketing_price) }} ₽</td>
                     <td>{{ Math.ceil(value.marketing_seller_price) }} ₽</td>
-                    <td>{{ pays[ind]?.[0] ? Math.ceil(parseInt(pays[ind][0])) : 0 }} ₽</td>
+                    <td>{{ pays[ind]?.[0] ? Math.ceil(pays[ind][0].pay) : 0 }} ₽</td>
                     <td>{{ Math.ceil(value.incoming_price) }} ₽</td>
                     <td>
                         <v-text-field
@@ -171,8 +183,8 @@ const isSumZero = (index: number) => {
                         ></v-text-field>
                     </td>
                     <td>{{ Math.ceil(value.old_price) }} ₽</td>
-                    <td>{{ Math.ceil(parseInt(pays[ind][1])) }} ₽</td>
-                    <td>{{ Math.ceil(parseInt(pays[ind][1]) - incomingPrice) }} ₽</td>
+                    <td>{{ Math.ceil(pays[ind][1].pay) }} ₽</td>
+                    <td>{{ pays[ind][1].netProfit !== undefined ? Math.round(pays[ind][1].netProfit!) : Math.round(pays[ind][1].pay - incomingPrice) }} ₽</td>
                 </tr>
                 <tr>
                     <td>Норм</td>
@@ -184,8 +196,8 @@ const isSumZero = (index: number) => {
                         ></v-text-field>
                     </td>
                     <td>{{ Math.ceil(value.price) }} ₽</td>
-                    <td>{{ Math.ceil(parseInt(pays[ind][2])) }} ₽</td>
-                    <td>{{ Math.ceil(parseInt(pays[ind][2]) - incomingPrice) }} ₽</td>
+                    <td>{{ Math.ceil(pays[ind][2].pay) }} ₽</td>
+                    <td>{{ pays[ind][2].netProfit !== undefined ? Math.round(pays[ind][2].netProfit!) : Math.round(pays[ind][2].pay - incomingPrice) }} ₽</td>
                 </tr>
                 <tr>
                     <td>Мин</td>
@@ -197,8 +209,8 @@ const isSumZero = (index: number) => {
                         ></v-text-field>
                     </td>
                     <td>{{ Math.ceil(value.min_price) }} ₽</td>
-                    <td>{{ Math.ceil(parseInt(pays[ind][3])) }} ₽</td>
-                    <td>{{ Math.ceil(parseInt(pays[ind][3]) - incomingPrice) }} ₽</td>
+                    <td>{{ Math.ceil(pays[ind][3].pay) }} ₽</td>
+                    <td>{{ pays[ind][3].netProfit !== undefined ? Math.round(pays[ind][3].netProfit!) : Math.round(pays[ind][3].pay - incomingPrice) }} ₽</td>
                 </tr>
             </tbody>
         </v-table>

@@ -233,8 +233,8 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                 const marketingPrice = toNumber(price.marketing_seller_price);
                 const incomingPrice = toNumber(price.incoming_price);
                 if (incomingPrice <= 0) continue;
-                const payment = calculatePay(price, percents, marketingPrice);
-                const profit = payment - incomingPrice;
+                const payResult = calculatePay(price, percents, marketingPrice);
+                const profit = payResult.netProfit !== undefined ? payResult.netProfit : payResult.pay - incomingPrice;
 
                 if (profit < minProfit || (profit / incomingPrice) * 100 < minPercent) {
                     lowPrices.push(price.offer_id);

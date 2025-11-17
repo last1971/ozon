@@ -4,6 +4,7 @@ import { articulesStore } from "@/stores/articules";
 import { tariffStore } from "@/stores/tariffStore";
 import type { PriceDto } from "@/contracts/price.dto";
 import type { ServiceResult } from '@/contracts/service.result';
+import type { PayResultDto } from '@/contracts/pay.result.dto';
 
 
 // const url = import.meta.env.VITE_URL;
@@ -11,7 +12,7 @@ import type { ServiceResult } from '@/contracts/service.result';
 export const priceStore = defineStore("priceStore", {
     state: () => ({
         prices: [] as PriceDto[],
-        pays: [] as string[][],
+        pays: [] as PayResultDto[][],
         isLoadingPrices: false,
         isLoadingPrice: [] as boolean[],
         successSave: false,
@@ -65,14 +66,15 @@ export const priceStore = defineStore("priceStore", {
                     }
                 });
             const { min_price, price: newPrice, old_price } = res.data;
-            this.prices[index] = {
+            const updatedPrice = {
                 ...this.prices[index],
                 min_price,
                 price: newPrice,
                 old_price
             };
+            this.prices[index] = updatedPrice;
             res = await axios.post('/api/price/calculate-pay', {
-                price,
+                price: updatedPrice,
                 percents: {
                     minMil: tariffs.min_mil,
                     percMil: tariffs.perc_mil,
@@ -81,7 +83,7 @@ export const priceStore = defineStore("priceStore", {
                     sumLabel: tariffs.sum_label,
                     taxUnit: tariffs.tax_unit,
                 },
-                sums: [price.marketing_seller_price, price.old_price, price.price, price.min_price]
+                sums: [price.marketing_seller_price, old_price, newPrice, min_price]
             })
             this.pays[index] = res.data;
             this.isLoadingPrice[index] = false;

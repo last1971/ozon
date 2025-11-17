@@ -31,7 +31,7 @@ import { Response } from 'express';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { IPriceable } from '../interfaces/i.priceable';
 import { ObtainCoeffsDto } from '../helpers/dto/obtain.coeffs.dto';
-import { calculatePay, calculatePrice } from '../helpers';
+import { calculatePay, calculatePrice, PayResultDto } from '../helpers';
 import { WbCommissionDto } from '../wb.card/dto/wb.commission.dto';
 import { ExtraPriceService } from './extra.price.service';
 import { WbPriceService } from '../wb.price/wb.price.service';
@@ -166,7 +166,7 @@ export class PriceController {
     })
     async calculatePay(
         @Body() body: { price: IPriceable; percents: ObtainCoeffsDto; sums: number[] },
-    ): Promise<number[]> {
+    ): Promise<PayResultDto[]> {
         return body.sums.map((sum) => calculatePay(body.price, body.percents, sum));
     }
     @Post('discount')

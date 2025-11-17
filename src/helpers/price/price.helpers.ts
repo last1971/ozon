@@ -6,6 +6,12 @@ import { AutoAction, UpdatePriceDto } from '../../price/dto/update.price.dto';
 const VAT_RATE = Number(process.env.VAT_RATE || 20);
 const PROFIT_TAX_RATE = Number(process.env.PROFIT_TAX_RATE || 20);
 
+export interface PayResultDto {
+    pay: number;
+    netProfit?: number;
+    netProfitPercent?: number;
+}
+
 /**
  * Вычисляет фиксированные и динамические издержки
  */
@@ -35,7 +41,7 @@ export const calculatePay = (
     price: IPriceable,
     percents: ObtainCoeffsDto,
     sum: number
-): number => {
+): PayResultDto => {
     const { fixedCosts, dynamicCosts } = calculateCosts(price, percents);
     const mil = sum * (percents.percMil / 100);
     let ret = (
@@ -44,11 +50,22 @@ export const calculatePay = (
         (mil === 0 ? 0 : (mil < percents.minMil ? toNumber(percents.minMil) : 0)) -
         (sum * (dynamicCosts + (mil < percents.minMil ? 0 : toNumber(percents.percMil)))) / 100
     );
+
+    const result: PayResultDto = { pay: ret };
+
     if (percents.taxUnit === 0) {
         const { profitTax, vatToPay } = calculateOSNODetails(sum, price, percents);
         ret = ret - profitTax - vatToPay;
+        result.pay = ret;
+
+        // Вычисляем чистую прибыль для ОСНО
+        const netProfit = calcNetProfitOSNO(sum, price, percents);
+        const incoming_price = toNumber(price.available_price) > 0 ? price.available_price : price.incoming_price;
+        result.netProfit = netProfit;
+        result.netProfitPercent = incoming_price > 0 ? (netProfit / incoming_price) * 100 : 0;
     }
-    return ret;
+
+    return result;
 };
 
 /**
