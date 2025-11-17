@@ -110,11 +110,12 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                     available_price: 0,
                 };
                 const productInfo = productsInfos.find((info) => info.sku === item.offer_id);
+
                 return {
                     product_id: item.product_id,
                     offer_id: item.offer_id,
                     name: good.name,
-                    marketing_price: item.price.marketing_price,
+                    marketing_price: item.price.marketing_seller_price || 0,
                     marketing_seller_price: item.price.marketing_seller_price,
                     incoming_price: good.price * goodQuantityCoeff(item),
                     available_price: percent.available_price,
