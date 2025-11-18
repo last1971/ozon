@@ -109,7 +109,7 @@ import JSONbig from 'json-bigint';
                     https: true,
                     baseUrl: configService.get('VAULT_URL'),
                     rootPath: configService.get('VAULT_ROOT'),
-                    timeout: 2000,
+                    timeout: configService.get<number>('VAULT_TIMEOUT', 30000),
                     proxy: false,
                 },
             }),

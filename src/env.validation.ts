@@ -56,6 +56,10 @@ class EnvironmentVariables {
     @IsString()
     VAULT_PASS: string;
 
+    @IsOptional()
+    @IsNumber()
+    VAULT_TIMEOUT: number;
+
     @IsString()
     MAIL_HOST: string;
 
