@@ -165,7 +165,7 @@ export class WbOrderService implements IOrderable {
         }
     }
 
-    async listSomeDayAgo(days = 3): Promise<WbOrderDto[]> {
+    async listSomeDayAgo(days = 5): Promise<WbOrderDto[]> {
         const dateFrom = DateTime.now().minus({ days }).toUnixInteger();
         return this.list(dateFrom);
     }
