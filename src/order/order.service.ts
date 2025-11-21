@@ -18,6 +18,7 @@ import { find } from 'lodash';
 import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { OZON_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 @Injectable()
 export class OrderService {
@@ -39,6 +40,7 @@ export class OrderService {
         private wbCustomer: WbCustomerService,
         private configService: ConfigService,
         @Inject(CACHE_MANAGER) private cacheManager: Cache,
+        private eventEmitter: EventEmitter2,
     ) {
         const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
         if (services.includes(GoodServiceEnum.WB)) this.orderServices.push(wbOrder);
@@ -76,21 +78,22 @@ export class OrderService {
 
     @Cron('0 */5 * * * *', { name: 'checkNewOrders' })
     async checkNewOrders(): Promise<void> {
-        for (const service of this.orderServices) {        
+        for (const service of this.orderServices) {
             const transaction = await this.invoiceService.getTransaction();
             try {
                 await this.cancelOrders(service, transaction);
+                await this.processReturns(service, transaction);
                 await this.packageOrders(service, transaction);
                 await this.deliveryOrders(service, transaction);
                 await transaction.commit(true);
             } catch (e) {
                 await transaction.rollback(true);
                 this.logger.error(e.message + ' IN ' + service.constructor.name);
-            }            
+            }
         }
     }
 
-    private async processWithCache<T extends PostingDto>(
+    private async processWithCache<T extends { posting_number: string }>(
         cacheName: string,
         service: IOrderable,
         items: T[],
@@ -150,6 +153,45 @@ export class OrderService {
         });
     }
 
+    async processReturns(service: IOrderable, transaction: FirebirdTransaction): Promise<void> {
+        if (service.constructor.name !== 'PostingService') {
+            return;
+        }
+
+        const postingService = service as PostingService;
+        const returns = await postingService.listReturns();
+
+        await this.processWithCache('returns', service, returns, async (returnItem) => {
+            if (await this.invoiceService.isExists(returnItem.posting_number, transaction)) {
+                const invoice = await this.invoiceService.getByPosting(returnItem.posting_number, transaction);
+                await this.invoiceService.update(invoice, { IGK: 'NOT1C' }, transaction);
+                await this.processInvoiceStatus4(invoice, returnItem.posting_number, transaction, 'returned');
+            }
+        });
+    }
+
+    private async processInvoiceStatus4(
+        invoice: InvoiceDto,
+        postingNumber: string,
+        transaction: FirebirdTransaction,
+        type: 'cancelled' | 'returned',
+    ): Promise<void> {
+        if (invoice.status === 4) {
+            await this.invoiceService.updatePrim(
+                postingNumber,
+                postingNumber + OZON_ORDER_CANCELLATION_SUFFIX.FBO,
+                transaction,
+            );
+            this.logger.log(`${type === 'cancelled' ? 'FBS (pickuped) order' : 'Return'} ${postingNumber} was ${type}`);
+        } else {
+            this.eventEmitter.emit(
+                'error.message',
+                `${type === 'cancelled' ? 'Cancel' : 'Return'} wrong status`,
+                `${postingNumber}: status=${invoice.status}`,
+            );
+        }
+    }
+
     async cancelOrder(order: PostingDto, transaction: FirebirdTransaction): Promise<void> {
         const invoice = await this.invoiceService.getByPosting(order, transaction);
         await this.invoiceService.update(invoice, { IGK: 'NOT1C' }, transaction);
@@ -171,14 +213,7 @@ export class OrderService {
                 await this.invoiceService.bulkSetStatus([invoice], 0, transaction);
                 this.logger.log(`FBS (not pickuped) order ${order.posting_number} was cancelled`);
             }
-            if (invoice.status === 4) {
-                await this.invoiceService.updatePrim(
-                    order.posting_number,
-                    order.posting_number + OZON_ORDER_CANCELLATION_SUFFIX.FBO,
-                    transaction,
-                );   
-                this.logger.log(`FBS (pickuped) order ${order.posting_number} was cancelled`);
-            }
+            await this.processInvoiceStatus4(invoice, order.posting_number, transaction, 'cancelled');
         }
     }
 

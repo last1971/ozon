@@ -15,6 +15,8 @@ import { SupplyDto } from '../supply/dto/supply.dto';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { SupplyPositionDto } from 'src/supply/dto/supply.position.dto';
 import { OzonApiService } from "../ozon.api/ozon.api.service";
+import { ReturnsListDto } from './dto/returns.list.dto';
+import { ReturnDto } from './dto/return.dto';
 
 @Injectable()
 export class PostingService implements IOrderable, ISuppliable {
@@ -65,6 +67,38 @@ export class PostingService implements IOrderable, ISuppliable {
     async listCanceled(): Promise<PostingDto[]> {
         return this.list('cancelled', 7);
     }
+
+    async listReturns(days = 7): Promise<ReturnDto[]> {
+        let allReturns: ReturnDto[] = [];
+        let lastId = 0;
+        let hasNext = true;
+
+        while (hasNext) {
+            const filter = {
+                filter: {
+                    logistic_return_date: {
+                        time_from: DateTime.now().minus({ days }).startOf('day').toISO(),
+                        time_to: DateTime.now().endOf('day').toISO(),
+                    },
+                },
+                limit: 500,
+                last_id: lastId,
+            };
+
+            const result: ReturnsListDto = await this.ozonApiService.method('/v1/returns/list', filter);
+            const returns = result?.returns || [];
+
+            allReturns = allReturns.concat(returns);
+
+            hasNext = result?.has_next || false;
+            if (returns.length > 0) {
+                lastId = returns[returns.length - 1].id;
+            }
+        }
+
+        return allReturns;
+    }
+
     // deprecated remove method and checkCanceledOzonOrders
     // @Cron('0 */5 * * * *', { name: 'checkCanceledOzonOrders' })
     /*

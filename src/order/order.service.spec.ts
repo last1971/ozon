@@ -10,6 +10,7 @@ import { WbCustomerService } from '../wb.customer/wb.customer.service';
 import { ConfigService } from '@nestjs/config';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 
 describe('OrderService', () => {
     let service: OrderService;
@@ -30,21 +31,12 @@ describe('OrderService', () => {
     const date = new Date();
     const cacheGet = jest.fn().mockResolvedValue('');
     const cacheSet = jest.fn().mockResolvedValue(undefined);
+    const eventEmitterEmit = jest.fn();
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 OrderService,
                 { provide: ProductService, useValue: { getTransactionList } },
-                {
-                    provide: ConfigService,
-                    useValue: {
-                        get: (key: string, defaultValue?: any) => {
-                            if (key === 'SERVICES') return Object.values(GoodServiceEnum);
-                            if (key === 'CACHE_TTL_DAYS') return 14;
-                            return defaultValue;
-                        }
-                    }
-                },
                 {
                     provide: INVOICE_SERVICE,
                     useValue: {
@@ -58,44 +50,11 @@ describe('OrderService', () => {
                     },
                 },
                 {
-                    provide: YandexOrderService,
-                    useValue: {
-                        createInvoice,
-                        listAwaitingPackaging: () => [],
-                        listAwaitingDelivering: () => [],
-                        listCanceled: () => [],
-                    },
-                },
-                {
-                    provide: PostingFboService,
-                    useValue: {
-                        createInvoice,
-                        listAwaitingPackaging: () => [],
-                        listAwaitingDelivering: () => [],
-                        listCanceled: () => [],
-                    },
-                },
-                {
-                    provide: WbOrderService,
-                    useValue: {
-                        createInvoice,
-                        listAwaitingPackaging: () => [],
-                        listAwaitingDelivering: () => [],
-                        listCanceled: () => [],
-                        getInvoiceBySrid: jest.fn(),
-                    },
-                },
-                {
-                    provide: WbCustomerService,
-                    useValue: {
-                        getClaimById: jest.fn(),
-                    },
-                },
-                {
                     provide: PostingService,
                     useValue: {
                         constructor: { name: 'PostingService' },
                         createInvoice,
+                        listReturns: jest.fn().mockResolvedValue([]),
                         listAwaitingPackaging: () => [
                             {
                                 posting_number: '123',
@@ -136,10 +95,60 @@ describe('OrderService', () => {
                     },
                 },
                 {
+                    provide: YandexOrderService,
+                    useValue: {
+                        createInvoice,
+                        listAwaitingPackaging: () => [],
+                        listAwaitingDelivering: () => [],
+                        listCanceled: () => [],
+                    },
+                },
+                {
+                    provide: PostingFboService,
+                    useValue: {
+                        createInvoice,
+                        listAwaitingPackaging: () => [],
+                        listAwaitingDelivering: () => [],
+                        listCanceled: () => [],
+                    },
+                },
+                {
+                    provide: WbOrderService,
+                    useValue: {
+                        createInvoice,
+                        listAwaitingPackaging: () => [],
+                        listAwaitingDelivering: () => [],
+                        listCanceled: () => [],
+                        getInvoiceBySrid: jest.fn(),
+                    },
+                },
+                {
+                    provide: WbCustomerService,
+                    useValue: {
+                        getClaimById: jest.fn(),
+                    },
+                },
+                {
+                    provide: ConfigService,
+                    useValue: {
+                        get: (key: string, defaultValue?: any) => {
+                            if (key === 'SERVICES') return Object.values(GoodServiceEnum);
+                            if (key === 'CACHE_TTL_DAYS') return 14;
+                            return defaultValue;
+                        }
+                    }
+                },
+                {
                     provide: CACHE_MANAGER,
                     useValue: {
                         get: cacheGet,
                         set: cacheSet,
+                    },
+                },
+                {
+                    provide: EventEmitter2,
+                    useValue: {
+                        emit: eventEmitterEmit,
                     },
                 },
             ],
