@@ -25,4 +25,7 @@ export class ProductInfoDto {
 
     @ApiProperty({ description: 'Сервис товара', enum: GoodServiceEnum })
     goodService: GoodServiceEnum;
+
+    @ApiProperty({ description: 'ID типа товара', example: 970707376, required: false })
+    typeId?: number;
 }

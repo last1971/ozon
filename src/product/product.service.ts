@@ -60,6 +60,7 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
                 goodService: GoodServiceEnum.OZON,
                 fbsCount: (fbs?.present || 0) - (fbs?.reserved || 0),
                 fboCount: (fbo?.present || 0) - (fbo?.reserved || 0),
+                typeId: item.type_id,
             }});
     }
 
@@ -189,6 +190,10 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
     }
     async getStoreList(): Promise<any> {
         return this.ozonApiService.method('/v1/warehouse/list', {});
+    }
+
+    async getCategoryTree(): Promise<any> {
+        return this.ozonApiService.method('/v1/description-category/tree', {});
     }
 
     /**

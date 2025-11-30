@@ -63,7 +63,8 @@ export const priceStore = defineStore("priceStore", {
                         sumObtain: tariffs.sum_obtain,
                         sumLabel: tariffs.sum_label,
                         taxUnit: tariffs.tax_unit,
-                    }
+                    },
+                    typeId: price.typeId?.toString(),
                 });
             const { min_price, price: newPrice, old_price } = res.data;
             const updatedPrice = {

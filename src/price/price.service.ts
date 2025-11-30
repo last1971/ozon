@@ -5,7 +5,7 @@ import { PricePresetDto } from './dto/price.preset.dto';
 import { ConfigService } from '@nestjs/config';
 import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
 import { PriceResponseDto } from './dto/price.response.dto';
-import { calculatePay, goodCode, goodQuantityCoeff } from '../helpers';
+import { calculatePay, calculatePrice, goodCode, goodQuantityCoeff } from '../helpers';
 import { GoodPercentDto } from '../good/dto/good.percent.dto';
 import { UpdatePriceDto, UpdatePricesDto } from './dto/update.price.dto';
 import { chunk, toNumber } from 'lodash';
@@ -17,6 +17,8 @@ import { OzonProductCoeffsAdapter } from './ozon.product.coeffs.adapter';
 import { Cache } from '@nestjs/cache-manager';
 import Excel from 'exceljs';
 import { IVatUpdateable } from 'src/interfaces/i.vat.updateable';
+import { OzonCommissionDto } from './dto/ozon.commission.dto';
+import { IPriceable } from '../interfaces/i.priceable';
 
 @Injectable()
 export class PriceService implements IPriceUpdateable, IVatUpdateable {
@@ -136,6 +138,7 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                     sum_pack: percent.packing_price,
                     fbsCount: productInfo?.fbsCount || 0,
                     fboCount: productInfo?.fboCount || 0,
+                    typeId: productInfo?.typeId,
                 };
             }),
         };
@@ -271,5 +274,130 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
         } while (cursor);
 
         return mismatches;
+    }
+
+    /**
+     * Загружает комиссии из XLSX файла и сохраняет в Redis
+     * XLSX должен содержать колонки: Категория, Тип товара, FBS 100-300, FBO 100-300
+     */
+    async loadCommissionsFromXlsx(buffer: Buffer): Promise<{ loaded: number }> {
+        const workbook = new Excel.Workbook();
+        await workbook.xlsx.load(buffer);
+        const sheet = workbook.worksheets[0];
+
+        // Парсим XLSX: название типа → комиссии
+        const xlsxCommissions = new Map<string, OzonCommissionDto>();
+        sheet.eachRow((row, rowNumber) => {
+            if (rowNumber === 1) return; // пропускаем заголовок
+            const typeName = row.getCell(2).value?.toString()?.trim();
+            const fbo = toNumber(row.getCell(4).value); // FBO 100-300
+            const fbs = toNumber(row.getCell(10).value); // FBS 100-300
+            if (typeName && (fbo || fbs)) {
+                xlsxCommissions.set(typeName.toLowerCase(), { fbs, fbo });
+            }
+        });
+
+        // Получаем дерево категорий из Ozon API
+        const categoryTree = await this.product.getCategoryTree();
+
+        // Связываем type_id с комиссиями по названию
+        let loaded = 0;
+        const processCategories = (categories: any[]) => {
+            for (const category of categories) {
+                if (category.type_id && category.type_name) {
+                    const commission = xlsxCommissions.get(category.type_name.toLowerCase());
+                    if (commission) {
+                        this.cacheManager.set(
+                            `ozon:commission:${category.type_id}`,
+                            JSON.stringify(commission),
+                        );
+                        loaded++;
+                    }
+                }
+                if (category.children?.length) {
+                    processCategories(category.children);
+                }
+            }
+        };
+        processCategories(categoryTree.result || []);
+
+        this.logger.log(`Loaded ${loaded} commission records to Redis`);
+        return { loaded };
+    }
+
+    /**
+     * Получает type_id по SKU, кэширует в Redis
+     */
+    async getTypeId(sku: string): Promise<string | null> {
+        const cacheKey = `ozon:type_id:${sku}`;
+        const cached = await this.cacheManager.get<string>(cacheKey);
+        if (cached) return cached;
+
+        const products = await this.product.infoList([sku]);
+        if (!products?.length) return null;
+
+        const typeId = products[0].typeId?.toString();
+        if (typeId) {
+            await this.cacheManager.set(cacheKey, typeId);
+        }
+        return typeId;
+    }
+
+    /**
+     * Получает комиссию из Redis по type_id
+     */
+    async getCommission(typeId: string): Promise<OzonCommissionDto | null> {
+        const cached = await this.cacheManager.get<string>(`ozon:commission:${typeId}`);
+        if (!cached) return null;
+        return JSON.parse(cached);
+    }
+
+    /**
+     * Оптимизирует цену Ozon с учётом порогов комиссии
+     * Если incoming_price < 150 и min_price > 300, пробует пересчитать с комиссией 100-300
+     */
+    async optimizeOzonPrice(
+        price: IPriceable,
+        percents: ObtainCoeffsDto,
+        typeId: string,
+        useFbo = false,
+    ): Promise<UpdatePriceDto> {
+        const result1 = calculatePrice(price, percents);
+
+        // Проверка условия оптимизации
+        const incomingPrice = toNumber(price.available_price) > 0 ? price.available_price : price.incoming_price;
+        if (incomingPrice >= 150 || toNumber(result1.min_price) <= 300) {
+            return result1;
+        }
+
+        // Получить комиссию 100-300 из Redis
+        const commission = await this.getCommission(typeId);
+        if (!commission) {
+            return result1;
+        }
+
+        // Выбрать FBS или FBO
+        const newSalesPercent = (useFbo ? commission.fbo : commission.fbs) * 100;
+
+        // Второй расчёт с новой комиссией
+        const priceWithNewCommission = { ...price, sales_percent: newSalesPercent };
+        const result2 = calculatePrice(priceWithNewCommission, percents);
+
+        // Проверить что result2.min_price <= 300, иначе комиссия 20% не применится
+        if (toNumber(result2.min_price) > 300) {
+            return result1;
+        }
+
+        // Сравнить прибыль
+        const profit1 = calculatePay(price, percents, toNumber(result1.min_price));
+        const profit2 = calculatePay(priceWithNewCommission, percents, toNumber(result2.min_price));
+
+        // Выбрать лучший вариант
+        if (profit2.pay > 0 && profit2.pay > profit1.pay) {
+            this.logger.debug(`Optimized price for ${price.offer_id}: ${result1.min_price} -> ${result2.min_price}`);
+            return result2;
+        }
+
+        return result1;
     }
 }
