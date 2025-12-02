@@ -5,6 +5,7 @@ import { PricePresetDto } from './dto/price.preset.dto';
 import { ConfigService } from '@nestjs/config';
 import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
 import { PriceResponseDto } from './dto/price.response.dto';
+import { PriceDto } from './dto/price.dto';
 import { calculatePay, calculatePrice, goodCode, goodQuantityCoeff } from '../helpers';
 import { GoodPercentDto } from '../good/dto/good.percent.dto';
 import { UpdatePriceDto, UpdatePricesDto } from './dto/update.price.dto';
@@ -14,6 +15,7 @@ import { IPriceUpdateable } from '../interfaces/i.price.updateable';
 import { ObtainCoeffsDto } from '../helpers/dto/obtain.coeffs.dto';
 import { IProductCoeffsable } from '../interfaces/i.product.coeffsable';
 import { OzonProductCoeffsAdapter } from './ozon.product.coeffs.adapter';
+import { ProductPriceDto } from './dto/product.price.dto';
 import { Cache } from '@nestjs/cache-manager';
 import Excel from 'exceljs';
 import { IVatUpdateable } from 'src/interfaces/i.vat.updateable';
@@ -139,6 +141,7 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                     fbsCount: productInfo?.fbsCount || 0,
                     fboCount: productInfo?.fboCount || 0,
                     typeId: productInfo?.typeId,
+                    volumeWeight: productInfo?.volumeWeight,
                 };
             }),
         };
@@ -186,9 +189,24 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
 
     async getProductsWithCoeffs(skus: string[]): Promise<IProductCoeffsable[]> {
         const percDirectFlow = 1 + this.configService.get<number>('PERC_DIRECT_FLOW', 0) / 100;
-        const batchSize = 1000;
         const allResults: IProductCoeffsable[] = [];
 
+        await this.processPricesBatched(skus, async (items, skusBatch) => {
+            const counts = await this.product.infoList(skusBatch);
+            for (const product of items) {
+                const productInfo = counts.find((info) => info.sku === product.offer_id);
+                allResults.push(new OzonProductCoeffsAdapter(product, percDirectFlow, productInfo));
+            }
+        });
+
+        return allResults;
+    }
+
+    private async processPricesBatched(
+        skus: string[],
+        processor: (items: ProductPriceDto[], skusBatch: string[]) => Promise<void>,
+        batchSize = 1000,
+    ): Promise<void> {
         for (const skusBatch of chunk(skus, batchSize)) {
             const response = await this.product.getPrices({
                 offer_id: skusBatch,
@@ -201,17 +219,8 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                 continue;
             }
 
-            const counts = await this.product.infoList(skusBatch);
-
-            const batchResults = response.items.map((product) => {
-                const productInfo = counts.find((info) => info.sku === product.offer_id);
-                return new OzonProductCoeffsAdapter(product, percDirectFlow, productInfo);
-            });
-
-            allResults.push(...batchResults);
+            await processor(response.items, skusBatch);
         }
-
-        return allResults;
     }
 
     async updatePrices(updatePrices: UpdatePriceDto[]): Promise<any> {
@@ -282,7 +291,7 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
      */
     async loadCommissionsFromXlsx(buffer: Buffer): Promise<{ loaded: number }> {
         const workbook = new Excel.Workbook();
-        await workbook.xlsx.load(buffer);
+        await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
         const sheet = workbook.worksheets[0];
 
         // Парсим XLSX: название типа → комиссии
@@ -399,5 +408,23 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
         }
 
         return result1;
+    }
+
+    /**
+     * Загружает PriceDto[] для списка SKU
+     */
+    async getOzonPrices(skus: string[]): Promise<PriceDto[]> {
+        const result: PriceDto[] = [];
+
+        for (const skusBatch of chunk(skus, 1000)) {
+            const response = await this.index({
+                offer_id: skusBatch,
+                limit: skusBatch.length,
+                visibility: ProductVisibility.IN_SALE,
+            });
+            result.push(...response.data);
+        }
+
+        return result;
     }
 }

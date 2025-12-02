@@ -61,6 +61,7 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
                 fbsCount: (fbs?.present || 0) - (fbs?.reserved || 0),
                 fboCount: (fbo?.present || 0) - (fbo?.reserved || 0),
                 typeId: item.type_id,
+                volumeWeight: item.volume_weight,
             }});
     }
 

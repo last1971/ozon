@@ -27,6 +27,15 @@ import { SetResultProcessingMessageCommand } from './commands/set-result-process
 import { CheckVatCommand } from './commands/check-vat.command';
 import { UpdateVatCommand } from './commands/update-vat.command';
 import { AvitoPriceService } from "../avito.price/avito.price.service";
+import { LoadOzonPricesCommand } from './commands/load-ozon-prices.command';
+import { FilterBySellingPriceAboveCommand } from './commands/filter-by-selling-price-above.command';
+import { FilterByIncomingPriceBelowCommand } from './commands/filter-by-incoming-price-below.command';
+import { CalculatePercentsWithLowCommissionCommand } from './commands/calculate-percents-with-low-commission.command';
+import { FilterByMinPriceBelowCommand } from './commands/filter-by-min-price-below.command';
+import { UpdateOzonPricesCommand } from './commands/update-ozon-prices.command';
+import { NotifyHighPriceCommand } from './commands/notify-high-price.command';
+import { CalculateUnprofitableCommand } from './commands/calculate-unprofitable.command';
+import { ExportUnprofitableXlsxCommand } from './commands/export-unprofitable-xlsx.command';
 
 jest.mock("../yandex.price/yandex.price.service");
 jest.mock("../wb.price/wb.price.service");
@@ -138,6 +147,15 @@ describe("ExtraPriceService", () => {
                 { provide: SetResultProcessingMessageCommand, useValue: mockCommand },
                 { provide: CheckVatCommand, useValue: mockCommand },
                 { provide: UpdateVatCommand, useValue: mockCommand },
+                { provide: LoadOzonPricesCommand, useValue: mockCommand },
+                { provide: FilterBySellingPriceAboveCommand, useValue: mockCommand },
+                { provide: FilterByIncomingPriceBelowCommand, useValue: mockCommand },
+                { provide: CalculatePercentsWithLowCommissionCommand, useValue: mockCommand },
+                { provide: FilterByMinPriceBelowCommand, useValue: mockCommand },
+                { provide: UpdateOzonPricesCommand, useValue: mockCommand },
+                { provide: NotifyHighPriceCommand, useValue: mockCommand },
+                { provide: CalculateUnprofitableCommand, useValue: mockCommand },
+                { provide: ExportUnprofitableXlsxCommand, useValue: mockCommand },
             ]
         }).compile();
 
@@ -163,6 +181,15 @@ describe("ExtraPriceService", () => {
             mockCommand as any, // setResultProcessingMessageCommand
             mockCommand as any, // checkVatCommand
             mockCommand as any, // updateVatCommand
+            mockCommand as any, // loadOzonPricesCommand
+            mockCommand as any, // filterBySellingPriceAboveCommand
+            mockCommand as any, // filterByIncomingPriceBelowCommand
+            mockCommand as any, // calculatePercentsWithLowCommissionCommand
+            mockCommand as any, // filterByMinPriceBelowCommand
+            mockCommand as any, // updateOzonPricesCommand
+            mockCommand as any, // notifyHighPriceCommand
+            mockCommand as any, // calculateUnprofitableCommand
+            mockCommand as any, // exportUnprofitableXlsxCommand
         );
     });
 
@@ -200,6 +227,15 @@ describe("ExtraPriceService", () => {
                 mockCommand as any, // setResultProcessingMessageCommand
                 mockCommand as any, // checkVatCommand
                 mockCommand as any, // updateVatCommand
+                mockCommand as any, // loadOzonPricesCommand
+                mockCommand as any, // filterBySellingPriceAboveCommand
+                mockCommand as any, // filterByIncomingPriceBelowCommand
+                mockCommand as any, // calculatePercentsWithLowCommissionCommand
+                mockCommand as any, // filterByMinPriceBelowCommand
+                mockCommand as any, // updateOzonPricesCommand
+                mockCommand as any, // notifyHighPriceCommand
+                mockCommand as any, // calculateUnprofitableCommand
+                mockCommand as any, // exportUnprofitableXlsxCommand
             );
 
             const service = extraPriceService.getService(GoodServiceEnum.OZON);
@@ -634,6 +670,15 @@ describe("ExtraPriceService", () => {
                 mockCommand as any,
                 mockCommand as any,
                 mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
             );
         });
 
@@ -698,6 +743,15 @@ describe("ExtraPriceService", () => {
                 mockCommand as any,
                 mockCommand as any,
                 mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
             );
 
             await expect(
@@ -739,6 +793,94 @@ describe("ExtraPriceService", () => {
 
             expect(result.mismatches).toEqual([]);
             expect(result.updateResult).toBeNull();
+        });
+    });
+
+    describe('optimizeOzonPrices', () => {
+        beforeEach(() => {
+            mockCommand.execute.mockClear();
+            mockCommand.execute.mockImplementation(async (ctx) => ctx);
+        });
+
+        it('should execute command chain for price optimization', async () => {
+            await extraPriceService.optimizeOzonPrices();
+
+            expect(mockCommand.execute).toHaveBeenCalled();
+        });
+
+        it('should handle errors and log them', async () => {
+            const error = new Error('Optimization error');
+            mockCommand.execute.mockRejectedValue(error);
+
+            const loggerErrorSpy = jest.spyOn((extraPriceService as any).logger, 'error');
+
+            await expect(extraPriceService.optimizeOzonPrices()).rejects.toThrow('Optimization error');
+
+            expect(loggerErrorSpy).toHaveBeenCalledWith(
+                'Ошибка при оптимизации цен Ozon: Optimization error',
+                error.stack
+            );
+        });
+
+        it('should initialize context with skus and ozonSkus arrays', async () => {
+            let capturedContext: any;
+            mockCommand.execute.mockImplementation(async (ctx) => {
+                capturedContext = ctx;
+                return ctx;
+            });
+
+            await extraPriceService.optimizeOzonPrices();
+
+            expect(capturedContext).toHaveProperty('skus');
+            expect(capturedContext).toHaveProperty('ozonSkus');
+            expect(capturedContext).toHaveProperty('logger');
+            expect(Array.isArray(capturedContext.skus)).toBe(true);
+            expect(Array.isArray(capturedContext.ozonSkus)).toBe(true);
+        });
+    });
+
+    describe('getUnprofitableReport', () => {
+        beforeEach(() => {
+            mockCommand.execute.mockClear();
+        });
+
+        it('should return xlsx buffer from command chain', async () => {
+            const mockBuffer = Buffer.from('test xlsx content');
+            mockCommand.execute.mockImplementation(async (ctx) => {
+                ctx.xlsxBuffer = mockBuffer;
+                return ctx;
+            });
+
+            const result = await extraPriceService.getUnprofitableReport();
+
+            expect(result).toBe(mockBuffer);
+        });
+
+        it('should execute command chain with correct context', async () => {
+            let capturedContext: any;
+            mockCommand.execute.mockImplementation(async (ctx) => {
+                capturedContext = ctx;
+                ctx.xlsxBuffer = Buffer.from('test');
+                return ctx;
+            });
+
+            await extraPriceService.getUnprofitableReport();
+
+            expect(capturedContext).toHaveProperty('skus');
+            expect(capturedContext).toHaveProperty('ozonSkus');
+            expect(capturedContext).toHaveProperty('logger');
+        });
+
+        it('should call all commands in chain', async () => {
+            mockCommand.execute.mockImplementation(async (ctx) => {
+                ctx.xlsxBuffer = Buffer.from('test');
+                return ctx;
+            });
+
+            await extraPriceService.getUnprofitableReport();
+
+            // Проверяем что execute был вызван (команды в цепочке)
+            expect(mockCommand.execute).toHaveBeenCalled();
         });
     });
 });

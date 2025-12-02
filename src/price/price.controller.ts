@@ -535,4 +535,46 @@ export class PriceController {
         }
         return this.service.loadCommissionsFromXlsx(file.buffer);
     }
+
+    @Post('ozon/optimize-prices')
+    @ApiOperation({ summary: 'Оптимизация цен Ozon для товаров с ценой > 300₽' })
+    @ApiOkResponse({
+        description: 'Результат оптимизации',
+        schema: {
+            type: 'object',
+            properties: {
+                success: { type: 'boolean' },
+                message: { type: 'string' },
+            },
+        },
+    })
+    async optimizeOzonPrices(): Promise<{ success: boolean; message: string }> {
+        try {
+            await this.extraService.optimizeOzonPrices();
+            return {
+                success: true,
+                message: 'Оптимизация цен Ozon успешно выполнена',
+            };
+        } catch (error) {
+            return {
+                success: false,
+                message: `Ошибка при оптимизации: ${error.message}`,
+            };
+        }
+    }
+
+    @Get('ozon/unprofitable-report')
+    @ApiOperation({ summary: 'Получить отчёт по убыточным товарам Ozon в xlsx' })
+    @ApiOkResponse({
+        description: 'xlsx файл с убыточными товарами',
+        content: {
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': {},
+        },
+    })
+    async getUnprofitableReport(@Res() res: Response): Promise<void> {
+        const buffer = await this.extraService.getUnprofitableReport();
+        res.contentType('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.attachment('unprofitable-ozon.xlsx');
+        res.send(buffer);
+    }
 }

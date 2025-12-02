@@ -41,4 +41,8 @@ export class PriceDto {
     fbsCount: number;
     @ApiProperty({ description: 'Остаток FBO', type: Number, example: 100 })
     fboCount: number;
+    @ApiProperty({ description: 'Тип товара Ozon', type: Number, required: false })
+    typeId?: number;
+    @ApiProperty({ description: 'Объёмный вес в литрах', type: Number, required: false })
+    volumeWeight?: number;
 }
