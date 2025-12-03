@@ -212,8 +212,9 @@ export class OrderService {
                 );
                 await this.invoiceService.bulkSetStatus([invoice], 0, transaction);
                 this.logger.log(`FBS (not pickuped) order ${order.posting_number} was cancelled`);
+            } else {
+                await this.processInvoiceStatus4(invoice, order.posting_number, transaction, 'cancelled');
             }
-            await this.processInvoiceStatus4(invoice, order.posting_number, transaction, 'cancelled');
         }
     }
 
