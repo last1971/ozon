@@ -39,20 +39,72 @@ describe('ProductService', () => {
     });
 
     it('test listInfo', async () => {
-        method.mockResolvedValue({ 
+        method.mockResolvedValue({
             items: [
-                { 
-                    offer_id: '123', 
-                    barcodes: ['barcode1'], 
-                    name: 'Product 1', 
+                {
+                    offer_id: '123',
+                    barcodes: ['barcode1'],
+                    name: 'Product 1',
                     primary_image: 'image1.jpg',
                     id: 1,
                     stocks: { stocks: [] }
                 }
-            ] 
+            ]
         });
         await service.infoList(['123', '123-5']);
         expect(method.mock.calls[0]).toEqual(['/v3/product/info/list', { offer_id: ['123', '123-5'] }]);
+    });
+
+    it('test infoList returns volumeWeight', async () => {
+        method.mockResolvedValue({
+            items: [
+                {
+                    offer_id: 'sku1',
+                    barcodes: [],
+                    name: 'Product with volume',
+                    primary_image: '',
+                    id: 1,
+                    type_id: 123,
+                    volume_weight: 0.5,
+                    stocks: {
+                        stocks: [
+                            { source: 'fbs', present: 10, reserved: 2 },
+                            { source: 'fbo', present: 5, reserved: 1 },
+                        ]
+                    }
+                }
+            ]
+        });
+
+        const result = await service.infoList(['sku1']);
+
+        expect(result).toHaveLength(1);
+        expect(result[0].volumeWeight).toBe(0.5);
+        expect(result[0].typeId).toBe(123);
+        expect(result[0].fbsCount).toBe(8); // 10 - 2
+        expect(result[0].fboCount).toBe(4); // 5 - 1
+    });
+
+    it('test infoList handles missing volumeWeight', async () => {
+        method.mockResolvedValue({
+            items: [
+                {
+                    offer_id: 'sku2',
+                    barcodes: [],
+                    name: 'Product without volume',
+                    primary_image: '',
+                    id: 2,
+                    type_id: 456,
+                    stocks: { stocks: [] }
+                }
+            ]
+        });
+
+        const result = await service.infoList(['sku2']);
+
+        expect(result).toHaveLength(1);
+        expect(result[0].volumeWeight).toBeUndefined();
+        expect(result[0].typeId).toBe(456);
     });
 
     it('test updateCount', async () => {

@@ -461,7 +461,8 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
             this,
         );
         const updatePrices: UpdatePriceDto[] = [];
-        products.forEach((product) => {
+
+        for (const product of products) {
             const incoming_price = this.priceCalculationHelper.getIncomingPrice(product, goods, prices);
             if (incoming_price !== 0) {
                 const gCode = goodCode({ offer_id: product.getSku() });
@@ -476,25 +477,23 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                     packing_price: this.configService.get<number>('SUM_PACK', 10),
                     available_price: 0,
                 };
-                updatePrices.push(
-                    calculatePrice(
-                        {
-                            adv_perc,
-                            fbs_direct_flow_trans_max_amount: product.getTransMaxAmount(),
-                            incoming_price,
-                            available_price,
-                            min_perc,
-                            offer_id: product.getSku(),
-                            old_perc,
-                            perc,
-                            sales_percent: product.getSalesPercent(),
-                            sum_pack: packing_price,
-                        },
-                        service.getObtainCoeffs(),
-                    ),
-                );
+
+                const priceData = {
+                    adv_perc,
+                    fbs_direct_flow_trans_max_amount: product.getTransMaxAmount(),
+                    incoming_price,
+                    available_price,
+                    min_perc,
+                    offer_id: product.getSku(),
+                    old_perc,
+                    perc,
+                    sales_percent: product.getSalesPercent(),
+                    sum_pack: packing_price,
+                };
+
+                updatePrices.push(calculatePrice(priceData, service.getObtainCoeffs()));
             }
-        });
+        }
         return updatePrices.length > 0 ? service.updatePrices(updatePrices) : null;
     }
 

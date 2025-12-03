@@ -11,15 +11,19 @@ import { ExtraPriceService } from "./extra.price.service";
 describe('PriceController', () => {
     let controller: PriceController;
     let extraPriceService: jest.Mocked<ExtraPriceService>;
+    let priceService: jest.Mocked<PriceService>;
 
     beforeEach(async () => {
         const mockExtraPriceService = {
             updateAllPercentsAndPrices: jest.fn(),
             getService: jest.fn(),
+            optimizeOzonPrices: jest.fn(),
+            getUnprofitableReport: jest.fn(),
         };
 
         const mockPriceService = {
             updateVat: jest.fn(),
+            loadCommissionsFromXlsx: jest.fn(),
         };
 
         const module: TestingModule = await Test.createTestingModule({
@@ -36,6 +40,7 @@ describe('PriceController', () => {
 
         controller = module.get<PriceController>(PriceController);
         extraPriceService = module.get<ExtraPriceService>(ExtraPriceService) as jest.Mocked<ExtraPriceService>;
+        priceService = module.get<PriceService>(PriceService) as jest.Mocked<PriceService>;
     });
 
     it('should be defined', () => {
@@ -141,6 +146,91 @@ describe('PriceController', () => {
                 expect(extraPriceService.getService).toHaveBeenCalledWith(testCase.service);
                 expect(mockServiceUpdateVat).toHaveBeenCalledWith(['TEST'], testCase.vat);
             }
+        });
+    });
+
+    describe('optimizeOzonPrices', () => {
+        it('should successfully optimize prices', async () => {
+            extraPriceService.optimizeOzonPrices.mockResolvedValue(undefined);
+
+            const result = await controller.optimizeOzonPrices();
+
+            expect(extraPriceService.optimizeOzonPrices).toHaveBeenCalled();
+            expect(result).toEqual({
+                success: true,
+                message: 'Оптимизация цен Ozon успешно выполнена',
+            });
+        });
+
+        it('should handle errors and return error response', async () => {
+            const error = new Error('Optimization failed');
+            extraPriceService.optimizeOzonPrices.mockRejectedValue(error);
+
+            const result = await controller.optimizeOzonPrices();
+
+            expect(extraPriceService.optimizeOzonPrices).toHaveBeenCalled();
+            expect(result).toEqual({
+                success: false,
+                message: 'Ошибка при оптимизации: Optimization failed',
+            });
+        });
+    });
+
+    describe('getUnprofitableReport', () => {
+        it('should return xlsx file with correct headers', async () => {
+            const mockBuffer = Buffer.from('test xlsx content');
+            extraPriceService.getUnprofitableReport.mockResolvedValue(mockBuffer);
+
+            const mockResponse = {
+                contentType: jest.fn().mockReturnThis(),
+                attachment: jest.fn().mockReturnThis(),
+                send: jest.fn().mockReturnThis(),
+            };
+
+            await controller.getUnprofitableReport(mockResponse as any);
+
+            expect(extraPriceService.getUnprofitableReport).toHaveBeenCalled();
+            expect(mockResponse.contentType).toHaveBeenCalledWith(
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+            );
+            expect(mockResponse.attachment).toHaveBeenCalledWith('unprofitable-ozon.xlsx');
+            expect(mockResponse.send).toHaveBeenCalledWith(mockBuffer);
+        });
+
+        it('should call getUnprofitableReport on extraService', async () => {
+            const mockBuffer = Buffer.from('test');
+            extraPriceService.getUnprofitableReport.mockResolvedValue(mockBuffer);
+
+            const mockResponse = {
+                contentType: jest.fn().mockReturnThis(),
+                attachment: jest.fn().mockReturnThis(),
+                send: jest.fn().mockReturnThis(),
+            };
+
+            await controller.getUnprofitableReport(mockResponse as any);
+
+            expect(extraPriceService.getUnprofitableReport).toHaveBeenCalledTimes(1);
+        });
+    });
+
+    describe('loadOzonCommissions', () => {
+        it('should load commissions from xlsx file', async () => {
+            const mockBuffer = Buffer.from('test xlsx');
+            const mockFile = { buffer: mockBuffer } as Express.Multer.File;
+            priceService.loadCommissionsFromXlsx.mockResolvedValue({ loaded: 100 });
+
+            const result = await controller.loadOzonCommissions(mockFile);
+
+            expect(priceService.loadCommissionsFromXlsx).toHaveBeenCalledWith(mockBuffer);
+            expect(result).toEqual({ loaded: 100 });
+        });
+
+        it('should throw error if file is not provided', async () => {
+            await expect(controller.loadOzonCommissions(null as any)).rejects.toThrow('File is required');
+        });
+
+        it('should throw error if file is undefined', async () => {
+            await expect(controller.loadOzonCommissions(undefined as any)).rejects.toThrow('File is required');
         });
     });
 });

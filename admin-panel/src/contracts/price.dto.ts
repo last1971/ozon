@@ -19,4 +19,5 @@ export interface PriceDto {
     sum_pack:number;
     fbsCount: number;
     fboCount: number;
+    typeId?: number;
 }

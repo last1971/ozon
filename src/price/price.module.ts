@@ -6,6 +6,7 @@ import { GoodModule } from '../good/good.module';
 import { YandexPriceModule } from '../yandex.price/yandex.price.module';
 import { WbPriceModule } from '../wb.price/wb.price.module';
 import { AvitoPriceModule } from '../avito.price/avito.price.module';
+import { HelpersModule } from '../helpers/helpers.module';
 import { ExtraPriceService } from "./extra.price.service";
 import { ResetAvailablePriceCommand } from './commands/reset-available-price.command';
 import { TradeSkusCommand } from './commands/trade-skus.command';
@@ -20,9 +21,18 @@ import { ValidateSkusNotEmptyCommand } from './commands/validate-skus-not-empty.
 import { SetResultProcessingMessageCommand } from './commands/set-result-processing-message.command';
 import { CheckVatCommand } from './commands/check-vat.command';
 import { UpdateVatCommand } from './commands/update-vat.command';
+import { LoadOzonPricesCommand } from './commands/load-ozon-prices.command';
+import { FilterBySellingPriceAboveCommand } from './commands/filter-by-selling-price-above.command';
+import { FilterByIncomingPriceBelowCommand } from './commands/filter-by-incoming-price-below.command';
+import { CalculatePercentsWithLowCommissionCommand } from './commands/calculate-percents-with-low-commission.command';
+import { FilterByMinPriceBelowCommand } from './commands/filter-by-min-price-below.command';
+import { UpdateOzonPricesCommand } from './commands/update-ozon-prices.command';
+import { NotifyHighPriceCommand } from './commands/notify-high-price.command';
+import { CalculateUnprofitableCommand } from './commands/calculate-unprofitable.command';
+import { ExportUnprofitableXlsxCommand } from './commands/export-unprofitable-xlsx.command';
 
 @Module({
-    imports: [ProductModule, GoodModule, YandexPriceModule, WbPriceModule, AvitoPriceModule],
+    imports: [ProductModule, GoodModule, YandexPriceModule, WbPriceModule, AvitoPriceModule, HelpersModule],
     providers: [
         PriceService,
         ExtraPriceService,
@@ -39,6 +49,15 @@ import { UpdateVatCommand } from './commands/update-vat.command';
         SetResultProcessingMessageCommand,
         CheckVatCommand,
         UpdateVatCommand,
+        LoadOzonPricesCommand,
+        FilterBySellingPriceAboveCommand,
+        FilterByIncomingPriceBelowCommand,
+        CalculatePercentsWithLowCommissionCommand,
+        FilterByMinPriceBelowCommand,
+        UpdateOzonPricesCommand,
+        NotifyHighPriceCommand,
+        CalculateUnprofitableCommand,
+        ExportUnprofitableXlsxCommand,
     ],
     controllers: [PriceController],
     exports: [
@@ -57,6 +76,15 @@ import { UpdateVatCommand } from './commands/update-vat.command';
         SetResultProcessingMessageCommand,
         CheckVatCommand,
         UpdateVatCommand,
+        LoadOzonPricesCommand,
+        FilterBySellingPriceAboveCommand,
+        FilterByIncomingPriceBelowCommand,
+        CalculatePercentsWithLowCommissionCommand,
+        FilterByMinPriceBelowCommand,
+        UpdateOzonPricesCommand,
+        NotifyHighPriceCommand,
+        CalculateUnprofitableCommand,
+        ExportUnprofitableXlsxCommand,
     ],
 })
 export class PriceModule {}

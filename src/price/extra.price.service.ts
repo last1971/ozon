@@ -33,6 +33,16 @@ import { CheckVatCommand } from './commands/check-vat.command';
 import { UpdateVatCommand } from './commands/update-vat.command';
 import { IVatProcessingContext } from '../interfaces/i.vat.processing.context';
 import { IVatUpdateable } from '../interfaces/i.vat.updateable';
+import { LoadOzonPricesCommand } from './commands/load-ozon-prices.command';
+import { FilterBySellingPriceAboveCommand } from './commands/filter-by-selling-price-above.command';
+import { FilterByIncomingPriceBelowCommand } from './commands/filter-by-incoming-price-below.command';
+import { CalculatePercentsWithLowCommissionCommand } from './commands/calculate-percents-with-low-commission.command';
+import { FilterByMinPriceBelowCommand } from './commands/filter-by-min-price-below.command';
+import { UpdateOzonPricesCommand } from './commands/update-ozon-prices.command';
+import { NotifyHighPriceCommand } from './commands/notify-high-price.command';
+import { CalculateUnprofitableCommand } from './commands/calculate-unprofitable.command';
+import { ExportUnprofitableXlsxCommand } from './commands/export-unprofitable-xlsx.command';
+import { Buffer } from 'exceljs';
 
 @Injectable()
 export class ExtraPriceService {
@@ -61,6 +71,15 @@ export class ExtraPriceService {
         private readonly setResultProcessingMessageCommand: SetResultProcessingMessageCommand,
         private readonly checkVatCommand: CheckVatCommand,
         private readonly updateVatCommand: UpdateVatCommand,
+        private readonly loadOzonPricesCommand: LoadOzonPricesCommand,
+        private readonly filterBySellingPriceAboveCommand: FilterBySellingPriceAboveCommand,
+        private readonly filterByIncomingPriceBelowCommand: FilterByIncomingPriceBelowCommand,
+        private readonly calculatePercentsWithLowCommissionCommand: CalculatePercentsWithLowCommissionCommand,
+        private readonly filterByMinPriceBelowCommand: FilterByMinPriceBelowCommand,
+        private readonly updateOzonPricesCommand: UpdateOzonPricesCommand,
+        private readonly notifyHighPriceCommand: NotifyHighPriceCommand,
+        private readonly calculateUnprofitableCommand: CalculateUnprofitableCommand,
+        private readonly exportUnprofitableXlsxCommand: ExportUnprofitableXlsxCommand,
     ) {
         this.services = new Map<GoodServiceEnum, IPriceUpdateable>();
         const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
@@ -125,7 +144,23 @@ export class ExtraPriceService {
 
     @Cron('0 0 0 * * 0', { name: 'updateAllServicePrices' })
     async updateAllPrices(): Promise<void> {
-        await Promise.all(this.getServices().map((service) => service.updateAllPrices()));
+        const results = await Promise.all(
+            this.getServices().map(async (service) => {
+                const errors = await service.updateAllPrices();
+                return { service: service.constructor.name, errors: errors || [] };
+            }),
+        );
+
+        const allErrors = results.filter((r) => r.errors.length > 0);
+        if (allErrors.length > 0) {
+            const message = allErrors
+                .map((r) => `${r.service}: ${r.errors.length} ошибок\n${JSON.stringify(r.errors.slice(0, 10), null, 2)}`)
+                .join('\n\n');
+            this.eventEmitter.emit('error.message', 'Ошибки обновления цен', message);
+        }
+
+        const summary = results.map((r) => `${r.service}: ${r.errors.length} ошибок`).join(', ');
+        this.logger.log(`Обновление цен завершено. ${summary}`);
     }
 
     async getWbCoeff(name: string): Promise<WbCommissionDto> {
@@ -301,6 +336,37 @@ export class ExtraPriceService {
     }
 
     /**
+     * Оптимизация цен Ozon для товаров с ценой > 300₽
+     * Пересчитывает с комиссией 20% вместо 38%+ для товаров с низкой входной ценой
+     */
+    async optimizeOzonPrices(): Promise<void> {
+        const context: IGoodsProcessingContext = {
+            skus: [],
+            ozonSkus: [],
+            logger: this.logger,
+        };
+
+        const chain = new CommandChainAsync<IGoodsProcessingContext>([
+            this.getAllOzonSkusCommand,
+            this.loadOzonPricesCommand,
+            this.filterBySellingPriceAboveCommand,
+            this.filterByIncomingPriceBelowCommand,
+            this.calculatePercentsWithLowCommissionCommand,
+            this.filterByMinPriceBelowCommand,
+            this.updateOzonPricesCommand,
+            this.notifyHighPriceCommand,
+            this.logResultProcessingMessageCommand,
+        ]);
+
+        try {
+            await chain.execute(context);
+        } catch (error) {
+            this.logger.error(`Ошибка при оптимизации цен Ozon: ${error.message}`, error.stack);
+            throw error;
+        }
+    }
+
+    /**
      * Проверить и обновить НДС для всех несоответствующих товаров
      * @param service - enum маркетплейса (OZON, WB, YANDEX)
      * @param expectedVat - ожидаемая ставка НДС в процентах (0, 5, 7, 10, 20, 22)
@@ -347,5 +413,26 @@ export class ExtraPriceService {
      */
     private isVatUpdateable(service: IPriceUpdateable): service is IPriceUpdateable & IVatUpdateable {
         return 'checkVatForAll' in service && 'updateVat' in service && 'vatToNumber' in service && 'numberToVat' in service;
+    }
+
+    /**
+     * Получить отчёт по убыточным товарам Ozon в формате xlsx
+     */
+    async getUnprofitableReport(): Promise<Buffer> {
+        const context: IGoodsProcessingContext = {
+            skus: [],
+            ozonSkus: [],
+            logger: this.logger,
+        };
+
+        const chain = new CommandChainAsync<IGoodsProcessingContext>([
+            this.getAllOzonSkusCommand,
+            this.loadOzonPricesCommand,
+            this.calculateUnprofitableCommand,
+            this.exportUnprofitableXlsxCommand,
+        ]);
+
+        const result = await chain.execute(context);
+        return result.xlsxBuffer;
     }
 }

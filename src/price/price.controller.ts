@@ -124,10 +124,17 @@ export class PriceController {
                         sumLabel: { type: 'number' },
                     },
                 },
+                typeId: {
+                    type: 'string',
+                    description: 'ID типа товара Ozon для оптимизации по порогам комиссии (опционально)',
+                },
             },
         },
     })
-    async calculate(@Body() body: { price: IPriceable; percents: ObtainCoeffsDto }): Promise<UpdatePriceDto> {
+    async calculate(@Body() body: { price: IPriceable; percents: ObtainCoeffsDto; typeId?: string }): Promise<UpdatePriceDto> {
+        if (body.typeId) {
+            return this.service.optimizeOzonPrice(body.price, body.percents, body.typeId);
+        }
         return calculatePrice(body.price, body.percents);
     }
     @Post('calculate-pay')
@@ -493,5 +500,81 @@ export class PriceController {
         @Body() body: { service: GoodServiceEnum; vat: number; limit?: number }
     ): Promise<{ mismatches: any[]; updateResult: any }> {
         return this.extraService.updateVatForAllMismatches(body.service, body.vat, body.limit);
+    }
+
+    @Post('ozon/load-commissions')
+    @ApiOperation({ summary: 'Загрузить таблицу комиссий Ozon из XLSX файла' })
+    @ApiConsumes('multipart/form-data')
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                file: {
+                    type: 'string',
+                    format: 'binary',
+                    description: 'XLSX файл с комиссиями Ozon (колонки: Категория, Тип товара, FBO 100-300, FBS 100-300)',
+                },
+            },
+        },
+    })
+    @ApiOkResponse({
+        description: 'Количество загруженных записей',
+        schema: {
+            type: 'object',
+            properties: {
+                loaded: { type: 'number', description: 'Количество загруженных комиссий' },
+            },
+        },
+    })
+    @UseInterceptors(FileInterceptor('file'))
+    async loadOzonCommissions(
+        @UploadedFile('file') file: Express.Multer.File,
+    ): Promise<{ loaded: number }> {
+        if (!file) {
+            throw new HttpException('File is required', 400);
+        }
+        return this.service.loadCommissionsFromXlsx(file.buffer);
+    }
+
+    @Post('ozon/optimize-prices')
+    @ApiOperation({ summary: 'Оптимизация цен Ozon для товаров с ценой > 300₽' })
+    @ApiOkResponse({
+        description: 'Результат оптимизации',
+        schema: {
+            type: 'object',
+            properties: {
+                success: { type: 'boolean' },
+                message: { type: 'string' },
+            },
+        },
+    })
+    async optimizeOzonPrices(): Promise<{ success: boolean; message: string }> {
+        try {
+            await this.extraService.optimizeOzonPrices();
+            return {
+                success: true,
+                message: 'Оптимизация цен Ozon успешно выполнена',
+            };
+        } catch (error) {
+            return {
+                success: false,
+                message: `Ошибка при оптимизации: ${error.message}`,
+            };
+        }
+    }
+
+    @Get('ozon/unprofitable-report')
+    @ApiOperation({ summary: 'Получить отчёт по убыточным товарам Ozon в xlsx' })
+    @ApiOkResponse({
+        description: 'xlsx файл с убыточными товарами',
+        content: {
+            'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': {},
+        },
+    })
+    async getUnprofitableReport(@Res() res: Response): Promise<void> {
+        const buffer = await this.extraService.getUnprofitableReport();
+        res.contentType('application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.attachment('unprofitable-ozon.xlsx');
+        res.send(buffer);
     }
 }
