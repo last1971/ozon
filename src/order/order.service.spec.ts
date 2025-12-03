@@ -372,4 +372,70 @@ describe('OrderService', () => {
             });
         });
     });
+
+    describe('cancelOrder', () => {
+        let mockInvoiceService: any;
+        let mockTransaction: any;
+
+        beforeEach(() => {
+            mockTransaction = { commit: jest.fn(), rollback: jest.fn() };
+            mockInvoiceService = service['invoiceService'];
+            mockInvoiceService.getByPosting = jest.fn();
+            mockInvoiceService.update = jest.fn();
+            mockInvoiceService.pickupInvoice = jest.fn();
+            mockInvoiceService.updatePrim = jest.fn();
+            mockInvoiceService.bulkSetStatus = jest.fn();
+            eventEmitterEmit.mockClear();
+        });
+
+        it('should cancel FBS order with status 3 (not picked) without calling processInvoiceStatus4', async () => {
+            const order = { posting_number: '123', isFbo: false } as any;
+            const invoice = { status: 3 };
+            mockInvoiceService.getByPosting.mockResolvedValue(invoice);
+
+            await service.cancelOrder(order, mockTransaction);
+
+            expect(mockInvoiceService.updatePrim).toHaveBeenCalledWith(
+                '123',
+                expect.stringContaining('123'),
+                mockTransaction
+            );
+            expect(mockInvoiceService.bulkSetStatus).toHaveBeenCalledWith([invoice], 0, mockTransaction);
+            // Не должно быть ошибки "Cancel wrong status"
+            expect(eventEmitterEmit).not.toHaveBeenCalledWith(
+                'error.message',
+                'Cancel wrong status',
+                expect.anything()
+            );
+        });
+
+        it('should cancel FBS order with status 4 (picked) via processInvoiceStatus4', async () => {
+            const order = { posting_number: '456', isFbo: false } as any;
+            const invoice = { status: 4 };
+            mockInvoiceService.getByPosting.mockResolvedValue(invoice);
+
+            await service.cancelOrder(order, mockTransaction);
+
+            expect(mockInvoiceService.updatePrim).toHaveBeenCalledWith(
+                '456',
+                expect.stringContaining('456'),
+                mockTransaction
+            );
+            expect(mockInvoiceService.bulkSetStatus).not.toHaveBeenCalled();
+        });
+
+        it('should emit error for FBS order with unexpected status', async () => {
+            const order = { posting_number: '789', isFbo: false } as any;
+            const invoice = { status: 2 }; // unexpected status
+            mockInvoiceService.getByPosting.mockResolvedValue(invoice);
+
+            await service.cancelOrder(order, mockTransaction);
+
+            expect(eventEmitterEmit).toHaveBeenCalledWith(
+                'error.message',
+                'Cancel wrong status',
+                '789: status=2'
+            );
+        });
+    });
 });

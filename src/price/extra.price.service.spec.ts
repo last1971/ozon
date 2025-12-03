@@ -353,19 +353,61 @@ describe("ExtraPriceService", () => {
     });
 
     describe("updateAllPrices", () => {
-        it("should call updateAllPrices on all services", async () => {
-            // Устанавливаем сервисы напрямую
+        beforeEach(() => {
             extraPriceService["services"] = new Map();
             extraPriceService["services"].set(GoodServiceEnum.OZON, mockPriceService);
             extraPriceService["services"].set(GoodServiceEnum.WB, mockWbPriceService);
+            (mockEventEmitter.emit as jest.Mock).mockClear();
+        });
 
-            mockPriceService.updateAllPrices.mockResolvedValue({});
-            mockWbPriceService.updateAllPrices.mockResolvedValue({});
+        it("should call updateAllPrices on all services", async () => {
+            mockPriceService.updateAllPrices.mockResolvedValue([]);
+            mockWbPriceService.updateAllPrices.mockResolvedValue([]);
 
             await extraPriceService.updateAllPrices();
 
             expect(mockPriceService.updateAllPrices).toHaveBeenCalled();
             expect(mockWbPriceService.updateAllPrices).toHaveBeenCalled();
+        });
+
+        it("should send email when there are errors", async () => {
+            const errors = [{ offer_id: 'sku1', error: 'failed' }];
+            mockPriceService.updateAllPrices.mockResolvedValue(errors);
+            mockWbPriceService.updateAllPrices.mockResolvedValue([]);
+
+            await extraPriceService.updateAllPrices();
+
+            expect(mockEventEmitter.emit).toHaveBeenCalledWith(
+                'error.message',
+                'Ошибки обновления цен',
+                expect.stringContaining('PriceService: 1 ошибок')
+            );
+        });
+
+        it("should not send email when no errors", async () => {
+            mockPriceService.updateAllPrices.mockResolvedValue([]);
+            mockWbPriceService.updateAllPrices.mockResolvedValue([]);
+
+            await extraPriceService.updateAllPrices();
+
+            expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(
+                'error.message',
+                expect.anything(),
+                expect.anything()
+            );
+        });
+
+        it("should handle null/undefined errors from services", async () => {
+            mockPriceService.updateAllPrices.mockResolvedValue(null);
+            mockWbPriceService.updateAllPrices.mockResolvedValue(undefined);
+
+            await extraPriceService.updateAllPrices();
+
+            expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(
+                'error.message',
+                expect.anything(),
+                expect.anything()
+            );
         });
     });
 

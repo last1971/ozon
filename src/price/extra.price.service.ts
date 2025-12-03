@@ -144,7 +144,23 @@ export class ExtraPriceService {
 
     @Cron('0 0 0 * * 0', { name: 'updateAllServicePrices' })
     async updateAllPrices(): Promise<void> {
-        await Promise.all(this.getServices().map((service) => service.updateAllPrices()));
+        const results = await Promise.all(
+            this.getServices().map(async (service) => {
+                const errors = await service.updateAllPrices();
+                return { service: service.constructor.name, errors: errors || [] };
+            }),
+        );
+
+        const allErrors = results.filter((r) => r.errors.length > 0);
+        if (allErrors.length > 0) {
+            const message = allErrors
+                .map((r) => `${r.service}: ${r.errors.length} ошибок\n${JSON.stringify(r.errors.slice(0, 10), null, 2)}`)
+                .join('\n\n');
+            this.eventEmitter.emit('error.message', 'Ошибки обновления цен', message);
+        }
+
+        const summary = results.map((r) => `${r.service}: ${r.errors.length} ошибок`).join(', ');
+        this.logger.log(`Обновление цен завершено. ${summary}`);
     }
 
     async getWbCoeff(name: string): Promise<WbCommissionDto> {
