@@ -79,7 +79,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
 
         return this.withTransaction(async (transaction) => {
             const allResults: GoodPriceDto[] = [];
-            const batchSize = 50; // Как в resetAvailablePrice
+            const batchSize = this.configService.get<number>('FB_BATCH_SIZE', 500);
             const inCode = this.storageTable === 'SHOPSKLAD' ? 'shopincode' : 'skladincode';
 
             // Разбиваем на батчи
@@ -146,7 +146,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
 
         return this.withTransaction(async (transaction) => {
             const allResults: GoodPercentDto[] = [];
-            const batchSize = 50; // Как в других методах
+            const batchSize = this.configService.get<number>('FB_BATCH_SIZE', 500);
 
             // Разбиваем на батчи
             for (let i = 0; i < codes.length; i += batchSize) {
@@ -237,15 +237,17 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
      * @return {Promise<GoodWbDto[]>} A promise that resolves to an array of GoodWbDto objects containing the retrieved data.
      */
     async getWbData(ids: string[]): Promise<GoodWbDto[]> {
+        const batchSize = this.configService.get<number>('FB_BATCH_SIZE', 500);
         const wbData: any[] = flatten(
             await Promise.all(
-                chunk(ids, 50).map(async (part: string[]) => {
+                chunk(ids, batchSize).map(async (part: string[]) => {
                     const t = await this.pool.getTransaction();
+                    const inValues = part.map(p => `'${p}'`).join(',');
                     return t.query(
                         `SELECT W.ID, W.TARIFF, W.MIN_PRICE, WC.COMMISSION
                  FROM WILDBERRIES W JOIN WB_CATEGORIES WC on WC.ID = W.WB_CATEGORIES_ID
-                 WHERE W.ID IN (${'?'.repeat(part.length).split('').join()})`,
-                        part,
+                 WHERE W.ID IN (${inValues})`,
+                        [],
                         true,
                     );
                 }),
@@ -270,15 +272,17 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
      * @return {Promise<GoodAvitoDto[]>} A promise that resolves to an array of GoodAvitoDto objects containing the retrieved data.
      */
     async getAvitoData(ids: string[]): Promise<GoodAvitoDto[]> {
+        const batchSize = this.configService.get<number>('FB_BATCH_SIZE', 500);
         const avitoData: any[] = flatten(
             await Promise.all(
-                chunk(ids, 50).map(async (part: string[]) => {
+                chunk(ids, batchSize).map(async (part: string[]) => {
                     return this.withTransaction(async (transaction) => {
+                        const inValues = part.map(p => `'${p}'`).join(',');
                         return transaction.query(
                             `SELECT ID, GOODSCODE, COEFF, COMMISSION
                      FROM AVITO_GOOD
-                     WHERE ID IN (${'?'.repeat(part.length).split('').join()})`,
-                            part,
+                     WHERE ID IN (${inValues})`,
+                            [],
                             false,
                         );
                     });
@@ -604,7 +608,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
             }
 
             // Размер пакета (максимальное количество кодов в одном запросе)
-            const batchSize = 50;
+            const batchSize = this.configService.get<number>('FB_BATCH_SIZE', 500);
 
             // Разбиваем список на пакеты
             for (let i = 0; i < goodCodes.length; i += batchSize) {

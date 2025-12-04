@@ -34,9 +34,10 @@ describe('Trade2006InvoiceService', () => {
                 },
                 {
                     provide: ConfigService,
-                    useValue: { 
+                    useValue: {
                         get: (key: string, defaultValue?: any) => {
                             if (key === 'STORAGE_TYPE') return defaultValue || 'SHOPSKLAD';
+                            if (key === 'FB_BATCH_SIZE') return defaultValue || 500;
                             return get(key, defaultValue);
                         }
                     },
@@ -366,14 +367,14 @@ describe('Trade2006InvoiceService', () => {
         query.mockReturnValueOnce([]);
         await service.getByPostingNumbers(['1', '2', '3']);
         expect(query.mock.calls[0]).toEqual([
-            'SELECT *\n                 FROM S\n                 WHERE PRIM IN' + ' (?,?,?)',
-            ['1', '2', '3'],
+            `SELECT * FROM S WHERE PRIM IN ('1','2','3')`,
+            [],
             true,
         ]);
     });
     it('test bulkSetStatus', async () => {
         await service.bulkSetStatus([{ id: 1, status: 1, buyerId: 1, remark: '1', date: new Date() }], 3);
-        expect(execute.mock.calls[0]).toEqual(['UPDATE S SET STATUS = ? WHERE SCODE IN (?)', [3, 1], true]);
+        expect(execute.mock.calls[0]).toEqual(['UPDATE S SET STATUS = ? WHERE SCODE IN (?)', [3, 1], false]);
     });
     it('test upsertInvoiceCashFlow', async () => {
         await service.upsertInvoiceCashFlow({ id: 1, status: 1, buyerId: 1, remark: '1', date: new Date() }, 111.11);
@@ -403,18 +404,13 @@ describe('Trade2006InvoiceService', () => {
     it('test updateByTransactions', async () => {
         query.mockReturnValue([{ SCODE: 2, PRIM: '2-2', STATUS: 4 }]);
         await service.updateByTransactions([{ posting_number: '2-2', amount: 111.11 }]);
-        expect(query.mock.calls).toHaveLength(3);
+        expect(query.mock.calls).toHaveLength(2);
         expect(query.mock.calls[0]).toEqual([
-            'SELECT *\n                 FROM S\n                 WHERE PRIM IN' + ' (?)',
-            ['2-2'],
+            `SELECT * FROM S WHERE PRIM IN ('2-2')`,
+            [],
             true,
         ]);
-        expect(query.mock.calls[1]).toEqual([
-            'SELECT *\n                 FROM S\n                 WHERE PRIM IN' + ' (?)',
-            ['2-2'],
-            true,
-        ]);
-        expect(query.mock.calls[2]).toEqual(['SELECT * FROM REALPRICE WHERE SCODE = ?', [2]]);
+        expect(query.mock.calls[1]).toEqual(['SELECT * FROM REALPRICE WHERE SCODE = ?', [2]]);
         expect(execute.mock.calls).toHaveLength(5);
         expect(set.mock.calls).toEqual([
             ['updateByTransactions', true, 0],

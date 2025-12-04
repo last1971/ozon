@@ -44,6 +44,10 @@ class EnvironmentVariables {
     @IsNumber()
     FB_MAX_POOL: number;
 
+    @IsOptional()
+    @IsNumber()
+    FB_BATCH_SIZE: number;
+
     @IsUrl()
     VAULT_URL: string;
 

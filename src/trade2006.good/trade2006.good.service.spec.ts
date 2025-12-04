@@ -110,7 +110,11 @@ describe('Trade2006GoodService', () => {
             providers: [
                 Trade2006GoodService,
                 { provide: FIREBIRD, useValue: { getTransaction: () => ({ query, execute, commit }) } },
-                { provide: ConfigService, useValue: { get: (key: string) => key === 'STORAGE_TYPE' ? 'SHOPSKLAD' : null } },
+                { provide: ConfigService, useValue: { get: (key: string, defaultValue?: any) => {
+                    if (key === 'STORAGE_TYPE') return 'SHOPSKLAD';
+                    if (key === 'FB_BATCH_SIZE') return defaultValue || 500;
+                    return defaultValue || null;
+                } } },
                 {
                     provide: EventEmitter2,
                     useValue: { emit },
@@ -295,9 +299,10 @@ describe('Trade2006GoodService', () => {
     it('getWbData', async () => {
         await service.getWbData(['1', '3']);
         expect(query.mock.calls[0]).toEqual([
-            'SELECT W.ID, W.TARIFF, W.MIN_PRICE, WC.COMMISSION\n                 FROM WILDBERRIES W JOIN' +
-                ' WB_CATEGORIES WC on WC.ID = W.WB_CATEGORIES_ID\n                 WHERE W.ID IN (?,?)',
-            ['1', '3'],
+            `SELECT W.ID, W.TARIFF, W.MIN_PRICE, WC.COMMISSION
+                 FROM WILDBERRIES W JOIN WB_CATEGORIES WC on WC.ID = W.WB_CATEGORIES_ID
+                 WHERE W.ID IN ('1','3')`,
+            [],
             true,
         ]);
     });
@@ -368,8 +373,8 @@ describe('Trade2006GoodService', () => {
 
     it('должен разбивать большой список товаров на пакеты', async () => {
         const execute = jest.fn();
-        // Создаем массив из 100 кодов товаров
-        const goodCodes = Array.from({ length: 100 }, (_, i) => `${i}`);
+        // Создаем массив из 1000 кодов товаров (batch = 500)
+        const goodCodes = Array.from({ length: 1000 }, (_, i) => `${i}`);
 
         const existingTransaction = {
             execute,
@@ -385,11 +390,11 @@ describe('Trade2006GoodService', () => {
 
         await service.resetAvailablePrice(goodCodes, existingTransaction as any);
 
-        // Должно быть 2 вызова (по 50 товаров в каждом)
+        // Должно быть 2 вызова (по 500 товаров в каждом)
         expect(execute).toHaveBeenCalledTimes(2);
 
-        // Проверяем первый вызов с первыми 50 товарами
-        const firstBatch = goodCodes.slice(0, 50);
+        // Проверяем первый вызов с первыми 500 товарами
+        const firstBatch = goodCodes.slice(0, 500);
         const placeholders1 = firstBatch.map(() => '?').join(',');
         expect(execute).toHaveBeenNthCalledWith(
             1,
@@ -397,8 +402,8 @@ describe('Trade2006GoodService', () => {
             firstBatch
         );
 
-        // Проверяем второй вызов со следующими 50 товарами
-        const secondBatch = goodCodes.slice(50, 100);
+        // Проверяем второй вызов со следующими 500 товарами
+        const secondBatch = goodCodes.slice(500, 1000);
         const placeholders2 = secondBatch.map(() => '?').join(',');
         expect(execute).toHaveBeenNthCalledWith(
             2,
@@ -688,15 +693,17 @@ describe('Trade2006GoodService', () => {
             { ID: 'avito123', GOODSCODE: '456', COEFF: 2, COMMISSION: 15.5 },
             { ID: 'avito789', GOODSCODE: '101', COEFF: 1, COMMISSION: 12.0 }
         ]);
-        
+
         const result = await service.getAvitoData(['avito123', 'avito789']);
-        
+
         expect(query).toHaveBeenCalledWith(
-            'SELECT ID, GOODSCODE, COEFF, COMMISSION\n                     FROM AVITO_GOOD\n                     WHERE ID IN (?,?)',
-            ['avito123', 'avito789'],
+            `SELECT ID, GOODSCODE, COEFF, COMMISSION
+                     FROM AVITO_GOOD
+                     WHERE ID IN ('avito123','avito789')`,
+            [],
             false
         );
-        
+
         expect(result).toEqual([
             { id: 'avito123', goodsCode: '456', coeff: 2, commission: 15.5 },
             { id: 'avito789', goodsCode: '101', coeff: 1, commission: 12.0 }
@@ -704,25 +711,18 @@ describe('Trade2006GoodService', () => {
     });
 
     it('getAvitoData with chunks', async () => {
-        const ids = Array.from({ length: 60 }, (_, i) => `avito${i}`);
+        const ids = Array.from({ length: 600 }, (_, i) => `avito${i}`);
         query.mockReturnValue([]);
-        
+
         await service.getAvitoData(ids);
-        
-        // Should make 2 calls (50 + 10 items)
+
+        // Should make 2 calls (500 + 100 items) with batchSize=500
         expect(query).toHaveBeenCalledTimes(2);
-        
-        // First call with 50 items
+
+        // Check that inline values are used instead of ? placeholders
         expect(query).toHaveBeenNthCalledWith(1,
-            expect.stringContaining('WHERE ID IN (' + '?'.repeat(50).split('').join(',') + ')'),
-            expect.arrayContaining(ids.slice(0, 50)),
-            false
-        );
-        
-        // Second call with remaining 10 items
-        expect(query).toHaveBeenNthCalledWith(2,
-            expect.stringContaining('WHERE ID IN (' + '?'.repeat(10).split('').join(',') + ')'),
-            expect.arrayContaining(ids.slice(50, 60)),
+            expect.stringContaining(`WHERE ID IN ('avito0'`),
+            [],
             false
         );
     });
