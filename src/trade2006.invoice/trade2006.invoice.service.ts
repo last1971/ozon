@@ -306,10 +306,13 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         }
     }
     async updateByTransactions(transactions: TransactionDto[], t: FirebirdTransaction = null): Promise<ResultDto> {
+        this.logger.log(`updateByTransactions: начало, получено ${transactions.length} транзакций`);
         await this.cacheManager.set('updateByTransactions', true, 0);
         const transaction = t ?? (await this.pool.getTransaction());
         try {
+            this.logger.log('updateByTransactions: ищем счета по posting numbers');
             const invoices: InvoiceDto[] = await this.getByPostingNumbers(transactions.map((t) => t.posting_number));
+            this.logger.log(`updateByTransactions: найдено ${invoices.length} счетов`);
             let res: ResultDto;
             if (invoices.length === 0) {
                 res = {

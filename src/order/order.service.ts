@@ -72,7 +72,9 @@ export class OrderService {
             transaction_type: 'orders',
         }
          */
+        this.logger.log('updateTransactions: получаем список транзакций из Ozon API');
         const res = await this.productService.getTransactionList(data);
+        this.logger.log(`updateTransactions: получено ${res.length} транзакций, передаём в updateByTransactions`);
         return this.invoiceService.updateByTransactions(res, null);
     }
 
