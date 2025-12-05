@@ -124,15 +124,15 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         return res.length > 0 ? InvoiceDto.map(res)[0] : null;
     }
     async getByPostingNumbers(postingNumbers: string[]): Promise<InvoiceDto[]> {
-        const batchSize = this.configService.get<number>('FB_BATCH_SIZE', 500);
         const invoices = flatten(
             await Promise.all(
-                chunk(postingNumbers, batchSize).map(async (part: string[]) => {
+                chunk(postingNumbers, 50).map(async (part: string[]) => {
                     const t = await this.pool.getTransaction(ISOLATION_READ_UNCOMMITTED);
-                    const inValues = part.map(p => `'${p}'`).join(',');
                     return t.query(
-                        `SELECT * FROM S WHERE PRIM IN (${inValues})`,
-                        [],
+                        `SELECT *
+                 FROM S
+                 WHERE PRIM IN (${'?'.repeat(part.length).split('').join()})`,
+                        part,
                         true,
                     );
                 }),
@@ -158,7 +158,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
 
         // Обработка remarks
         if (Array.isArray(invoiceGetDto.remarks) && invoiceGetDto.remarks.length) {
-            const chunkSize = this.configService.get<number>('FB_BATCH_SIZE', 500);
+            const chunkSize = 50; // Размер чанка
             const allInvoices: InvoiceDto[] = [];
 
             // Разбиваем remarks на чанки
@@ -222,21 +222,12 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         status: number,
         transaction: FirebirdTransaction = null,
     ): Promise<void> {
-        if (invoices.length === 0) return;
         const workingTransaction = transaction ?? (await this.pool.getTransaction());
-        const batchSize = this.configService.get<number>('FB_BATCH_SIZE', 500);
-
-        for (let i = 0; i < invoices.length; i += batchSize) {
-            const batch = invoices.slice(i, i + batchSize);
-            const placeholders = '?'.repeat(batch.length).split('').join(',');
-            await workingTransaction.execute(
-                `UPDATE S SET STATUS = ? WHERE SCODE IN (${placeholders})`,
-                [status, ...batch.map((invoice) => invoice.id)],
-                false,
-            );
-        }
-
-        if (!transaction) await workingTransaction.commit(true);
+        await workingTransaction.execute(
+            `UPDATE S SET STATUS = ? WHERE SCODE IN (${'?'.repeat(invoices.length).split('').join()})`,
+            [status, ...invoices.map((invoice) => invoice.id)],
+            !transaction,
+        );
     }
     async upsertInvoiceCashFlow(
         invoice: InvoiceDto,
@@ -275,32 +266,17 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             !transaction,
         );
     }
-    async updateByCommissions(
-        commissions: Map<string, number>,
-        t: FirebirdTransaction = null,
-        existingInvoices?: InvoiceDto[],
-    ): Promise<ResultDto> {
+    async updateByCommissions(commissions: Map<string, number>, t: FirebirdTransaction = null): Promise<ResultDto> {
         const transaction = t ?? (await this.pool.getTransaction());
         try {
-            const invoices = existingInvoices ?? await this.getByPostingNumbers(Array.from(commissions.keys()));
-            const total = invoices.length;
-            this.logger.log(`updateByCommissions: всего ${total} записей`);
-            let lastLoggedPercent = 0;
-
-            for (let i = 0; i < invoices.length; i++) {
-                const invoice = invoices[i];
+            const invoices = await this.getByPostingNumbers(Array.from(commissions.keys()));
+            for (const invoice of invoices) {
                 if (invoice.status === 4) {
                     const newAmount = commissions.get(invoice.remark);
                     await this.setInvoiceAmount(invoice, newAmount, transaction);
                     await this.upsertInvoiceCashFlow(invoice, newAmount, transaction);
                     await this.createTransferOut(invoice, transaction);
                     await this.updatePrim(invoice.remark, invoice.remark + ' закрыт', transaction);
-                }
-
-                const percent = Math.floor(((i + 1) / total) * 10) * 10;
-                if (percent > lastLoggedPercent) {
-                    this.logger.log(`updateByCommissions: обработано ${percent}%`);
-                    lastLoggedPercent = percent;
                 }
             }
             await this.bulkSetStatus(invoices, 5, transaction);
@@ -339,7 +315,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
                         commissions.set(invoice.remark, tr.amount);
                     }
                 });
-                res = await this.updateByCommissions(commissions, t, invoices);
+                res = await this.updateByCommissions(commissions, t);
                 if (invoices.length < transactions.length) {
                     const delta = transactions.filter(
                         (dto) => !invoices.find((invoice) => invoice.remark === dto.posting_number),
