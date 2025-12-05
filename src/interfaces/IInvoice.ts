@@ -17,7 +17,7 @@ export interface IInvoice {
     getByPosting(posting: PostingDto | string, t: FirebirdTransaction, containing?: boolean): Promise<InvoiceDto>;
     getByPostingNumbers(postingNumbers: string[]): Promise<InvoiceDto[]>;
     getByBuyerAndStatus(buyerId: number, status: number, t: FirebirdTransaction): Promise<InvoiceDto[]>;
-    updateByCommissions(commissions: Map<string, number>, t: FirebirdTransaction, existingInvoices?: InvoiceDto[]): Promise<ResultDto>;
+    updateByCommissions(commissions: Map<string, number>, t: FirebirdTransaction): Promise<ResultDto>;
     updateByTransactions(transactions: TransactionDto[], t: FirebirdTransaction): Promise<ResultDto>;
     pickupInvoice(invoice: InvoiceDto, t: FirebirdTransaction): Promise<void>;
     createInvoiceFromPostingDto(buyerId: number, posting: PostingDto, t: FirebirdTransaction): Promise<InvoiceDto>;

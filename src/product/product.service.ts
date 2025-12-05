@@ -152,7 +152,7 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
             }),
         );
         if (page !== res.result.page_count && res.result.page_count > 1) {
-            return response.concat(await this.getTransactionList(filter, page + 1));
+            response.concat(await this.getTransactionList(filter, page + 1));
         }
         return response;
     }
