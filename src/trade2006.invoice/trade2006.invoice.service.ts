@@ -270,7 +270,12 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         const transaction = t ?? (await this.pool.getTransaction());
         try {
             const invoices = await this.getByPostingNumbers(Array.from(commissions.keys()));
-            for (const invoice of invoices) {
+            const total = invoices.length;
+            this.logger.log(`updateByCommissions: всего ${total} записей`);
+            let lastLoggedPercent = 0;
+
+            for (let i = 0; i < invoices.length; i++) {
+                const invoice = invoices[i];
                 if (invoice.status === 4) {
                     const newAmount = commissions.get(invoice.remark);
                     await this.setInvoiceAmount(invoice, newAmount, transaction);
@@ -278,9 +283,18 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
                     await this.createTransferOut(invoice, transaction);
                     await this.updatePrim(invoice.remark, invoice.remark + ' закрыт', transaction);
                 }
+
+                const percent = Math.floor(((i + 1) / total) * 10) * 10;
+                if (percent > lastLoggedPercent) {
+                    this.logger.log(`updateByCommissions: обработано ${percent}%`);
+                    lastLoggedPercent = percent;
+                }
             }
+            this.logger.log('updateByCommissions: закрываем счета-фактуры');
             await this.bulkSetStatus(invoices, 5, transaction);
+            this.logger.log('updateByCommissions: коммитим транзакцию');
             if (!t) await transaction.commit(true);
+            this.logger.log('updateByCommissions: вроде пронесло');
             return { isSuccess: true };
         } catch (e) {
             this.logger.error(e.message);
