@@ -87,89 +87,29 @@ describe('WbSupplyService', () => {
         ]);
     });
 
-    // New tests for listOrders method
-    it('listOrders - success case', async () => {
+    it('listOrderIds - success case', async () => {
         method.mockResolvedValueOnce({
-            orders: [{ id: 'order-1' }, { id: 'order-2' }],
+            orderIds: [123456789, 987654321],
         });
 
-        const res = await service.listOrders('123');
+        const res = await service.listOrderIds('WB-123');
         expect(method.mock.calls[0]).toEqual([
-            '/api/v3/supplies/123/orders',
+            '/api/marketplace/v3/supplies/WB-123/order-ids',
             'get',
             {},
         ]);
-        expect(res).toEqual({
-            orders: [{ id: 'order-1' }, { id: 'order-2' }],
-            success: true,
-            error: null,
-        });
+        expect(res).toEqual([123456789, 987654321]);
     });
 
-    it('listOrders - error case', async () => {
-        method.mockRejectedValueOnce(new Error('Request failed'));
+    it('listOrderIds - empty response', async () => {
+        method.mockResolvedValueOnce({});
 
-        const res = await service.listOrders('123');
-        expect(method.mock.calls[0]).toEqual([
-            '/api/v3/supplies/123/orders',
-            'get',
-            {},
-        ]);
-        expect(res).toEqual({
-            orders: [],
-            success: false,
-            error: 'Request failed',
-        });
+        const res = await service.listOrderIds('WB-123');
+        expect(res).toEqual([]);
     });
 
-    // New tests for getSupplyPositions method
     it("getSupplyPositions - success case with orders and stickers", async () => {
-        const mockListOrders = jest.spyOn(service, "listOrders").mockResolvedValue({
-            orders: [
-                {
-                    scanPrice: null,
-                    orderUid: "123e4567-e89b-12d3-a456-426614174000",
-                    article: "ABC-123",
-                    colorCode: "RED123",
-                    rid: "RID98765",
-                    createdAt: "2023-10-25T14:23:00Z",
-                    offices: ["Office1", "Office2"],
-                    skus: ["SKU123", "SKU456"],
-                    id: 123456789,
-                    warehouseId: 5,
-                    nmId: 78910234,
-                    chrtId: 43210987,
-                    price: 15000,
-                    convertedPrice: 12500,
-                    currencyCode: 840,
-                    convertedCurrencyCode: 978,
-                    cargoType: 1,
-                    isZeroOrder: false,
-                },
-                {
-                    scanPrice: null,
-                    orderUid: "987e6543-e21b-54d3-b654-524614174111",
-                    article: "DEF-456",
-                    colorCode: "BLUE567",
-                    rid: "RID12345",
-                    createdAt: "2023-11-01T08:10:00Z",
-                    offices: null, // Например, если данные отсутствуют
-                    skus: ["SKU890"],
-                    id: 987654321,
-                    warehouseId: 10,
-                    nmId: 65498732,
-                    chrtId: 98765432,
-                    price: 20000,
-                    convertedPrice: 18000,
-                    currencyCode: 978,
-                    convertedCurrencyCode: 643,
-                    cargoType: 2,
-                    isZeroOrder: true,
-                },
-            ],
-            success: true,
-            error: null
-        });
+        const mockListOrderIds = jest.spyOn(service, "listOrderIds").mockResolvedValue([123456789, 987654321]);
 
         const mockGetOrdersStickers = jest.spyOn(service["wbOrderService"], "getOrdersStickers").mockResolvedValue({
             stickers: [
@@ -178,14 +118,14 @@ describe('WbSupplyService', () => {
                     partA: 987654,
                     partB: 123321,
                     barcode: "ABC123456789",
-                    file: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAoAAAAMACAIAAACzH0pGAAAAA" // Пример base64
+                    file: "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAoAAAAMACAIAAACzH0pGAAAAA"
                 },
                 {
                     orderId: 987654321,
                     partA: 123456,
                     partB: 654321,
                     barcode: "XYZ987654321",
-                    file: "data:image/png;base64,aBAORw0KHgoAAAAASUhEUgOMSEyAAAUSDIIkGggAAAANS" // Пример base64
+                    file: "data:image/png;base64,aBAORw0KHgoAAAAASUhEUgOMSEyAAAUSDIIkGggAAAANS"
                 },
             ],
             success: true,
@@ -194,7 +134,7 @@ describe('WbSupplyService', () => {
 
         const res = await service.getSupplyPositions("supply-123");
 
-        expect(mockListOrders).toHaveBeenCalledWith("supply-123");
+        expect(mockListOrderIds).toHaveBeenCalledWith("supply-123");
         expect(mockGetOrdersStickers).toHaveBeenCalledWith([123456789, 987654321]);
         expect(res).toEqual([
             { supplyId: "supply-123", barCode: "ABC123456789", remark: "123456789", quantity: 1 },
@@ -202,89 +142,24 @@ describe('WbSupplyService', () => {
         ]);
     });
 
-    it("getSupplyPositions - error in listOrders", async () => {
-        const mockListOrders = jest.spyOn(service, "listOrders").mockResolvedValue({
-            orders: [],
-            success: false,
-            error: "Failed to fetch orders"
-        });
-
-        await expect(service.getSupplyPositions("supply-123")).rejects.toThrow(new HttpException("Failed to fetch orders", 400));
-        expect(mockListOrders).toHaveBeenCalledWith("supply-123");
-    });
-
-
     it("getSupplyPositions - error in getOrdersStickers", async () => {
-        const mockListOrders = jest.spyOn(service, "listOrders").mockResolvedValue({
-            orders: [
-                {
-                    scanPrice: null,
-                    orderUid: "123e4567-e89b-12d3-a456-426614174000",
-                    article: "ABC-123",
-                    colorCode: "RED123",
-                    rid: "RID98765",
-                    createdAt: "2023-10-25T14:23:00Z",
-                    offices: ["Office1", "Office2"],
-                    skus: ["SKU123", "SKU456"],
-                    id: 123456789,
-                    warehouseId: 5,
-                    nmId: 78910234,
-                    chrtId: 43210987,
-                    price: 15000,
-                    convertedPrice: 12500,
-                    currencyCode: 840,
-                    convertedCurrencyCode: 978,
-                    cargoType: 1,
-                    isZeroOrder: false,
-                },
-                {
-                    scanPrice: null,
-                    orderUid: "987e6543-e21b-54d3-b654-524614174111",
-                    article: "DEF-456",
-                    colorCode: "BLUE567",
-                    rid: "RID12345",
-                    createdAt: "2023-11-01T08:10:00Z",
-                    offices: null, // Например, если данные отсутствуют
-                    skus: ["SKU890"],
-                    id: 987654321,
-                    warehouseId: 10,
-                    nmId: 65498732,
-                    chrtId: 98765432,
-                    price: 20000,
-                    convertedPrice: 18000,
-                    currencyCode: 978,
-                    convertedCurrencyCode: 643,
-                    cargoType: 2,
-                    isZeroOrder: true,
-                },
-            ],
-            success: true,
-            error: null
-        });
+        jest.spyOn(service, "listOrderIds").mockResolvedValue([123456789, 987654321]);
 
-        const mockGetOrdersStickers = jest.spyOn(service["wbOrderService"], "getOrdersStickers").mockResolvedValue({
+        jest.spyOn(service["wbOrderService"], "getOrdersStickers").mockResolvedValue({
             stickers: [],
             success: false,
             error: "Failed to fetch stickers"
         });
 
         await expect(service.getSupplyPositions("supply-123")).rejects.toThrow(new HttpException("Failed to fetch stickers", 400));
-        expect(mockListOrders).toHaveBeenCalledWith("supply-123");
-        expect(mockGetOrdersStickers).toHaveBeenCalledWith([123456789, 987654321]);
     });
 
     it("getSupplyPositions - no orders returned", async () => {
-        const mockListOrders = jest.spyOn(service, "listOrders").mockResolvedValue({
-            orders: [],
-            success: true,
-            error: null
-        });
+        const mockListOrderIds = jest.spyOn(service, "listOrderIds").mockResolvedValue([]);
 
         const res = await service.getSupplyPositions("supply-123");
 
-        expect(mockListOrders).toHaveBeenCalledWith("supply-123");
+        expect(mockListOrderIds).toHaveBeenCalledWith("supply-123");
         expect(res).toEqual([]);
-
-
     });
 });

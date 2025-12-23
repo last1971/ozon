@@ -5,7 +5,6 @@ import { ISuppliable } from '../interfaces/i.suppliable';
 import { SupplyDto } from '../supply/dto/supply.dto';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { SupplyPositionDto } from 'src/supply/dto/supply.position.dto';
-import { WbSupplyOrdersDto } from "./dto/wb.supply.orders.dto";
 import { WbOrderService } from "../wb.order/wb.order.service";
 import { find } from "lodash";
 
@@ -18,43 +17,37 @@ export class WbSupplyService implements ISuppliable {
     }
 
     async getSupplyPositions(id: string): Promise<SupplyPositionDto[]> {
-        const data = await this.listOrders(id);
-        if (!data.success) {
-            throw new HttpException(data.error, 400);
-        }
-        const maxOrdersPerRequest = 100;
-        let remainingOrders = data.orders.slice();
+        const orderIds = await this.listOrderIds(id);
 
-        if (remainingOrders.length === 0) {
+        if (orderIds.length === 0) {
             return [];
         }
 
+        const maxOrdersPerRequest = 100;
+        let remainingOrderIds = orderIds.slice();
         const allPositions: SupplyPositionDto[] = [];
 
         do {
-            const batch = remainingOrders.slice(0, maxOrdersPerRequest);
-            remainingOrders = remainingOrders.slice(maxOrdersPerRequest);
+            const batch = remainingOrderIds.slice(0, maxOrdersPerRequest);
+            remainingOrderIds = remainingOrderIds.slice(maxOrdersPerRequest);
 
-            const labelsResponse = await this.wbOrderService.getOrdersStickers(
-                batch.map(order => order.id)
-            );
+            const labelsResponse = await this.wbOrderService.getOrdersStickers(batch);
 
             if (!labelsResponse.success) {
                 throw new HttpException(labelsResponse.error, 400);
             }
 
             allPositions.push(
-                ...batch.map((order) => ({
+                ...batch.map((orderId) => ({
                     supplyId: id,
-                    barCode: find(labelsResponse.stickers, sticker => sticker.orderId === order.id)?.barcode || "",
-                    remark: order.id.toString(),
+                    barCode: find(labelsResponse.stickers, sticker => sticker.orderId === orderId)?.barcode || "",
+                    remark: orderId.toString(),
                     quantity: 1,
                 }))
             );
-        } while (remainingOrders.length > 0);
+        } while (remainingOrderIds.length > 0);
 
         return allPositions;
-        
     }
 
     async list(next = 0): Promise<WbSupplyDto[]> {
@@ -88,25 +81,12 @@ export class WbSupplyService implements ISuppliable {
             }));
     }
 
-    async listOrders(id: string): Promise<WbSupplyOrdersDto> {
-        try {
-            const data = await this.api.method(
-                `/api/v3/supplies/${id}/orders`,
-                'get',
-                {},
-            );
-
-            return {
-                orders: data.orders,
-                success: true,
-                error: null,
-            };
-        } catch (error) {
-            return {
-                orders: [],
-                success: false,
-                error: (error as Error).message || 'Неизвестная ошибка',
-            };
-        }
+    async listOrderIds(id: string): Promise<number[]> {
+        const data = await this.api.method(
+            `/api/marketplace/v3/supplies/${id}/order-ids`,
+            'get',
+            {},
+        );
+        return data.orderIds ?? [];
     }
 }
