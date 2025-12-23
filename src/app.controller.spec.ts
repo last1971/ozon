@@ -9,6 +9,7 @@ import { WbCardService } from './wb.card/wb.card.service';
 import { ConfigService } from '@nestjs/config';
 import { VaultService } from 'vault-module/lib/vault.service';
 import { FIREBIRD } from './firebird/firebird.module';
+import { MailService } from './mail/mail.service';
 
 describe('AppController', () => {
     let appController: AppController;
@@ -38,6 +39,12 @@ describe('AppController', () => {
                         getActiveConnectionsCount: jest.fn().mockReturnValue(5),
                         getAvailableConnectionsCount: jest.fn().mockReturnValue(5),
                         getActiveTransactionsCount: jest.fn().mockReturnValue(2),
+                    },
+                },
+                {
+                    provide: MailService,
+                    useValue: {
+                        checkHealth: jest.fn().mockResolvedValue(true),
                     },
                 },
             ],

@@ -5,6 +5,7 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { PostingDto } from '../posting/dto/posting.dto';
 import { Cron } from '@nestjs/schedule';
 import { GoodDto } from '../good/dto/good.dto';
+import { hostname } from 'os';
 
 @Injectable()
 export class MailService {
@@ -16,7 +17,10 @@ export class MailService {
 
     private async send(options: ISendMailOptions): Promise<boolean> {
         try {
-            await this.mailerService.sendMail(options);
+            await this.mailerService.sendMail({
+                ...options,
+                context: { ...options.context, serverName: hostname() },
+            });
             return true;
         } catch (e) {
             this.logger.error(e.message);

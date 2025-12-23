@@ -5,6 +5,7 @@ import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { FIREBIRD } from './firebird/firebird.module';
 import { FirebirdPool } from 'ts-firebird';
 import { PoolStatsDto } from './firebird/dto/pool.stats.dto';
+import { MailService } from './mail/mail.service';
 
 @ApiTags('app')
 @Controller()
@@ -13,6 +14,7 @@ export class AppController {
         private readonly appService: AppService,
         private readonly vaultService: VaultService,
         @Inject(FIREBIRD) private readonly pool: FirebirdPool,
+        private readonly mailService: MailService,
     ) {}
 
     @Get()
@@ -49,5 +51,12 @@ export class AppController {
             activeTransactions,
             utilizationPercent,
         };
+    }
+
+    @Post('mail/test')
+    @ApiOperation({ summary: 'Тестовое письмо' })
+    async testMail(): Promise<{ sent: boolean }> {
+        const sent = await this.mailService.checkHealth();
+        return { sent };
     }
 }
