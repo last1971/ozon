@@ -30,6 +30,7 @@ describe("PriceCalculationHelper", () => {
                                 "MIN_PROFIT_TARGET": 103,
                                 "PRICE_SMOOTHING_OFFSET": 500,
                                 "MIN_PROFIT_RUB": 10,
+                                "MIN_STOCK_PERCENT": 10,
                             };
                             return config[key] || defaultValue;
                         })
@@ -368,6 +369,49 @@ describe("PriceCalculationHelper", () => {
                 } as UpdatePriceDto;
                 expect((helper as any).shouldAdjustOldPrice(price)).toBe(false);
             });
+        });
+    });
+
+    describe('selectCommission', () => {
+        it('should return FBO when FBO is lower and has enough stock', () => {
+            // FBO=5%, FBS=8%, FBO stock=50, FBS stock=50 (50% each, >= 10%)
+            const result = helper.selectCommission(5, 8, 50, 50);
+            expect(result).toBe(5);
+        });
+
+        it('should return FBS when FBS is lower and has enough stock', () => {
+            // FBO=10%, FBS=6%, FBO stock=50, FBS stock=50
+            const result = helper.selectCommission(10, 6, 50, 50);
+            expect(result).toBe(6);
+        });
+
+        it('should not select FBO when FBO stock is below threshold', () => {
+            // FBO=5%, FBS=8%, FBO stock=5, FBS stock=95 (FBO is 5% < 10%)
+            const result = helper.selectCommission(5, 8, 5, 95);
+            expect(result).toBe(8); // fallback to higher stock
+        });
+
+        it('should not select FBS when FBS stock is below threshold', () => {
+            // FBO=10%, FBS=6%, FBO stock=95, FBS stock=5 (FBS is 5% < 10%)
+            const result = helper.selectCommission(10, 6, 95, 5);
+            expect(result).toBe(10); // fallback to higher stock
+        });
+
+        it('should fallback to higher stock when both below threshold', () => {
+            // Both equal, FBO has more stock
+            const result = helper.selectCommission(8, 8, 60, 40);
+            expect(result).toBe(8);
+        });
+
+        it('should return FBS when total is 0', () => {
+            const result = helper.selectCommission(5, 8, 0, 0);
+            expect(result).toBe(8);
+        });
+
+        it('should select by stock when commissions are equal', () => {
+            // Equal commissions, FBO has more stock
+            const result = helper.selectCommission(7, 7, 70, 30);
+            expect(result).toBe(7);
         });
     });
 });

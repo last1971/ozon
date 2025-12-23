@@ -24,6 +24,7 @@ describe('CalculatePercentsWithLowCommissionCommand', () => {
         } as any;
         priceCalculationHelper = {
             adjustPercents: jest.fn().mockReturnValue({ min_perc: 30, perc: 50, old_perc: 100 }),
+            selectCommission: jest.fn((fbo, fbs) => fbo < fbs ? fbo : fbs),
         } as any;
         command = new CalculatePercentsWithLowCommissionCommand(priceService, priceCalculationHelper);
     });
@@ -87,7 +88,7 @@ describe('CalculatePercentsWithLowCommissionCommand', () => {
         expect(result.ozonPrices[0].min_perc).toBeUndefined();
     });
 
-    it('should use FBO commission when fboCount > fbsCount', async () => {
+    it('should use lower commission (FBO) when FBO stock is sufficient', async () => {
         priceService.getCommission.mockResolvedValue({ fbo: 0.15, fbs: 0.2 });
 
         const context: IGoodsProcessingContext = {
@@ -109,11 +110,11 @@ describe('CalculatePercentsWithLowCommissionCommand', () => {
         await command.execute(context);
 
         const adjustPercentsCall = priceCalculationHelper.adjustPercents.mock.calls[0][0];
-        expect(adjustPercentsCall.sales_percent).toBe(15); // 0.15 * 100
+        expect(adjustPercentsCall.sales_percent).toBe(15); // FBO is lower (0.15 < 0.2) and has sufficient stock
     });
 
-    it('should use FBS commission when fbsCount >= fboCount', async () => {
-        priceService.getCommission.mockResolvedValue({ fbo: 0.15, fbs: 0.2 });
+    it('should use lower commission (FBS) when FBS is lower and has sufficient stock', async () => {
+        priceService.getCommission.mockResolvedValue({ fbo: 0.25, fbs: 0.2 });
 
         const context: IGoodsProcessingContext = {
             skus: [],
@@ -134,7 +135,7 @@ describe('CalculatePercentsWithLowCommissionCommand', () => {
         await command.execute(context);
 
         const adjustPercentsCall = priceCalculationHelper.adjustPercents.mock.calls[0][0];
-        expect(adjustPercentsCall.sales_percent).toBe(20); // 0.2 * 100
+        expect(adjustPercentsCall.sales_percent).toBe(20); // FBS is lower (0.2 < 0.25)
     });
 
     it('should calculate FBS logistics based on volumeWeight', async () => {

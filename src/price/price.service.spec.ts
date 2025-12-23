@@ -6,6 +6,7 @@ import { ConfigService } from '@nestjs/config';
 import { ProductVisibility } from '../product/product.visibility';
 import { OzonProductCoeffsAdapter } from './ozon.product.coeffs.adapter';
 import { Cache } from "@nestjs/cache-manager";
+import { PriceCalculationHelper } from '../helpers/price/price.calculation.helper';
 
 describe('PriceService', () => {
     let service: PriceService;
@@ -18,6 +19,10 @@ describe('PriceService', () => {
     const getPerc = jest.fn().mockResolvedValue([]);
     const setPrice = jest.fn().mockResolvedValue({ result: [] });
     const updatePriceForService = jest.fn().mockResolvedValue({ result: [] });
+    const mockPriceCalculationHelper = {
+        provide: PriceCalculationHelper,
+        useValue: { selectCommission: jest.fn((fbo, fbs) => fbo < fbs ? fbo : fbs) },
+    };
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
@@ -53,6 +58,7 @@ describe('PriceService', () => {
                         },
                     },
                 },
+                mockPriceCalculationHelper,
             ],
         }).compile();
 
@@ -292,6 +298,7 @@ describe('PriceService', () => {
                         },
                     },
                 },
+                mockPriceCalculationHelper,
             ],
         }).compile();
 
@@ -461,6 +468,7 @@ describe('PriceService', () => {
                         provide: ConfigService,
                         useValue: { get: () => null },
                     },
+                    mockPriceCalculationHelper,
                 ],
             }).compile();
 
@@ -488,6 +496,7 @@ describe('PriceService', () => {
                     { provide: GOOD_SERVICE, useValue: { prices, getPerc, updatePriceForService } },
                     { provide: Cache, useValue: { get: mockCacheGet, set: mockCacheSet } },
                     { provide: ConfigService, useValue: { get: () => null } },
+                mockPriceCalculationHelper,
                 ],
             }).compile();
 
@@ -508,6 +517,7 @@ describe('PriceService', () => {
                     { provide: GOOD_SERVICE, useValue: { prices, getPerc, updatePriceForService } },
                     { provide: Cache, useValue: { get: mockCacheGet, set: jest.fn() } },
                     { provide: ConfigService, useValue: { get: () => null } },
+                mockPriceCalculationHelper,
                 ],
             }).compile();
 
@@ -529,6 +539,7 @@ describe('PriceService', () => {
                     { provide: GOOD_SERVICE, useValue: { prices, getPerc, updatePriceForService } },
                     { provide: Cache, useValue: { get: mockCacheGet, set: jest.fn() } },
                     { provide: ConfigService, useValue: { get: () => null } },
+                mockPriceCalculationHelper,
                 ],
             }).compile();
 
@@ -551,6 +562,7 @@ describe('PriceService', () => {
                     { provide: GOOD_SERVICE, useValue: { prices, getPerc, updatePriceForService } },
                     { provide: Cache, useValue: { get: mockCacheGet, set: mockCacheSet } },
                     { provide: ConfigService, useValue: { get: () => null } },
+                mockPriceCalculationHelper,
                 ],
             }).compile();
 
@@ -573,6 +585,7 @@ describe('PriceService', () => {
                     { provide: GOOD_SERVICE, useValue: { prices, getPerc, updatePriceForService } },
                     { provide: Cache, useValue: { get: mockCacheGet, set: jest.fn() } },
                     { provide: ConfigService, useValue: { get: () => null } },
+                mockPriceCalculationHelper,
                 ],
             }).compile();
 
@@ -616,6 +629,7 @@ describe('PriceService', () => {
                     { provide: GOOD_SERVICE, useValue: { prices, getPerc, updatePriceForService } },
                     { provide: Cache, useValue: { get: mockCacheGet, set: jest.fn() } },
                     { provide: ConfigService, useValue: { get: () => null } },
+                mockPriceCalculationHelper,
                 ],
             }).compile();
 
@@ -637,6 +651,7 @@ describe('PriceService', () => {
                     { provide: GOOD_SERVICE, useValue: { prices, getPerc, updatePriceForService } },
                     { provide: Cache, useValue: { get: mockCacheGet, set: jest.fn() } },
                     { provide: ConfigService, useValue: { get: () => null } },
+                mockPriceCalculationHelper,
                 ],
             }).compile();
 
@@ -656,6 +671,7 @@ describe('PriceService', () => {
                     { provide: GOOD_SERVICE, useValue: { prices, getPerc, updatePriceForService } },
                     { provide: Cache, useValue: { get: mockCacheGet, set: jest.fn() } },
                     { provide: ConfigService, useValue: { get: () => null } },
+                mockPriceCalculationHelper,
                 ],
             }).compile();
 
@@ -695,6 +711,7 @@ describe('PriceService', () => {
                     { provide: GOOD_SERVICE, useValue: { prices, getPerc, updatePriceForService } },
                     { provide: Cache, useValue: { get: jest.fn(), set: mockCacheSet } },
                     { provide: ConfigService, useValue: { get: () => null } },
+                mockPriceCalculationHelper,
                 ],
             }).compile();
 

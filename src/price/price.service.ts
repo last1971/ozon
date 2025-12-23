@@ -21,6 +21,7 @@ import Excel from 'exceljs';
 import { IVatUpdateable } from 'src/interfaces/i.vat.updateable';
 import { OzonCommissionDto } from './dto/ozon.commission.dto';
 import { IPriceable } from '../interfaces/i.priceable';
+import { PriceCalculationHelper } from '../helpers/price/price.calculation.helper';
 
 @Injectable()
 export class PriceService implements IPriceUpdateable, IVatUpdateable {
@@ -30,6 +31,7 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
         @Inject(GOOD_SERVICE) private goodService: IGood,
         private configService: ConfigService,
         private cacheManager: Cache,
+        private priceCalculationHelper: PriceCalculationHelper,
     ) {}
     /**
      * Преобразует значение НДС Озона (строка как доля) в число (проценты)
@@ -130,7 +132,12 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                     perc: percent.perc,
                     old_perc: percent.old_perc,
                     adv_perc: percent.adv_perc,
-                    sales_percent: OzonProductCoeffsAdapter.calculateSalesPercent(item, productInfo),
+                    sales_percent: this.priceCalculationHelper.selectCommission(
+                        item.commissions.sales_percent_fbo,
+                        item.commissions.sales_percent_fbs,
+                        productInfo?.fboCount || 0,
+                        productInfo?.fbsCount || 0,
+                    ),
                     fbs_direct_flow_trans_max_amount:
                         ((item.commissions.fbs_direct_flow_trans_max_amount +
                             item.commissions.fbs_direct_flow_trans_min_amount) /

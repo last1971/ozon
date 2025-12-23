@@ -64,7 +64,7 @@ describe("ExtraPriceService", () => {
     };
 
     // Моки для сервисов, используем настоящие классы
-    const mockPriceService = new PriceService(null, null, null, null) as jest.Mocked<PriceService>;
+    const mockPriceService = new PriceService(null, null, null, null, null) as jest.Mocked<PriceService>;
     mockPriceService.getObtainCoeffs = jest.fn();
     mockPriceService.getProductsWithCoeffs = jest.fn();
     mockPriceService.updatePrices = jest.fn();

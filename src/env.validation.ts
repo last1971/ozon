@@ -178,6 +178,10 @@ class EnvironmentVariables {
     MIN_PROFIT_RUB: number;
 
     @IsOptional()
+    @IsNumber()
+    MIN_STOCK_PERCENT: number;
+
+    @IsOptional()
     @IsString()
     REDIS_HOST: string;
 

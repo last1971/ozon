@@ -14,11 +14,41 @@ import { toNumber } from "lodash";
 @Injectable()
 export class PriceCalculationHelper {
     private readonly PERCENT_STEP = 10;
-    private MIN_PROFIT_RUB: number;
+    private readonly MIN_PROFIT_RUB: number;
+    private readonly MIN_STOCK_PERCENT: number;
+
     constructor(
         private readonly configService: ConfigService
     ) {
         this.MIN_PROFIT_RUB = this.configService.get<number>('MIN_PROFIT_RUB', 20);
+        this.MIN_STOCK_PERCENT = this.configService.get<number>('MIN_STOCK_PERCENT', 10);
+    }
+
+    /**
+     * Выбирает коэффициент FBO или FBS
+     * - Выбирается тот, который ниже
+     * - Но только если его остаток >= MIN_STOCK_PERCENT от общего
+     */
+    selectCommission(
+        fboValue: number,
+        fbsValue: number,
+        fboCount: number,
+        fbsCount: number,
+    ): number {
+        const total = fboCount + fbsCount;
+        if (total === 0) return fbsValue;
+
+        const fboPercent = (fboCount / total) * 100;
+        const fbsPercent = (fbsCount / total) * 100;
+
+        if (fboValue < fbsValue && fboPercent >= this.MIN_STOCK_PERCENT) {
+            return fboValue;
+        }
+        if (fbsValue < fboValue && fbsPercent >= this.MIN_STOCK_PERCENT) {
+            return fbsValue;
+        }
+
+        return fboCount > fbsCount ? fboValue : fbsValue;
     }
 
     async preparePricesContext(
