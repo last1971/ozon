@@ -43,6 +43,7 @@ import { DiscountRequestsModule } from './discount-requests/discount-requests.mo
 import { AvitoApiModule } from './avito.api/avito.api.module';
 import { AvitoCardModule } from './avito.card/avito.card.module';
 import { AvitoPriceModule } from './avito.price/avito.price.module';
+import { SyliusModule } from './sylius/sylius.module';
 import JSONbig from 'json-bigint';
 
 @Module({
@@ -141,6 +142,7 @@ import JSONbig from 'json-bigint';
         AvitoApiModule,
         AvitoCardModule,
         AvitoPriceModule,
+        SyliusModule,
     ],
     controllers: [AppController],
     providers: [AppService, CronSetupProviderService],

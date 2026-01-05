@@ -232,6 +232,22 @@ class EnvironmentVariables {
     @IsOptional()
     @IsNumber()
     CACHE_TTL_DAYS: number;
+
+    @IsOptional()
+    @IsUrl({ require_tld: false })
+    SYLIUS_URL: string;
+
+    @IsOptional()
+    @IsEmail()
+    SYLIUS_EMAIL: string;
+
+    @IsOptional()
+    @IsString()
+    SYLIUS_PASSWORD: string;
+
+    @IsOptional()
+    @IsNumber()
+    SYLIUS_TOKEN_TTL: number;
 }
 
 export function configValidate(config: Record<string, unknown>) {
