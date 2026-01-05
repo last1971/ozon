@@ -4,6 +4,7 @@ import { YandexOfferService } from "../yandex.offer/yandex.offer.service";
 import { ExpressOfferService } from "../yandex.offer/express.offer.service";
 import { WbCardService } from "../wb.card/wb.card.service";
 import { AvitoCardService } from "../avito.card/avito.card.service";
+import { SyliusProductService } from "../sylius/sylius.product.service";
 import { GOOD_SERVICE, IGood } from "../interfaces/IGood";
 import { ICountUpdateable } from "../interfaces/ICountUpdatebale";
 import { GoodServiceEnum } from "./good.service.enum";
@@ -27,6 +28,7 @@ export class ExtraGoodService {
         private expressOffer: ExpressOfferService,
         private wbCard: WbCardService,
         private avitoCard: AvitoCardService,
+        private syliusProduct: SyliusProductService,
         @Inject(GOOD_SERVICE) private goodService: IGood,
         private configService: ConfigService,
     ) {
@@ -42,6 +44,8 @@ export class ExtraGoodService {
             this.services.set(GoodServiceEnum.YANDEX, { service: this.yandexOffer, isSwitchedOn: true });
         if (services.includes(GoodServiceEnum.AVITO))
             this.services.set(GoodServiceEnum.AVITO, { service: this.avitoCard, isSwitchedOn: true });
+        if (services.includes(GoodServiceEnum.SYLIUS))
+            this.services.set(GoodServiceEnum.SYLIUS, { service: this.syliusProduct, isSwitchedOn: true });
     }
 
     /**
@@ -55,6 +59,12 @@ export class ExtraGoodService {
 
     async updateService(serviceEnum: GoodServiceEnum): Promise<ResultDto> {
         const service = this.services.get(serviceEnum);
+        if (!service) {
+            return {
+                isSuccess: false,
+                message: `Service ${serviceEnum} not configured`,
+            };
+        }
         const processor = new GoodsCountProcessor(this.services, this.logger);
         return {
             isSuccess: service.isSwitchedOn,
@@ -70,6 +80,12 @@ export class ExtraGoodService {
 
     async serviceIsSwitchedOn(isSwitchedDto: IsSwitchedDto): Promise<ResultDto> {
         const service = this.services.get(isSwitchedDto.service);
+        if (!service) {
+            return {
+                isSuccess: false,
+                message: `Service ${isSwitchedDto.service} not configured`,
+            };
+        }
         service.isSwitchedOn = isSwitchedDto.isSwitchedOn;
         const processor = new GoodsCountProcessor(this.services, this.logger);
         let count: number;
@@ -103,6 +119,12 @@ export class ExtraGoodService {
 
     async loadSkuList(serviceEnum: GoodServiceEnum): Promise<ResultDto> {
         const service = this.services.get(serviceEnum);
+        if (!service) {
+            return {
+                isSuccess: false,
+                message: `Service ${serviceEnum} not configured`,
+            };
+        }
         if (service.isSwitchedOn) {
             await service.service.loadSkuList();
         }

@@ -14,9 +14,10 @@ import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
 import { PriceCalculationHelper } from "../helpers/price/price.calculation.helper";
 import { HelpersModule } from "../helpers/helpers.module";
 import { AvitoCardModule } from '../avito.card/avito.card.module';
+import { SyliusModule } from '../sylius/sylius.module';
 
 @Module({
-    imports: [FirebirdModule, ProductModule, YandexOfferModule, WbCardModule, HelpersModule, forwardRef(() => AvitoCardModule)],
+    imports: [FirebirdModule, ProductModule, YandexOfferModule, WbCardModule, HelpersModule, forwardRef(() => AvitoCardModule), SyliusModule],
     providers: [
         {
             provide: GOOD_SERVICE,
