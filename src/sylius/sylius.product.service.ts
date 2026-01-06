@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ICountUpdateable, GoodCountsDto } from '../interfaces/ICountUpdatebale';
 import { ProductInfoDto } from '../product/dto/product.info.dto';
@@ -23,6 +23,8 @@ interface SyliusStockUpdateResponse {
 
 @Injectable()
 export class SyliusProductService extends ICountUpdateable implements OnModuleInit {
+    private readonly logger = new Logger(SyliusProductService.name);
+
     constructor(
         private readonly api: SyliusApiService,
         private readonly configService: ConfigService,
@@ -35,7 +37,13 @@ export class SyliusProductService extends ICountUpdateable implements OnModuleIn
         if (!services.includes(GoodServiceEnum.SYLIUS)) {
             return;
         }
-        await this.loadSkuList(this.configService.get<Environment>('NODE_ENV') === 'production');
+        try {
+            this.logger.log('Loading SKU list...');
+            await this.loadSkuList(this.configService.get<Environment>('NODE_ENV') === 'production');
+            this.logger.log(`SKU list loaded: ${this.skuList.length} items`);
+        } catch (e) {
+            this.logger.error(`Failed to load SKU list: ${e.message}`);
+        }
     }
 
     async getGoodIds(args: any): Promise<GoodCountsDto<number>> {
