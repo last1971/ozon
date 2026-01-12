@@ -113,6 +113,50 @@ describe("PriceCalculationHelper", () => {
             expect(mockGoodService.prices).toHaveBeenCalled();
             expect(mockGoodService.getPerc).toHaveBeenCalled();
         });
+
+        it("should create generic adapters when service is null", async () => {
+            const skus = ["SKU1", "SKU2"];
+            const mockGoods = [
+                { code: "1", price: 100, name: "Product 1" },
+                { code: "2", price: 200, name: "Product 2" }
+            ];
+            const mockPercents = [
+                { offer_id: "1", pieces: 1, perc: 40 },
+                { offer_id: "2", pieces: 1, perc: 40 }
+            ];
+
+            const mockGoodService: IGood = {
+                prices: jest.fn().mockResolvedValue(mockGoods),
+                getPerc: jest.fn().mockResolvedValue(mockPercents),
+                in: jest.fn(),
+                getQuantities: jest.fn(),
+                setPercents: jest.fn(),
+                setWbData: jest.fn(),
+                getWbData: jest.fn(),
+                setAvitoData: jest.fn(),
+                getAvitoData: jest.fn(),
+                getAllAvitoGoods: jest.fn(),
+                updateCountForSkus: jest.fn(),
+                updatePriceForService: jest.fn(),
+                getWbCategoryByName: jest.fn(),
+                updateWbCategory: jest.fn(),
+                resetAvailablePrice: jest.fn(),
+                updatePercentsForService: jest.fn().mockResolvedValue(undefined),
+                generatePercentsForService: jest.fn().mockResolvedValue(undefined),
+            };
+
+            const result = await helper.preparePricesContext(
+                null,
+                skus,
+                mockGoodService
+            );
+
+            expect(result.products).toHaveLength(2);
+            expect(result.products[0].getSku()).toBe("SKU1");
+            expect(result.products[0].getTransMaxAmount()).toBe(0);
+            expect(result.products[0].getSalesPercent()).toBe(0);
+            expect(result.products[1].getSku()).toBe("SKU2");
+        });
     });
 
     describe('getIncomingPrice', () => {
@@ -241,6 +285,25 @@ describe("PriceCalculationHelper", () => {
             expect(result.perc).toBe(result.min_perc * 2);
             expect(result.old_perc).toBeGreaterThanOrEqual(result.perc);
         });
+
+        it('should use zero coefficients when service is not provided', () => {
+            const result = helper.adjustPercents(initialPrice);
+
+            expect(result.min_perc).toBeGreaterThanOrEqual(20);
+            expect(result.perc).toBe(result.min_perc * 2);
+            expect(result.old_perc).toBeGreaterThanOrEqual(result.perc);
+            // Без service не должен вызываться getObtainCoeffs
+            expect(mockService.getObtainCoeffs).not.toHaveBeenCalled();
+        });
+
+        it('should calculate lower percents with zero coefficients than with service coefficients', () => {
+            const resultWithService = helper.adjustPercents(initialPrice, mockService);
+            const resultWithoutService = helper.adjustPercents(initialPrice);
+
+            // С нулевыми коэффициентами наценка должна быть меньше или равна
+            // потому что нет дополнительных расходов маркетплейса
+            expect(resultWithoutService.min_perc).toBeLessThanOrEqual(resultWithService.min_perc);
+        });
     });
 
     describe('calculatePriceWithPercents', () => {
@@ -292,6 +355,85 @@ describe("PriceCalculationHelper", () => {
         });
     });
 
+    describe('calculatePriceWithCoeffs', () => {
+        it('should calculate price with zero coefficients', () => {
+            const price: IPriceable = {
+                adv_perc: 1,
+                fbs_direct_flow_trans_max_amount: 20,
+                incoming_price: 100,
+                available_price: 0,
+                offer_id: 'TEST-1',
+                sales_percent: 10,
+                sum_pack: 10,
+                min_perc: 20,
+                perc: 40,
+                old_perc: 80
+            };
+
+            const zeroCoeffs = {
+                minMil: 0,
+                percMil: 0,
+                percEkv: 0,
+                sumObtain: 0,
+                sumLabel: 0,
+                taxUnit: 0
+            };
+
+            const result = (helper as any).calculatePriceWithCoeffs(
+                price,
+                zeroCoeffs,
+                20,
+                40,
+                80
+            );
+
+            expect(result).toBeDefined();
+            expect(result.min_price).toBeDefined();
+            expect(result.price).toBeDefined();
+            expect(result.old_price).toBeDefined();
+        });
+
+        it('should calculate lower prices with zero coefficients', () => {
+            const price: IPriceable = {
+                adv_perc: 1,
+                fbs_direct_flow_trans_max_amount: 20,
+                incoming_price: 100,
+                available_price: 0,
+                offer_id: 'TEST-1',
+                sales_percent: 10,
+                sum_pack: 10,
+                min_perc: 20,
+                perc: 40,
+                old_perc: 80
+            };
+
+            const zeroCoeffs = {
+                minMil: 0,
+                percMil: 0,
+                percEkv: 0,
+                sumObtain: 0,
+                sumLabel: 0,
+                taxUnit: 0
+            };
+
+            const serviceCoeffs = {
+                minMil: 20,
+                percMil: 5.5,
+                percEkv: 1,
+                sumObtain: 25,
+                sumLabel: 10,
+                taxUnit: 6
+            };
+
+            const resultZero = (helper as any).calculatePriceWithCoeffs(price, zeroCoeffs, 20, 40, 80);
+            const resultService = (helper as any).calculatePriceWithCoeffs(price, serviceCoeffs, 20, 40, 80);
+
+            // Цены с нулевыми коэффициентами должны быть ниже
+            expect(parseFloat(resultZero.min_price)).toBeLessThan(parseFloat(resultService.min_price));
+            expect(parseFloat(resultZero.price)).toBeLessThan(parseFloat(resultService.price));
+        });
+    });
+
     describe('price adjustment conditions', () => {
         describe('shouldAdjustMinPrice', () => {
             let service: IPriceUpdateable;
@@ -332,6 +474,31 @@ describe("PriceCalculationHelper", () => {
                 const price: UpdatePriceDto = { min_price: 100 } as any;
                 const initialPrice: any = { available_price: 120, incoming_price: 80 };
                 expect((helper as any).shouldAdjustMinPrice(price, initialPrice, service)).toBe(false);
+            });
+        });
+
+        describe('shouldAdjustMinPriceWithCoeffs', () => {
+            const zeroCoeffs = {
+                minMil: 0,
+                percMil: 0,
+                percEkv: 0,
+                sumObtain: 0,
+                sumLabel: 0,
+                taxUnit: 0
+            };
+
+            it('returns true if profit is less than threshold with zero coeffs', () => {
+                jest.spyOn(helpers, 'calculatePay').mockReturnValue({ pay: 85 });
+                const price: UpdatePriceDto = { min_price: 100 } as any;
+                const initialPrice: any = { available_price: 80, incoming_price: 80 };
+                expect((helper as any).shouldAdjustMinPriceWithCoeffs(price, initialPrice, zeroCoeffs)).toBe(true);
+            });
+
+            it('returns false if profit is greater than threshold with zero coeffs', () => {
+                jest.spyOn(helpers, 'calculatePay').mockReturnValue({ pay: 200 });
+                const price: UpdatePriceDto = { min_price: 100 } as any;
+                const initialPrice: any = { available_price: 80, incoming_price: 80 };
+                expect((helper as any).shouldAdjustMinPriceWithCoeffs(price, initialPrice, zeroCoeffs)).toBe(false);
             });
         });
 

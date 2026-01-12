@@ -43,7 +43,7 @@ export class SyliusApiService {
         const headers: Record<string, string> = {
             Authorization: `Bearer ${token}`,
             Accept: method === 'get' ? 'application/ld+json' : 'application/json',
-            'Content-Type': 'application/json',
+            'Content-Type': method === 'patch' ? 'application/merge-patch+json' : 'application/json',
         };
 
         const obs = method === 'get'

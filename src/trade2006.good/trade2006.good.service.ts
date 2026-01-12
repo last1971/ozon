@@ -357,7 +357,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
     }
 
     async generatePercentsForService(
-        service: IPriceUpdateable,
+        service: IPriceUpdateable | null,
         skus: string[],
         goodPercentsDto?: Map<string, Partial<GoodPercentDto>>,
     ): Promise<GoodPercentDto[]> {
@@ -460,6 +460,18 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
             skus,
             this,
         );
+
+        // Генерируем проценты для SKU которых нет в БД (с нулевыми коэффициентами)
+        const missingSkus = skus.filter((sku) => {
+            const gCode = goodCode({ offer_id: sku });
+            const gCoeff = goodQuantityCoeff({ offer_id: sku });
+            return !percents.some((p) => p.offer_id.toString() === gCode && p.pieces === gCoeff);
+        });
+        if (missingSkus.length > 0) {
+            const newPercents = await this.generatePercentsForService(null, missingSkus);
+            percents.push(...newPercents);
+        }
+
         const updatePrices: UpdatePriceDto[] = [];
 
         for (const product of products) {

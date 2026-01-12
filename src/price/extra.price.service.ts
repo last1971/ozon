@@ -5,6 +5,7 @@ import { PriceService } from "./price.service";
 import { YandexPriceService } from "../yandex.price/yandex.price.service";
 import { WbPriceService } from "../wb.price/wb.price.service";
 import { AvitoPriceService } from "../avito.price/avito.price.service";
+import { SyliusPriceService } from "../sylius.price/sylius.price.service";
 import { GOOD_SERVICE, IGood } from "../interfaces/IGood";
 import { ConfigService } from "@nestjs/config";
 import { UpdatePriceDto } from "./dto/update.price.dto";
@@ -54,6 +55,7 @@ export class ExtraPriceService {
         @Inject(forwardRef(() => YandexPriceService)) private yandexPriceService: YandexPriceService,
         private wb: WbPriceService,
         private avitoPriceService: AvitoPriceService,
+        private syliusPriceService: SyliusPriceService,
         @Inject(GOOD_SERVICE) private goodService: IGood,
         private configService: ConfigService,
         private extraGoodService: ExtraGoodService,
@@ -87,6 +89,7 @@ export class ExtraPriceService {
         if (services.includes(GoodServiceEnum.YANDEX)) this.services.set(GoodServiceEnum.YANDEX, yandexPriceService);
         if (services.includes(GoodServiceEnum.WB)) this.services.set(GoodServiceEnum.WB, wb);
         if (services.includes(GoodServiceEnum.AVITO)) this.services.set(GoodServiceEnum.AVITO, avitoPriceService);
+        if (services.includes(GoodServiceEnum.SYLIUS)) this.services.set(GoodServiceEnum.SYLIUS, syliusPriceService);
     }
 
     /**
@@ -299,11 +302,23 @@ export class ExtraPriceService {
     }
 
     /**
-     * 
      * @param ozonSkus коды озона
+     * @param allSkus все коды (для generic - те что не в Ozon)
      */
-    public async updatePercentsForGoodSkus(ozonSkus: string[]): Promise<void> {
-        await this.goodService.updatePercentsForService(this.getService(GoodServiceEnum.OZON), ozonSkus);
+    public async updatePercentsForGoodSkus(ozonSkus: string[], allSkus?: string[]): Promise<void> {
+        // Ozon SKU → через Ozon сервис
+        if (ozonSkus?.length > 0) {
+            await this.goodService.updatePercentsForService(this.getService(GoodServiceEnum.OZON), ozonSkus);
+        }
+
+        // Generic SKU (не в Ozon) → через null (нулевые коэффициенты)
+        if (allSkus?.length > 0) {
+            const ozonSet = new Set(ozonSkus || []);
+            const genericSkus = allSkus.filter(sku => !ozonSet.has(sku));
+            if (genericSkus.length > 0) {
+                await this.goodService.updatePercentsForService(null, genericSkus);
+            }
+        }
     }
 
     /**
