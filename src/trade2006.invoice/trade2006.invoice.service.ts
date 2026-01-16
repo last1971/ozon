@@ -223,11 +223,17 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         transaction: FirebirdTransaction = null,
     ): Promise<void> {
         const workingTransaction = transaction ?? (await this.pool.getTransaction());
-        await workingTransaction.execute(
-            `UPDATE S SET STATUS = ? WHERE SCODE IN (${'?'.repeat(invoices.length).split('').join()})`,
-            [status, ...invoices.map((invoice) => invoice.id)],
-            !transaction,
-        );
+        const BATCH_SIZE = 100;
+
+        for (let i = 0; i < invoices.length; i += BATCH_SIZE) {
+            const batch = invoices.slice(i, i + BATCH_SIZE);
+            await workingTransaction.execute(
+                `UPDATE S SET STATUS = ? WHERE SCODE IN (${batch.map(() => '?').join(',')})`,
+                [status, ...batch.map((invoice) => invoice.id)],
+                false,
+            );
+        }
+        if (!transaction) await workingTransaction.commit(true);
     }
     async upsertInvoiceCashFlow(
         invoice: InvoiceDto,
