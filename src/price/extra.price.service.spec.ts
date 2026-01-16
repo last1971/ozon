@@ -27,6 +27,7 @@ import { SetResultProcessingMessageCommand } from './commands/set-result-process
 import { CheckVatCommand } from './commands/check-vat.command';
 import { UpdateVatCommand } from './commands/update-vat.command';
 import { AvitoPriceService } from "../avito.price/avito.price.service";
+import { SyliusPriceService } from "../sylius.price/sylius.price.service";
 import { LoadOzonPricesCommand } from './commands/load-ozon-prices.command';
 import { FilterBySellingPriceAboveCommand } from './commands/filter-by-selling-price-above.command';
 import { FilterByIncomingPriceBelowCommand } from './commands/filter-by-incoming-price-below.command';
@@ -85,6 +86,13 @@ describe("ExtraPriceService", () => {
     mockWbPriceService.updateAllPrices = jest.fn();
     mockWbPriceService.createAction = jest.fn();
 
+    const mockSyliusPriceService = new SyliusPriceService(null, null, null, null) as jest.Mocked<SyliusPriceService>;
+    mockSyliusPriceService.getObtainCoeffs = jest.fn();
+    mockSyliusPriceService.getProductsWithCoeffs = jest.fn();
+    mockSyliusPriceService.updatePrices = jest.fn();
+    mockSyliusPriceService.updateAllPrices = jest.fn();
+    mockSyliusPriceService.createAction = jest.fn();
+
     const mockExtraGoodService: jest.Mocked<ExtraGoodService> = {
         tradeSkusToServiceSkus: jest.fn().mockReturnValue(['sku1', 'sku2']),
         // Добавьте моки для других методов ExtraGoodService, если они вызываются
@@ -131,6 +139,7 @@ describe("ExtraPriceService", () => {
                 { provide: YandexPriceService, useValue: mockYandexPriceService },
                 { provide: WbPriceService, useValue: mockWbPriceService },
                 { provide: AvitoPriceService, useValue: mockCommand },
+                { provide: SyliusPriceService, useValue: mockSyliusPriceService },
                 { provide: GOOD_SERVICE, useValue: mockGoodService },
                 { provide: ExtraGoodService, useValue: mockExtraGoodService },
                 { provide: EventEmitter2, useValue: mockEventEmitter },
@@ -164,6 +173,7 @@ describe("ExtraPriceService", () => {
             mockYandexPriceService as unknown as YandexPriceService,
             mockWbPriceService as unknown as WbPriceService,
             {} as any, // avitoPriceService
+            mockSyliusPriceService as unknown as SyliusPriceService,
             mockGoodService as unknown as IGood,
             mockConfigService as unknown as ConfigService,
             mockExtraGoodService as unknown as ExtraGoodService,
@@ -210,6 +220,7 @@ describe("ExtraPriceService", () => {
                 mockYandexPriceService as unknown as YandexPriceService,
                 mockWbPriceService as unknown as WbPriceService,
                 {} as any, // avitoPriceService
+                mockSyliusPriceService as unknown as SyliusPriceService,
                 mockGoodService as unknown as IGood,
                 mockConfigService as unknown as ConfigService,
                 mockExtraGoodService as unknown as ExtraGoodService,
@@ -544,9 +555,15 @@ describe("ExtraPriceService", () => {
     });
 
     describe("ExtraPriceService - updatePercentsForGoodSkus", () => {
-        it("should call generatePercentsForService with correct parameters", async () => {
+        beforeEach(() => {
+            // Setup OZON service in services map
+            extraPriceService["services"] = new Map();
+            extraPriceService["services"].set(GoodServiceEnum.OZON, mockPriceService);
+        });
+
+        it("should call updatePercentsForService for Ozon SKUs", async () => {
             const ozonSkus = ["ozon-sku1", "ozon-sku2"];
-            
+
             mockGoodService.updatePercentsForService.mockResolvedValue([]);
 
             await extraPriceService.updatePercentsForGoodSkus(ozonSkus);
@@ -557,13 +574,46 @@ describe("ExtraPriceService", () => {
             );
         });
 
-        it("should handle empty skus array", async () => {
+        it("should not call updatePercentsForService when ozonSkus is empty", async () => {
             const ozonSkus: string[] = [];
-            
+
             mockGoodService.updatePercentsForService.mockResolvedValue([]);
 
             await extraPriceService.updatePercentsForGoodSkus(ozonSkus);
 
+            expect(mockGoodService.updatePercentsForService).not.toHaveBeenCalled();
+        });
+
+        it("should call updatePercentsForService with null for generic SKUs", async () => {
+            const ozonSkus = ["ozon-sku1"];
+            const allSkus = ["ozon-sku1", "generic-sku1", "generic-sku2"];
+
+            mockGoodService.updatePercentsForService.mockResolvedValue([]);
+
+            await extraPriceService.updatePercentsForGoodSkus(ozonSkus, allSkus);
+
+            // Первый вызов для Ozon SKUs
+            expect(mockGoodService.updatePercentsForService).toHaveBeenCalledWith(
+                mockPriceService,
+                ozonSkus
+            );
+            // Второй вызов для generic SKUs с null
+            expect(mockGoodService.updatePercentsForService).toHaveBeenCalledWith(
+                null,
+                ["generic-sku1", "generic-sku2"]
+            );
+        });
+
+        it("should not call for generic if allSkus only contains ozonSkus", async () => {
+            const ozonSkus = ["ozon-sku1", "ozon-sku2"];
+            const allSkus = ["ozon-sku1", "ozon-sku2"];
+
+            mockGoodService.updatePercentsForService.mockResolvedValue([]);
+
+            await extraPriceService.updatePercentsForGoodSkus(ozonSkus, allSkus);
+
+            // Только один вызов для Ozon SKUs
+            expect(mockGoodService.updatePercentsForService).toHaveBeenCalledTimes(1);
             expect(mockGoodService.updatePercentsForService).toHaveBeenCalledWith(
                 mockPriceService,
                 ozonSkus
@@ -695,6 +745,7 @@ describe("ExtraPriceService", () => {
                 mockYandexPriceService as unknown as YandexPriceService,
                 mockWbPriceService as unknown as WbPriceService,
                 {} as any,
+                mockSyliusPriceService as unknown as SyliusPriceService,
                 mockGoodService as unknown as IGood,
                 mockConfigService as unknown as ConfigService,
                 mockExtraGoodService as unknown as ExtraGoodService,
@@ -768,6 +819,7 @@ describe("ExtraPriceService", () => {
                 incompatibleService as any,
                 mockWbPriceService as unknown as WbPriceService,
                 {} as any,
+                mockSyliusPriceService as unknown as SyliusPriceService,
                 mockGoodService as unknown as IGood,
                 mockConfigService as unknown as ConfigService,
                 mockExtraGoodService as unknown as ExtraGoodService,

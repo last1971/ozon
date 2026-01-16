@@ -248,6 +248,30 @@ class EnvironmentVariables {
     @IsOptional()
     @IsNumber()
     SYLIUS_TOKEN_TTL: number;
+
+    @IsOptional()
+    @IsNumber()
+    SYLIUS_MIN_MIL: number;
+
+    @IsOptional()
+    @IsNumber()
+    SYLIUS_PERC_MIL: number;
+
+    @IsOptional()
+    @IsNumber()
+    SYLIUS_PERC_EKV: number;
+
+    @IsOptional()
+    @IsNumber()
+    SYLIUS_SUM_OBTAIN: number;
+
+    @IsOptional()
+    @IsNumber()
+    SYLIUS_EXT_PERC: number;
+
+    @IsOptional()
+    @IsString()
+    SYLIUS_CHANNEL: string;
 }
 
 export function configValidate(config: Record<string, unknown>) {

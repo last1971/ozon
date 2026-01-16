@@ -373,7 +373,8 @@ describe('Trade2006InvoiceService', () => {
     });
     it('test bulkSetStatus', async () => {
         await service.bulkSetStatus([{ id: 1, status: 1, buyerId: 1, remark: '1', date: new Date() }], 3);
-        expect(execute.mock.calls[0]).toEqual(['UPDATE S SET STATUS = ? WHERE SCODE IN (?)', [3, 1], true]);
+        expect(execute.mock.calls[0]).toEqual(['UPDATE S SET STATUS = ? WHERE SCODE IN (?)', [3, 1], false]);
+        expect(commit.mock.calls).toHaveLength(1);
     });
     it('test upsertInvoiceCashFlow', async () => {
         await service.upsertInvoiceCashFlow({ id: 1, status: 1, buyerId: 1, remark: '1', date: new Date() }, 111.11);

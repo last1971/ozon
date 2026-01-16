@@ -224,11 +224,41 @@ describe('Trade2006GoodService', () => {
     it('updatePriceForService', async () => {
         const prices = new Map<string, UpdatePriceDto>();
         prices.set('1', { incoming_price: 100 } as UpdatePriceDto);
-        
+
         await service.updatePriceForService(priceUdateable, ['1'], prices);
         expect(mockPriceCalculationHelper.preparePricesContext).toHaveBeenCalledWith(priceUdateable, ['1'], service);
         expect(mockPriceCalculationHelper.getIncomingPrice).toHaveBeenCalled();
         expect(updatePrices).toHaveBeenCalled();
+    });
+
+    it('updatePriceForService generates missing percents with null service', async () => {
+        // percents пустой - нет процентов в БД
+        mockPriceCalculationHelper.preparePricesContext.mockResolvedValueOnce({
+            codes: ['1'],
+            goods: [{ code: 1, name: 'ONE', price: 10.11 }],
+            percents: [], // пусто!
+            products: [{
+                getSku: () => '1',
+                getTransMaxAmount: () => 40,
+                getSalesPercent: () => 10
+            }]
+        });
+
+        const generateSpy = jest.spyOn(service, 'generatePercentsForService').mockResolvedValueOnce([{
+            offer_id: '1',
+            pieces: 1,
+            perc: 20,
+            adv_perc: 0,
+            min_perc: 10,
+            old_perc: 30,
+            packing_price: 10,
+            available_price: 0
+        }]);
+
+        await service.updatePriceForService(priceUdateable, ['1']);
+
+        expect(generateSpy).toHaveBeenCalledWith(null, ['1']);
+        generateSpy.mockRestore();
     });
 
     it('checkCounts', async () => {

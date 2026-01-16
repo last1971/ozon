@@ -10,12 +10,23 @@ import { IGood } from '../../interfaces/IGood';
 import { FirebirdTransaction } from "ts-firebird";
 import { IPriceable } from "../../interfaces/i.priceable";
 import { toNumber } from "lodash";
+import { ObtainCoeffsDto } from '../dto/obtain.coeffs.dto';
+import { GenericProductCoeffsAdapter } from './generic.product.coeffs.adapter';
 
 @Injectable()
 export class PriceCalculationHelper {
     private readonly PERCENT_STEP = 10;
     private readonly MIN_PROFIT_RUB: number;
     private readonly MIN_STOCK_PERCENT: number;
+
+    private static readonly ZERO_COEFFS: ObtainCoeffsDto = {
+        minMil: 0,
+        percMil: 0,
+        percEkv: 0,
+        sumObtain: 0,
+        sumLabel: 0,
+        taxUnit: 0,
+    };
 
     constructor(
         private readonly configService: ConfigService
@@ -52,7 +63,7 @@ export class PriceCalculationHelper {
     }
 
     async preparePricesContext(
-        service: IPriceUpdateable,
+        service: IPriceUpdateable | null,
         skus: string[],
         goodService: IGood,
         transaction: FirebirdTransaction = null,
@@ -65,8 +76,10 @@ export class PriceCalculationHelper {
         const codes = skus.map((item) => goodCode({ offer_id: item }));
         const goods = await goodService.prices(codes, transaction);
         const percents = await goodService.getPerc(codes, transaction);
-        const products = await service.getProductsWithCoeffs(skus);
-        
+        const products = service
+            ? await service.getProductsWithCoeffs(skus)
+            : skus.map((sku) => new GenericProductCoeffsAdapter(sku));
+
         return { codes, goods, percents, products };
     }
 
@@ -117,29 +130,31 @@ export class PriceCalculationHelper {
 
     adjustPercents(
         initialPrice: IPriceable,
-        service: IPriceUpdateable
+        service?: IPriceUpdateable
     ): { min_perc: number; perc: number; old_perc: number } {
+        const coeffs = service?.getObtainCoeffs() ?? PriceCalculationHelper.ZERO_COEFFS;
+
         let { min_perc, perc, old_perc } = this.getInitialPercents(
             initialPrice.available_price != null && initialPrice.available_price > 0 ? initialPrice.available_price : initialPrice.incoming_price
         );
 
-        let calculatedPrice = this.calculatePriceWithPercents(
+        let calculatedPrice = this.calculatePriceWithCoeffs(
             initialPrice,
-            service,
+            coeffs,
             min_perc,
             perc,
             old_perc
         );
 
         // Шаг 1: Проверяем минимальную цену
-        while (this.shouldAdjustMinPrice(calculatedPrice, initialPrice, service)) {
+        while (this.shouldAdjustMinPriceWithCoeffs(calculatedPrice, initialPrice, coeffs)) {
             min_perc += this.PERCENT_STEP;
             perc = min_perc * 2;
             old_perc = perc * 2;
 
-            calculatedPrice = this.calculatePriceWithPercents(
+            calculatedPrice = this.calculatePriceWithCoeffs(
                 initialPrice,
-                service,
+                coeffs,
                 min_perc,
                 perc,
                 old_perc
@@ -151,9 +166,9 @@ export class PriceCalculationHelper {
             perc += this.PERCENT_STEP;
             old_perc = perc * 2;
 
-            calculatedPrice = this.calculatePriceWithPercents(
+            calculatedPrice = this.calculatePriceWithCoeffs(
                 initialPrice,
-                service,
+                coeffs,
                 min_perc,
                 perc,
                 old_perc
@@ -164,9 +179,9 @@ export class PriceCalculationHelper {
         while (this.shouldAdjustOldPrice(calculatedPrice)) {
             old_perc += this.PERCENT_STEP;
 
-            calculatedPrice = this.calculatePriceWithPercents(
+            calculatedPrice = this.calculatePriceWithCoeffs(
                 initialPrice,
-                service,
+                coeffs,
                 min_perc,
                 perc,
                 old_perc
@@ -176,9 +191,9 @@ export class PriceCalculationHelper {
         return { min_perc, perc, old_perc };
     }
 
-    private calculatePriceWithPercents(
+    private calculatePriceWithCoeffs(
         price: IPriceable,
-        service: IPriceUpdateable,
+        coeffs: ObtainCoeffsDto,
         min_perc: number,
         perc: number,
         old_perc: number
@@ -190,20 +205,35 @@ export class PriceCalculationHelper {
                 perc,
                 old_perc,
             },
-            service.getObtainCoeffs()
+            coeffs
         );
     }
 
-    private shouldAdjustMinPrice(price: UpdatePriceDto, initialPrice: IPriceable, service: IPriceUpdateable): boolean {
+    private shouldAdjustMinPriceWithCoeffs(price: UpdatePriceDto, initialPrice: IPriceable, coeffs: ObtainCoeffsDto): boolean {
         const minPrice = toNumber(price.min_price);
         const payResult = calculatePay(
-            initialPrice,  // нужно передать IPriceable
-            service.getObtainCoeffs(),  // получаем коэффициенты
-            minPrice  // передаем минимальную цену
+            initialPrice,
+            coeffs,
+            minPrice
         );
         const incomingPrice = initialPrice.available_price || initialPrice.incoming_price;
         const profit = payResult.netProfit !== undefined ? payResult.netProfit : payResult.pay - incomingPrice;
-        return profit < (this.MIN_PROFIT_RUB); // Минимальный порог
+        return profit < (this.MIN_PROFIT_RUB);
+    }
+
+    // Backward compatibility - старые методы
+    private calculatePriceWithPercents(
+        price: IPriceable,
+        service: IPriceUpdateable,
+        min_perc: number,
+        perc: number,
+        old_perc: number
+    ): UpdatePriceDto {
+        return this.calculatePriceWithCoeffs(price, service.getObtainCoeffs(), min_perc, perc, old_perc);
+    }
+
+    private shouldAdjustMinPrice(price: UpdatePriceDto, initialPrice: IPriceable, service: IPriceUpdateable): boolean {
+        return this.shouldAdjustMinPriceWithCoeffs(price, initialPrice, service.getObtainCoeffs());
     }
 
     private shouldAdjustNormalPrice(price: UpdatePriceDto): boolean {
