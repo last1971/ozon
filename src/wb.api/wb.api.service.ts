@@ -38,6 +38,9 @@ export class WbApiService {
         return firstValueFrom(
             response.pipe(map((res) => res.data)).pipe(
                 catchError(async (error: AxiosError) => {
+                    const retryAfterHeader = error.response?.headers?.['x-ratelimit-retry'];
+                    const retryAfterMs = retryAfterHeader ? parseInt(retryAfterHeader, 10) * 1000 : 60000;
+
                     this.logger.error('WB API Error:', {
                         message: error.message,
                         status: error.response?.status,
@@ -46,18 +49,20 @@ export class WbApiService {
                         url: error.config?.url,
                         method: error.config?.method,
                         params: error.config?.params,
-                        body: error.config?.data
+                        body: error.config?.data,
+                        retryAfterMs: error.response?.status === 429 ? retryAfterMs : undefined,
                     });
                     return {
                         result: null,
                         status: 'NotOk',
-                        error: { 
+                        error: {
                             service_message: error.message,
                             message: error?.response?.data['message'],
                             status: error.response?.status,
                             statusText: error.response?.statusText,
                             data: error.response?.data,
-                            url: error.config?.url
+                            url: error.config?.url,
+                            retryAfterMs: error.response?.status === 429 ? retryAfterMs : undefined,
                         },
                     };
                 }),

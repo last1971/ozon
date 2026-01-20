@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { IOrderable } from '../interfaces/IOrderable';
 import { PostingDto } from '../posting/dto/posting.dto';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
@@ -27,11 +27,11 @@ import { SelectBestIdCommand } from './commands/select-best-id.command';
 import { FetchInvoiceByRemarkCommand } from './commands/fetch-invoice-by-remark.command';
 import { WbInvoiceQueryDto } from '../order/dto/wb-invoice-query.dto';
 import { WbInvoiceSridQueryDto } from '../order/dto/wb-invoice-srid-query.dto';
-import { RateLimit } from '../helpers/decorators/rate-limit.decorator';
+import { RateLimit, setRateLimitBlocked } from '../helpers/decorators/rate-limit.decorator';
 
 @Injectable()
 export class WbOrderService implements IOrderable {
-
+    private readonly logger = new Logger(WbOrderService.name);
     private postingDtos: Map<string, PostingDto>;
     constructor(
         private api: WbApiService,
@@ -51,12 +51,29 @@ export class WbOrderService implements IOrderable {
         return false;
     }
 
+    @RateLimit(200)
     async list(dateFrom = 0, initialNext = 0, limit = 1000): Promise<WbOrderDto[]> {
-        const { orders, next } = await this.api.method(
+        const result = await this.api.method(
             '/api/v3/orders', 'get',
             { next: initialNext, limit, dateFrom }
         );
-        if (next) {
+
+        // Handle 429 rate limit error
+        if (result?.error?.status === 429) {
+            const retryAfterMs = result.error.retryAfterMs || 60000;
+            this.logger.warn(
+                `WB API rate limit hit (429). Blocking list() for ${retryAfterMs}ms. ` +
+                `Will retry on next cron iteration.`
+            );
+            setRateLimitBlocked('WbOrderService', 'list', Date.now() + retryAfterMs);
+            return []; // Return empty, next cron will retry
+        }
+
+        const orders = result?.orders || [];
+        const next = result?.next;
+
+        // Protect against infinite loop: stop if next equals current cursor
+        if (next && next !== initialNext) {
             orders.push(...(await this.list(dateFrom, next, limit)));
         }
         return orders;
