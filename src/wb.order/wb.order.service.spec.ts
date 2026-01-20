@@ -119,6 +119,16 @@ describe('WbOrderService', () => {
         expect(method.mock.calls[0]).toEqual(['/api/v3/orders', 'get', { dateFrom: 0, limit: 1000, next: 0 }]);
     });
 
+    it('list returns empty array on 429 error', async () => {
+        method.mockResolvedValueOnce({
+            error: { status: 429, retryAfterMs: 60000 },
+            result: null,
+            status: 'NotOk',
+        });
+        const result = await service.list();
+        expect(result).toEqual([]);
+    });
+
     it('orderStatuses', async () => {
         method.mockResolvedValueOnce({ orders: [] });
         await service.orderStatuses([1, 2, 3]);
