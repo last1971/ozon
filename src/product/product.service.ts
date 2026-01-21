@@ -25,6 +25,7 @@ import { ProductListDto } from "./dto/product.list.dto";
 import { IProductable } from 'src/interfaces/i.productable';
 import { ActionListProduct } from 'src/promos/dto/actionsCandidate.dto';
 import { ProductPriceDto } from 'src/price/dto/product.price.dto';
+import { UpdateAttributesBodyDto, UpdateAttributesResponseDto } from './dto/update.attributes.dto';
 
 @Injectable()
 export class ProductService extends ICountUpdateable implements OnModuleInit, IProductable {
@@ -221,6 +222,23 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
             productPrices.push(...pricesChunk.items.map((item) => ({ id: item.product_id, price: item.price })));
         }
         return productPrices;
+    }
+
+    async updateAttributes(body: UpdateAttributesBodyDto): Promise<UpdateAttributesResponseDto[]> {
+        const offerIds = body.offer_ids?.length ? body.offer_ids : this.skuList;
+        const items = offerIds.map(offer_id => ({ offer_id, attributes: body.attributes }));
+        const results: UpdateAttributesResponseDto[] = [];
+
+        for (const batch of chunk(items, 100)) {
+            const result = await this.ozonApiService.method('/v1/product/attributes/update', { items: batch });
+            results.push(result);
+        }
+
+        return results;
+    }
+
+    async getTaskInfo(taskId: number): Promise<any> {
+        return this.ozonApiService.method('/v1/product/import/info', { task_id: taskId });
     }
 
 }

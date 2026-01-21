@@ -272,7 +272,7 @@ describe('ProductService', () => {
             action_price: 100,
         })) as ActionListProduct[];
         const productPrices = actionProducts.map((product) => ({ product_id: product.id, price: { min_price: 100 } }));
-        
+
         method
             .mockResolvedValueOnce({ items: productPrices.slice(0, 100), cursor: '' })
             .mockResolvedValueOnce({ items: productPrices.slice(100, 200), cursor: '' })
@@ -285,5 +285,63 @@ describe('ProductService', () => {
         expect(method.mock.calls[0][0]).toBe('/v5/product/info/prices');
         expect(method.mock.calls[1][0]).toBe('/v5/product/info/prices');
         expect(method.mock.calls[2][0]).toBe('/v5/product/info/prices');
+    });
+
+    it('updateAttributes with offer_ids', async () => {
+        method.mockResolvedValue({ task_id: 123 });
+        const body = {
+            offer_ids: ['sku1', 'sku2'],
+            attributes: [{ id: 23518, complex_id: 0, values: [{ value: '1' }] }],
+        };
+
+        const result = await service.updateAttributes(body);
+
+        expect(method.mock.calls[0]).toEqual([
+            '/v1/product/attributes/update',
+            {
+                items: [
+                    { offer_id: 'sku1', attributes: body.attributes },
+                    { offer_id: 'sku2', attributes: body.attributes },
+                ],
+            },
+        ]);
+        expect(result).toEqual([{ task_id: 123 }]);
+    });
+
+    it('updateAttributes without offer_ids uses skuList', async () => {
+        service.skuList = ['sku1', 'sku2', 'sku3'];
+        method.mockResolvedValue({ task_id: 456 });
+        const body = {
+            attributes: [{ id: 23518, complex_id: 0, values: [{ value: '1' }] }],
+        };
+
+        const result = await service.updateAttributes(body);
+
+        expect(method.mock.calls[0][1].items.length).toBe(3);
+        expect(result).toEqual([{ task_id: 456 }]);
+    });
+
+    it('updateAttributes batches over 100 items', async () => {
+        service.skuList = Array.from({ length: 150 }, (_, i) => `sku${i}`);
+        method.mockResolvedValue({ task_id: 789 });
+        const body = {
+            attributes: [{ id: 23518, complex_id: 0, values: [{ value: '1' }] }],
+        };
+
+        const result = await service.updateAttributes(body);
+
+        expect(method).toHaveBeenCalledTimes(2);
+        expect(method.mock.calls[0][1].items.length).toBe(100);
+        expect(method.mock.calls[1][1].items.length).toBe(50);
+        expect(result).toEqual([{ task_id: 789 }, { task_id: 789 }]);
+    });
+
+    it('getTaskInfo', async () => {
+        method.mockResolvedValue({ result: { status: 'done' } });
+
+        const result = await service.getTaskInfo(123456);
+
+        expect(method.mock.calls[0]).toEqual(['/v1/product/import/info', { task_id: 123456 }]);
+        expect(result).toEqual({ result: { status: 'done' } });
     });
 });
