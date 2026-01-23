@@ -15,6 +15,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 describe('OrderService', () => {
     let service: OrderService;
     const getTransactionList = jest.fn().mockResolvedValue([]);
+    const getBuyoutList = jest.fn().mockResolvedValue([]);
     const updateByTransactions = jest.fn();
     const createInvoice = jest.fn().mockResolvedValue(1);
     const getByPosting = jest.fn()
@@ -36,7 +37,7 @@ describe('OrderService', () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 OrderService,
-                { provide: ProductService, useValue: { getTransactionList } },
+                { provide: ProductService, useValue: { getTransactionList, getBuyoutList } },
                 {
                     provide: INVOICE_SERVICE,
                     useValue: {
@@ -155,6 +156,11 @@ describe('OrderService', () => {
         }).compile();
 
         service = module.get<OrderService>(OrderService);
+
+        // Clear mocks
+        getTransactionList.mockClear();
+        getBuyoutList.mockClear();
+        updateByTransactions.mockClear();
     });
 
     it('should be defined', () => {
@@ -170,10 +176,42 @@ describe('OrderService', () => {
             transaction_type: 'orders',
         };
         await service.updateTransactions(dto);
-        expect(getTransactionList.mock.calls).toHaveLength(1);
-        expect(updateByTransactions.mock.calls).toHaveLength(1);
-        expect(getTransactionList.mock.calls[0]).toEqual([dto]);
-        expect(updateByTransactions.mock.calls[0]).toEqual([[], null]);
+        expect(getTransactionList).toHaveBeenCalledWith(dto);
+        expect(getBuyoutList).toHaveBeenCalledWith({ date_from: '2023-06-16', date_to: '2023-06-16' });
+        expect(updateByTransactions).toHaveBeenCalledWith([], null);
+    });
+
+    it('updateTransactions corrects negative amounts with buyout data', async () => {
+        const dto = {
+            date: {
+                from: new Date('2023-06-16'),
+                to: new Date('2023-06-16'),
+            },
+            transaction_type: 'orders',
+        };
+
+        getTransactionList.mockResolvedValueOnce([
+            { posting_number: '001', amount: -100 },
+            { posting_number: '002', amount: 200 },
+            { posting_number: '003', amount: -50 },
+        ]);
+
+        getBuyoutList.mockResolvedValueOnce([
+            { posting_number: '001', amount: 150 },
+            // '003' not in buyout - should stay negative
+        ]);
+
+        await service.updateTransactions(dto);
+
+        // Check that updateByTransactions received corrected amounts
+        expect(updateByTransactions).toHaveBeenCalledWith(
+            [
+                { posting_number: '001', amount: 50 },   // -100 + 150 = 50
+                { posting_number: '002', amount: 200 },  // unchanged (positive)
+                { posting_number: '003', amount: -50 },  // unchanged (not in buyout)
+            ],
+            null,
+        );
     });
 
     // TODO: этот тест устарел после рефакторинга с кэшированием

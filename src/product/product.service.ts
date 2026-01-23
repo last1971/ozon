@@ -26,6 +26,7 @@ import { IProductable } from 'src/interfaces/i.productable';
 import { ActionListProduct } from 'src/promos/dto/actionsCandidate.dto';
 import { ProductPriceDto } from 'src/price/dto/product.price.dto';
 import { UpdateAttributesBodyDto, UpdateAttributesResponseDto } from './dto/update.attributes.dto';
+import { BuyoutDto } from '../posting/dto/buyout.dto';
 
 @Injectable()
 export class ProductService extends ICountUpdateable implements OnModuleInit, IProductable {
@@ -239,6 +240,11 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
 
     async getTaskInfo(taskId: number): Promise<any> {
         return this.ozonApiService.method('/v1/product/import/info', { task_id: taskId });
+    }
+
+    async getBuyoutList(filter: { date_from: string; date_to: string }): Promise<BuyoutDto[]> {
+        const res = await this.ozonApiService.method('/v1/finance/products/buyout', filter);
+        return res?.products || [];
     }
 
 }
