@@ -15,7 +15,7 @@ export class YandexApiService {
         const yandexSeller = await this.vaultService.get('yandex-seller');
         let response: Observable<AxiosResponse>;
         const headers = {
-            Authorization: `Bearer ${yandexSeller.token as string}`,
+            'Api-Key': yandexSeller.token as string,
         };
         switch (method) {
             case 'post':

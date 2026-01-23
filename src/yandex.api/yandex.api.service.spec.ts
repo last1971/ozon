@@ -38,14 +38,14 @@ describe('YandexApiService', () => {
         let res = await service.method('1', 'hz', {});
         expect(res).toEqual('get');
         expect(get.mock.calls).toHaveLength(1);
-        expect(get.mock.calls[0]).toEqual(['url1', { headers: { Authorization: 'Bearer token' }, params: {} }]);
+        expect(get.mock.calls[0]).toEqual(['url1', { headers: { 'Api-Key': 'token' }, params: {} }]);
         res = await service.method('2', 'put', { put: 1 });
         expect(res).toEqual('put');
         expect(put.mock.calls).toHaveLength(1);
-        expect(put.mock.calls[0]).toEqual(['url2', { put: 1 }, { headers: { Authorization: 'Bearer token' } }]);
+        expect(put.mock.calls[0]).toEqual(['url2', { put: 1 }, { headers: { 'Api-Key': 'token' } }]);
         res = await service.method('3', 'post', { post: 2 });
         expect(res).toEqual('post');
         expect(post.mock.calls).toHaveLength(1);
-        expect(post.mock.calls[0]).toEqual(['url3', { post: 2 }, { headers: { Authorization: 'Bearer token' } }]);
+        expect(post.mock.calls[0]).toEqual(['url3', { post: 2 }, { headers: { 'Api-Key': 'token' } }]);
     });
 });
