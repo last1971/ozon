@@ -63,19 +63,35 @@ export class OrderService {
     }
 
     async updateTransactions(data: TransactionFilterDto): Promise<ResultDto> {
-        /*
-        {
-            date: {
-                from: new Date('2023-06-16'),
-                to: new Date('2023-06-16'),
-            },
-            transaction_type: 'orders',
-        }
-         */
         this.logger.log('updateTransactions: получаем список транзакций из Ozon API');
-        const res = await this.productService.getTransactionList(data);
-        this.logger.log(`updateTransactions: получено ${res.length} транзакций, передаём в updateByTransactions`);
-        return this.invoiceService.updateByTransactions(res, null);
+        const transactions = await this.productService.getTransactionList(data);
+        this.logger.log(`updateTransactions: получено ${transactions.length} транзакций`);
+
+        // Получаем buyout данные за те же даты
+        const dateFrom = new Date(data.date.from).toISOString().split('T')[0];
+        const dateTo = new Date(data.date.to).toISOString().split('T')[0];
+        const buyouts = await this.productService.getBuyoutList({ date_from: dateFrom, date_to: dateTo });
+        this.logger.log(`updateTransactions: получено ${buyouts.length} buyout записей`);
+
+        // Создаём Map для быстрого поиска
+        const buyoutMap = new Map<string, number>();
+        for (const buyout of buyouts) {
+            buyoutMap.set(buyout.posting_number, buyout.amount);
+        }
+
+        // Корректируем отрицательные транзакции
+        let correctedCount = 0;
+        for (const transaction of transactions) {
+            if (transaction.amount < 0 && buyoutMap.has(transaction.posting_number)) {
+                const oldAmount = transaction.amount;
+                transaction.amount += buyoutMap.get(transaction.posting_number);
+                this.logger.log(`Скорректирован ${transaction.posting_number}: ${oldAmount} → ${transaction.amount}`);
+                correctedCount++;
+            }
+        }
+        this.logger.log(`updateTransactions: скорректировано ${correctedCount} отрицательных транзакций`);
+
+        return this.invoiceService.updateByTransactions(transactions, null);
     }
 
     @Cron('0 */5 * * * *', { name: 'checkNewOrders' })
