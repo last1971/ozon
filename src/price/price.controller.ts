@@ -268,7 +268,7 @@ export class PriceController {
         return this.service.getLowPrices(minProfit, minPercent, maxCount);
     }
     @Post('calculate-percents/:sku')
-    @ApiOperation({ summary: 'Calculate and update percents for Ozon products' })
+    @ApiOperation({ summary: 'Calculate and update percents for Ozon products or generic (non-marketplace) products' })
     @ApiParam({
         name: 'sku',
         type: 'string',
@@ -277,8 +277,15 @@ export class PriceController {
         required: true,
     })
     @ApiBody({
-        type: GoodPercentDto,
-        description: 'Partial update of GoodPercentDto',
+        schema: {
+            type: 'object',
+            properties: {
+                adv_perc: { type: 'number', description: 'Advertising percentage' },
+                packing_price: { type: 'number', description: 'Packing price' },
+                available_price: { type: 'number', description: 'Available/market price' },
+                generic: { type: 'boolean', description: 'If true, calculate without Ozon commissions (for products not on Ozon)', default: false },
+            },
+        },
     })
     @ApiResponse({
         status: 200,
@@ -287,9 +294,10 @@ export class PriceController {
     })
     async calculatePercents(
         @Param('sku') sku: string,
-        @Body() goodPercentDto: Partial<GoodPercentDto>,
+        @Body() body: Partial<GoodPercentDto> & { generic?: boolean },
     ): Promise<GoodPercentDto> {
-        return this.extraService.generatePercentsForOzon(sku, goodPercentDto);
+        const { generic, ...goodPercentDto } = body;
+        return this.extraService.generatePercentsForOzon(sku, goodPercentDto, generic);
     }
     @Post('incoming-goods')
     @ApiOperation({ summary: 'Ручной запуск обработки входящих товаров' })

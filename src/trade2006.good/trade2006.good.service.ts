@@ -10,7 +10,6 @@ import {
     getPieces,
     goodCode,
     goodQuantityCoeff,
-    isSkuMatch,
     productQuantity,
     skusToGoodIds,
     StringToIOfferIdableAdapter,
@@ -367,18 +366,36 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
             this,
         );
 
-        const filteredPercents = percents.filter((percent) =>
-            products.some(
-                (product) =>
-                    isSkuMatch(product.getSku(), percent.offer_id.toString(), percent.pieces) &&
-                    this.priceCalculationHelper.getIncomingPrice(product, goods) > 0,
-            ),
-        );
+        const results: GoodPercentDto[] = [];
 
-        return filteredPercents.map((percent: GoodPercentDto) => {
-            const product = products.find((p) => isSkuMatch(p.getSku(), percent.offer_id.toString(), percent.pieces));
+        for (const product of products) {
             const sku = product.getSku();
+            const gCode = goodCode({ offer_id: sku });
+            const gCoeff = goodQuantityCoeff({ offer_id: sku });
+            const incoming_price = this.priceCalculationHelper.getIncomingPrice(product, goods);
+
+            // Пропускаем если нет закупочной цены
+            if (!incoming_price || incoming_price <= 0) {
+                continue;
+            }
+
+            // Ищем существующий percent или создаём дефолтный
+            const existingPercent = percents.find(
+                (p) => p.offer_id.toString() === gCode && p.pieces === gCoeff
+            );
+
             const dto = goodPercentsDto?.get(sku);
+
+            const percent: GoodPercentDto = existingPercent ?? {
+                offer_id: gCode,
+                pieces: gCoeff,
+                old_perc: this.configService.get<number>('PERC_MAX', 50),
+                perc: this.configService.get<number>('PERC_NOR', 25),
+                min_perc: this.configService.get<number>('PERC_MIN', 15),
+                adv_perc: 0,
+                packing_price: this.configService.get<number>('SUM_PACK', 10),
+                available_price: 0,
+            };
 
             const adv_perc = dto?.adv_perc ?? percent.adv_perc;
             const available_price = dto?.available_price ?? percent.available_price;
@@ -387,7 +404,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
             const initialPrice = {
                 adv_perc,
                 fbs_direct_flow_trans_max_amount: product.getTransMaxAmount(),
-                incoming_price: this.priceCalculationHelper.getIncomingPrice(product, goods),
+                incoming_price,
                 available_price,
                 offer_id: sku,
                 sales_percent: product.getSalesPercent(),
@@ -399,7 +416,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
 
             const { min_perc, perc, old_perc } = this.priceCalculationHelper.adjustPercents(initialPrice, service);
 
-            return {
+            results.push({
                 ...percent,
                 perc,
                 old_perc,
@@ -407,8 +424,10 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                 adv_perc,
                 available_price,
                 packing_price,
-            };
-        });
+            });
+        }
+
+        return results;
     }
 
     async updatePercentsForService(
