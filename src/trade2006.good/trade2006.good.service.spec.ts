@@ -662,14 +662,18 @@ describe('Trade2006GoodService', () => {
         expect(result).toEqual([]);
     });
 
-    it('generatePercentsForService returns empty array if percents is empty', async () => {
+    it('generatePercentsForService creates default percent if percents is empty but incoming_price exists', async () => {
         mockPriceCalculationHelper.preparePricesContext.mockResolvedValue({
-            goods: [],
+            goods: [{ code: 1, name: 'Test', price: 100 }],
             percents: [],
             products: [{ getSku: () => '1', getTransMaxAmount: () => 0, getSalesPercent: () => 0 }]
         });
+        mockPriceCalculationHelper.getIncomingPrice.mockReturnValue(100);
+        mockPriceCalculationHelper.adjustPercents.mockReturnValue({ min_perc: 15, perc: 25, old_perc: 50 });
         const result = await service.generatePercentsForService(priceUdateable, ['1']);
-        expect(result).toEqual([]);
+        expect(result.length).toBe(1);
+        expect(result[0].offer_id).toBe('1');
+        expect(result[0].pieces).toBe(1);
     });
 
     it('generatePercentsForService uses percent values if goodPercentsDto does not contain sku', async () => {

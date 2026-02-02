@@ -30,7 +30,7 @@ describe("PriceCalculationHelper", () => {
                                 "MIN_PROFIT_TARGET": 103,
                                 "PRICE_SMOOTHING_OFFSET": 500,
                                 "MIN_PROFIT_RUB": 10,
-                                "MIN_STOCK_PERCENT": 10,
+                                "MIN_STOCK_PERCENT": 80,
                             };
                             return config[key] || defaultValue;
                         })
@@ -539,46 +539,80 @@ describe("PriceCalculationHelper", () => {
         });
     });
 
-    describe('selectCommission', () => {
-        it('should return FBO when FBO is lower and has enough stock', () => {
-            // FBO=5%, FBS=8%, FBO stock=50, FBS stock=50 (50% each, >= 10%)
-            const result = helper.selectCommission(5, 8, 50, 50);
-            expect(result).toBe(5);
+    describe('selectWarehouse', () => {
+        it('should return fbo when fbo has lower commission and 80%+ stock', () => {
+            const result = helper.selectWarehouse(80, 20, 25, 33);
+            expect(result).toBe('fbo');
         });
 
-        it('should return FBS when FBS is lower and has enough stock', () => {
-            // FBO=10%, FBS=6%, FBO stock=50, FBS stock=50
-            const result = helper.selectCommission(10, 6, 50, 50);
-            expect(result).toBe(6);
+        it('should return fbs when fbs has lower commission and 80%+ stock', () => {
+            const result = helper.selectWarehouse(20, 80, 33, 25);
+            expect(result).toBe('fbs');
         });
 
-        it('should not select FBO when FBO stock is below threshold', () => {
-            // FBO=5%, FBS=8%, FBO stock=5, FBS stock=95 (FBO is 5% < 10%)
-            const result = helper.selectCommission(5, 8, 5, 95);
-            expect(result).toBe(8); // fallback to higher stock
+        it('should return warehouse with max commission when min commission warehouse has <80% stock', () => {
+            // fbo has lower commission (25) but only 50% stock
+            const result = helper.selectWarehouse(50, 50, 25, 33);
+            expect(result).toBe('fbs'); // max commission
         });
 
-        it('should not select FBS when FBS stock is below threshold', () => {
-            // FBO=10%, FBS=6%, FBO stock=95, FBS stock=5 (FBS is 5% < 10%)
-            const result = helper.selectCommission(10, 6, 95, 5);
-            expect(result).toBe(10); // fallback to higher stock
+        it('should return fbs when total is 0', () => {
+            const result = helper.selectWarehouse(0, 0, 25, 33);
+            expect(result).toBe('fbs');
         });
 
-        it('should fallback to higher stock when both below threshold', () => {
-            // Both equal, FBO has more stock
-            const result = helper.selectCommission(8, 8, 60, 40);
-            expect(result).toBe(8);
+        it('should return fbo when commissions equal and fbo has 80%+ stock', () => {
+            const result = helper.selectWarehouse(80, 20, 30, 30);
+            expect(result).toBe('fbo');
+        });
+    });
+
+    describe('calculateDelivery', () => {
+        it('should calculate fbs delivery correctly', () => {
+            const commissions = {
+                fbs_direct_flow_trans_max_amount: 100,
+                fbs_direct_flow_trans_min_amount: 50,
+                fbo_direct_flow_trans_max_amount: 80,
+                fbo_direct_flow_trans_min_amount: 40,
+            };
+            const result = helper.calculateDelivery(commissions, 'fbs', 1);
+            expect(result).toBe(75); // (100 + 50) / 2
         });
 
-        it('should return FBS when total is 0', () => {
-            const result = helper.selectCommission(5, 8, 0, 0);
-            expect(result).toBe(8);
+        it('should calculate fbo delivery correctly', () => {
+            const commissions = {
+                fbs_direct_flow_trans_max_amount: 100,
+                fbs_direct_flow_trans_min_amount: 50,
+                fbo_direct_flow_trans_max_amount: 80,
+                fbo_direct_flow_trans_min_amount: 40,
+            };
+            const result = helper.calculateDelivery(commissions, 'fbo', 1);
+            expect(result).toBe(60); // (80 + 40) / 2
         });
 
-        it('should select by stock when commissions are equal', () => {
-            // Equal commissions, FBO has more stock
-            const result = helper.selectCommission(7, 7, 70, 30);
-            expect(result).toBe(7);
+        it('should apply percDirectFlow multiplier', () => {
+            const commissions = {
+                fbs_direct_flow_trans_max_amount: 100,
+                fbs_direct_flow_trans_min_amount: 50,
+                fbo_direct_flow_trans_max_amount: 80,
+                fbo_direct_flow_trans_min_amount: 40,
+            };
+            const result = helper.calculateDelivery(commissions, 'fbs', 1.1);
+            expect(result).toBe(82.5); // 75 * 1.1
+        });
+    });
+
+    describe('getCommission', () => {
+        it('should return fbo commission', () => {
+            const commissions = { sales_percent_fbo: 25, sales_percent_fbs: 33 };
+            const result = helper.getCommission(commissions, 'fbo');
+            expect(result).toBe(25);
+        });
+
+        it('should return fbs commission', () => {
+            const commissions = { sales_percent_fbo: 25, sales_percent_fbs: 33 };
+            const result = helper.getCommission(commissions, 'fbs');
+            expect(result).toBe(33);
         });
     });
 });

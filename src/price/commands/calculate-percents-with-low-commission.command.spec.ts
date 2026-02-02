@@ -24,7 +24,7 @@ describe('CalculatePercentsWithLowCommissionCommand', () => {
         } as any;
         priceCalculationHelper = {
             adjustPercents: jest.fn().mockReturnValue({ min_perc: 30, perc: 50, old_perc: 100 }),
-            selectCommission: jest.fn((fbo, fbs) => fbo < fbs ? fbo : fbs),
+            selectWarehouse: jest.fn(() => 'fbs'),
         } as any;
         command = new CalculatePercentsWithLowCommissionCommand(priceService, priceCalculationHelper);
     });
@@ -90,6 +90,7 @@ describe('CalculatePercentsWithLowCommissionCommand', () => {
 
     it('should use lower commission (FBO) when FBO stock is sufficient', async () => {
         priceService.getCommission.mockResolvedValue({ fbo: 0.15, fbs: 0.2 });
+        priceCalculationHelper.selectWarehouse.mockReturnValue('fbo');
 
         const context: IGoodsProcessingContext = {
             skus: [],
@@ -97,8 +98,8 @@ describe('CalculatePercentsWithLowCommissionCommand', () => {
                 {
                     offer_id: 'sku1',
                     typeId: 123,
-                    fboCount: 10,
-                    fbsCount: 5,
+                    fboCount: 80,
+                    fbsCount: 20,
                     incoming_price: 100,
                     available_price: 0,
                     sum_pack: 10,

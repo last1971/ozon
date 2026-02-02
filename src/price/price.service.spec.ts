@@ -21,7 +21,11 @@ describe('PriceService', () => {
     const updatePriceForService = jest.fn().mockResolvedValue({ result: [] });
     const mockPriceCalculationHelper = {
         provide: PriceCalculationHelper,
-        useValue: { selectCommission: jest.fn((fbo, fbs) => fbo < fbs ? fbo : fbs) },
+        useValue: {
+            selectWarehouse: jest.fn(() => 'fbs'),
+            getCommission: jest.fn((commissions, warehouse) => warehouse === 'fbo' ? commissions.sales_percent_fbo : commissions.sales_percent_fbs),
+            calculateDelivery: jest.fn((commissions, warehouse, percDirectFlow) => (commissions.fbs_direct_flow_trans_max_amount + commissions.fbs_direct_flow_trans_min_amount) / 2 * percDirectFlow),
+        },
     };
 
     beforeEach(async () => {

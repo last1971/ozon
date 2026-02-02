@@ -32,34 +32,57 @@ export class PriceCalculationHelper {
         private readonly configService: ConfigService
     ) {
         this.MIN_PROFIT_RUB = this.configService.get<number>('MIN_PROFIT_RUB', 20);
-        this.MIN_STOCK_PERCENT = this.configService.get<number>('MIN_STOCK_PERCENT', 10);
+        this.MIN_STOCK_PERCENT = this.configService.get<number>('MIN_STOCK_PERCENT', 80);
     }
 
-    /**
-     * Выбирает коэффициент FBO или FBS
-     * - Выбирается тот, который ниже
-     * - Но только если его остаток >= MIN_STOCK_PERCENT от общего
-     */
-    selectCommission(
-        fboValue: number,
-        fbsValue: number,
+    selectWarehouse(
         fboCount: number,
         fbsCount: number,
-    ): number {
+        fboCommission: number,
+        fbsCommission: number,
+    ): 'fbo' | 'fbs' {
         const total = fboCount + fbsCount;
-        if (total === 0) return fbsValue;
+        if (total === 0) return 'fbs';
 
         const fboPercent = (fboCount / total) * 100;
         const fbsPercent = (fbsCount / total) * 100;
 
-        if (fboValue < fbsValue && fboPercent >= this.MIN_STOCK_PERCENT) {
-            return fboValue;
-        }
-        if (fbsValue < fboValue && fbsPercent >= this.MIN_STOCK_PERCENT) {
-            return fbsValue;
+        const minCommWarehouse = fboCommission <= fbsCommission ? 'fbo' : 'fbs';
+        const minCommPercent = minCommWarehouse === 'fbo' ? fboPercent : fbsPercent;
+
+        if (minCommPercent >= this.MIN_STOCK_PERCENT) {
+            return minCommWarehouse;
         }
 
-        return fboCount > fbsCount ? fboValue : fbsValue;
+        return fboCommission > fbsCommission ? 'fbo' : 'fbs';
+    }
+
+    calculateDelivery(
+        commissions: {
+            fbs_direct_flow_trans_max_amount: number;
+            fbs_direct_flow_trans_min_amount: number;
+            fbo_direct_flow_trans_max_amount: number;
+            fbo_direct_flow_trans_min_amount: number;
+        },
+        warehouse: 'fbo' | 'fbs',
+        percDirectFlow: number,
+    ): number {
+        const max = warehouse === 'fbo'
+            ? commissions.fbo_direct_flow_trans_max_amount
+            : commissions.fbs_direct_flow_trans_max_amount;
+        const min = warehouse === 'fbo'
+            ? commissions.fbo_direct_flow_trans_min_amount
+            : commissions.fbs_direct_flow_trans_min_amount;
+        return (max + min) / 2 * percDirectFlow;
+    }
+
+    getCommission(
+        commissions: { sales_percent_fbo: number; sales_percent_fbs: number },
+        warehouse: 'fbo' | 'fbs',
+    ): number {
+        return warehouse === 'fbo'
+            ? commissions.sales_percent_fbo
+            : commissions.sales_percent_fbs;
     }
 
     async preparePricesContext(

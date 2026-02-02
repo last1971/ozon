@@ -116,6 +116,12 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                     available_price: 0,
                 };
                 const productInfo = productsInfos.find((info) => info.sku === item.offer_id);
+                const warehouse = this.priceCalculationHelper.selectWarehouse(
+                    productInfo?.fboCount || 0,
+                    productInfo?.fbsCount || 0,
+                    item.commissions.sales_percent_fbo,
+                    item.commissions.sales_percent_fbs,
+                );
 
                 return {
                     product_id: item.product_id,
@@ -132,17 +138,12 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                     perc: percent.perc,
                     old_perc: percent.old_perc,
                     adv_perc: percent.adv_perc,
-                    sales_percent: this.priceCalculationHelper.selectCommission(
-                        item.commissions.sales_percent_fbo,
-                        item.commissions.sales_percent_fbs,
-                        productInfo?.fboCount || 0,
-                        productInfo?.fbsCount || 0,
-                    ),
-                    fbs_direct_flow_trans_max_amount:
-                        ((item.commissions.fbs_direct_flow_trans_max_amount +
-                            item.commissions.fbs_direct_flow_trans_min_amount) /
-                            2) *
+                    sales_percent: this.priceCalculationHelper.getCommission(item.commissions, warehouse),
+                    fbs_direct_flow_trans_max_amount: this.priceCalculationHelper.calculateDelivery(
+                        item.commissions,
+                        warehouse,
                         percDirectFlow,
+                    ),
                     auto_action_enabled: item.price.auto_action_enabled,
                     sum_pack: percent.packing_price,
                     fbsCount: productInfo?.fbsCount || 0,
@@ -202,7 +203,7 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
             const counts = await this.product.infoList(skusBatch);
             for (const product of items) {
                 const productInfo = counts.find((info) => info.sku === product.offer_id);
-                allResults.push(new OzonProductCoeffsAdapter(product, percDirectFlow, productInfo));
+                allResults.push(new OzonProductCoeffsAdapter(product, percDirectFlow, productInfo, this.priceCalculationHelper));
             }
         });
 

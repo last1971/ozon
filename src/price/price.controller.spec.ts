@@ -179,7 +179,7 @@ describe('PriceController', () => {
     describe('getUnprofitableReport', () => {
         it('should return xlsx file with correct headers', async () => {
             const mockBuffer = Buffer.from('test xlsx content');
-            extraPriceService.getUnprofitableReport.mockResolvedValue(mockBuffer);
+            extraPriceService.getUnprofitableReport.mockResolvedValue(mockBuffer as any);
 
             const mockResponse = {
                 contentType: jest.fn().mockReturnThis(),
@@ -199,7 +199,7 @@ describe('PriceController', () => {
 
         it('should call getUnprofitableReport on extraService', async () => {
             const mockBuffer = Buffer.from('test');
-            extraPriceService.getUnprofitableReport.mockResolvedValue(mockBuffer);
+            extraPriceService.getUnprofitableReport.mockResolvedValue(mockBuffer as any);
 
             const mockResponse = {
                 contentType: jest.fn().mockReturnThis(),
