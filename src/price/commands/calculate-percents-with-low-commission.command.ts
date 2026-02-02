@@ -75,12 +75,13 @@ export class CalculatePercentsWithLowCommissionCommand implements ICommandAsync<
             if (!commission) continue;
 
             // FBO или FBS в зависимости от остатков и комиссий
-            const newSalesPercent = this.priceCalculationHelper.selectCommission(
-                commission.fbo * 100,
-                commission.fbs * 100,
+            const warehouse = this.priceCalculationHelper.selectWarehouse(
                 price.fboCount,
                 price.fbsCount,
+                commission.fbo * 100,
+                commission.fbs * 100,
             );
+            const newSalesPercent = warehouse === 'fbo' ? commission.fbo * 100 : commission.fbs * 100;
 
             const incomingPrice = price.available_price > 0 ? price.available_price : price.incoming_price;
             const initialPrice = {

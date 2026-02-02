@@ -2,6 +2,8 @@ export class ProductPriceDto {
     commissions: {
         fbs_direct_flow_trans_max_amount: number;
         fbs_direct_flow_trans_min_amount: number;
+        fbo_direct_flow_trans_max_amount: number;
+        fbo_direct_flow_trans_min_amount: number;
         sales_percent_fbs: number;
         sales_percent_fbo: number;
     };
