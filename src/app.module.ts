@@ -45,6 +45,8 @@ import { AvitoCardModule } from './avito.card/avito.card.module';
 import { AvitoPriceModule } from './avito.price/avito.price.module';
 import { SyliusModule } from './sylius/sylius.module';
 import { SyliusPriceModule } from './sylius.price/sylius.price.module';
+import { AIModule } from './ai/ai.module';
+import { AIProductModule } from './ai.product/ai.product.module';
 import JSONbig from 'json-bigint';
 
 @Module({
@@ -145,6 +147,8 @@ import JSONbig from 'json-bigint';
         AvitoPriceModule,
         SyliusModule,
         SyliusPriceModule,
+        AIModule,
+        AIProductModule,
     ],
     controllers: [AppController],
     providers: [AppService, CronSetupProviderService],
