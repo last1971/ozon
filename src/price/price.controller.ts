@@ -510,40 +510,6 @@ export class PriceController {
         return this.extraService.updateVatForAllMismatches(body.service, body.vat, body.limit);
     }
 
-    @Post('ozon/load-commissions')
-    @ApiOperation({ summary: 'Загрузить таблицу комиссий Ozon из XLSX файла' })
-    @ApiConsumes('multipart/form-data')
-    @ApiBody({
-        schema: {
-            type: 'object',
-            properties: {
-                file: {
-                    type: 'string',
-                    format: 'binary',
-                    description: 'XLSX файл с комиссиями Ozon (колонки: Категория, Тип товара, FBO 100-300, FBS 100-300)',
-                },
-            },
-        },
-    })
-    @ApiOkResponse({
-        description: 'Количество загруженных записей',
-        schema: {
-            type: 'object',
-            properties: {
-                loaded: { type: 'number', description: 'Количество загруженных комиссий' },
-            },
-        },
-    })
-    @UseInterceptors(FileInterceptor('file'))
-    async loadOzonCommissions(
-        @UploadedFile('file') file: Express.Multer.File,
-    ): Promise<{ loaded: number }> {
-        if (!file) {
-            throw new HttpException('File is required', 400);
-        }
-        return this.service.loadCommissionsFromXlsx(file.buffer);
-    }
-
     @Post('ozon/optimize-prices')
     @ApiOperation({ summary: 'Оптимизация цен Ozon для товаров с ценой > 300₽' })
     @ApiOkResponse({

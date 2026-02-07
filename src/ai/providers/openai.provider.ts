@@ -19,7 +19,7 @@ import {
 export class OpenAIProvider implements AIProvider {
     readonly name = AIProviderName.OPENAI;
     private logger = new Logger(OpenAIProvider.name);
-    private readonly baseUrl = process.env.OPENAI_PROXY_URL || 'https://api.openai.com';
+    private readonly baseUrl = 'https://api.openai.com';
     private proxyAgent: HttpsProxyAgent<string> | null = null;
 
     constructor(
@@ -220,5 +220,96 @@ export class OpenAIProvider implements AIProvider {
             },
             finish_reason: choice.finish_reason,
         };
+    }
+
+    /**
+     * Генерирует embedding вектор для текста
+     * @param text Текст для векторизации
+     * @param model Модель (по умолчанию text-embedding-3-small, 1536 dimensions)
+     * @returns Массив чисел (вектор)
+     */
+    async generateEmbedding(text: string, model = 'text-embedding-3-small'): Promise<number[]> {
+        const config = await this.vaultService.get('ai/openai');
+
+        const body = {
+            model,
+            input: text,
+        };
+
+        const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${config.API_KEY}`,
+        };
+
+        if (config.ORG_ID) {
+            headers['OpenAI-Organization'] = config.ORG_ID as string;
+        }
+
+        const proxyAgent = await this.getProxyAgent();
+
+        const response = await firstValueFrom(
+            this.httpService
+                .post(`${this.baseUrl}/v1/embeddings`, body, {
+                    headers,
+                    ...(proxyAgent && { httpsAgent: proxyAgent, proxy: false }),
+                })
+                .pipe(
+                    catchError(async (error: AxiosError) => {
+                        this.logger.error(
+                            `OpenAI Embedding Error: ${error.message} ${JSON.stringify(error.response?.data)}`,
+                        );
+                        throw error;
+                    }),
+                ),
+        );
+
+        return response.data.data[0].embedding;
+    }
+
+    /**
+     * Генерирует embeddings для нескольких текстов батчем
+     * @param texts Массив текстов
+     * @param model Модель
+     * @returns Массив векторов
+     */
+    async generateEmbeddings(texts: string[], model = 'text-embedding-3-small'): Promise<number[][]> {
+        const config = await this.vaultService.get('ai/openai');
+
+        const body = {
+            model,
+            input: texts,
+        };
+
+        const headers: Record<string, string> = {
+            'Content-Type': 'application/json',
+            Authorization: `Bearer ${config.API_KEY}`,
+        };
+
+        if (config.ORG_ID) {
+            headers['OpenAI-Organization'] = config.ORG_ID as string;
+        }
+
+        const proxyAgent = await this.getProxyAgent();
+
+        const response = await firstValueFrom(
+            this.httpService
+                .post(`${this.baseUrl}/v1/embeddings`, body, {
+                    headers,
+                    ...(proxyAgent && { httpsAgent: proxyAgent, proxy: false }),
+                })
+                .pipe(
+                    catchError(async (error: AxiosError) => {
+                        this.logger.error(
+                            `OpenAI Embeddings Error: ${error.message} ${JSON.stringify(error.response?.data)}`,
+                        );
+                        throw error;
+                    }),
+                ),
+        );
+
+        // Сортируем по index чтобы порядок соответствовал входным текстам
+        return response.data.data
+            .sort((a: any, b: any) => a.index - b.index)
+            .map((item: any) => item.embedding);
     }
 }

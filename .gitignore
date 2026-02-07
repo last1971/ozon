@@ -42,3 +42,6 @@ lerna-debug.log*
 .env.elcopro 
 .env.magazin
 .env.opt
+
+# HNSW index
+data/ozon_categories.hnsw

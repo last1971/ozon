@@ -11,7 +11,6 @@ import { ExtraPriceService } from "./extra.price.service";
 describe('PriceController', () => {
     let controller: PriceController;
     let extraPriceService: jest.Mocked<ExtraPriceService>;
-    let priceService: jest.Mocked<PriceService>;
 
     beforeEach(async () => {
         const mockExtraPriceService = {
@@ -23,7 +22,6 @@ describe('PriceController', () => {
 
         const mockPriceService = {
             updateVat: jest.fn(),
-            loadCommissionsFromXlsx: jest.fn(),
         };
 
         const module: TestingModule = await Test.createTestingModule({
@@ -40,7 +38,6 @@ describe('PriceController', () => {
 
         controller = module.get<PriceController>(PriceController);
         extraPriceService = module.get<ExtraPriceService>(ExtraPriceService) as jest.Mocked<ExtraPriceService>;
-        priceService = module.get<PriceService>(PriceService) as jest.Mocked<PriceService>;
     });
 
     it('should be defined', () => {
@@ -213,24 +210,4 @@ describe('PriceController', () => {
         });
     });
 
-    describe('loadOzonCommissions', () => {
-        it('should load commissions from xlsx file', async () => {
-            const mockBuffer = Buffer.from('test xlsx');
-            const mockFile = { buffer: mockBuffer } as Express.Multer.File;
-            priceService.loadCommissionsFromXlsx.mockResolvedValue({ loaded: 100 });
-
-            const result = await controller.loadOzonCommissions(mockFile);
-
-            expect(priceService.loadCommissionsFromXlsx).toHaveBeenCalledWith(mockBuffer);
-            expect(result).toEqual({ loaded: 100 });
-        });
-
-        it('should throw error if file is not provided', async () => {
-            await expect(controller.loadOzonCommissions(null as any)).rejects.toThrow('File is required');
-        });
-
-        it('should throw error if file is undefined', async () => {
-            await expect(controller.loadOzonCommissions(undefined as any)).rejects.toThrow('File is required');
-        });
-    });
 });

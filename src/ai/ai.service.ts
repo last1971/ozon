@@ -74,6 +74,22 @@ export class AIService {
         return this.getProvider(provider).estimateCost(inputTokens, outputTokens, model);
     }
 
+    /**
+     * Генерирует embedding для текста (только OpenAI)
+     */
+    async generateEmbedding(text: string, model = 'text-embedding-3-small'): Promise<number[]> {
+        const provider = this.providers.get(AIProviderName.OPENAI) as OpenAIProvider;
+        return provider.generateEmbedding(text, model);
+    }
+
+    /**
+     * Генерирует embeddings для нескольких текстов батчем (только OpenAI)
+     */
+    async generateEmbeddings(texts: string[], model = 'text-embedding-3-small'): Promise<number[][]> {
+        const provider = this.providers.get(AIProviderName.OPENAI) as OpenAIProvider;
+        return provider.generateEmbeddings(texts, model);
+    }
+
     private getProvider(name: AIProviderName): AIProvider {
         const provider = this.providers.get(name);
         if (!provider) {

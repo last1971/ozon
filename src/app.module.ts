@@ -47,6 +47,7 @@ import { SyliusModule } from './sylius/sylius.module';
 import { SyliusPriceModule } from './sylius.price/sylius.price.module';
 import { AIModule } from './ai/ai.module';
 import { AIProductModule } from './ai.product/ai.product.module';
+import { OzonCategoryModule } from './ozon.category/ozon.category.module';
 import JSONbig from 'json-bigint';
 
 @Module({
@@ -149,6 +150,7 @@ import JSONbig from 'json-bigint';
         SyliusPriceModule,
         AIModule,
         AIProductModule,
+        OzonCategoryModule,
     ],
     controllers: [AppController],
     providers: [AppService, CronSetupProviderService],

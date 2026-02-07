@@ -5,7 +5,7 @@ export class ChatRequestDto {
     @ApiProperty({ type: [Object], description: 'Массив сообщений' })
     messages: AIChatMessage[];
 
-    @ApiPropertyOptional({ description: 'Модель для использования' })
+    @ApiPropertyOptional({ description: 'Модель для использования', example: 'claude-sonnet-4-5-20250929' })
     model?: string;
 
     @ApiPropertyOptional({ description: 'Максимальное количество токенов' })
@@ -16,4 +16,7 @@ export class ChatRequestDto {
 
     @ApiPropertyOptional({ description: 'Системный промпт' })
     system?: string;
+
+    @ApiPropertyOptional({ description: 'Включить web search (Anthropic)', example: true })
+    web_search?: boolean;
 }
