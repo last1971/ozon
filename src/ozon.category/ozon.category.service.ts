@@ -9,6 +9,16 @@ import Excel from 'exceljs';
 import { HierarchicalNSW } from 'hnswlib-node';
 import * as fs from 'fs';
 import * as path from 'path';
+import { CommandChainAsync } from '../helpers/command/command.chain.async';
+import { CreateProductInput, IProductCreateContext } from './interfaces/product-create.context';
+import { GenerateNameCommand } from './commands/generate-name.command';
+import { FindCategoryCommand } from './commands/find-category.command';
+import { LoadRequiredAttributesCommand } from './commands/load-required-attributes.command';
+import { GenerateAttributeValuesCommand } from './commands/generate-attribute-values.command';
+import { ResolveDictionaryValuesCommand } from './commands/resolve-dictionary-values.command';
+import { BuildProductJsonCommand } from './commands/build-product-json.command';
+import { SubmitProductCommand } from './commands/submit-product.command';
+import { OzonApiService } from '../ozon.api/ozon.api.service';
 
 interface CategoryNode {
     description_category_id?: number;
@@ -98,6 +108,14 @@ export class OzonCategoryService implements OnModuleInit {
         private aiService: AIService,
         private cacheManager: Cache,
         private configService: ConfigService,
+        private generateNameCommand: GenerateNameCommand,
+        private findCategoryCommand: FindCategoryCommand,
+        private loadRequiredAttributesCommand: LoadRequiredAttributesCommand,
+        private generateAttributeValuesCommand: GenerateAttributeValuesCommand,
+        private resolveDictionaryValuesCommand: ResolveDictionaryValuesCommand,
+        private buildProductJsonCommand: BuildProductJsonCommand,
+        private submitProductCommand: SubmitProductCommand,
+        private ozonApiService: OzonApiService,
     ) {
         this.attrValuesLimit = this.configService.get<number>('ATTR_VALUES_LIMIT', 20);
     }
@@ -536,6 +554,25 @@ export class OzonCategoryService implements OnModuleInit {
 
         this.logger.log(`getCategoryAttributes: done, ${attributes.length} attributes`);
         return { description_category_id: desc_cat_id, type_id, attributes };
+    }
+
+    // ========== Product Create ==========
+
+    async createProduct(input: CreateProductInput): Promise<IProductCreateContext> {
+        const chain = new CommandChainAsync<IProductCreateContext>([
+            this.generateNameCommand,
+            this.findCategoryCommand,
+            this.loadRequiredAttributesCommand,
+            this.generateAttributeValuesCommand,
+            this.resolveDictionaryValuesCommand,
+            this.buildProductJsonCommand,
+            this.submitProductCommand,
+        ]);
+        return chain.execute({ input, logger: this.logger });
+    }
+
+    async getImportInfo(taskId: number): Promise<any> {
+        return this.ozonApiService.method('/v1/product/import/info', { task_id: taskId });
     }
 
     // ========== Utils ==========

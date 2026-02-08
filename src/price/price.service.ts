@@ -6,7 +6,7 @@ import { ConfigService } from '@nestjs/config';
 import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
 import { PriceResponseDto } from './dto/price.response.dto';
 import { PriceDto } from './dto/price.dto';
-import { calculatePay, calculatePrice, goodCode, goodQuantityCoeff } from '../helpers';
+import { calculatePay, calculatePrice, goodCode, goodQuantityCoeff, numberToVat } from '../helpers';
 import { GoodPercentDto } from '../good/dto/good.percent.dto';
 import { UpdatePriceDto, UpdatePricesDto } from './dto/update.price.dto';
 import { chunk, toNumber } from 'lodash';
@@ -57,27 +57,10 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                 return 0;
         }
     }
-
-    /**
-     * Преобразует число (проценты) в формат НДС для Озона (строка как доля)
-     * 5 -> '0.05', 7 -> '0.07', 10 -> '0.1', 20 -> '0.2', 22 -> '0.22', остальное -> '0'
-     */
     numberToVat(vat: number): string {
-        switch (vat) {
-            case 5:
-                return '0.05';
-            case 7:
-                return '0.07';
-            case 10:
-                return '0.1';
-            case 20:
-                return '0.2';
-            case 22:
-                return '0.22';
-            default:
-                return '0';
-        }
+        return numberToVat(vat);
     }
+
     async preset(): Promise<PricePresetDto> {
         return {
             perc_min: toNumber(this.configService.get<number>('PERC_MIN', 15)),

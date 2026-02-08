@@ -5,6 +5,14 @@ import { ProductService } from '../product/product.service';
 import { AIService } from '../ai/ai.service';
 import { FIREBIRD } from '../firebird/firebird.module';
 import { Cache } from '@nestjs/cache-manager';
+import { GenerateNameCommand } from './commands/generate-name.command';
+import { FindCategoryCommand } from './commands/find-category.command';
+import { LoadRequiredAttributesCommand } from './commands/load-required-attributes.command';
+import { GenerateAttributeValuesCommand } from './commands/generate-attribute-values.command';
+import { ResolveDictionaryValuesCommand } from './commands/resolve-dictionary-values.command';
+import { BuildProductJsonCommand } from './commands/build-product-json.command';
+import { SubmitProductCommand } from './commands/submit-product.command';
+import { OzonApiService } from '../ozon.api/ozon.api.service';
 
 describe('OzonCategoryService', () => {
     let service: OzonCategoryService;
@@ -30,6 +38,14 @@ describe('OzonCategoryService', () => {
                 { provide: FIREBIRD, useValue: {} },
                 { provide: Cache, useValue: { get: jest.fn(), set: jest.fn() } },
                 { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue(20) } },
+                { provide: GenerateNameCommand, useValue: {} },
+                { provide: FindCategoryCommand, useValue: {} },
+                { provide: LoadRequiredAttributesCommand, useValue: {} },
+                { provide: GenerateAttributeValuesCommand, useValue: {} },
+                { provide: ResolveDictionaryValuesCommand, useValue: {} },
+                { provide: BuildProductJsonCommand, useValue: {} },
+                { provide: SubmitProductCommand, useValue: {} },
+                { provide: OzonApiService, useValue: { method: jest.fn() } },
             ],
         }).compile();
 

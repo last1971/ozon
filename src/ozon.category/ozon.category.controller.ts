@@ -2,6 +2,7 @@ import { Body, Controller, Get, Post, Query, UploadedFile, UseInterceptors } fro
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiConsumes, ApiBody, ApiQuery } from '@nestjs/swagger';
 import { OzonCategoryService, SearchResult, CommissionRange, CategoryAttributesResult } from './ozon.category.service';
+import { CreateProductInput } from './interfaces/product-create.context';
 
 @ApiTags('Ozon Category')
 @Controller('ozon-category')
@@ -97,5 +98,29 @@ export class OzonCategoryController {
     @ApiQuery({ name: 'typeId', type: Number, description: 'ID типа товара' })
     async getCommissions(@Query('typeId') typeId: number): Promise<{ fbo: CommissionRange[]; fbs: CommissionRange[] } | null> {
         return this.ozonCategoryService.getCommissions(Number(typeId));
+    }
+
+    @Post('create-product')
+    @ApiOperation({ summary: 'Создать карточку товара через AI и отправить в Ozon' })
+    async createProduct(@Body() input: CreateProductInput) {
+        const result = await this.ozonCategoryService.createProduct(input);
+        return {
+            task_id: result.task_id,
+            product_json: result.product_json,
+            generated_name: result.generated_name,
+            category_path: result.category_path,
+            fbs_commission: result.fbs_commission,
+            costs: {
+                name: result.name_cost,
+                attributes: result.ai_cost,
+            },
+        };
+    }
+
+    @Get('import-info')
+    @ApiOperation({ summary: 'Проверить статус импорта товара по task_id' })
+    @ApiQuery({ name: 'task_id', type: Number, description: 'ID задачи из create-product' })
+    async getImportInfo(@Query('task_id') taskId: number) {
+        return this.ozonCategoryService.getImportInfo(Number(taskId));
     }
 }
