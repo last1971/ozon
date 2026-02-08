@@ -1,6 +1,6 @@
 import { Inject, Injectable, forwardRef } from '@nestjs/common';
 import { ICommandAsync } from '../../interfaces/i.command.acync';
-import { IProductCreateContext } from '../interfaces/product-create.context';
+import { IProductCreateContext, getProductName } from '../interfaces/product-create.context';
 import { OzonCategoryService } from '../ozon.category.service';
 import { FIREBIRD } from '../../firebird/firebird.module';
 import { FirebirdPool } from 'ts-firebird';
@@ -13,7 +13,7 @@ export class FindCategoryCommand implements ICommandAsync<IProductCreateContext>
     ) {}
 
     async execute(context: IProductCreateContext): Promise<IProductCreateContext> {
-        const name = context.generated_name || context.input.text;
+        const name = getProductName(context);
         context.logger?.log(`Поиск категории для: "${name}"`);
 
         const results = await this.ozonCategoryService.searchSimilar(name, 5);
@@ -23,17 +23,8 @@ export class FindCategoryCommand implements ICommandAsync<IProductCreateContext>
             return context;
         }
 
-        // Выбираем категорию с наименьшей FBS комиссией
-        let best = results[0];
-        for (let i = 1; i < results.length; i++) {
-            if (
-                results[i].fbsCommission !== null &&
-                best.fbsCommission !== null &&
-                results[i].fbsCommission < best.fbsCommission
-            ) {
-                best = results[i];
-            }
-        }
+        // Берём самую релевантную категорию (первый результат поиска)
+        const best = results[0];
 
         // Получаем description_category_id из БД
         const t = await this.pool.getTransaction();

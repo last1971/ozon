@@ -42,6 +42,50 @@ describe('ResolveDictionaryValuesCommand', () => {
         expect(result.resolved_attributes![0].values[0].value).toBe('Samsung');
     });
 
+    it('should match via includes: "тайвань" → "Китай (Тайвань)"', async () => {
+        const productService = {
+            getCategoryAttributeValues: jest.fn().mockResolvedValue([
+                { id: 90317, value: 'Китай (Тайвань)' },
+                { id: 90318, value: 'Китай' },
+            ]),
+        } as any;
+        const command = new ResolveDictionaryValuesCommand(productService);
+        const context: IProductCreateContext = {
+            input: { text: 'x' } as CreateProductInput,
+            ai_attributes: [{ id: 4389, value: 'Тайвань' }],
+            required_attributes: [{ id: 4389, name: 'Страна', dictionary_id: 100, values_count: 500 }] as any,
+            description_category_id: 1,
+            type_id: 2,
+        };
+
+        const result = await command.execute(context);
+
+        expect(result.resolved_attributes![0].values[0].dictionary_value_id).toBe(90317);
+        expect(result.resolved_attributes![0].values[0].value).toBe('Китай (Тайвань)');
+    });
+
+    it('should match via reverseIncludes: "Защита от перегрева" → "перегрев"', async () => {
+        const productService = {
+            getCategoryAttributeValues: jest.fn().mockResolvedValue([
+                { id: 100, value: 'перегрев' },
+                { id: 200, value: 'короткое замыкание' },
+            ]),
+        } as any;
+        const command = new ResolveDictionaryValuesCommand(productService);
+        const context: IProductCreateContext = {
+            input: { text: 'x' } as CreateProductInput,
+            ai_attributes: [{ id: 55, value: 'Защита от перегрева' }],
+            required_attributes: [{ id: 55, name: 'Защита', dictionary_id: 10, values_count: 100 }] as any,
+            description_category_id: 1,
+            type_id: 2,
+        };
+
+        const result = await command.execute(context);
+
+        expect(result.resolved_attributes![0].values[0].dictionary_value_id).toBe(100);
+        expect(result.resolved_attributes![0].values[0].value).toBe('перегрев');
+    });
+
     it('should fallback to text when no match in large dictionary', async () => {
         const productService = {
             getCategoryAttributeValues: jest.fn().mockResolvedValue([{ id: 1, value: 'Other' }]),
@@ -79,6 +123,26 @@ describe('ResolveDictionaryValuesCommand', () => {
 
         expect(result.resolved_attributes![0].values[0].dictionary_value_id).toBe(10);
         expect(productService.getCategoryAttributeValues).not.toHaveBeenCalled();
+    });
+
+    it('should fallback to text in small dictionary when no match', async () => {
+        const productService = { getCategoryAttributeValues: jest.fn() } as any;
+        const command = new ResolveDictionaryValuesCommand(productService);
+        const context: IProductCreateContext = {
+            input: { text: 'x' } as CreateProductInput,
+            ai_attributes: [{ id: 85, value: 'Винтовые клеммы' }],
+            required_attributes: [{
+                id: 85, name: 'Коннектор', dictionary_id: 100,
+                values: [{ id: 10, value: '3 Hole' }, { id: 20, value: 'USB' }],
+            }] as any,
+            description_category_id: 1,
+            type_id: 2,
+        };
+
+        const result = await command.execute(context);
+
+        expect(result.resolved_attributes![0].values[0].dictionary_value_id).toBeUndefined();
+        expect(result.resolved_attributes![0].values[0].value).toBe('Винтовые клеммы');
     });
 
     it('should output free text for attributes without dictionary', async () => {

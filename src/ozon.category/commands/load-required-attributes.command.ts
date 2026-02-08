@@ -1,10 +1,7 @@
 import { Inject, Injectable, forwardRef } from '@nestjs/common';
 import { ICommandAsync } from '../../interfaces/i.command.acync';
-import { IProductCreateContext } from '../interfaces/product-create.context';
+import { IProductCreateContext, MANUAL_ATTRIBUTE_IDS } from '../interfaces/product-create.context';
 import { OzonCategoryService } from '../ozon.category.service';
-
-// Атрибуты, заполняемые программно (не через AI)
-const MANUAL_ATTRIBUTE_IDS = new Set([4191, 4383, 23171, 23249, 23518]);
 
 @Injectable()
 export class LoadRequiredAttributesCommand implements ICommandAsync<IProductCreateContext> {
@@ -22,12 +19,13 @@ export class LoadRequiredAttributesCommand implements ICommandAsync<IProductCrea
 
         const result = await this.ozonCategoryService.getCategoryAttributes(description_category_id, type_id);
 
+        const allMode = !!context.input.all_attributes;
         context.required_attributes = result.attributes.filter(
-            (a) => a.is_required && !MANUAL_ATTRIBUTE_IDS.has(a.id),
+            (a) => (allMode || a.is_required) && !MANUAL_ATTRIBUTE_IDS.has(a.id),
         );
 
         context.logger?.log(
-            `Всего атрибутов: ${result.attributes.length}, обязательных для AI: ${context.required_attributes.length}`,
+            `Всего атрибутов: ${result.attributes.length}, для AI: ${context.required_attributes.length} (${allMode ? 'все' : 'только обязательные'})`,
         );
         return context;
     }

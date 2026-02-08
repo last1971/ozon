@@ -10,6 +10,8 @@ import { FindCategoryCommand } from './commands/find-category.command';
 import { LoadRequiredAttributesCommand } from './commands/load-required-attributes.command';
 import { GenerateAttributeValuesCommand } from './commands/generate-attribute-values.command';
 import { ResolveDictionaryValuesCommand } from './commands/resolve-dictionary-values.command';
+import { ExpandVariantsCommand } from './commands/expand-variants.command';
+import { ResolvePackagingCommand } from './commands/resolve-packaging.command';
 import { BuildProductJsonCommand } from './commands/build-product-json.command';
 import { SubmitProductCommand } from './commands/submit-product.command';
 import { OzonApiService } from '../ozon.api/ozon.api.service';
@@ -43,6 +45,8 @@ describe('OzonCategoryService', () => {
                 { provide: LoadRequiredAttributesCommand, useValue: {} },
                 { provide: GenerateAttributeValuesCommand, useValue: {} },
                 { provide: ResolveDictionaryValuesCommand, useValue: {} },
+                { provide: ExpandVariantsCommand, useValue: {} },
+                { provide: ResolvePackagingCommand, useValue: {} },
                 { provide: BuildProductJsonCommand, useValue: {} },
                 { provide: SubmitProductCommand, useValue: {} },
                 { provide: OzonApiService, useValue: { method: jest.fn() } },

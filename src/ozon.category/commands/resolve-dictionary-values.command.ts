@@ -3,6 +3,20 @@ import { ICommandAsync } from '../../interfaces/i.command.acync';
 import { IProductCreateContext } from '../interfaces/product-create.context';
 import { ProductService } from '../../product/product.service';
 
+function findInDictionary(aiValue: string, values: { id: number; value: string }[]): { id: number; value: string } | undefined {
+    const lower = aiValue.toLowerCase();
+    // Точное совпадение
+    const exact = values.find((v) => v.value.toLowerCase() === lower);
+    if (exact) return exact;
+    // Словарное значение содержит AI-текст: "Китай (Тайвань)" includes "тайвань"
+    const includes = values.find((v) => v.value.toLowerCase().includes(lower));
+    if (includes) return includes;
+    // AI-текст содержит словарное значение: "Защита от перегрева" includes "перегрев"
+    const reverseIncludes = values.find((v) => lower.includes(v.value.toLowerCase()));
+    if (reverseIncludes) return reverseIncludes;
+    return undefined;
+}
+
 @Injectable()
 export class ResolveDictionaryValuesCommand implements ICommandAsync<IProductCreateContext> {
     constructor(private readonly productService: ProductService) {}
@@ -40,9 +54,7 @@ export class ResolveDictionaryValuesCommand implements ICommandAsync<IProductCre
                     typeId,
                 );
 
-                const match = allValues.find(
-                    (v: any) => v.value.toLowerCase() === aiAttr.value.toLowerCase(),
-                );
+                const match = findInDictionary(aiAttr.value, allValues);
 
                 if (match) {
                     context.logger?.log(`  Найдено: id=${match.id}, value="${match.value}"`);
@@ -52,7 +64,7 @@ export class ResolveDictionaryValuesCommand implements ICommandAsync<IProductCre
                         values: [{ dictionary_value_id: match.id, value: match.value }],
                     });
                 } else {
-                    context.logger?.log(`  Не найдено точное совпадение для "${aiAttr.value}"`);
+                    context.logger?.log(`  Не найдено совпадение для "${aiAttr.value}" — отправляем текстом`);
                     resolved.push({
                         id: aiAttr.id,
                         complex_id: 0,
@@ -65,20 +77,25 @@ export class ResolveDictionaryValuesCommand implements ICommandAsync<IProductCre
             // Атрибут без словаря или с маленьким словарём без dictionary_value_id
             if (attrMeta?.dictionary_id && attrMeta.dictionary_id > 0 && attrMeta.values?.length > 0) {
                 // Маленький словарь — ищем в уже загруженных values
-                const match = attrMeta.values.find(
-                    (v) => v.value.toLowerCase() === aiAttr.value.toLowerCase(),
-                );
+                const match = findInDictionary(aiAttr.value, attrMeta.values);
                 if (match) {
                     resolved.push({
                         id: aiAttr.id,
                         complex_id: 0,
                         values: [{ dictionary_value_id: match.id, value: match.value }],
                     });
-                    continue;
+                } else {
+                    context.logger?.log(`  Не найдено совпадение для "${aiAttr.value}" в словаре ${aiAttr.id} — отправляем текстом`);
+                    resolved.push({
+                        id: aiAttr.id,
+                        complex_id: 0,
+                        values: [{ value: aiAttr.value }],
+                    });
                 }
+                continue;
             }
 
-            // Свободный текст
+            // Свободный текст (атрибут без словаря)
             resolved.push({
                 id: aiAttr.id,
                 complex_id: 0,

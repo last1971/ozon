@@ -10,6 +10,8 @@ import { FindCategoryCommand } from './commands/find-category.command';
 import { LoadRequiredAttributesCommand } from './commands/load-required-attributes.command';
 import { GenerateAttributeValuesCommand } from './commands/generate-attribute-values.command';
 import { ResolveDictionaryValuesCommand } from './commands/resolve-dictionary-values.command';
+import { ExpandVariantsCommand } from './commands/expand-variants.command';
+import { ResolvePackagingCommand } from './commands/resolve-packaging.command';
 import { BuildProductJsonCommand } from './commands/build-product-json.command';
 import { SubmitProductCommand } from './commands/submit-product.command';
 import { OzonApiModule } from '../ozon.api/ozon.api.module';
@@ -23,6 +25,8 @@ import { OzonApiModule } from '../ozon.api/ozon.api.module';
         LoadRequiredAttributesCommand,
         GenerateAttributeValuesCommand,
         ResolveDictionaryValuesCommand,
+        ExpandVariantsCommand,
+        ResolvePackagingCommand,
         BuildProductJsonCommand,
         SubmitProductCommand,
     ],

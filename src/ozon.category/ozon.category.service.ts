@@ -16,6 +16,8 @@ import { FindCategoryCommand } from './commands/find-category.command';
 import { LoadRequiredAttributesCommand } from './commands/load-required-attributes.command';
 import { GenerateAttributeValuesCommand } from './commands/generate-attribute-values.command';
 import { ResolveDictionaryValuesCommand } from './commands/resolve-dictionary-values.command';
+import { ExpandVariantsCommand } from './commands/expand-variants.command';
+import { ResolvePackagingCommand } from './commands/resolve-packaging.command';
 import { BuildProductJsonCommand } from './commands/build-product-json.command';
 import { SubmitProductCommand } from './commands/submit-product.command';
 import { OzonApiService } from '../ozon.api/ozon.api.service';
@@ -113,6 +115,8 @@ export class OzonCategoryService implements OnModuleInit {
         private loadRequiredAttributesCommand: LoadRequiredAttributesCommand,
         private generateAttributeValuesCommand: GenerateAttributeValuesCommand,
         private resolveDictionaryValuesCommand: ResolveDictionaryValuesCommand,
+        private expandVariantsCommand: ExpandVariantsCommand,
+        private resolvePackagingCommand: ResolvePackagingCommand,
         private buildProductJsonCommand: BuildProductJsonCommand,
         private submitProductCommand: SubmitProductCommand,
         private ozonApiService: OzonApiService,
@@ -565,6 +569,8 @@ export class OzonCategoryService implements OnModuleInit {
             this.loadRequiredAttributesCommand,
             this.generateAttributeValuesCommand,
             this.resolveDictionaryValuesCommand,
+            this.expandVariantsCommand,
+            this.resolvePackagingCommand,
             this.buildProductJsonCommand,
             this.submitProductCommand,
         ]);

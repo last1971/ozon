@@ -27,45 +27,43 @@ export class BuildProductJsonCommand implements ICommandAsync<IProductCreateCont
         const { input } = context;
         const vatRate = this.configService.get<number>('VAT_RATE');
         const vat = vatRate !== undefined ? numberToVat(vatRate) : '0.05';
+        const hashtags = formatHashtags(context.hashtags || '');
 
-        const attributes = [
-            ...(context.resolved_attributes || []),
-            // Описание
-            { id: 4191, complex_id: 0, values: [{ value: context.description || '' }] },
-            // Вес без упаковки
-            { id: 4383, complex_id: 0, values: [{ value: input.weight_without_packaging.toString() }] },
-            // Хэштеги
-            { id: 23171, complex_id: 0, values: [{ value: formatHashtags(context.hashtags || '') }] },
-            // Фиксированные
-            { id: 23249, complex_id: 0, values: [{ value: '1' }] },
-            { id: 23518, complex_id: 0, values: [{ value: '1' }] },
-        ];
+        const items = (context.variants || []).map((variant) => {
+            const attributes = [
+                ...(context.resolved_attributes || []),
+                { id: 4191, complex_id: 0, values: [{ value: context.description || '' }] },
+                { id: 4383, complex_id: 0, values: [{ value: variant.weightWithoutPackaging.toString() }] },
+                { id: 8513, complex_id: 0, values: [{ value: variant.qty.toString() }] },
+                { id: 23171, complex_id: 0, values: [{ value: hashtags }] },
+                { id: 23249, complex_id: 0, values: [{ value: variant.qty.toString() }] },
+                { id: 23518, complex_id: 0, values: [{ value: '1' }] },
+            ];
 
-        context.product_json = {
-            items: [
-                {
-                    attributes,
-                    description_category_id: context.description_category_id,
-                    new_description_category_id: 0,
-                    currency_code: 'RUB',
-                    depth: input.package_depth,
-                    dimension_unit: 'mm',
-                    height: input.package_height,
-                    width: input.package_width,
-                    images: [input.image_url],
-                    ...(input.pdf_list?.length ? { pdf_list: input.pdf_list } : {}),
-                    name: context.generated_name || input.text,
-                    offer_id: input.offer_id,
-                    price: '100000',
-                    type_id: context.type_id,
-                    vat,
-                    weight: input.weight_with_packaging,
-                    weight_unit: 'g',
-                },
-            ],
-        };
+            return {
+                attributes,
+                description_category_id: context.description_category_id,
+                new_description_category_id: 0,
+                currency_code: 'RUB',
+                depth: variant.depth,
+                dimension_unit: 'mm',
+                height: variant.height,
+                width: variant.width,
+                images: input.images,
+                ...(input.pdf_list?.length ? { pdf_list: input.pdf_list } : {}),
+                name: variant.name,
+                offer_id: variant.offerId,
+                price: '100000',
+                type_id: context.type_id,
+                vat,
+                weight: variant.weightWithPackaging,
+                weight_unit: 'g',
+            };
+        });
 
-        context.logger?.log(`JSON собран: ${attributes.length} атрибутов, vat=${vat}`);
+        context.product_json = { items };
+
+        context.logger?.log(`JSON собран: ${items.length} товар(ов), ${items[0]?.attributes.length || 0} атрибутов, vat=${vat}`);
         return context;
     }
 }

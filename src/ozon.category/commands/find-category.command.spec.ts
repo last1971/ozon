@@ -23,7 +23,7 @@ describe('FindCategoryCommand', () => {
         expect(ozonCategoryService.searchSimilar).toHaveBeenCalledWith('Test Product', 5);
     });
 
-    it('should pick category with lowest FBS commission', async () => {
+    it('should pick the most relevant category (first result)', async () => {
         const results = [
             { typeId: 1, typeName: 'A', categoryPath: 'A', similarity: 0.95, fbsCommission: 0.15 },
             { typeId: 2, typeName: 'B', categoryPath: 'B', similarity: 0.90, fbsCommission: 0.05 },
@@ -39,10 +39,10 @@ describe('FindCategoryCommand', () => {
 
         const result = await command.execute(context);
 
-        expect(result.type_id).toBe(2);
-        expect(result.fbs_commission).toBe(0.05);
+        expect(result.type_id).toBe(1);
+        expect(result.fbs_commission).toBe(0.15);
         expect(result.description_category_id).toBe(999);
-        expect(result.category_path).toBe('B');
+        expect(result.category_path).toBe('A');
     });
 
     it('should use input.text when generated_name is absent', async () => {
