@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { FIREBIRD } from '../firebird/firebird.module';
 import { FirebirdPool } from 'ts-firebird';
 import { ProductService } from '../product/product.service';
@@ -39,6 +40,37 @@ export interface SearchResult {
     fbsCommission: number | null;
 }
 
+export interface CategoryAttributeValue {
+    id: number;
+    value: string;
+    info: string;
+    picture: string;
+}
+
+export interface CategoryAttribute {
+    id: number;
+    name: string;
+    description: string;
+    type: string;
+    is_required: boolean;
+    is_collection: boolean;
+    dictionary_id: number;
+    attribute_complex_id: number;
+    values: CategoryAttributeValue[];
+    values_count?: number;
+}
+
+export interface CategoryAttributesResult {
+    description_category_id: number;
+    type_id: number;
+    attributes: CategoryAttribute[];
+}
+
+const SKIP_ATTRIBUTE_IDS = new Set([
+    4180, 4384, 4385, 8789, 8790, 9024, 9546, 10096,
+    11254, 11650, 21837, 21841, 21845, 22232, 22270, 22273, 22390,
+]);
+
 const EMBEDDING_DIM = 1536;
 const INDEX_PATH = path.join(process.cwd(), 'data', 'ozon_categories.hnsw');
 
@@ -58,12 +90,17 @@ export class OzonCategoryService implements OnModuleInit {
     private typeIdMap: Map<number, number> = new Map();
     private typeDataMap: Map<number, { typeName: string; categoryPath: string }> = new Map();
 
+    private attrValuesLimit: number;
+
     constructor(
         @Inject(FIREBIRD) private pool: FirebirdPool,
         private productService: ProductService,
         private aiService: AIService,
         private cacheManager: Cache,
-    ) {}
+        private configService: ConfigService,
+    ) {
+        this.attrValuesLimit = this.configService.get<number>('ATTR_VALUES_LIMIT', 20);
+    }
 
     async onModuleInit() {
         await this.loadIndex();
@@ -473,6 +510,32 @@ export class OzonCategoryService implements OnModuleInit {
             await t.rollback(true);
             throw error;
         }
+    }
+
+    // ========== Category Attributes ==========
+
+    async getCategoryAttributes(desc_cat_id: number, type_id: number): Promise<CategoryAttributesResult> {
+        this.logger.log(`getCategoryAttributes: desc_cat_id=${desc_cat_id}, type_id=${type_id}`);
+        const resp = await this.productService.getCategoryAttributes(desc_cat_id, type_id);
+        const filtered = (resp.result || []).filter((a: any) => !SKIP_ATTRIBUTE_IDS.has(a.id));
+        this.logger.log(`getCategoryAttributes: ${resp.result?.length || 0} total, ${filtered.length} after filter`);
+
+        const attributes: CategoryAttribute[] = [];
+        for (const attr of filtered) {
+            if (attr.dictionary_id > 0) {
+                this.logger.log(`  Loading values for attr ${attr.id} "${attr.name}" (dict=${attr.dictionary_id})`);
+            }
+            const allValues: CategoryAttributeValue[] = attr.dictionary_id > 0
+                ? await this.productService.getCategoryAttributeValues(attr.id, desc_cat_id, type_id)
+                : [];
+            const truncated = allValues.length > this.attrValuesLimit;
+            const values = truncated ? [] : allValues;
+            this.logger.log(`  attr ${attr.id} "${attr.name}": ${allValues.length} values${truncated ? ` (truncated, limit=${this.attrValuesLimit})` : ''}`);
+            attributes.push({ ...attr, values, ...(truncated ? { values_count: allValues.length } : {}) });
+        }
+
+        this.logger.log(`getCategoryAttributes: done, ${attributes.length} attributes`);
+        return { description_category_id: desc_cat_id, type_id, attributes };
     }
 
     // ========== Utils ==========

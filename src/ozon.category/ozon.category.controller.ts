@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiConsumes, ApiBody, ApiQuery } from '@nestjs/swagger';
-import { OzonCategoryService, SearchResult, CommissionRange } from './ozon.category.service';
+import { OzonCategoryService, SearchResult, CommissionRange, CategoryAttributesResult } from './ozon.category.service';
 
 @ApiTags('Ozon Category')
 @Controller('ozon-category')
@@ -79,6 +79,17 @@ export class OzonCategoryController {
     @ApiQuery({ name: 'typeId', type: Number })
     async checkEmbedding(@Query('typeId') typeId: number) {
         return this.ozonCategoryService.checkEmbedding(Number(typeId));
+    }
+
+    @Get('attributes')
+    @ApiOperation({ summary: 'Получить атрибуты категории (с фильтрацией и значениями словарей)' })
+    @ApiQuery({ name: 'description_category_id', type: Number, description: 'ID категории описания' })
+    @ApiQuery({ name: 'type_id', type: Number, description: 'ID типа товара' })
+    async getAttributes(
+        @Query('description_category_id') descriptionCategoryId: number,
+        @Query('type_id') typeId: number,
+    ): Promise<CategoryAttributesResult> {
+        return this.ozonCategoryService.getCategoryAttributes(Number(descriptionCategoryId), Number(typeId));
     }
 
     @Get('commissions')

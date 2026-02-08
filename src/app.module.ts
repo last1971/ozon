@@ -48,10 +48,12 @@ import { SyliusPriceModule } from './sylius.price/sylius.price.module';
 import { AIModule } from './ai/ai.module';
 import { AIProductModule } from './ai.product/ai.product.module';
 import { OzonCategoryModule } from './ozon.category/ozon.category.module';
+import { CacheableModule } from 'nestjs-cacheable';
 import JSONbig from 'json-bigint';
 
 @Module({
     imports: [
+        CacheableModule.register(),
         EventEmitterModule.forRoot(),
         ConfigModule.forRoot({ isGlobal: true, validate: configValidate }),
         CacheModule.registerAsync({

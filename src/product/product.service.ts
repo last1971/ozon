@@ -27,6 +27,7 @@ import { ActionListProduct } from 'src/promos/dto/actionsCandidate.dto';
 import { ProductPriceDto } from 'src/price/dto/product.price.dto';
 import { UpdateAttributesBodyDto, UpdateAttributesResponseDto } from './dto/update.attributes.dto';
 import { BuyoutDto } from '../posting/dto/buyout.dto';
+import { Cacheable } from 'nestjs-cacheable';
 
 @Injectable()
 export class ProductService extends ICountUpdateable implements OnModuleInit, IProductable {
@@ -195,8 +196,52 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
         return this.ozonApiService.method('/v1/warehouse/list', {});
     }
 
+    @Cacheable({ namespace: 'ozon:tree', ttl: 86400 })
     async getCategoryTree(): Promise<any> {
         return this.ozonApiService.method('/v1/description-category/tree', {});
+    }
+
+    @Cacheable({
+        key: (desc_cat_id: number, type_id: number) => `${desc_cat_id}:${type_id}`,
+        namespace: 'ozon:cat-attrs',
+        ttl: 86400,
+    })
+    async getCategoryAttributes(desc_cat_id: number, type_id: number): Promise<any> {
+        return this.ozonApiService.method('/v1/description-category/attribute', {
+            description_category_id: desc_cat_id,
+            language: 'DEFAULT',
+            type_id,
+        });
+    }
+
+    @Cacheable({
+        key: (attr_id: number, desc_cat_id: number, type_id: number) => `${attr_id}:${desc_cat_id}:${type_id}`,
+        namespace: 'ozon:attr-vals',
+        ttl: 86400,
+    })
+    async getCategoryAttributeValues(
+        attribute_id: number,
+        desc_cat_id: number,
+        type_id: number,
+    ): Promise<any[]> {
+        const allValues: any[] = [];
+        let lastValueId = 0;
+        let hasNext = true;
+        while (hasNext) {
+            const resp = await this.ozonApiService.method('/v1/description-category/attribute/values', {
+                attribute_id,
+                description_category_id: desc_cat_id,
+                language: 'DEFAULT',
+                last_value_id: lastValueId,
+                limit: 5000,
+                type_id,
+            });
+            if (!resp?.result?.length) break;
+            allValues.push(...resp.result);
+            hasNext = resp.has_next === true;
+            if (hasNext) lastValueId = resp.result[resp.result.length - 1].id;
+        }
+        return allValues;
     }
 
     /**
