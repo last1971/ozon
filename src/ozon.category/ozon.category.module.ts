@@ -14,12 +14,14 @@ import { ExpandVariantsCommand } from './commands/expand-variants.command';
 import { ResolvePackagingCommand } from './commands/resolve-packaging.command';
 import { BuildProductJsonCommand } from './commands/build-product-json.command';
 import { SubmitProductCommand } from './commands/submit-product.command';
+import { ValidateOfferIdCommand } from './commands/validate-offer-id.command';
 import { OzonApiModule } from '../ozon.api/ozon.api.module';
 
 @Module({
     imports: [FirebirdModule, ProductModule, AIModule, AIProductModule, OzonApiModule],
     providers: [
         OzonCategoryService,
+        ValidateOfferIdCommand,
         GenerateNameCommand,
         FindCategoryCommand,
         LoadRequiredAttributesCommand,

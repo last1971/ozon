@@ -17,9 +17,9 @@ export const PACKAGING_OPTIONS: PackagingOption[] = [
     { name: 'Пакет 170×240', type: 'bag', length: 240, width: 170, weight: 10 },
     { name: 'Пакет 190×240', type: 'bag', length: 240, width: 190, weight: 10 },
     { name: 'Пакет 240×320', type: 'bag', length: 320, width: 240, weight: 10 },
-    { name: 'Пакет 300×400', type: 'bag', length: 400, width: 300, weight: 10 },
-    { name: 'Пакет 400×500', type: 'bag', length: 500, width: 400, weight: 10 },
-    { name: 'Пакет 500×600', type: 'bag', length: 600, width: 500, weight: 10 },
+    { name: 'Пакет 300×400', type: 'bag', length: 400, width: 300, weight: 20 },
+    { name: 'Пакет 400×500', type: 'bag', length: 500, width: 400, weight: 20 },
+    { name: 'Пакет 500×600', type: 'bag', length: 600, width: 500, weight: 20 },
     // Коробки (отсортированы по объёму)
     { name: 'Коробка 80×70×50', type: 'box', length: 80, width: 70, height: 50, weight: 16 },
     { name: 'Коробка 180×90×100', type: 'box', length: 180, width: 90, height: 100, weight: 38 },

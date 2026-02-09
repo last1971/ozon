@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { ICommandAsync } from '../../interfaces/i.command.acync';
-import { IProductCreateContext } from '../interfaces/product-create.context';
+import { IProductCreateContext, MANUAL_ATTRIBUTE_IDS } from '../interfaces/product-create.context';
 import { numberToVat } from '../../helpers';
 
 function formatHashtags(raw: string): string {
@@ -29,9 +29,27 @@ export class BuildProductJsonCommand implements ICommandAsync<IProductCreateCont
         const vat = vatRate !== undefined ? numberToVat(vatRate) : '0.05';
         const hashtags = formatHashtags(context.hashtags || '');
 
+        // Проверяем что AI заполнил все обязательные атрибуты
+        const resolvedIds = new Set((context.resolved_attributes || []).map(a => a.id));
+        const missingRequired = (context.required_attributes || [])
+            .filter(a => a.is_required && !MANUAL_ATTRIBUTE_IDS.has(a.id) && !resolvedIds.has(a.id));
+
+        if (missingRequired.length > 0) {
+            const names = missingRequired.map(a => `${a.id} "${a.name}"`).join(', ');
+            context.logger?.log(`ВНИМАНИЕ: AI не заполнил обязательные атрибуты: ${names}`);
+        }
+
         const items = (context.variants || []).map((variant) => {
+            // Дополняем пропущенные обязательные атрибуты пустым значением
+            const missingAttrs = missingRequired.map(a => ({
+                id: a.id,
+                complex_id: 0,
+                values: [{ value: '' }],
+            }));
+
             const attributes = [
                 ...(context.resolved_attributes || []),
+                ...missingAttrs,
                 { id: 4191, complex_id: 0, values: [{ value: context.description || '' }] },
                 { id: 4383, complex_id: 0, values: [{ value: variant.weightWithoutPackaging.toString() }] },
                 { id: 8513, complex_id: 0, values: [{ value: variant.qty.toString() }] },

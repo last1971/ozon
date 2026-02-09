@@ -20,6 +20,7 @@ import { ExpandVariantsCommand } from './commands/expand-variants.command';
 import { ResolvePackagingCommand } from './commands/resolve-packaging.command';
 import { BuildProductJsonCommand } from './commands/build-product-json.command';
 import { SubmitProductCommand } from './commands/submit-product.command';
+import { ValidateOfferIdCommand } from './commands/validate-offer-id.command';
 import { OzonApiService } from '../ozon.api/ozon.api.service';
 
 interface CategoryNode {
@@ -110,6 +111,7 @@ export class OzonCategoryService implements OnModuleInit {
         private aiService: AIService,
         private cacheManager: Cache,
         private configService: ConfigService,
+        private validateOfferIdCommand: ValidateOfferIdCommand,
         private generateNameCommand: GenerateNameCommand,
         private findCategoryCommand: FindCategoryCommand,
         private loadRequiredAttributesCommand: LoadRequiredAttributesCommand,
@@ -603,6 +605,7 @@ export class OzonCategoryService implements OnModuleInit {
 
     async createProduct(input: CreateProductInput): Promise<IProductCreateContext> {
         const chain = new CommandChainAsync<IProductCreateContext>([
+            this.validateOfferIdCommand,
             this.generateNameCommand,
             this.findCategoryCommand,
             this.loadRequiredAttributesCommand,

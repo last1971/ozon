@@ -85,6 +85,7 @@ export interface IProductCreateContext {
 
     // Общее
     stopChain?: boolean;
+    error_message?: string;
     logger?: { log: (msg: string) => void };
 }
 

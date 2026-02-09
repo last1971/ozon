@@ -14,6 +14,7 @@ import { ExpandVariantsCommand } from './commands/expand-variants.command';
 import { ResolvePackagingCommand } from './commands/resolve-packaging.command';
 import { BuildProductJsonCommand } from './commands/build-product-json.command';
 import { SubmitProductCommand } from './commands/submit-product.command';
+import { ValidateOfferIdCommand } from './commands/validate-offer-id.command';
 import { OzonApiService } from '../ozon.api/ozon.api.service';
 
 describe('OzonCategoryService', () => {
@@ -40,6 +41,7 @@ describe('OzonCategoryService', () => {
                 { provide: FIREBIRD, useValue: {} },
                 { provide: Cache, useValue: { get: jest.fn(), set: jest.fn() } },
                 { provide: ConfigService, useValue: { get: jest.fn().mockReturnValue(20) } },
+                { provide: ValidateOfferIdCommand, useValue: {} },
                 { provide: GenerateNameCommand, useValue: {} },
                 { provide: FindCategoryCommand, useValue: {} },
                 { provide: LoadRequiredAttributesCommand, useValue: {} },
