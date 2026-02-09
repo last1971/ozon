@@ -4,10 +4,12 @@ import axios from "../axios.config";
 
 const STORAGE_KEY = 'ozon-product-form';
 
-function loadForm() {
+type FormState = ReturnType<typeof defaultForm>;
+
+function loadForm(): FormState | null {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) return JSON.parse(raw);
+        if (raw) return JSON.parse(raw) as FormState;
     } catch {}
     return null;
 }
