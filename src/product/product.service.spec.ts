@@ -368,4 +368,62 @@ describe('ProductService', () => {
 
         expect(result).toEqual([]);
     });
+
+    it('getCategoryTree', async () => {
+        const mockTree = { result: [{ description_category_id: 1, category_name: 'Test' }] };
+        method.mockResolvedValue(mockTree);
+
+        const result = await service.getCategoryTree();
+
+        expect(method.mock.calls[0]).toEqual(['/v1/description-category/tree', {}]);
+        expect(result).toEqual(mockTree);
+    });
+
+    it('getCategoryAttributes', async () => {
+        const mockAttrs = { result: [{ id: 85, name: 'Бренд' }] };
+        method.mockResolvedValue(mockAttrs);
+
+        const result = await service.getCategoryAttributes(53884411, 971025231);
+
+        expect(method.mock.calls[0]).toEqual([
+            '/v1/description-category/attribute',
+            { description_category_id: 53884411, language: 'DEFAULT', type_id: 971025231 },
+        ]);
+        expect(result).toEqual(mockAttrs);
+    });
+
+    it('getCategoryAttributeValues single page', async () => {
+        const mockValues = [{ id: 1, value: 'Value1' }, { id: 2, value: 'Value2' }];
+        method.mockResolvedValue({ result: mockValues, has_next: false });
+
+        const result = await service.getCategoryAttributeValues(85, 53884411, 971025231);
+
+        expect(method.mock.calls[0]).toEqual([
+            '/v1/description-category/attribute/values',
+            { attribute_id: 85, description_category_id: 53884411, language: 'DEFAULT', last_value_id: 0, limit: 5000, type_id: 971025231 },
+        ]);
+        expect(result).toEqual(mockValues);
+    });
+
+    it('getCategoryAttributeValues with pagination', async () => {
+        const page1 = [{ id: 1, value: 'V1' }, { id: 2, value: 'V2' }];
+        const page2 = [{ id: 3, value: 'V3' }];
+        method
+            .mockResolvedValueOnce({ result: page1, has_next: true })
+            .mockResolvedValueOnce({ result: page2, has_next: false });
+
+        const result = await service.getCategoryAttributeValues(85, 53884411, 971025231);
+
+        expect(method).toHaveBeenCalledTimes(2);
+        expect(method.mock.calls[1][1].last_value_id).toBe(2);
+        expect(result).toEqual([...page1, ...page2]);
+    });
+
+    it('getCategoryAttributeValues empty response', async () => {
+        method.mockResolvedValue({ result: [] });
+
+        const result = await service.getCategoryAttributeValues(85, 53884411, 971025231);
+
+        expect(result).toEqual([]);
+    });
 });

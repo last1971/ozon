@@ -6,7 +6,7 @@ import { ConfigService } from '@nestjs/config';
 import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
 import { PriceResponseDto } from './dto/price.response.dto';
 import { PriceDto } from './dto/price.dto';
-import { calculatePay, calculatePrice, goodCode, goodQuantityCoeff } from '../helpers';
+import { calculatePay, calculatePrice, goodCode, goodQuantityCoeff, numberToVat } from '../helpers';
 import { GoodPercentDto } from '../good/dto/good.percent.dto';
 import { UpdatePriceDto, UpdatePricesDto } from './dto/update.price.dto';
 import { chunk, toNumber } from 'lodash';
@@ -22,6 +22,7 @@ import { IVatUpdateable } from 'src/interfaces/i.vat.updateable';
 import { OzonCommissionDto } from './dto/ozon.commission.dto';
 import { IPriceable } from '../interfaces/i.priceable';
 import { PriceCalculationHelper } from '../helpers/price/price.calculation.helper';
+import { OzonCategoryService } from '../ozon.category/ozon.category.service';
 
 @Injectable()
 export class PriceService implements IPriceUpdateable, IVatUpdateable {
@@ -32,6 +33,7 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
         private configService: ConfigService,
         private cacheManager: Cache,
         private priceCalculationHelper: PriceCalculationHelper,
+        private ozonCategoryService: OzonCategoryService,
     ) {}
     /**
      * Преобразует значение НДС Озона (строка как доля) в число (проценты)
@@ -55,27 +57,10 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                 return 0;
         }
     }
-
-    /**
-     * Преобразует число (проценты) в формат НДС для Озона (строка как доля)
-     * 5 -> '0.05', 7 -> '0.07', 10 -> '0.1', 20 -> '0.2', 22 -> '0.22', остальное -> '0'
-     */
     numberToVat(vat: number): string {
-        switch (vat) {
-            case 5:
-                return '0.05';
-            case 7:
-                return '0.07';
-            case 10:
-                return '0.1';
-            case 20:
-                return '0.2';
-            case 22:
-                return '0.22';
-            default:
-                return '0';
-        }
+        return numberToVat(vat);
     }
+
     async preset(): Promise<PricePresetDto> {
         return {
             perc_min: toNumber(this.configService.get<number>('PERC_MIN', 15)),
@@ -294,55 +279,6 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
     }
 
     /**
-     * Загружает комиссии из XLSX файла и сохраняет в Redis
-     * XLSX должен содержать колонки: Категория, Тип товара, FBS 100-300, FBO 100-300
-     */
-    async loadCommissionsFromXlsx(buffer: Buffer): Promise<{ loaded: number }> {
-        const workbook = new Excel.Workbook();
-        await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
-        const sheet = workbook.worksheets[0];
-
-        // Парсим XLSX: название типа → комиссии
-        const xlsxCommissions = new Map<string, OzonCommissionDto>();
-        sheet.eachRow((row, rowNumber) => {
-            if (rowNumber === 1) return; // пропускаем заголовок
-            const typeName = row.getCell(2).value?.toString()?.trim();
-            const fbo = toNumber(row.getCell(4).value); // FBO 100-300
-            const fbs = toNumber(row.getCell(10).value); // FBS 100-300
-            if (typeName && (fbo || fbs)) {
-                xlsxCommissions.set(typeName.toLowerCase(), { fbs, fbo });
-            }
-        });
-
-        // Получаем дерево категорий из Ozon API
-        const categoryTree = await this.product.getCategoryTree();
-
-        // Связываем type_id с комиссиями по названию
-        let loaded = 0;
-        const processCategories = (categories: any[]) => {
-            for (const category of categories) {
-                if (category.type_id && category.type_name) {
-                    const commission = xlsxCommissions.get(category.type_name.toLowerCase());
-                    if (commission) {
-                        this.cacheManager.set(
-                            `ozon:commission:${category.type_id}`,
-                            JSON.stringify(commission),
-                        );
-                        loaded++;
-                    }
-                }
-                if (category.children?.length) {
-                    processCategories(category.children);
-                }
-            }
-        };
-        processCategories(categoryTree.result || []);
-
-        this.logger.log(`Loaded ${loaded} commission records to Redis`);
-        return { loaded };
-    }
-
-    /**
      * Получает type_id по SKU, кэширует в Redis
      */
     async getTypeId(sku: string): Promise<string | null> {
@@ -361,12 +297,21 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
     }
 
     /**
-     * Получает комиссию из Redis по type_id
+     * Получает комиссию 100-300 из БД по type_id
+     * Возвращает формат {fbo, fbs} для обратной совместимости
      */
     async getCommission(typeId: string): Promise<OzonCommissionDto | null> {
-        const cached = await this.cacheManager.get<string>(`ozon:commission:${typeId}`);
-        if (!cached) return null;
-        return JSON.parse(cached);
+        const commissions = await this.ozonCategoryService.getCommissions(Number(typeId));
+        if (!commissions) return null;
+
+        // Возвращаем комиссию для диапазона 100-300 (index 1)
+        const fboRange = commissions.fbo.find(r => r.min === 100 && r.max === 300);
+        const fbsRange = commissions.fbs.find(r => r.min === 100 && r.max === 300);
+
+        return {
+            fbo: fboRange?.rate ?? 0,
+            fbs: fbsRange?.rate ?? 0,
+        };
     }
 
     /**

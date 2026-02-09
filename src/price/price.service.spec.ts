@@ -7,6 +7,7 @@ import { ProductVisibility } from '../product/product.visibility';
 import { OzonProductCoeffsAdapter } from './ozon.product.coeffs.adapter';
 import { Cache } from "@nestjs/cache-manager";
 import { PriceCalculationHelper } from '../helpers/price/price.calculation.helper';
+import { OzonCategoryService } from '../ozon.category/ozon.category.service';
 
 describe('PriceService', () => {
     let service: PriceService;
@@ -63,6 +64,7 @@ describe('PriceService', () => {
                     },
                 },
                 mockPriceCalculationHelper,
+                { provide: OzonCategoryService, useValue: { getCommissions: jest.fn(), getCommissionForPrice: jest.fn() } },
             ],
         }).compile();
 
@@ -303,6 +305,7 @@ describe('PriceService', () => {
                     },
                 },
                 mockPriceCalculationHelper,
+                { provide: OzonCategoryService, useValue: { getCommissions: jest.fn(), getCommissionForPrice: jest.fn() } },
             ],
         }).compile();
 
@@ -473,6 +476,7 @@ describe('PriceService', () => {
                         useValue: { get: () => null },
                     },
                     mockPriceCalculationHelper,
+                    { provide: OzonCategoryService, useValue: { getCommissions: jest.fn(), getCommissionForPrice: jest.fn() } },
                 ],
             }).compile();
 
@@ -489,18 +493,27 @@ describe('PriceService', () => {
     });
 
     describe('getCommission', () => {
-        it('should return commission from cache', async () => {
-            const mockCacheGet = jest.fn().mockResolvedValue('{"fbs":0.2,"fbo":0.15}');
-            const mockCacheSet = jest.fn();
+        it('should return commission from OzonCategoryService', async () => {
+            const mockGetCommissions = jest.fn().mockResolvedValue({
+                fbo: [
+                    { min: 0, max: 100, rate: 0.1 },
+                    { min: 100, max: 300, rate: 0.15 },
+                ],
+                fbs: [
+                    { min: 0, max: 100, rate: 0.12 },
+                    { min: 100, max: 300, rate: 0.2 },
+                ],
+            });
 
             const module: TestingModule = await Test.createTestingModule({
                 providers: [
                     PriceService,
                     { provide: ProductService, useValue: { getPrices, setPrice, skuList: [] } },
                     { provide: GOOD_SERVICE, useValue: { prices, getPerc, updatePriceForService } },
-                    { provide: Cache, useValue: { get: mockCacheGet, set: mockCacheSet } },
+                    { provide: Cache, useValue: { get: jest.fn(), set: jest.fn() } },
                     { provide: ConfigService, useValue: { get: () => null } },
-                mockPriceCalculationHelper,
+                    mockPriceCalculationHelper,
+                    { provide: OzonCategoryService, useValue: { getCommissions: mockGetCommissions, getCommissionForPrice: jest.fn() } },
                 ],
             }).compile();
 
@@ -508,20 +521,21 @@ describe('PriceService', () => {
             const result = await testService.getCommission('12345');
 
             expect(result).toEqual({ fbs: 0.2, fbo: 0.15 });
-            expect(mockCacheGet).toHaveBeenCalledWith('ozon:commission:12345');
+            expect(mockGetCommissions).toHaveBeenCalledWith(12345);
         });
 
-        it('should return null if not in cache', async () => {
-            const mockCacheGet = jest.fn().mockResolvedValue(null);
+        it('should return null if type not found', async () => {
+            const mockGetCommissions = jest.fn().mockResolvedValue(null);
 
             const module: TestingModule = await Test.createTestingModule({
                 providers: [
                     PriceService,
                     { provide: ProductService, useValue: { getPrices, setPrice, skuList: [] } },
                     { provide: GOOD_SERVICE, useValue: { prices, getPerc, updatePriceForService } },
-                    { provide: Cache, useValue: { get: mockCacheGet, set: jest.fn() } },
+                    { provide: Cache, useValue: { get: jest.fn(), set: jest.fn() } },
                     { provide: ConfigService, useValue: { get: () => null } },
-                mockPriceCalculationHelper,
+                    mockPriceCalculationHelper,
+                    { provide: OzonCategoryService, useValue: { getCommissions: mockGetCommissions, getCommissionForPrice: jest.fn() } },
                 ],
             }).compile();
 
@@ -529,6 +543,7 @@ describe('PriceService', () => {
             const result = await testService.getCommission('99999');
 
             expect(result).toBeNull();
+            expect(mockGetCommissions).toHaveBeenCalledWith(99999);
         });
     });
 
@@ -543,7 +558,8 @@ describe('PriceService', () => {
                     { provide: GOOD_SERVICE, useValue: { prices, getPerc, updatePriceForService } },
                     { provide: Cache, useValue: { get: mockCacheGet, set: jest.fn() } },
                     { provide: ConfigService, useValue: { get: () => null } },
-                mockPriceCalculationHelper,
+                    mockPriceCalculationHelper,
+                    { provide: OzonCategoryService, useValue: { getCommissions: jest.fn(), getCommissionForPrice: jest.fn() } },
                 ],
             }).compile();
 
@@ -566,7 +582,8 @@ describe('PriceService', () => {
                     { provide: GOOD_SERVICE, useValue: { prices, getPerc, updatePriceForService } },
                     { provide: Cache, useValue: { get: mockCacheGet, set: mockCacheSet } },
                     { provide: ConfigService, useValue: { get: () => null } },
-                mockPriceCalculationHelper,
+                    mockPriceCalculationHelper,
+                    { provide: OzonCategoryService, useValue: { getCommissions: jest.fn(), getCommissionForPrice: jest.fn() } },
                 ],
             }).compile();
 
@@ -589,7 +606,8 @@ describe('PriceService', () => {
                     { provide: GOOD_SERVICE, useValue: { prices, getPerc, updatePriceForService } },
                     { provide: Cache, useValue: { get: mockCacheGet, set: jest.fn() } },
                     { provide: ConfigService, useValue: { get: () => null } },
-                mockPriceCalculationHelper,
+                    mockPriceCalculationHelper,
+                    { provide: OzonCategoryService, useValue: { getCommissions: jest.fn(), getCommissionForPrice: jest.fn() } },
                 ],
             }).compile();
 
@@ -633,7 +651,8 @@ describe('PriceService', () => {
                     { provide: GOOD_SERVICE, useValue: { prices, getPerc, updatePriceForService } },
                     { provide: Cache, useValue: { get: mockCacheGet, set: jest.fn() } },
                     { provide: ConfigService, useValue: { get: () => null } },
-                mockPriceCalculationHelper,
+                    mockPriceCalculationHelper,
+                    { provide: OzonCategoryService, useValue: { getCommissions: jest.fn(), getCommissionForPrice: jest.fn() } },
                 ],
             }).compile();
 
@@ -655,7 +674,8 @@ describe('PriceService', () => {
                     { provide: GOOD_SERVICE, useValue: { prices, getPerc, updatePriceForService } },
                     { provide: Cache, useValue: { get: mockCacheGet, set: jest.fn() } },
                     { provide: ConfigService, useValue: { get: () => null } },
-                mockPriceCalculationHelper,
+                    mockPriceCalculationHelper,
+                    { provide: OzonCategoryService, useValue: { getCommissions: jest.fn(), getCommissionForPrice: jest.fn() } },
                 ],
             }).compile();
 
@@ -675,7 +695,8 @@ describe('PriceService', () => {
                     { provide: GOOD_SERVICE, useValue: { prices, getPerc, updatePriceForService } },
                     { provide: Cache, useValue: { get: mockCacheGet, set: jest.fn() } },
                     { provide: ConfigService, useValue: { get: () => null } },
-                mockPriceCalculationHelper,
+                    mockPriceCalculationHelper,
+                    { provide: OzonCategoryService, useValue: { getCommissions: jest.fn(), getCommissionForPrice: jest.fn() } },
                 ],
             }).compile();
 
@@ -684,55 +705,6 @@ describe('PriceService', () => {
 
             expect(result).toBeDefined();
             expect(result.offer_id).toBe('sku1');
-        });
-    });
-
-    describe('loadCommissionsFromXlsx', () => {
-        it('should load commissions from xlsx and save to cache', async () => {
-            const mockCacheSet = jest.fn();
-            const mockGetCategoryTree = jest.fn().mockResolvedValue({
-                result: [
-                    {
-                        type_id: 123,
-                        type_name: 'Test Category',
-                        children: [],
-                    },
-                ],
-            });
-
-            const module: TestingModule = await Test.createTestingModule({
-                providers: [
-                    PriceService,
-                    {
-                        provide: ProductService,
-                        useValue: {
-                            getPrices,
-                            setPrice,
-                            skuList: [],
-                            getCategoryTree: mockGetCategoryTree,
-                        },
-                    },
-                    { provide: GOOD_SERVICE, useValue: { prices, getPerc, updatePriceForService } },
-                    { provide: Cache, useValue: { get: jest.fn(), set: mockCacheSet } },
-                    { provide: ConfigService, useValue: { get: () => null } },
-                mockPriceCalculationHelper,
-                ],
-            }).compile();
-
-            const testService = module.get<PriceService>(PriceService);
-
-            // Create minimal xlsx buffer with test data
-            const Excel = require('exceljs');
-            const workbook = new Excel.Workbook();
-            const sheet = workbook.addWorksheet('Commissions');
-            sheet.addRow(['Category', 'Type', 'Col3', 'FBO', 'Col5', 'Col6', 'Col7', 'Col8', 'Col9', 'FBS']);
-            sheet.addRow(['Cat1', 'Test Category', '', 0.15, '', '', '', '', '', 0.2]);
-            const buffer = await workbook.xlsx.writeBuffer();
-
-            const result = await testService.loadCommissionsFromXlsx(buffer);
-
-            expect(result.loaded).toBeGreaterThanOrEqual(0);
-            expect(mockGetCategoryTree).toHaveBeenCalled();
         });
     });
 });

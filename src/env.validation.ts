@@ -272,6 +272,10 @@ class EnvironmentVariables {
     @IsOptional()
     @IsString()
     SYLIUS_CHANNEL: string;
+
+    @IsOptional()
+    @IsNumber()
+    ATTR_VALUES_LIMIT: number;
 }
 
 export function configValidate(config: Record<string, unknown>) {
