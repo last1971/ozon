@@ -29,19 +29,19 @@ onMounted(async () => {
 
 // Images
 function addImage() { store.form.images.push(''); }
-function removeImage(i: number) { store.form.images.splice(i, 1); }
+function removeImage(i: string | number) { store.form.images.splice(Number(i), 1); }
 
 // PDF
 function addPdf() { store.form.pdf_list.push({ index: store.form.pdf_list.length, name: '', src_url: '' }); }
-function removePdf(i: number) { store.form.pdf_list.splice(i, 1); }
+function removePdf(i: string | number) { store.form.pdf_list.splice(Number(i), 1); }
 
 // Quantities
 function addQty() { store.form.quantities.push(null); }
-function removeQty(i: number) { store.form.quantities.splice(i, 1); }
+function removeQty(i: string | number) { store.form.quantities.splice(Number(i), 1); }
 
 // Packages
 function addPkg() { store.form.packages.push(null); }
-function removePkg(i: number) { store.form.packages.splice(i, 1); }
+function removePkg(i: string | number) { store.form.packages.splice(Number(i), 1); }
 </script>
 
 <template>
@@ -94,7 +94,7 @@ function removePkg(i: number) { store.form.packages.splice(i, 1); }
             </v-row>
             <v-row dense v-for="(img, i) in store.form.images" :key="'img-'+i" align="center">
                 <v-col cols="8">
-                    <v-text-field v-model="store.form.images[i]" :label="'URL картинки ' + (i+1)" density="compact" />
+                    <v-text-field v-model="store.form.images[i]" :label="'URL картинки ' + (Number(i)+1)" density="compact" />
                 </v-col>
                 <v-col cols="1">
                     <v-btn icon size="small" variant="text" color="red" @click="removeImage(i)" :disabled="store.form.images.length <= 1">
