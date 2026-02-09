@@ -30,7 +30,7 @@ describe('findPackaging', () => {
 
     it('should select box when product is too thick for bags', () => {
         // Товар 60×60×40 — два больших = 60,60 влезают в пакет 100×150,
-        // но коробка 70×70×50 тоже подходит. Пакет предпочтительнее.
+        // но коробка 80×70×50 тоже подходит. Пакет предпочтительнее.
         const result = findPackaging({ depth: 60, width: 60, height: 40, weight: 200 });
         expect(result).not.toBeNull();
         expect(result!.packaging.type).toBe('bag');
@@ -38,7 +38,7 @@ describe('findPackaging', () => {
     });
 
     it('should prefer bag over box when both fit', () => {
-        // Товар 60×60×40 — sorted [40,60,60], влезает и в пакет 100×150 и в коробку 70×70×50
+        // Товар 60×60×40 — sorted [40,60,60], влезает и в пакет 100×150 и в коробку 80×70×50
         const result = findPackaging({ depth: 60, width: 60, height: 40, weight: 200 });
         expect(result).not.toBeNull();
         expect(result!.packaging.type).toBe('bag');
@@ -74,11 +74,12 @@ describe('findPackagingForBatch', () => {
 
     it('should select box for larger batch', () => {
         // 100 шт товара 30×50×10, volume=15000*100=1500000, /0.65=2307692
-        // Коробка 600×400×400=96000000 — подходит
+        // Коробка 195×145×145 vol=4098375 — наименьшая подходящая (80г)
         const result = findPackagingForBatch({ depth: 30, width: 50, height: 10, weight: 50 }, 100);
         expect(result).not.toBeNull();
         expect(result!.packaging.type).toBe('box');
-        expect(result!.weightWithPackaging).toBe(5100); // 50*100 + 100
+        expect(result!.packaging.name).toBe('Коробка 195×145×145');
+        expect(result!.weightWithPackaging).toBe(5080); // 50*100 + 80
     });
 
     it('should return null when batch does not fit anything', () => {

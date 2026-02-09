@@ -36,6 +36,9 @@ export class CreateProductInput {
     @ApiPropertyOptional({ type: 'array', items: { oneOf: [{ type: 'integer' }, { type: 'array', items: { type: 'integer' }, minItems: 3, maxItems: 3 }] }, description: 'Упаковки для каждого варианта: 1 = те же размеры, [d,w,h] = кастомные мм' })
     packages?: (number | [number, number, number])[];
 
+    @ApiPropertyOptional({ description: 'Путь категории, напр. "Электроника > Электронные компоненты > Конденсаторы"' })
+    category_path?: string;
+
     @ApiPropertyOptional({ description: 'Генерировать все атрибуты (1 = да), по умолчанию только обязательные' })
     all_attributes?: number;
 

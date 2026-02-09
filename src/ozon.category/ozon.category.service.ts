@@ -219,6 +219,45 @@ export class OzonCategoryService implements OnModuleInit {
         return results;
     }
 
+    async findByPath(inputPath: string): Promise<SearchResult | null> {
+        const normalized = inputPath.replace(/\s*>\s*/g, ' -> ').toLowerCase();
+        for (const [typeId, data] of this.typeDataMap) {
+            if (data.categoryPath.toLowerCase() === normalized) {
+                const commissions = await this.getCommissions(typeId);
+                const maxFbs = commissions?.fbs.length
+                    ? Math.max(...commissions.fbs.map(r => r.rate))
+                    : null;
+                return {
+                    typeId,
+                    typeName: data.typeName,
+                    categoryPath: data.categoryPath,
+                    similarity: 1,
+                    fbsCommission: maxFbs,
+                };
+            }
+        }
+        // Фолбэк: поиск по последнему сегменту (type name)
+        const lastSegment = inputPath.split(/\s*>\s*/).pop()?.trim().toLowerCase();
+        if (lastSegment) {
+            for (const [typeId, data] of this.typeDataMap) {
+                if (data.typeName.toLowerCase() === lastSegment) {
+                    const commissions = await this.getCommissions(typeId);
+                    const maxFbs = commissions?.fbs.length
+                        ? Math.max(...commissions.fbs.map(r => r.rate))
+                        : null;
+                    return {
+                        typeId,
+                        typeName: data.typeName,
+                        categoryPath: data.categoryPath,
+                        similarity: 1,
+                        fbsCommission: maxFbs,
+                    };
+                }
+            }
+        }
+        return null;
+    }
+
     // ========== Redis Cache ==========
 
     async exportToRedis(): Promise<{ exported: number; total: number }> {

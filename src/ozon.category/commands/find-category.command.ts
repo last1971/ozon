@@ -1,7 +1,7 @@
 import { Inject, Injectable, forwardRef } from '@nestjs/common';
 import { ICommandAsync } from '../../interfaces/i.command.acync';
 import { IProductCreateContext, getProductName } from '../interfaces/product-create.context';
-import { OzonCategoryService } from '../ozon.category.service';
+import { OzonCategoryService, SearchResult } from '../ozon.category.service';
 import { FIREBIRD } from '../../firebird/firebird.module';
 import { FirebirdPool } from 'ts-firebird';
 
@@ -14,17 +14,30 @@ export class FindCategoryCommand implements ICommandAsync<IProductCreateContext>
 
     async execute(context: IProductCreateContext): Promise<IProductCreateContext> {
         const name = getProductName(context);
-        context.logger?.log(`Поиск категории для: "${name}"`);
+        let best: SearchResult | null = null;
 
-        const results = await this.ozonCategoryService.searchSimilar(name, 5);
-        if (!results.length) {
-            context.logger?.log('Категории не найдены');
-            context.stopChain = true;
-            return context;
+        // Сначала пробуем найти по переданному пути категории
+        if (context.input.category_path) {
+            context.logger?.log(`Поиск категории по пути: "${context.input.category_path}"`);
+            best = await this.ozonCategoryService.findByPath(context.input.category_path);
+            if (best) {
+                context.logger?.log(`Найдена по пути: ${best.categoryPath}`);
+            } else {
+                context.logger?.log('По пути не найдена, фолбэк на HNSW');
+            }
         }
 
-        // Берём самую релевантную категорию (первый результат поиска)
-        const best = results[0];
+        // Фолбэк на HNSW поиск
+        if (!best) {
+            context.logger?.log(`Поиск категории по HNSW для: "${name}"`);
+            const results = await this.ozonCategoryService.searchSimilar(name, 5);
+            if (!results.length) {
+                context.logger?.log('Категории не найдены');
+                context.stopChain = true;
+                return context;
+            }
+            best = results[0];
+        }
 
         // Получаем description_category_id из БД
         const t = await this.pool.getTransaction();
