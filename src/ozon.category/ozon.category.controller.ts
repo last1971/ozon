@@ -5,6 +5,7 @@ import { OzonCategoryService, SearchResult, CommissionRange, CategoryAttributesR
 import { CreateProductInput } from './interfaces/product-create.context';
 import { AIService } from '../ai/ai.service';
 import { AIProviderName } from '../ai/interfaces';
+import { ImageStorageService } from '../image-storage/image-storage.service';
 
 @ApiTags('Ozon Category')
 @Controller('ozon-category')
@@ -12,6 +13,7 @@ export class OzonCategoryController {
     constructor(
         private ozonCategoryService: OzonCategoryService,
         private aiService: AIService,
+        private imageStorageService: ImageStorageService,
     ) {}
 
     @Post('import-categories')
@@ -130,6 +132,26 @@ export class OzonCategoryController {
     @ApiQuery({ name: 'task_id', type: Number, description: 'ID задачи из create-product' })
     async getImportInfo(@Query('task_id') taskId: number) {
         return this.ozonCategoryService.getImportInfo(Number(taskId));
+    }
+
+    @Post('upload-image')
+    @ApiOperation({ summary: 'Загрузить изображение и получить публичный URL' })
+    @ApiConsumes('multipart/form-data')
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                file: {
+                    type: 'string',
+                    format: 'binary',
+                },
+            },
+        },
+    })
+    @UseInterceptors(FileInterceptor('file'))
+    async uploadImage(@UploadedFile() file: Express.Multer.File): Promise<{ url: string }> {
+        const url = await this.imageStorageService.upload(file.buffer, file.originalname);
+        return { url };
     }
 
     @Get('ai-providers')

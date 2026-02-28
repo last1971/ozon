@@ -276,6 +276,30 @@ class EnvironmentVariables {
     @IsOptional()
     @IsNumber()
     ATTR_VALUES_LIMIT: number;
+
+    @IsOptional()
+    @IsString()
+    IMAGE_STORAGE_PROVIDER: string;
+
+    @IsOptional()
+    @IsString()
+    FTP_HOST: string;
+
+    @IsOptional()
+    @IsString()
+    FTP_USER: string;
+
+    @IsOptional()
+    @IsString()
+    FTP_PASS: string;
+
+    @IsOptional()
+    @IsString()
+    FTP_PATH: string;
+
+    @IsOptional()
+    @IsString()
+    IMAGE_BASE_URL: string;
 }
 
 export function configValidate(config: Record<string, unknown>) {

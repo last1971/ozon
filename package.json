@@ -33,6 +33,7 @@
     "@nestjs/serve-static": "^4.0.2",
     "@nestjs/swagger": "^7.4.2",
     "axios": "^1.7.7",
+    "basic-ftp": "^5.2.0",
     "bwip-js": "^4.5.1",
     "cache-manager": "^5.7.6",
     "cache-manager-redis-yet": "^5.1.5",

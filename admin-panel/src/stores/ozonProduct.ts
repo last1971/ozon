@@ -4,10 +4,12 @@ import axios from "../axios.config";
 
 const STORAGE_KEY = 'ozon-product-form';
 
-function loadForm() {
+type FormState = ReturnType<typeof defaultForm>;
+
+function loadForm(): FormState | null {
     try {
         const raw = localStorage.getItem(STORAGE_KEY);
-        if (raw) return JSON.parse(raw);
+        if (raw) return JSON.parse(raw) as FormState;
     } catch {}
     return null;
 }
@@ -37,6 +39,7 @@ export const ozonProductStore = defineStore("ozonProductStore", {
         form: loadForm() || defaultForm(),
         isCreating: false,
         isChecking: false,
+        uploadingIndex: -1,
         createResult: null as any,
         importInfo: null as any,
         errorMessage: '',
@@ -119,12 +122,32 @@ export const ozonProductStore = defineStore("ozonProductStore", {
                 this.isChecking = false;
             }
         },
+        async uploadImage(file: File, index: number) {
+            this.uploadingIndex = index;
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                const res = await axios.post('/api/ozon-category/upload-image', formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' },
+                });
+                this.form.images[index] = res.data.url;
+            } catch (e: any) {
+                this.errorMessage = e.response?.data?.message || e.message;
+            } finally {
+                this.uploadingIndex = -1;
+            }
+        },
         clearAll() {
-            this.form = defaultForm();
+            const keep = {
+                category_path: this.form.category_path,
+                all_attributes: this.form.all_attributes,
+                provider: this.form.provider,
+                model: this.form.model,
+            };
+            this.form = { ...defaultForm(), ...keep };
             this.createResult = null;
             this.importInfo = null;
             this.errorMessage = '';
-            localStorage.removeItem(STORAGE_KEY);
         },
     },
 });
