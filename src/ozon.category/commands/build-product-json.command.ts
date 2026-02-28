@@ -14,6 +14,7 @@ function formatHashtags(raw: string): string {
             const tag = t.startsWith('#') ? t.slice(1) : t;
             return '#' + tag.replace(/[\s-]+/g, '_').replace(/[^a-zA-Zа-яА-ЯёЁ0-9_]/g, '');
         })
+        .filter((t) => t.length <= 30)
         .join(' ');
 }
 
@@ -67,8 +68,8 @@ export class BuildProductJsonCommand implements ICommandAsync<IProductCreateCont
                 dimension_unit: 'mm',
                 height: variant.height,
                 width: variant.width,
-                images: input.images,
-                ...(input.pdf_list?.length ? { pdf_list: input.pdf_list } : {}),
+                images: [...new Set(input.images)],
+                ...(input.pdf_list?.length ? { pdf_list: input.pdf_list.filter((p, i, arr) => arr.findIndex(x => x.src_url === p.src_url) === i) } : {}),
                 name: variant.name,
                 offer_id: variant.offerId,
                 price: '100000',

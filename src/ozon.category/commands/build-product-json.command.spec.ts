@@ -154,6 +154,52 @@ describe('BuildProductJsonCommand', () => {
         expect(getQty8513(result.product_json.items[2])).toBe('10');
     });
 
+    it('should filter out hashtags longer than 30 characters', async () => {
+        const configService = { get: jest.fn().mockReturnValue(undefined) } as any;
+        const command = new BuildProductJsonCommand(configService);
+        const context: IProductCreateContext = {
+            input: makeInput(),
+            hashtags: 'короткий, очень_длинный_хэштег_который_точно_больше_тридцати_символов, норм',
+            variants: [makeVariant()],
+        };
+
+        const result = await command.execute(context);
+        const hashtagAttr = result.product_json.items[0].attributes.find((a: any) => a.id === 23171);
+        expect(hashtagAttr.values[0].value).toBe('#короткий #норм');
+    });
+
+    it('should deduplicate images', async () => {
+        const configService = { get: jest.fn().mockReturnValue(undefined) } as any;
+        const command = new BuildProductJsonCommand(configService);
+        const context: IProductCreateContext = {
+            input: makeInput({ images: ['https://a.com/1.jpg', 'https://a.com/2.jpg', 'https://a.com/1.jpg'] }),
+            variants: [makeVariant()],
+        };
+
+        const result = await command.execute(context);
+        expect(result.product_json.items[0].images).toEqual(['https://a.com/1.jpg', 'https://a.com/2.jpg']);
+    });
+
+    it('should deduplicate pdf_list by src_url', async () => {
+        const configService = { get: jest.fn().mockReturnValue(undefined) } as any;
+        const command = new BuildProductJsonCommand(configService);
+        const context: IProductCreateContext = {
+            input: makeInput({
+                pdf_list: [
+                    { index: 0, name: 'Datasheet', src_url: 'https://a.com/ds.pdf' },
+                    { index: 1, name: 'Manual', src_url: 'https://a.com/manual.pdf' },
+                    { index: 2, name: 'Datasheet copy', src_url: 'https://a.com/ds.pdf' },
+                ],
+            }),
+            variants: [makeVariant()],
+        };
+
+        const result = await command.execute(context);
+        expect(result.product_json.items[0].pdf_list).toHaveLength(2);
+        expect(result.product_json.items[0].pdf_list[0].name).toBe('Datasheet');
+        expect(result.product_json.items[0].pdf_list[1].name).toBe('Manual');
+    });
+
     it('should set attribute 23249 (quantity in package) to qty value', async () => {
         const configService = { get: jest.fn().mockReturnValue(undefined) } as any;
         const command = new BuildProductJsonCommand(configService);

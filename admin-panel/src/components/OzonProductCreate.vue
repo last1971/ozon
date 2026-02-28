@@ -44,6 +44,16 @@ function triggerUpload(index: number) {
 // PDF
 function addPdf() { store.form.pdf_list.push({ index: store.form.pdf_list.length, name: '', src_url: '' }); }
 function removePdf(i: string | number) { store.form.pdf_list.splice(Number(i), 1); }
+function triggerPdfUpload(index: number) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,application/pdf';
+    input.onchange = (e: Event) => {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        if (file) store.uploadPdf(file, index);
+    };
+    input.click();
+}
 
 // Quantities
 function addQty() { store.form.quantities.push(null); }
@@ -134,8 +144,13 @@ function removePkg(i: string | number) { store.form.packages.splice(Number(i), 1
                 <v-col cols="3">
                     <v-text-field v-model="store.form.pdf_list[i].name" label="Название" density="compact" />
                 </v-col>
-                <v-col cols="4">
+                <v-col cols="3">
                     <v-text-field v-model="store.form.pdf_list[i].src_url" label="URL" density="compact" />
+                </v-col>
+                <v-col cols="1">
+                    <v-btn icon size="small" variant="text" color="primary" @click="triggerPdfUpload(Number(i))" :disabled="formDisabled || store.uploadingPdfIndex >= 0" :loading="store.uploadingPdfIndex === Number(i)">
+                        <v-icon>mdi-upload</v-icon>
+                    </v-btn>
                 </v-col>
                 <v-col cols="1">
                     <v-btn icon size="small" variant="text" color="red" @click="removePdf(i)">
