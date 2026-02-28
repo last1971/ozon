@@ -177,9 +177,10 @@ describe('AnthropicProvider', () => {
         it('should return available models', () => {
             const models = provider.getModels();
 
-            expect(models).toHaveLength(2);
+            expect(models).toHaveLength(3);
             expect(models[0].id).toBe('claude-haiku-4-5-20251001');
             expect(models[1].id).toBe('claude-sonnet-4-5-20250929');
+            expect(models[2].id).toBe('claude-sonnet-4-6');
             expect(models.every((m) => m.provider === AIProviderName.ANTHROPIC)).toBe(true);
         });
     });

@@ -39,6 +39,7 @@ export const ozonProductStore = defineStore("ozonProductStore", {
         form: loadForm() || defaultForm(),
         isCreating: false,
         isChecking: false,
+        uploadingIndex: -1,
         createResult: null as any,
         importInfo: null as any,
         errorMessage: '',
@@ -119,6 +120,21 @@ export const ozonProductStore = defineStore("ozonProductStore", {
                 this.errorMessage = e.response?.data?.message || e.message;
             } finally {
                 this.isChecking = false;
+            }
+        },
+        async uploadImage(file: File, index: number) {
+            this.uploadingIndex = index;
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                const res = await axios.post('/api/ozon-category/upload-image', formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' },
+                });
+                this.form.images[index] = res.data.url;
+            } catch (e: any) {
+                this.errorMessage = e.response?.data?.message || e.message;
+            } finally {
+                this.uploadingIndex = -1;
             }
         },
         clearAll() {

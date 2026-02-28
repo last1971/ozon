@@ -30,6 +30,16 @@ onMounted(async () => {
 // Images
 function addImage() { store.form.images.push(''); }
 function removeImage(i: string | number) { store.form.images.splice(Number(i), 1); }
+function triggerUpload(index: number) {
+    const input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.onchange = (e: Event) => {
+        const file = (e.target as HTMLInputElement).files?.[0];
+        if (file) store.uploadImage(file, index);
+    };
+    input.click();
+}
 
 // PDF
 function addPdf() { store.form.pdf_list.push({ index: store.form.pdf_list.length, name: '', src_url: '' }); }
@@ -93,8 +103,13 @@ function removePkg(i: string | number) { store.form.packages.splice(Number(i), 1
                 </v-col>
             </v-row>
             <v-row dense v-for="(img, i) in store.form.images" :key="'img-'+i" align="center">
-                <v-col cols="8">
+                <v-col cols="7">
                     <v-text-field v-model="store.form.images[i]" :label="'URL картинки ' + (Number(i)+1)" density="compact" />
+                </v-col>
+                <v-col cols="1">
+                    <v-btn icon size="small" variant="text" color="primary" @click="triggerUpload(Number(i))" :disabled="formDisabled || store.uploadingIndex >= 0" :loading="store.uploadingIndex === Number(i)">
+                        <v-icon>mdi-upload</v-icon>
+                    </v-btn>
                 </v-col>
                 <v-col cols="1">
                     <v-btn icon size="small" variant="text" color="red" @click="removeImage(i)" :disabled="store.form.images.length <= 1">
