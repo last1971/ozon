@@ -122,11 +122,16 @@ export const ozonProductStore = defineStore("ozonProductStore", {
             }
         },
         clearAll() {
-            this.form = defaultForm();
+            const keep = {
+                category_path: this.form.category_path,
+                all_attributes: this.form.all_attributes,
+                provider: this.form.provider,
+                model: this.form.model,
+            };
+            this.form = { ...defaultForm(), ...keep };
             this.createResult = null;
             this.importInfo = null;
             this.errorMessage = '';
-            localStorage.removeItem(STORAGE_KEY);
         },
     },
 });
