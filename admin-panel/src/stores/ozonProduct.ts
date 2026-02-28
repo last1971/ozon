@@ -40,6 +40,7 @@ export const ozonProductStore = defineStore("ozonProductStore", {
         isCreating: false,
         isChecking: false,
         uploadingIndex: -1,
+        uploadingPdfIndex: -1,
         createResult: null as any,
         importInfo: null as any,
         errorMessage: '',
@@ -135,6 +136,24 @@ export const ozonProductStore = defineStore("ozonProductStore", {
                 this.errorMessage = e.response?.data?.message || e.message;
             } finally {
                 this.uploadingIndex = -1;
+            }
+        },
+        async uploadPdf(file: File, index: number) {
+            this.uploadingPdfIndex = index;
+            try {
+                const formData = new FormData();
+                formData.append('file', file);
+                const res = await axios.post('/api/ozon-category/upload-image', formData, {
+                    headers: { 'Content-Type': 'multipart/form-data' },
+                });
+                this.form.pdf_list[index].src_url = res.data.url;
+                if (!this.form.pdf_list[index].name) {
+                    this.form.pdf_list[index].name = file.name;
+                }
+            } catch (e: any) {
+                this.errorMessage = e.response?.data?.message || e.message;
+            } finally {
+                this.uploadingPdfIndex = -1;
             }
         },
         clearAll() {

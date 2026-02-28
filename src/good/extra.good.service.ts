@@ -17,6 +17,10 @@ import { GoodDto } from "./dto/good.dto";
 import { ConfigService } from "@nestjs/config";
 import { ProductInfoDto } from "../product/dto/product.info.dto";
 import { GoodsCountProcessor } from "../helpers/good/goods.count.processor";
+import Excel from 'exceljs';
+import { GoodWbDto } from "./dto/good.wb.dto";
+import { GoodAvitoDto } from "./dto/good.avito.dto";
+import { GoodPercentDto } from "./dto/good.percent.dto";
 
 @Injectable()
 export class ExtraGoodService {
@@ -191,5 +195,90 @@ export class ExtraGoodService {
     getSkuList(serviceEnum: GoodServiceEnum): string[] {
         const service = this.getCountUpdateableService(serviceEnum);
         return service?.skuList || [];
+    }
+
+    async importWbFromXlsx(buffer: Buffer): Promise<{ updated: number; errors: number }> {
+        const workbook = new Excel.Workbook();
+        await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
+        const worksheet = workbook.worksheets[0];
+        let updated = 0, errors = 0;
+        worksheet.eachRow((row) => {
+            try {
+                const id = row.getCell(1).value?.toString()?.trim();
+                if (!id) return;
+                const dto: GoodWbDto = {
+                    id,
+                    commission: Number(row.getCell(2).value) || 0,
+                    tariff: Number(row.getCell(3).value) || 0,
+                };
+                const minPrice = row.getCell(4).value;
+                if (minPrice !== null && minPrice !== undefined && minPrice !== '') dto.minPrice = Number(minPrice);
+                const wbCatId = row.getCell(5).value;
+                if (wbCatId !== null && wbCatId !== undefined && wbCatId !== '') dto.wbCategoriesId = Number(wbCatId);
+                this.goodService.setWbData(dto, null);
+                updated++;
+            } catch (e) {
+                errors++;
+                this.logger.error(`importWb row error: ${e.message}`);
+            }
+        });
+        return { updated, errors };
+    }
+
+    async importAvitoFromXlsx(buffer: Buffer): Promise<{ updated: number; errors: number }> {
+        const workbook = new Excel.Workbook();
+        await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
+        const worksheet = workbook.worksheets[0];
+        let updated = 0, errors = 0;
+        worksheet.eachRow((row) => {
+            try {
+                const id = row.getCell(1).value?.toString()?.trim();
+                if (!id) return;
+                const dto: GoodAvitoDto = {
+                    id,
+                    goodsCode: row.getCell(2).value?.toString()?.trim() || '',
+                    coeff: Number(row.getCell(3).value) || 0,
+                    commission: Number(row.getCell(4).value) || 0,
+                };
+                this.goodService.setAvitoData(dto, null);
+                updated++;
+            } catch (e) {
+                errors++;
+                this.logger.error(`importAvito row error: ${e.message}`);
+            }
+        });
+        return { updated, errors };
+    }
+
+    async importPercentFromXlsx(buffer: Buffer): Promise<{ updated: number; errors: number }> {
+        const workbook = new Excel.Workbook();
+        await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
+        const worksheet = workbook.worksheets[0];
+        let updated = 0, errors = 0;
+        worksheet.eachRow((row) => {
+            try {
+                const offer_id = row.getCell(1).value?.toString()?.trim();
+                if (!offer_id) return;
+                const dto: GoodPercentDto = { offer_id };
+                const min_perc = row.getCell(2).value;
+                if (min_perc !== null && min_perc !== undefined && min_perc !== '') dto.min_perc = Number(min_perc);
+                const perc = row.getCell(3).value;
+                if (perc !== null && perc !== undefined && perc !== '') dto.perc = Number(perc);
+                const old_perc = row.getCell(4).value;
+                if (old_perc !== null && old_perc !== undefined && old_perc !== '') dto.old_perc = Number(old_perc);
+                const adv_perc = row.getCell(5).value;
+                if (adv_perc !== null && adv_perc !== undefined && adv_perc !== '') dto.adv_perc = Number(adv_perc);
+                const packing_price = row.getCell(6).value;
+                if (packing_price !== null && packing_price !== undefined && packing_price !== '') dto.packing_price = Number(packing_price);
+                const available_price = row.getCell(7).value;
+                if (available_price !== null && available_price !== undefined && available_price !== '') dto.available_price = Number(available_price);
+                this.goodService.setPercents(dto, null);
+                updated++;
+            } catch (e) {
+                errors++;
+                this.logger.error(`importPercent row error: ${e.message}`);
+            }
+        });
+        return { updated, errors };
     }
 }

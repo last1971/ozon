@@ -10,6 +10,7 @@ import { ExtraGoodService } from "./extra.good.service";
 import { GoodServiceEnum } from "./good.service.enum";
 import { ConfigService } from "@nestjs/config";
 import { GoodsCountProcessor } from "../helpers/good/goods.count.processor";
+import Excel from 'exceljs';
 
 describe('ExtraGoodService', () => {
     let service: ExtraGoodService;
@@ -18,6 +19,9 @@ describe('ExtraGoodService', () => {
     const loadSkuList = jest.fn();
     const updateGoodCounts = jest.fn();
     const mockIn = jest.fn();
+    const setWbData = jest.fn().mockResolvedValue(undefined);
+    const setAvitoData = jest.fn().mockResolvedValue(undefined);
+    const setPercents = jest.fn().mockResolvedValue(undefined);
     const getGoodIds = jest.fn().mockResolvedValue(
         { goods: new Map<string, number>(), nextArgs: '' },
     );
@@ -27,7 +31,7 @@ describe('ExtraGoodService', () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 ExtraGoodService,
-                { provide: GOOD_SERVICE, useValue: { updateCountForService, updateCountForSkus, in: mockIn } },
+                { provide: GOOD_SERVICE, useValue: { updateCountForService, updateCountForSkus, in: mockIn, setWbData, setAvitoData, setPercents } },
                 { provide: YandexOfferService, useValue: { test: "Yandex", skuList: [], getGoodIds } },
                 { provide: ExpressOfferService, useValue: { skuList: [], getGoodIds } },
                 { provide: ProductService, useValue: { skuList: ["222", "222-10"], updateGoodCounts, getGoodIds } },
@@ -158,6 +162,61 @@ describe('ExtraGoodService', () => {
         it('should return empty array for EXPRESS service', () => {
             const result = service.getSkuList(GoodServiceEnum.EXPRESS);
             expect(result).toEqual([]);
+        });
+    });
+
+    describe('xlsx imports', () => {
+        function createXlsxBuffer(rows: any[][]): Promise<Excel.Buffer> {
+            const wb = new Excel.Workbook();
+            const ws = wb.addWorksheet('Sheet1');
+            rows.forEach(r => ws.addRow(r));
+            return wb.xlsx.writeBuffer();
+        }
+
+        it('importWbFromXlsx should parse rows and call setWbData', async () => {
+            const buffer = await createXlsxBuffer([
+                ['WB001', 15, 50, 1200, 8001],
+                ['WB002', 12, 45],
+            ]);
+            const result = await service.importWbFromXlsx(buffer as unknown as Buffer);
+            expect(result).toEqual({ updated: 2, errors: 0 });
+            expect(setWbData).toHaveBeenCalledTimes(2);
+            expect(setWbData.mock.calls[0][0]).toMatchObject({ id: 'WB001', commission: 15, tariff: 50 });
+            expect(setWbData.mock.calls[1][0]).toMatchObject({ id: 'WB002', commission: 12, tariff: 45 });
+        });
+
+        it('importAvitoFromXlsx should parse rows and call setAvitoData', async () => {
+            const buffer = await createXlsxBuffer([
+                ['avito123', '12345', 2, 15.5],
+                ['avito456', '67890', 1, 10],
+            ]);
+            const result = await service.importAvitoFromXlsx(buffer as unknown as Buffer);
+            expect(result).toEqual({ updated: 2, errors: 0 });
+            expect(setAvitoData).toHaveBeenCalledTimes(2);
+            expect(setAvitoData.mock.calls[0][0]).toMatchObject({ id: 'avito123', goodsCode: '12345', coeff: 2, commission: 15.5 });
+        });
+
+        it('importPercentFromXlsx should parse rows and call setPercents', async () => {
+            const buffer = await createXlsxBuffer([
+                ['SKU001', 10, 25, 40, 5, 30, 5000],
+                ['SKU002', 15, 30],
+            ]);
+            const result = await service.importPercentFromXlsx(buffer as unknown as Buffer);
+            expect(result).toEqual({ updated: 2, errors: 0 });
+            expect(setPercents).toHaveBeenCalledTimes(2);
+            expect(setPercents.mock.calls[0][0]).toMatchObject({ offer_id: 'SKU001', min_perc: 10, perc: 25, old_perc: 40 });
+            expect(setPercents.mock.calls[1][0]).toMatchObject({ offer_id: 'SKU002', min_perc: 15, perc: 30 });
+        });
+
+        it('importWbFromXlsx should skip empty rows', async () => {
+            const buffer = await createXlsxBuffer([
+                ['WB001', 15, 50],
+                [null],
+                ['WB002', 12, 45],
+            ]);
+            const result = await service.importWbFromXlsx(buffer as unknown as Buffer);
+            expect(result).toEqual({ updated: 2, errors: 0 });
+            expect(setWbData).toHaveBeenCalledTimes(2);
         });
     });
 
