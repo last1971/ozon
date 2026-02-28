@@ -1,5 +1,6 @@
-import { Body, Controller, Get, Inject, Param, ParseEnumPipe, Post, Put, Query } from "@nestjs/common";
-import { ApiBody, ApiOperation, ApiParam, ApiProperty, ApiResponse, ApiTags } from "@nestjs/swagger";
+import { Body, Controller, Get, Inject, Param, ParseEnumPipe, Post, Put, Query, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { FileInterceptor } from "@nestjs/platform-express";
+import { ApiBody, ApiConsumes, ApiOperation, ApiParam, ApiProperty, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
 import { GoodPercentDto } from './dto/good.percent.dto';
 import { ResultDto } from '../helpers/dto/result.dto';
@@ -188,5 +189,32 @@ export class GoodController {
         @Param('service', new ParseEnumPipe(GoodServiceEnum)) service: GoodServiceEnum
     ): Promise<string[]> {
         return this.extraService.getSkuList(service);
+    }
+
+    @Post('import-wb')
+    @ApiOperation({ summary: 'Импорт данных WB из XLSX (столбцы: id, commission, tariff, minPrice, wbCategoriesId)' })
+    @ApiConsumes('multipart/form-data')
+    @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })
+    @UseInterceptors(FileInterceptor('file'))
+    async importWb(@UploadedFile() file: Express.Multer.File) {
+        return this.extraService.importWbFromXlsx(file.buffer);
+    }
+
+    @Post('import-avito')
+    @ApiOperation({ summary: 'Импорт данных Avito из XLSX (столбцы: id, goodsCode, coeff, commission)' })
+    @ApiConsumes('multipart/form-data')
+    @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })
+    @UseInterceptors(FileInterceptor('file'))
+    async importAvito(@UploadedFile() file: Express.Multer.File) {
+        return this.extraService.importAvitoFromXlsx(file.buffer);
+    }
+
+    @Post('import-percent')
+    @ApiOperation({ summary: 'Импорт наценок из XLSX (столбцы: offer_id, min_perc, perc, old_perc, adv_perc, packing_price, available_price)' })
+    @ApiConsumes('multipart/form-data')
+    @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })
+    @UseInterceptors(FileInterceptor('file'))
+    async importPercent(@UploadedFile() file: Express.Multer.File) {
+        return this.extraService.importPercentFromXlsx(file.buffer);
     }
 }
