@@ -605,8 +605,8 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
     async updateWbCategory(wbCard: WbCardDto): Promise<void> {
         const t = await this.pool.getTransaction();
         await t.execute(
-            'UPDATE OR INSERT INTO WB_CATEGORIES (ID, COMMISSION, NAME) VALUES (?, ?, ?) MATCHING (ID)',
-            [wbCard.subjectID, wbCard.kgvpMarketplace ?? 25, wbCard.subjectName],
+            'UPDATE OR INSERT INTO WB_CATEGORIES (ID, COMMISSION, NAME, PARENT_ID, PARENT_NAME) VALUES (?, ?, ?, ?, ?) MATCHING (ID)',
+            [wbCard.subjectID, wbCard.kgvpMarketplace ?? 25, wbCard.subjectName, wbCard.parentID ?? null, wbCard.parentName ?? null],
             true,
         );
     }

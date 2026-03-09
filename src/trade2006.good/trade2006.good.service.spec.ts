@@ -356,8 +356,8 @@ describe('Trade2006GoodService', () => {
             title: 'test'
         });
         expect(execute.mock.calls[0]).toEqual([
-            'UPDATE OR INSERT INTO WB_CATEGORIES (ID, COMMISSION, NAME) VALUES (?, ?, ?) MATCHING (ID)',
-            [2, 25, '3'],
+            'UPDATE OR INSERT INTO WB_CATEGORIES (ID, COMMISSION, NAME, PARENT_ID, PARENT_NAME) VALUES (?, ?, ?, ?, ?) MATCHING (ID)',
+            [2, 25, '3', null, null],
             true,
         ]);
     });
