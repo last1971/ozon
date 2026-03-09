@@ -15,7 +15,7 @@ export class WbCardDimensionsDto {
 export class WbCardCharacteristicDto {
     id: number;
     name?: string;
-    value: string | string[];
+    value: string | string[] | number;
 }
 
 export class WbCardTagDto {

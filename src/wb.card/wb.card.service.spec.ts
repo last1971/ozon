@@ -4,6 +4,9 @@ import { WbApiService } from '../wb.api/wb.api.service';
 import { VaultService } from 'vault-module/lib/vault.service';
 import { ConfigService } from '@nestjs/config';
 import { clearRateLimitCache } from '../helpers/decorators/rate-limit.decorator';
+import { LoadWbCharcsCommand } from './commands/load-wb-charcs.command';
+import { GenerateWbCharcsCommand } from './commands/generate-wb-charcs.command';
+import { BuildWbCharcsCommand } from './commands/build-wb-charcs.command';
 
 describe('WbCardService', () => {
     let service: WbCardService;
@@ -20,7 +23,10 @@ describe('WbCardService', () => {
                     provide: VaultService,
                     useValue: { get: () => ({ WAREHOUSE_ID: 12345 }) },
                 },
-                { provide: ConfigService, useValue: {} },
+                { provide: ConfigService, useValue: { get: jest.fn() } },
+                { provide: LoadWbCharcsCommand, useValue: { execute: jest.fn((ctx) => ctx) } },
+                { provide: GenerateWbCharcsCommand, useValue: { execute: jest.fn((ctx) => ctx) } },
+                { provide: BuildWbCharcsCommand, useValue: { execute: jest.fn((ctx) => ctx) } },
             ],
         }).compile();
 

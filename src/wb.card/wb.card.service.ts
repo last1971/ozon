@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { GoodCountsDto, ICountUpdateable } from '../interfaces/ICountUpdatebale';
 import { WbApiService } from '../wb.api/wb.api.service';
 import { VaultService } from 'vault-module/lib/vault.service';
@@ -11,9 +11,16 @@ import { GoodServiceEnum } from '../good/good.service.enum';
 import { ProductInfoDto } from "../product/dto/product.info.dto";
 import { IProductable } from '../interfaces/i.productable';
 import { RateLimit } from '../helpers/decorators/rate-limit.decorator';
+import { Cacheable } from 'nestjs-cacheable';
+import { WbCharc, IWbCreateCardContext } from './interfaces/wb-create-card.interface';
+import { CommandChainAsync } from '../helpers/command/command.chain.async';
+import { LoadWbCharcsCommand } from './commands/load-wb-charcs.command';
+import { GenerateWbCharcsCommand } from './commands/generate-wb-charcs.command';
+import { BuildWbCharcsCommand } from './commands/build-wb-charcs.command';
 
 @Injectable()
 export class WbCardService extends ICountUpdateable implements OnModuleInit, IProductable {
+    private readonly logger = new Logger(WbCardService.name);
     private warehouseId: number;
     private skuBarcodePair: Map<string, string>;
     private skuNmIDPair: Map<string, string>;
@@ -23,6 +30,9 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
         private api: WbApiService,
         private vault: VaultService,
         private configService: ConfigService,
+        private loadWbCharcsCommand: LoadWbCharcsCommand,
+        private generateWbCharcsCommand: GenerateWbCharcsCommand,
+        private buildWbCharcsCommand: BuildWbCharcsCommand,
     ) {
         super();
         this.skuBarcodePair = new Map<string, string>();
@@ -206,6 +216,39 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
 
     clearWbCards(): void {
         this.wbCards = new Map<string, WbCardDto>();
+    }
+
+    @Cacheable({
+        key: (subjectId: number) => `${subjectId}`,
+        namespace: 'wb:charcs',
+        ttl: 86400,
+    })
+    async getCharacteristics(subjectId: number): Promise<WbCharc[]> {
+        const res = await this.api.method(
+            `https://content-api.wildberries.ru/content/v2/object/charcs/${subjectId}`,
+            'get',
+            null,
+            true,
+        );
+        return res.data || [];
+    }
+
+    async generateCharacteristics(input: {
+        productName: string;
+        description: string;
+        subjectId: number;
+        webSearch?: boolean;
+        ozonDimensions?: string;
+        ozonWeight?: string;
+        ozonWarranty?: string;
+    }): Promise<IWbCreateCardContext> {
+        const context: IWbCreateCardContext = { ...input };
+        const chain = new CommandChainAsync<IWbCreateCardContext>([
+            this.loadWbCharcsCommand,
+            this.generateWbCharcsCommand,
+            this.buildWbCharcsCommand,
+        ]);
+        return chain.execute(context);
     }
 
 }
