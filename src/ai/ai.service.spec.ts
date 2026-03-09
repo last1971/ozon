@@ -148,6 +148,61 @@ describe('AIService', () => {
         });
     });
 
+    describe('shortenTitle', () => {
+        it('should return title as-is if within maxLength', async () => {
+            const result = await service.shortenTitle('Короткое название', 60);
+
+            expect(result.title).toBe('Короткое название');
+            expect(result.original).toBe('Короткое название');
+            expect(mockAnthropicProvider.chat).not.toHaveBeenCalled();
+        });
+
+        it('should call AI to shorten long title', async () => {
+            mockAnthropicProvider.chat.mockResolvedValueOnce({
+                content: 'LRS-350-24 Блок питания 24В 14,6А 350Вт',
+                model: 'claude-haiku-4-5-20251001',
+                usage: { input_tokens: 100, output_tokens: 20 },
+                finish_reason: 'end_turn',
+            });
+
+            const longTitle = 'LRS-350-24, Блок питания корпусной 24В 14,6А 350Вт (Mean Well) для светодиодных лент';
+            const result = await service.shortenTitle(longTitle, 60);
+
+            expect(result.title).toBe('LRS-350-24 Блок питания 24В 14,6А 350Вт');
+            expect(result.original).toBe(longTitle);
+            expect(mockAnthropicProvider.chat).toHaveBeenCalledTimes(1);
+            const callArgs = mockAnthropicProvider.chat.mock.calls[0];
+            expect(callArgs[0][0].content).toContain('60 символов');
+            expect(callArgs[0][0].content).toContain(longTitle);
+            expect(callArgs[1].model).toBe('claude-haiku-4-5-20251001');
+        });
+
+        it('should trim AI response', async () => {
+            mockAnthropicProvider.chat.mockResolvedValueOnce({
+                content: '  Название с пробелами  \n',
+                model: 'claude-haiku-4-5-20251001',
+                usage: { input_tokens: 50, output_tokens: 10 },
+                finish_reason: 'end_turn',
+            });
+
+            const result = await service.shortenTitle('A'.repeat(61), 60);
+            expect(result.title).toBe('Название с пробелами');
+        });
+
+        it('should use custom maxLength', async () => {
+            mockAnthropicProvider.chat.mockResolvedValueOnce({
+                content: 'Короткое',
+                model: 'claude-haiku-4-5-20251001',
+                usage: { input_tokens: 50, output_tokens: 10 },
+                finish_reason: 'end_turn',
+            });
+
+            await service.shortenTitle('A'.repeat(41), 40);
+            const prompt = mockAnthropicProvider.chat.mock.calls[0][0][0].content;
+            expect(prompt).toContain('40 символов');
+        });
+    });
+
     describe('estimateCost', () => {
         it('should estimate cost for Anthropic', () => {
             const cost = service.estimateCost(AIProviderName.ANTHROPIC, 1000, 500);

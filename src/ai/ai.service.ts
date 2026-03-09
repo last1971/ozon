@@ -90,6 +90,34 @@ export class AIService {
         return provider.generateEmbeddings(texts, model);
     }
 
+    async shortenTitle(title: string, maxLength = 60): Promise<{ title: string; original: string }> {
+        if (title.length <= maxLength) return { title, original: title };
+
+        const response = await this.chat(
+            AIProviderName.ANTHROPIC,
+            [
+                {
+                    role: 'user',
+                    content: `Сократи название товара до ${maxLength} символов. Правила:
+- Сохрани модель/артикул, ключевые характеристики (напряжение, мощность, размер)
+- Обязательно сохрани количество (шт, комплект, набор, упаковка) если указано
+- Убери бренд в скобках, лишние запятые, избыточные слова
+- Не добавляй ничего от себя
+- Ответь ТОЛЬКО сокращённым названием, без пояснений
+
+Название: ${title}`,
+                },
+            ],
+            { model: 'claude-haiku-4-5-20251001', max_tokens: 100 },
+        );
+
+        const shortened = response.content.trim();
+        if (shortened.length > maxLength) {
+            this.logger.warn(`shortenTitle: AI returned ${shortened.length} chars (>${maxLength}): "${shortened}"`);
+        }
+        return { title: shortened, original: title };
+    }
+
     private getProvider(name: AIProviderName): AIProvider {
         const provider = this.providers.get(name);
         if (!provider) {

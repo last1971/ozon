@@ -206,6 +206,17 @@ export class OzonCategoryController {
         return this.ozonCategoryService.searchWbByOzonType(Number(typeId), limit ? Number(limit) : 5);
     }
 
+    @Get('shorten-title')
+    @ApiOperation({ summary: 'Сократить название товара до указанной длины через AI' })
+    @ApiQuery({ name: 'title', type: String, description: 'Название товара' })
+    @ApiQuery({ name: 'maxLength', type: Number, required: false, description: 'Макс. длина (по умолчанию 60)' })
+    async shortenTitle(
+        @Query('title') title: string,
+        @Query('maxLength') maxLength?: number,
+    ) {
+        return this.aiService.shortenTitle(title, maxLength ? Number(maxLength) : 60);
+    }
+
     @Get('ai-providers')
     @ApiOperation({ summary: 'Список AI провайдеров и их моделей' })
     getAiProviders() {
