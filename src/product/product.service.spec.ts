@@ -426,4 +426,25 @@ describe('ProductService', () => {
 
         expect(result).toEqual([]);
     });
+
+    it('getProductAttributes', async () => {
+        const mockCard = { id: 123, offer_id: '531557', name: 'Test', attributes: [] };
+        method.mockResolvedValue({ result: [mockCard] });
+
+        const result = await service.getProductAttributes('531557');
+
+        expect(method.mock.calls[0]).toEqual([
+            '/v4/product/info/attributes',
+            { filter: { offer_id: ['531557'] }, limit: 1 },
+        ]);
+        expect(result).toEqual(mockCard);
+    });
+
+    it('getProductAttributes returns null if not found', async () => {
+        method.mockResolvedValue({ result: [] });
+
+        const result = await service.getProductAttributes('999999');
+
+        expect(result).toBeNull();
+    });
 });

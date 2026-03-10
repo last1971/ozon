@@ -38,13 +38,6 @@ export interface CommissionRange {
     rate: number;
 }
 
-interface TypeRecord {
-    TYPE_ID: number;
-    TYPE_NAME: string;
-    CATEGORY_PATH: string;
-    EMBEDDING?: Buffer;
-}
-
 export interface SearchResult {
     typeId: number;
     typeName: string;
@@ -86,6 +79,7 @@ const SKIP_ATTRIBUTE_IDS = new Set([
 
 const EMBEDDING_DIM = 1536;
 const INDEX_PATH = path.join(process.cwd(), 'data', 'ozon_categories.hnsw');
+const WB_INDEX_PATH = path.join(process.cwd(), 'data', 'wb_categories.hnsw');
 
 const SUBSCRIPT_MAP: Record<string, string> = {
     '₀': '0', '₁': '1', '₂': '2', '₃': '3', '₄': '4',
@@ -101,7 +95,11 @@ export class OzonCategoryService implements OnModuleInit {
     private readonly logger = new Logger(OzonCategoryService.name);
     private index: HierarchicalNSW | null = null;
     private typeIdMap: Map<number, number> = new Map();
-    private typeDataMap: Map<number, { typeName: string; categoryPath: string }> = new Map();
+    private typeDataMap: Map<number, Record<string, string>> = new Map();
+
+    private wbIndex: HierarchicalNSW | null = null;
+    private wbIdMap: Map<number, number> = new Map();
+    private wbDataMap: Map<number, Record<string, string>> = new Map();
 
     private attrValuesLimit: number;
 
@@ -133,222 +131,141 @@ export class OzonCategoryService implements OnModuleInit {
     // ========== HNSW Index ==========
 
     private async loadIndex(): Promise<void> {
-        try {
-            if (fs.existsSync(INDEX_PATH)) {
-                this.logger.log('Loading HNSW index from disk...');
-                this.index = new HierarchicalNSW('cosine', EMBEDDING_DIM);
-                await this.index.readIndex(INDEX_PATH);
-                const types = await this.loadFromRedis();
-                if (types.length > 0) {
-                    this.populateTypeMaps(types);
+        for (const { prefix, indexPath, label } of [
+            { prefix: 'ozon', indexPath: INDEX_PATH, label: 'Ozon' },
+            { prefix: 'wb', indexPath: WB_INDEX_PATH, label: 'WB' },
+        ]) {
+            try {
+                if (!fs.existsSync(indexPath)) continue;
+                this.logger.log(`Loading ${label} HNSW index from disk...`);
+                const index = new HierarchicalNSW('cosine', EMBEDDING_DIM);
+                await index.readIndex(indexPath);
+                const records = await this.loadFromRedisCache(prefix);
+                const idMap = new Map<number, number>();
+                const dataMap = new Map<number, Record<string, string>>();
+                records.forEach((rec, i) => {
+                    idMap.set(i, rec.id);
+                    dataMap.set(rec.id, rec.fields);
+                });
+                if (prefix === 'ozon') {
+                    this.index = index;
+                    this.typeIdMap = idMap;
+                    this.typeDataMap = dataMap;
+                } else {
+                    this.wbIndex = index;
+                    this.wbIdMap = idMap;
+                    this.wbDataMap = dataMap;
                 }
-                this.logger.log(`HNSW index loaded: ${this.index.getCurrentCount()} vectors, ${types.length} type maps`);
+                this.logger.log(`${label} HNSW index loaded: ${index.getCurrentCount()} vectors, ${records.length} maps`);
+            } catch (error) {
+                this.logger.error(`Failed to load ${label} index: ${error.message}`);
             }
-        } catch (error) {
-            this.logger.error(`Failed to load index: ${error.message}`);
         }
     }
 
-    private populateTypeMaps(types: TypeRecord[]): void {
-        this.typeIdMap.clear();
-        this.typeDataMap.clear();
-        types.forEach((type, idx) => {
-            this.typeIdMap.set(idx, type.TYPE_ID);
-            this.typeDataMap.set(type.TYPE_ID, {
-                typeName: type.TYPE_NAME,
-                categoryPath: type.CATEGORY_PATH,
-            });
+    private async rebuildHnswIndex(prefix: string, indexPath: string): Promise<{
+        index: HierarchicalNSW;
+        idMap: Map<number, number>;
+        dataMap: Map<number, Record<string, string>>;
+        indexed: number;
+    }> {
+        const records = await this.loadFromRedisCache(prefix);
+        if (!records.length) throw new Error(`No ${prefix} embeddings in Redis.`);
+
+        this.logger.log(`${prefix}: Building index for ${records.length} vectors...`);
+        const index = new HierarchicalNSW('cosine', EMBEDDING_DIM);
+        index.initIndex(records.length, 16, 200, 100);
+        const idMap = new Map<number, number>();
+        const dataMap = new Map<number, Record<string, string>>();
+
+        records.forEach((rec, i) => {
+            index.addPoint(this.bufferToEmbedding(rec.embedding), i);
+            idMap.set(i, rec.id);
+            dataMap.set(rec.id, rec.fields);
         });
+
+        const dir = path.dirname(indexPath);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        await index.writeIndex(indexPath);
+
+        this.logger.log(`${prefix} HNSW index rebuilt: ${records.length} vectors`);
+        return { index, idMap, dataMap, indexed: records.length };
     }
 
-
     async rebuildIndex(): Promise<{ indexed: number }> {
-        this.logger.log('Rebuilding HNSW index...');
-        const types = await this.loadFromRedis();
-        if (!types.length) throw new Error('No embeddings in Redis. Run POST /ozon-category/export-cache first.');
+        const { index, idMap, dataMap, indexed } = await this.rebuildHnswIndex('ozon', INDEX_PATH);
+        this.index = index;
+        this.typeIdMap = idMap;
+        this.typeDataMap = dataMap;
+        return { indexed };
+    }
 
-        this.logger.log(`Building index for ${types.length} vectors...`);
-        this.index = new HierarchicalNSW('cosine', EMBEDDING_DIM);
-        this.index.initIndex(types.length, 16, 200, 100);
-
-        let added = 0;
-        types.forEach((type, i) => {
-            if (!type.EMBEDDING) return;
-            this.index.addPoint(this.bufferToEmbedding(type.EMBEDDING), i);
-            added++;
-        });
-        this.logger.log(`Added ${added} vectors to index`);
-        this.populateTypeMaps(types);
-
-        const dir = path.dirname(INDEX_PATH);
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        await this.index.writeIndex(INDEX_PATH);
-
-        this.logger.log(`HNSW index rebuilt and saved: ${added} vectors`);
-        return { indexed: added };
+    private searchByVector(
+        index: HierarchicalNSW,
+        idMap: Map<number, number>,
+        vector: number[],
+        limit: number,
+    ): { id: number; similarity: number }[] {
+        const { neighbors, distances } = index.searchKnn(vector, limit);
+        return neighbors
+            .map((n, i) => ({ id: idMap.get(n), similarity: 1 - distances[i] }))
+            .filter((r): r is { id: number; similarity: number } => r.id != null);
     }
 
     async searchSimilar(text: string, limit = 10): Promise<SearchResult[]> {
         if (!this.index?.getCurrentCount()) {
-            try {
-                await this.rebuildIndex();
-            } catch {
-                return [];
-            }
+            try { await this.rebuildIndex(); } catch { return []; }
         }
 
         const embedding = await this.aiService.generateEmbedding(text);
-        const { neighbors, distances } = this.index.searchKnn(embedding, limit);
-        const results: SearchResult[] = [];
-
-        for (let i = 0; i < neighbors.length; i++) {
-            const typeId = this.typeIdMap.get(neighbors[i]);
-            if (!typeId) continue;
-            const data = this.typeDataMap.get(typeId);
-            const commissions = await this.getCommissions(typeId);
-            const maxFbs = commissions?.fbs.length
-                ? Math.max(...commissions.fbs.map(r => r.rate))
-                : null;
-            results.push({
-                typeId,
-                typeName: data?.typeName || '',
-                categoryPath: data?.categoryPath || '',
-                similarity: 1 - distances[i],
-                fbsCommission: maxFbs,
-            });
-        }
-
-        return results;
+        const hits = this.searchByVector(this.index, this.typeIdMap, embedding, limit);
+        return Promise.all(hits.map(hit =>
+            this.buildSearchResult(hit.id, this.typeDataMap.get(hit.id) || {}, hit.similarity),
+        ));
     }
 
     async findByPath(inputPath: string): Promise<SearchResult | null> {
         const normalized = inputPath.replace(/\s*>\s*/g, ' -> ').toLowerCase();
         for (const [typeId, data] of this.typeDataMap) {
-            if (data.categoryPath.toLowerCase() === normalized) {
-                const commissions = await this.getCommissions(typeId);
-                const maxFbs = commissions?.fbs.length
-                    ? Math.max(...commissions.fbs.map(r => r.rate))
-                    : null;
-                return {
-                    typeId,
-                    typeName: data.typeName,
-                    categoryPath: data.categoryPath,
-                    similarity: 1,
-                    fbsCommission: maxFbs,
-                };
+            if ((data.path || '').toLowerCase() === normalized) {
+                return this.buildSearchResult(typeId, data);
             }
         }
-        // Фолбэк: поиск по последнему сегменту (type name)
         const lastSegment = inputPath.split(/\s*>\s*/).pop()?.trim().toLowerCase();
         if (lastSegment) {
             for (const [typeId, data] of this.typeDataMap) {
-                if (data.typeName.toLowerCase() === lastSegment) {
-                    const commissions = await this.getCommissions(typeId);
-                    const maxFbs = commissions?.fbs.length
-                        ? Math.max(...commissions.fbs.map(r => r.rate))
-                        : null;
-                    return {
-                        typeId,
-                        typeName: data.typeName,
-                        categoryPath: data.categoryPath,
-                        similarity: 1,
-                        fbsCommission: maxFbs,
-                    };
+                if ((data.name || '').toLowerCase() === lastSegment) {
+                    return this.buildSearchResult(typeId, data);
                 }
             }
         }
         return null;
     }
 
+    private async buildSearchResult(typeId: number, data: Record<string, string>, similarity = 1): Promise<SearchResult> {
+        const commissions = await this.getCommissions(typeId);
+        const maxFbs = commissions?.fbs.length
+            ? Math.max(...commissions.fbs.map(r => r.rate))
+            : null;
+        return {
+            typeId,
+            typeName: data?.name || '',
+            categoryPath: data?.path || '',
+            similarity,
+            fbsCommission: maxFbs,
+        };
+    }
+
     // ========== Redis Cache ==========
 
     async exportToRedis(): Promise<{ exported: number; total: number }> {
-        const t0 = await this.pool.getTransaction();
-        const allTypes = await t0.query(
-            'SELECT TYPE_ID, TYPE_NAME, CATEGORY_PATH FROM OZON_TYPES WHERE EMBEDDING IS NOT NULL AND DISABLED = 0',
-            [], true,
-        );
-        this.logger.log(`exportToRedis: ${allTypes.length} types with embeddings in DB`);
-
-        const idsJson = await this.cacheManager.get<string>('ozon:emb:ids');
-        const exportedIds = new Set<number>(idsJson ? JSON.parse(idsJson) : []);
-        const toExport = allTypes.filter((r: any) => !exportedIds.has(r.TYPE_ID));
-
-        this.logger.log(`exportToRedis: ${exportedIds.size} already in Redis, ${toExport.length} to export`);
-        if (toExport.length === 0) return { exported: 0, total: exportedIds.size };
-
-        let exported = 0;
-        const batchSize = 500;
-        for (let i = 0; i < toExport.length; i += batchSize) {
-            const batch = toExport.slice(i, i + batchSize);
-            const ids = batch.map((r: any) => r.TYPE_ID).join(',');
-            const t = await this.pool.getTransaction();
-            try {
-                const rows = await t.query(
-                    `SELECT TYPE_ID, EMBEDDING FROM OZON_TYPES WHERE TYPE_ID IN (${ids})`,
-                    [], false,
-                );
-                const transaction = (t as any).transaction;
-
-                for (let j = 0; j < rows.length; j++) {
-                    const dbRow = rows[j];
-                    if (!dbRow.EMBEDDING) continue;
-                    const buf = await this.readBlob(dbRow.EMBEDDING, transaction, true);
-                    if (!buf || buf.length !== 6144) continue;
-
-                    const meta = batch.find((r: any) => r.TYPE_ID === dbRow.TYPE_ID);
-                    await this.cacheManager.set(`ozon:emb:${dbRow.TYPE_ID}`, JSON.stringify({
-                        name: meta.TYPE_NAME,
-                        path: meta.CATEGORY_PATH,
-                        emb: buf.toString('base64'),
-                    }), 0);
-                    exportedIds.add(dbRow.TYPE_ID);
-                    exported++;
-                    if ((j + 1) % 50 === 0) this.logger.log(`  batch ${Math.floor(i / batchSize) + 1}: ${j + 1}/${rows.length}`);
-                }
-
-                await t.commit(true);
-                await this.cacheManager.set('ozon:emb:ids', JSON.stringify([...exportedIds]), 0);
-                this.logger.log(`${exported}/${toExport.length}`);
-            } catch (error) {
-                try { await t.rollback(true); } catch {}
-                this.logger.error(`Batch failed at ${i}: ${error.message}`);
-                await this.cacheManager.set('ozon:emb:ids', JSON.stringify([...exportedIds]), 0);
-                return { exported, total: exportedIds.size };
-            }
-        }
-
-        await this.cacheManager.set('ozon:emb:ids', JSON.stringify([...exportedIds]), 0);
-        return { exported, total: exportedIds.size };
-    }
-
-    private async loadFromRedis(): Promise<TypeRecord[]> {
-        const idsJson = await this.cacheManager.get<string>('ozon:emb:ids');
-        if (!idsJson) return [];
-
-        const ids: number[] = JSON.parse(idsJson);
-        this.logger.log(`Loading ${ids.length} embeddings from Redis...`);
-
-        const results: TypeRecord[] = [];
-        for (let i = 0; i < ids.length; i += 100) {
-            const batch = ids.slice(i, i + 100);
-            const promises = batch.map(async (id) => {
-                const data = await this.cacheManager.get<string>(`ozon:emb:${id}`);
-                if (!data) return null;
-                const parsed = JSON.parse(data);
-                return {
-                    TYPE_ID: id,
-                    TYPE_NAME: parsed.name,
-                    CATEGORY_PATH: parsed.path,
-                    EMBEDDING: Buffer.from(parsed.emb, 'base64'),
-                } as TypeRecord;
-            });
-            const batchResults = await Promise.all(promises);
-            results.push(...batchResults.filter((r): r is TypeRecord => r !== null));
-        }
-
-        this.logger.log(`Loaded ${results.length} embeddings from Redis`);
-        return results;
+        return this.exportEmbeddingsToRedis({
+            prefix: 'ozon',
+            metaQuery: 'SELECT TYPE_ID, TYPE_NAME, CATEGORY_PATH FROM OZON_TYPES WHERE EMBEDDING IS NOT NULL AND DISABLED = 0',
+            blobQuery: (ids: string) => `SELECT TYPE_ID, EMBEDDING FROM OZON_TYPES WHERE TYPE_ID IN (${ids})`,
+            idField: 'TYPE_ID',
+            fieldsFn: (meta: any) => ({ name: meta.TYPE_NAME, path: meta.CATEGORY_PATH }),
+        });
     }
 
     // ========== Import ==========
@@ -497,65 +414,13 @@ export class OzonCategoryService implements OnModuleInit {
     // ========== Embeddings ==========
 
     async generateEmbeddings(batchSize = 100): Promise<{ processed: number; errors: number }> {
-        const dbBatchSize = 5; // 5 embeddings * ~12KB hex = ~60KB < 64KB лимит EXECUTE BLOCK
-        const tr = await this.pool.getTransaction();
-        try {
-            const types = await tr.query(
-                'SELECT TYPE_ID, TYPE_NAME, CATEGORY_PATH FROM OZON_TYPES WHERE EMBEDDING IS NULL AND DISABLED = 0',
-                [], false,
-            );
-
-            const totalBatches = Math.ceil(types.length / batchSize);
-            this.logger.log(`Found ${types.length} types without embeddings (${totalBatches} batches)`);
-
-            let processed = 0, errors = 0;
-
-            for (let i = 0; i < types.length; i += batchSize) {
-                const batch = types.slice(i, i + batchSize);
-                const batchNum = Math.floor(i / batchSize) + 1;
-                try {
-                    this.logger.log(`Batch ${batchNum}/${totalBatches}: generating embeddings for ${batch.length} texts...`);
-                    const embeddings = await this.aiService.generateEmbeddings(batch.map((row: any) => row.CATEGORY_PATH));
-
-                    // Пишем в БД порциями по dbBatchSize через EXECUTE BLOCK
-                    for (let k = 0; k < batch.length; k += dbBatchSize) {
-                        const dbBatch = batch.slice(k, k + dbBatchSize);
-                        let block = 'EXECUTE BLOCK AS BEGIN\n';
-                        for (let j = 0; j < dbBatch.length; j++) {
-                            const hex = this.embeddingToBuffer(embeddings[k + j]).toString('hex').toUpperCase();
-                            block += `UPDATE OZON_TYPES SET EMBEDDING = x'${hex}' WHERE TYPE_ID = ${dbBatch[j].TYPE_ID};\n`;
-                        }
-                        block += 'END';
-                        await tr.execute(block, [], false);
-                    }
-                    // Сохраняем в Redis
-                    const idsJson = await this.cacheManager.get<string>('ozon:emb:ids');
-                    const exportedIds: number[] = idsJson ? JSON.parse(idsJson) : [];
-                    for (let idx = 0; idx < batch.length; idx++) {
-                        await this.cacheManager.set(`ozon:emb:${batch[idx].TYPE_ID}`, JSON.stringify({
-                            name: batch[idx].TYPE_NAME,
-                            path: batch[idx].CATEGORY_PATH,
-                            emb: this.embeddingToBuffer(embeddings[idx]).toString('base64'),
-                        }), 0);
-                        exportedIds.push(batch[idx].TYPE_ID);
-                    }
-                    await this.cacheManager.set('ozon:emb:ids', JSON.stringify(exportedIds), 0);
-
-                    processed += batch.length;
-
-                    this.logger.log(`Batch ${batchNum}/${totalBatches}: done. Progress: ${processed}/${types.length} (${Math.round(processed / types.length * 100)}%)`);
-                } catch (e) {
-                    this.logger.error(`Batch ${batchNum} error: ${e.message}`);
-                    errors += batch.length;
-                }
-            }
-            await tr.commit(true);
-            this.logger.log(`Done! Processed: ${processed}, Errors: ${errors}`);
-            return { processed, errors };
-        } catch (error) {
-            await tr.rollback(true);
-            throw error;
-        }
+        return this.generateEmbeddingsForTable({
+            prefix: 'ozon', table: 'OZON_TYPES', idField: 'TYPE_ID',
+            selectQuery: 'SELECT TYPE_ID, TYPE_NAME, CATEGORY_PATH FROM OZON_TYPES WHERE EMBEDDING IS NULL AND DISABLED = 0',
+            textFn: (row: any) => row.CATEGORY_PATH,
+            redisFn: (row: any) => ({ name: row.TYPE_NAME, path: row.CATEGORY_PATH }),
+            batchSize,
+        });
     }
 
     async checkEmbedding(typeId: number): Promise<{ typeId: number; length: number; sample: number[] } | null> {
@@ -650,6 +515,203 @@ export class OzonCategoryService implements OnModuleInit {
         if (v == null) return 0;
         const n = typeof v === 'number' ? v : parseFloat(String(v).replace(/[,%]/g, '.'));
         return isNaN(n) ? 0 : n > 1 ? n / 100 : n;
+    }
+
+    // ========== WB Category Embeddings + HNSW ==========
+
+    async generateWbEmbeddings(batchSize = 100): Promise<{ processed: number; errors: number }> {
+        return this.generateEmbeddingsForTable({
+            prefix: 'wb', table: 'WB_CATEGORIES', idField: 'ID',
+            selectQuery: 'SELECT ID, NAME, PARENT_NAME FROM WB_CATEGORIES WHERE EMBEDDING IS NULL',
+            textFn: (row: any) => row.PARENT_NAME ? `${row.PARENT_NAME} -> ${row.NAME}` : row.NAME,
+            redisFn: (row: any) => ({ name: row.NAME, parentName: row.PARENT_NAME || '' }),
+            batchSize,
+        });
+    }
+
+    async exportWbToRedis(): Promise<{ exported: number; total: number }> {
+        return this.exportEmbeddingsToRedis({
+            prefix: 'wb',
+            metaQuery: 'SELECT ID, NAME, PARENT_NAME FROM WB_CATEGORIES WHERE EMBEDDING IS NOT NULL',
+            blobQuery: (ids: string) => `SELECT ID, EMBEDDING FROM WB_CATEGORIES WHERE ID IN (${ids})`,
+            idField: 'ID',
+            fieldsFn: (meta: any) => ({ name: meta.NAME, parentName: meta.PARENT_NAME || '' }),
+        });
+    }
+
+    async rebuildWbIndex(): Promise<{ indexed: number }> {
+        const { index, idMap, dataMap, indexed } = await this.rebuildHnswIndex('wb', WB_INDEX_PATH);
+        this.wbIndex = index;
+        this.wbIdMap = idMap;
+        this.wbDataMap = dataMap;
+        return { indexed };
+    }
+
+    private mapWbHits(hits: { id: number; similarity: number }[]): { subjectID: number; name: string; parentName: string; similarity: number }[] {
+        return hits.map(hit => {
+            const data = this.wbDataMap.get(hit.id);
+            return { subjectID: hit.id, name: data?.name || '', parentName: data?.parentName || '', similarity: hit.similarity };
+        });
+    }
+
+    private async ensureWbIndex(): Promise<boolean> {
+        if (this.wbIndex?.getCurrentCount()) return true;
+        try { await this.rebuildWbIndex(); return true; } catch { return false; }
+    }
+
+    async searchWbCategory(text: string, limit = 5): Promise<{ subjectID: number; name: string; parentName: string; similarity: number }[]> {
+        if (!await this.ensureWbIndex()) return [];
+        const embedding = await this.aiService.generateEmbedding(text);
+        return this.mapWbHits(this.searchByVector(this.wbIndex, this.wbIdMap, embedding, limit));
+    }
+
+    async searchWbByOzonType(typeId: number, limit = 5): Promise<{ subjectID: number; name: string; parentName: string; similarity: number }[]> {
+        if (!await this.ensureWbIndex()) return [];
+        const data = await this.cacheManager.get<string>(`ozon:emb:${typeId}`);
+        if (!data) throw new Error(`No Ozon embedding for type_id=${typeId}`);
+        const { emb } = JSON.parse(data);
+        const vector = this.bufferToEmbedding(Buffer.from(emb, 'base64'));
+        return this.mapWbHits(this.searchByVector(this.wbIndex, this.wbIdMap, vector, limit));
+    }
+
+    // ========== Common Redis helpers ==========
+
+    private async exportEmbeddingsToRedis(opts: {
+        prefix: string;
+        metaQuery: string;
+        blobQuery: (ids: string) => string;
+        idField: string;
+        fieldsFn: (meta: any) => Record<string, string>;
+    }): Promise<{ exported: number; total: number }> {
+        const t0 = await this.pool.getTransaction();
+        const allRows = await t0.query(opts.metaQuery, [], true);
+
+        const idsJson = await this.cacheManager.get<string>(`${opts.prefix}:emb:ids`);
+        const exportedIds = new Set<number>(idsJson ? JSON.parse(idsJson) : []);
+        const toExport = allRows.filter((r: any) => !exportedIds.has(r[opts.idField]));
+
+        this.logger.log(`export ${opts.prefix}: ${allRows.length} total, ${exportedIds.size} in Redis, ${toExport.length} to export`);
+        if (toExport.length === 0) return { exported: 0, total: exportedIds.size };
+
+        let exported = 0;
+        const batchSize = 500;
+        for (let i = 0; i < toExport.length; i += batchSize) {
+            const batch = toExport.slice(i, i + batchSize);
+            const ids = batch.map((r: any) => r[opts.idField]).join(',');
+            const t = await this.pool.getTransaction();
+            try {
+                const rows = await t.query(opts.blobQuery(ids), [], false);
+                const transaction = (t as any).transaction;
+
+                for (let j = 0; j < rows.length; j++) {
+                    const dbRow = rows[j];
+                    if (!dbRow.EMBEDDING) continue;
+                    const buf = await this.readBlob(dbRow.EMBEDDING, transaction, true);
+                    if (!buf || buf.length !== EMBEDDING_DIM * 4) continue;
+
+                    const meta = batch.find((r: any) => r[opts.idField] === dbRow[opts.idField]);
+                    await this.cacheManager.set(`${opts.prefix}:emb:${dbRow[opts.idField]}`, JSON.stringify({
+                        ...opts.fieldsFn(meta),
+                        emb: buf.toString('base64'),
+                    }), 0);
+                    exportedIds.add(dbRow[opts.idField]);
+                    exported++;
+                    if ((j + 1) % 50 === 0) this.logger.log(`  export ${opts.prefix} batch ${Math.floor(i / batchSize) + 1}: ${j + 1}/${rows.length}`);
+                }
+
+                await t.commit(true);
+                await this.cacheManager.set(`${opts.prefix}:emb:ids`, JSON.stringify([...exportedIds]), 0);
+                this.logger.log(`export ${opts.prefix}: ${exported}/${toExport.length}`);
+            } catch (error) {
+                try { await t.rollback(true); } catch {}
+                this.logger.error(`export ${opts.prefix} batch failed at ${i}: ${error.message}`);
+                await this.cacheManager.set(`${opts.prefix}:emb:ids`, JSON.stringify([...exportedIds]), 0);
+                return { exported, total: exportedIds.size };
+            }
+        }
+
+        await this.cacheManager.set(`${opts.prefix}:emb:ids`, JSON.stringify([...exportedIds]), 0);
+        return { exported, total: exportedIds.size };
+    }
+
+    private async generateEmbeddingsForTable(opts: {
+        prefix: string; table: string; idField: string;
+        selectQuery: string; textFn: (row: any) => string;
+        redisFn: (row: any) => Record<string, string>; batchSize: number;
+    }): Promise<{ processed: number; errors: number }> {
+        const dbBatchSize = 5;
+        const tr = await this.pool.getTransaction();
+        try {
+            const rows = await tr.query(opts.selectQuery, [], false);
+            const totalBatches = Math.ceil(rows.length / opts.batchSize);
+            this.logger.log(`${opts.prefix}: Found ${rows.length} without embeddings (${totalBatches} batches)`);
+
+            let processed = 0, errors = 0;
+
+            for (let i = 0; i < rows.length; i += opts.batchSize) {
+                const batch = rows.slice(i, i + opts.batchSize);
+                const batchNum = Math.floor(i / opts.batchSize) + 1;
+                try {
+                    this.logger.log(`${opts.prefix} Batch ${batchNum}/${totalBatches}: generating ${batch.length} embeddings...`);
+                    const embeddings = await this.aiService.generateEmbeddings(batch.map(opts.textFn));
+
+                    for (let k = 0; k < batch.length; k += dbBatchSize) {
+                        const dbBatch = batch.slice(k, k + dbBatchSize);
+                        let block = 'EXECUTE BLOCK AS BEGIN\n';
+                        for (let j = 0; j < dbBatch.length; j++) {
+                            const hex = this.embeddingToBuffer(embeddings[k + j]).toString('hex').toUpperCase();
+                            block += `UPDATE ${opts.table} SET EMBEDDING = x'${hex}' WHERE ${opts.idField} = ${dbBatch[j][opts.idField]};\n`;
+                        }
+                        block += 'END';
+                        await tr.execute(block, [], false);
+                    }
+
+                    // Сохраняем в Redis
+                    const idsJson = await this.cacheManager.get<string>(`${opts.prefix}:emb:ids`);
+                    const redisIds: number[] = idsJson ? JSON.parse(idsJson) : [];
+                    for (let idx = 0; idx < batch.length; idx++) {
+                        await this.cacheManager.set(`${opts.prefix}:emb:${batch[idx][opts.idField]}`, JSON.stringify({
+                            ...opts.redisFn(batch[idx]),
+                            emb: this.embeddingToBuffer(embeddings[idx]).toString('base64'),
+                        }), 0);
+                        redisIds.push(batch[idx][opts.idField]);
+                    }
+                    await this.cacheManager.set(`${opts.prefix}:emb:ids`, JSON.stringify(redisIds), 0);
+
+                    processed += batch.length;
+                    this.logger.log(`${opts.prefix} Batch ${batchNum}/${totalBatches}: done. ${processed}/${rows.length} (${Math.round(processed / rows.length * 100)}%)`);
+                } catch (e) {
+                    this.logger.error(`${opts.prefix} Batch ${batchNum} error: ${e.message}`);
+                    errors += batch.length;
+                }
+            }
+            await tr.commit(true);
+            this.logger.log(`${opts.prefix} Done! Processed: ${processed}, Errors: ${errors}`);
+            return { processed, errors };
+        } catch (error) {
+            await tr.rollback(true);
+            throw error;
+        }
+    }
+
+    private async loadFromRedisCache(prefix: string): Promise<{ id: number; fields: Record<string, string>; embedding: Buffer }[]> {
+        const idsJson = await this.cacheManager.get<string>(`${prefix}:emb:ids`);
+        if (!idsJson) return [];
+        const ids: number[] = JSON.parse(idsJson);
+        this.logger.log(`Loading ${ids.length} embeddings from Redis (${prefix})...`);
+        const results: { id: number; fields: Record<string, string>; embedding: Buffer }[] = [];
+        for (let i = 0; i < ids.length; i += 100) {
+            const batch = ids.slice(i, i + 100);
+            const batchResults = await Promise.all(batch.map(async (id) => {
+                const data = await this.cacheManager.get<string>(`${prefix}:emb:${id}`);
+                if (!data) return null;
+                const { emb, ...fields } = JSON.parse(data);
+                return { id, fields, embedding: Buffer.from(emb, 'base64') };
+            }));
+            results.push(...batchResults.filter(r => r !== null));
+        }
+        this.logger.log(`Loaded ${results.length} embeddings from Redis (${prefix})`);
+        return results;
     }
 
     private embeddingToBuffer(e: number[]): Buffer {

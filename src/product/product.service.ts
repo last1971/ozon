@@ -283,6 +283,19 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
         return results;
     }
 
+    @Cacheable({
+        key: (offer_id: string) => offer_id,
+        namespace: 'ozon:product-attrs',
+        ttl: 86400,
+    })
+    async getProductAttributes(offer_id: string): Promise<any> {
+        const res = await this.ozonApiService.method('/v4/product/info/attributes', {
+            filter: { offer_id: [offer_id] },
+            limit: 1,
+        });
+        return res?.result?.[0] || null;
+    }
+
     async getTaskInfo(taskId: number): Promise<any> {
         return this.ozonApiService.method('/v1/product/import/info', { task_id: taskId });
     }

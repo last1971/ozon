@@ -4,6 +4,16 @@ import { WbApiService } from '../wb.api/wb.api.service';
 import { VaultService } from 'vault-module/lib/vault.service';
 import { ConfigService } from '@nestjs/config';
 import { clearRateLimitCache } from '../helpers/decorators/rate-limit.decorator';
+import { LoadWbCharcsCommand } from './commands/load-wb-charcs.command';
+import { GenerateWbCharcsCommand } from './commands/generate-wb-charcs.command';
+import { BuildWbCharcsCommand } from './commands/build-wb-charcs.command';
+import { FetchOzonCardCommand } from './commands/fetch-ozon-card.command';
+import { ResolveWbCategoryCommand } from './commands/resolve-wb-category.command';
+import { CheckWbCardExistsCommand } from './commands/check-wb-card-exists.command';
+import { ShortenTitleCommand } from './commands/shorten-title.command';
+import { BuildWbUploadBodyCommand } from './commands/build-wb-upload-body.command';
+import { SubmitWbCardCommand } from './commands/submit-wb-card.command';
+import { ProductService } from '../product/product.service';
 
 describe('WbCardService', () => {
     let service: WbCardService;
@@ -20,7 +30,17 @@ describe('WbCardService', () => {
                     provide: VaultService,
                     useValue: { get: () => ({ WAREHOUSE_ID: 12345 }) },
                 },
-                { provide: ConfigService, useValue: {} },
+                { provide: ConfigService, useValue: { get: jest.fn() } },
+                { provide: LoadWbCharcsCommand, useValue: { execute: jest.fn((ctx) => ctx) } },
+                { provide: GenerateWbCharcsCommand, useValue: { execute: jest.fn((ctx) => ctx) } },
+                { provide: BuildWbCharcsCommand, useValue: { execute: jest.fn((ctx) => ctx) } },
+                { provide: FetchOzonCardCommand, useValue: { execute: jest.fn((ctx) => ctx) } },
+                { provide: ResolveWbCategoryCommand, useValue: { execute: jest.fn((ctx) => ctx) } },
+                { provide: CheckWbCardExistsCommand, useValue: { execute: jest.fn((ctx) => ctx) } },
+                { provide: ShortenTitleCommand, useValue: { execute: jest.fn((ctx) => ctx) } },
+                { provide: BuildWbUploadBodyCommand, useValue: { execute: jest.fn((ctx) => ctx) } },
+                { provide: SubmitWbCardCommand, useValue: { execute: jest.fn((ctx) => ctx) } },
+                { provide: ProductService, useValue: { getProductAttributes: jest.fn() } },
             ],
         }).compile();
 

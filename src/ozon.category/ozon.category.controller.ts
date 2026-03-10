@@ -154,6 +154,69 @@ export class OzonCategoryController {
         return { url };
     }
 
+    @Post('export-wb-cache')
+    @ApiOperation({ summary: 'Экспорт WB embeddings из БД в Redis' })
+    async exportWbCache() {
+        return this.ozonCategoryService.exportWbToRedis();
+    }
+
+    @Post('rebuild-wb-index')
+    @ApiOperation({ summary: 'Пересобрать WB HNSW index из БД' })
+    async rebuildWbIndex() {
+        return this.ozonCategoryService.rebuildWbIndex();
+    }
+
+    @Get('search-wb-category')
+    @ApiOperation({ summary: 'Поиск WB категории по тексту (HNSW)' })
+    @ApiQuery({ name: 'text', type: String, description: 'Текст для поиска' })
+    @ApiQuery({ name: 'limit', type: Number, required: false, description: 'Количество результатов (по умолчанию 5)' })
+    async searchWbCategory(
+        @Query('text') text: string,
+        @Query('limit') limit?: number,
+    ) {
+        return this.ozonCategoryService.searchWbCategory(text, limit || 5);
+    }
+
+    @Post('generate-wb-embeddings')
+    @ApiOperation({ summary: 'Генерация embeddings для WB категорий' })
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                batchSize: {
+                    type: 'number',
+                    default: 100,
+                    description: 'Размер батча для обработки',
+                },
+            },
+        },
+    })
+    async generateWbEmbeddings(@Body('batchSize') batchSize?: number) {
+        return this.ozonCategoryService.generateWbEmbeddings(batchSize);
+    }
+
+    @Get('search-wb-by-ozon-type')
+    @ApiOperation({ summary: 'Поиск WB категории по вектору Ozon type_id' })
+    @ApiQuery({ name: 'type_id', type: Number, description: 'Ozon type_id' })
+    @ApiQuery({ name: 'limit', type: Number, required: false, description: 'Количество результатов (по умолчанию 5)' })
+    async searchWbByOzonType(
+        @Query('type_id') typeId: number,
+        @Query('limit') limit?: number,
+    ) {
+        return this.ozonCategoryService.searchWbByOzonType(Number(typeId), limit ? Number(limit) : 5);
+    }
+
+    @Get('shorten-title')
+    @ApiOperation({ summary: 'Сократить название товара до указанной длины через AI' })
+    @ApiQuery({ name: 'title', type: String, description: 'Название товара' })
+    @ApiQuery({ name: 'maxLength', type: Number, required: false, description: 'Макс. длина (по умолчанию 60)' })
+    async shortenTitle(
+        @Query('title') title: string,
+        @Query('maxLength') maxLength?: number,
+    ) {
+        return this.aiService.shortenTitle(title, maxLength ? Number(maxLength) : 60);
+    }
+
     @Get('ai-providers')
     @ApiOperation({ summary: 'Список AI провайдеров и их моделей' })
     getAiProviders() {
