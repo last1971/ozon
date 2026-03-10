@@ -51,7 +51,7 @@ describe('BuildWbCharcsCommand', () => {
 
         const vat = result.characteristics.find((c) => c.id === 15001405);
         expect(vat).toBeDefined();
-        expect(vat.value).toBe('5%');
+        expect(vat.value).toBe('5');
     });
 
     it('should not add НДС if not configured', async () => {

@@ -50,7 +50,7 @@ export class BuildWbCharcsCommand implements ICommandAsync<IWbCreateCardContext>
         if (vatCharcId !== undefined) {
             const vatRate = this.configService.get<number>('VAT_RATE');
             if (vatRate !== undefined) {
-                result.push({ id: vatCharcId, value: `${vatRate}%` });
+                result.push({ id: vatCharcId, value: String(vatRate) });
             }
         }
 

@@ -17,6 +17,16 @@ import { CommandChainAsync } from '../helpers/command/command.chain.async';
 import { LoadWbCharcsCommand } from './commands/load-wb-charcs.command';
 import { GenerateWbCharcsCommand } from './commands/generate-wb-charcs.command';
 import { BuildWbCharcsCommand } from './commands/build-wb-charcs.command';
+import { FetchOzonCardCommand } from './commands/fetch-ozon-card.command';
+import { ResolveWbCategoryCommand } from './commands/resolve-wb-category.command';
+import { CheckWbCardExistsCommand } from './commands/check-wb-card-exists.command';
+import { ShortenTitleCommand } from './commands/shorten-title.command';
+import { BuildWbUploadBodyCommand } from './commands/build-wb-upload-body.command';
+import { SubmitWbCardCommand } from './commands/submit-wb-card.command';
+import { CreateWbCardDto } from './dto/create-wb-card.dto';
+import { UploadWbMediaDto } from './dto/upload-wb-media.dto';
+import { ICommandAsync } from '../interfaces/i.command.acync';
+import { ProductService } from '../product/product.service';
 
 @Injectable()
 export class WbCardService extends ICountUpdateable implements OnModuleInit, IProductable {
@@ -33,6 +43,13 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
         private loadWbCharcsCommand: LoadWbCharcsCommand,
         private generateWbCharcsCommand: GenerateWbCharcsCommand,
         private buildWbCharcsCommand: BuildWbCharcsCommand,
+        private fetchOzonCardCommand: FetchOzonCardCommand,
+        private resolveWbCategoryCommand: ResolveWbCategoryCommand,
+        private checkWbCardExistsCommand: CheckWbCardExistsCommand,
+        private shortenTitleCommand: ShortenTitleCommand,
+        private buildWbUploadBodyCommand: BuildWbUploadBodyCommand,
+        private submitWbCardCommand: SubmitWbCardCommand,
+        private productService: ProductService,
     ) {
         super();
         this.skuBarcodePair = new Map<string, string>();
@@ -231,6 +248,58 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
             true,
         );
         return res.data || [];
+    }
+
+    async createCard(input: CreateWbCardDto): Promise<IWbCreateCardContext> {
+        const context: IWbCreateCardContext = {
+            productName: '',
+            description: '',
+            subjectId: input.subjectId || 0,
+            offerId: input.offerId,
+            categoryMode: input.categoryMode,
+            webSearch: input.webSearch,
+            submit: input.submit,
+        };
+        const commands: ICommandAsync<IWbCreateCardContext>[] = [
+            this.fetchOzonCardCommand,
+            this.resolveWbCategoryCommand,
+            this.checkWbCardExistsCommand,
+            this.shortenTitleCommand,
+            this.loadWbCharcsCommand,
+            this.generateWbCharcsCommand,
+            this.buildWbCharcsCommand,
+            this.buildWbUploadBodyCommand,
+        ];
+        if (input.submit) {
+            commands.push(this.submitWbCardCommand);
+        }
+        const chain = new CommandChainAsync<IWbCreateCardContext>(commands);
+        return chain.execute(context);
+    }
+
+    async uploadMedia(input: UploadWbMediaDto): Promise<any> {
+        const card = await this.productService.getProductAttributes(input.offerId);
+        if (!card) {
+            return { error: true, error_message: `Карточка Ozon не найдена: ${input.offerId}` };
+        }
+
+        const data: string[] = [];
+        if (card.primary_image) data.push(card.primary_image);
+        if (card.images?.length) data.push(...card.images);
+
+        if (!data.length) {
+            return { error: true, error_message: 'Нет изображений в карточке Ozon' };
+        }
+
+        const result = await this.api.method(
+            'https://content-api.wildberries.ru/content/v3/media/save',
+            'post',
+            { nmId: input.nmId, data },
+            true,
+        );
+
+        this.logger.log(`Загружено ${data.length} медиа для nmId=${input.nmId}`);
+        return { result, imagesCount: data.length };
     }
 
     async generateCharacteristics(input: {

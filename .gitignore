@@ -44,4 +44,4 @@ lerna-debug.log*
 .env.opt
 
 # HNSW index
-data/ozon_categories.hnsw
+data/*.hnsw

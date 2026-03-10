@@ -1,5 +1,11 @@
 import { WbCardCharacteristicDto } from '../dto/wb.card.dto';
 
+export enum WbCategoryMode {
+    MANUAL = 'manual',
+    BY_OZON_TYPE = 'byOzonType',
+    BY_NAME = 'byName',
+}
+
 export interface WbCharc {
     charcID: number;
     name: string;
@@ -17,16 +23,38 @@ export interface IWbCreateCardContext {
     subjectId: number;
     webSearch?: boolean;
 
+    // Input для createCard
+    offerId?: string;
+    categoryMode?: WbCategoryMode;
+    submit?: boolean;
+
     // Ozon данные для программного заполнения (опционально)
     ozonDimensions?: string;  // attr 4382 "215x115x30"
     ozonWeight?: string;      // attr 4383 "827"
     ozonWarranty?: string;    // attr 4385 "14 дней"
+
+    // Ozon card data (from FetchOzonCardCommand)
+    ozonCard?: any;
+    ozonName?: string;
+    brand?: string;
+    barcodes?: string[];
+    ozonHeight?: number;       // mm
+    ozonDepth?: number;        // mm
+    ozonWidth?: number;        // mm
+    ozonWeightGrams?: number;  // g
+    typeId?: number;
+    descriptionCategoryId?: number;
 
     // Pipeline — характеристики
     charcs?: WbCharc[];
     aiCharacteristics?: { id: number; value: number | string | string[] }[];
     characteristics?: WbCardCharacteristicDto[];
     aiCost?: { tokens: number; cost: number };
+
+    // WB card building
+    title?: string;
+    uploadBody?: any;
+    uploadResult?: any;
 
     // Chain control
     stopChain?: boolean;

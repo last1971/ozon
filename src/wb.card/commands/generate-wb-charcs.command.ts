@@ -47,6 +47,9 @@ export class GenerateWbCharcsCommand implements ICommandAsync<IWbCreateCardConte
             if (!jsonMatch) throw new Error('No JSON in AI response');
             const parsed = JSON.parse(jsonMatch[0]);
             context.aiCharacteristics = parsed.characteristics || [];
+            if (parsed.description) {
+                context.description = parsed.description;
+            }
         } catch (e) {
             this.logger.error(`Failed to parse AI response: ${e.message}`);
             context.stopChain = true;

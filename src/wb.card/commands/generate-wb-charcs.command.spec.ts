@@ -68,6 +68,36 @@ describe('GenerateWbCharcsCommand', () => {
         expect(result.error_message).toContain('невалидный JSON');
     });
 
+    it('should update description from AI if provided', async () => {
+        chat.mockResolvedValue({
+            content: '{"characteristics": [{"id": 5023, "value": "Model"}], "description": "Сокращённое описание"}',
+            usage: { input_tokens: 500, output_tokens: 100 },
+        });
+
+        const ctx: IWbCreateCardContext = {
+            productName: 'Test', description: 'A'.repeat(3000), subjectId: 2009,
+            charcs: mockCharcs,
+        };
+        const result = await command.execute(ctx);
+
+        expect(result.description).toBe('Сокращённое описание');
+    });
+
+    it('should keep original description if AI does not return one', async () => {
+        chat.mockResolvedValue({
+            content: '{"characteristics": [{"id": 5023, "value": "Model"}]}',
+            usage: { input_tokens: 500, output_tokens: 100 },
+        });
+
+        const ctx: IWbCreateCardContext = {
+            productName: 'Test', description: 'Короткое описание', subjectId: 2009,
+            charcs: mockCharcs,
+        };
+        const result = await command.execute(ctx);
+
+        expect(result.description).toBe('Короткое описание');
+    });
+
     it('should pass web_search option to AI', async () => {
         chat.mockResolvedValue({
             content: '{"characteristics": []}',

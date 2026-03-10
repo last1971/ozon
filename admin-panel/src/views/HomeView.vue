@@ -7,6 +7,7 @@ import ScanFbs from "@/components/ScanFbs.vue";
 import OzonFbsLabels from "@/components/OzonFbsLabels.vue";
 import SupplyWbFbs from "@/components/SupplyWbFbs.vue";
 import OzonProductCreate from "@/components/OzonProductCreate.vue";
+import WbCopyProduct from "@/components/WbCopyProduct.vue";
 const tab = ref('prices');
 </script>
 
@@ -21,6 +22,7 @@ const tab = ref('prices');
             <v-tab value="ozon-fbs-labels">OZON FBS этикетки</v-tab>
             <v-tab value="supply-wb-fbs">WB FBS поставка</v-tab>
             <v-tab value="ozon-product">Добавить товар на Озон</v-tab>
+            <v-tab value="wb-copy">Копировать в WB</v-tab>
         </v-tabs>
 
         <v-card-text>
@@ -47,6 +49,10 @@ const tab = ref('prices');
 
                 <v-tabs-window-item value="ozon-product">
                     <OzonProductCreate class="pa-2"/>
+                </v-tabs-window-item>
+
+                <v-tabs-window-item value="wb-copy">
+                    <WbCopyProduct class="pa-2"/>
                 </v-tabs-window-item>
             </v-tabs-window>
         </v-card-text>
