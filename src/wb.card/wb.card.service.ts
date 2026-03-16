@@ -259,6 +259,7 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
             categoryMode: input.categoryMode,
             webSearch: input.webSearch,
             submit: input.submit,
+            title: input.title,
         };
         const commands: ICommandAsync<IWbCreateCardContext>[] = [
             this.fetchOzonCardCommand,

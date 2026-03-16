@@ -10,6 +10,7 @@ function defaultForm() {
         categoryMode: 'byOzonType' as 'manual' | 'byOzonType' | 'byName',
         subjectId: null as number | null,
         webSearch: false,
+        title: '',
         nmId: null as number | null,
     };
 }
@@ -60,6 +61,7 @@ export const wbCopyProductStore = defineStore("wbCopyProductStore", {
                     body.subjectId = this.form.subjectId;
                 }
                 if (this.form.webSearch) body.webSearch = true;
+                if (this.form.title.trim()) body.title = this.form.title.trim();
                 const res = await axios.post("/api/wb-card/create", body);
                 this.createResult = res.data;
                 if (res.data.error) {
