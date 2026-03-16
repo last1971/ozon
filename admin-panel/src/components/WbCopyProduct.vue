@@ -39,6 +39,19 @@ onMounted(() => {
                 </v-col>
             </v-row>
 
+            <v-row dense>
+                <v-col cols="6">
+                    <v-text-field
+                        v-model="store.form.title"
+                        label="Название WB (если пусто — сгенерирует AI)"
+                        :counter="60"
+                        :rules="[v => !v || v.length <= 60 || 'Макс 60 символов']"
+                        hint="Оставьте пустым для автогенерации"
+                        persistent-hint
+                    />
+                </v-col>
+            </v-row>
+
             <v-row dense class="mt-2">
                 <v-col cols="auto">
                     <v-btn

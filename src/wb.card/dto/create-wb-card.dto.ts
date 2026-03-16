@@ -23,6 +23,11 @@ export class CreateWbCardDto {
     @IsBoolean()
     webSearch?: boolean;
 
+    @ApiPropertyOptional({ description: 'Название товара вручную (макс 60 символов)' })
+    @IsOptional()
+    @IsString()
+    title?: string;
+
     @ApiPropertyOptional({ description: 'Отправить в WB (false = dry-run)', default: false })
     @IsOptional()
     @IsBoolean()

@@ -50,4 +50,15 @@ describe('ShortenTitleCommand', () => {
 
         expect(shortenTitle).toHaveBeenCalledWith('Fallback', 60);
     });
+
+    it('should skip AI when title is already set', async () => {
+        const ctx: IWbCreateCardContext = {
+            productName: 'Original', description: '', subjectId: 0,
+            title: 'Ручное название',
+        };
+        const result = await command.execute(ctx);
+
+        expect(result.title).toBe('Ручное название');
+        expect(shortenTitle).not.toHaveBeenCalled();
+    });
 });

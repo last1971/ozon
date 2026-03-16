@@ -8,8 +8,10 @@ export class ShortenTitleCommand implements ICommandAsync<IWbCreateCardContext> 
     constructor(private readonly aiService: AIService) {}
 
     async execute(context: IWbCreateCardContext): Promise<IWbCreateCardContext> {
-        const { title } = await this.aiService.shortenTitle(context.ozonName || context.productName, 60);
-        context.title = title;
+        if (!context.title) {
+            const { title } = await this.aiService.shortenTitle(context.ozonName || context.productName, 60);
+            context.title = title;
+        }
         return context;
     }
 }
