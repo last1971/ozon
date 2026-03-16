@@ -84,7 +84,7 @@
     "ts-node": "^10.9.2",
     "tsconfig-paths": "4.2.0",
     "typescript": "^5.6.3",
-    "vault-module": "^1.1.0"
+    "vault-module": "github:last1971/vault-module#v1.1.1"
   },
   "jest": {
     "moduleFileExtensions": [
