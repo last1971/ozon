@@ -14,10 +14,12 @@ export class ApproveDiscountTasksCommand implements ICommandAsync<IDiscountProce
         const approveTasks = context.decisions?.approveTasks || [];
         let approved = context.approved || 0;
         const errors = context.errors || [];
-        if (approveTasks.length > 0) {
+        const BATCH_SIZE = 50;
+        for (let i = 0; i < approveTasks.length; i += BATCH_SIZE) {
+            const batch = approveTasks.slice(i, i + BATCH_SIZE);
             try {
-                await this.discountRequestsService.approveDiscountTask({ tasks: approveTasks });
-                approved += approveTasks.length;
+                await this.discountRequestsService.approveDiscountTask({ tasks: batch });
+                approved += batch.length;
             } catch (error: any) {
                 errors.push(`Ошибка при апруве заявок: ${error.message}`);
             }

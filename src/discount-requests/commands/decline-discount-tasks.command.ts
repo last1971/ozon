@@ -14,10 +14,12 @@ export class DeclineDiscountTasksCommand implements ICommandAsync<IDiscountProce
         const declineTasks = context.decisions?.declineTasks || [];
         let declined = context.declined || 0;
         const errors = context.errors || [];
-        if (declineTasks.length > 0) {
+        const BATCH_SIZE = 50;
+        for (let i = 0; i < declineTasks.length; i += BATCH_SIZE) {
+            const batch = declineTasks.slice(i, i + BATCH_SIZE);
             try {
-                await this.discountRequestsService.declineDiscountTask({ tasks: declineTasks });
-                declined += declineTasks.length;
+                await this.discountRequestsService.declineDiscountTask({ tasks: batch });
+                declined += batch.length;
             } catch (error: any) {
                 errors.push(`Ошибка при реджекте заявок: ${error.message}`);
             }
