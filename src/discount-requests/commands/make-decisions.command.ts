@@ -22,6 +22,9 @@ export class MakeDecisionsCommand implements ICommandAsync<IDiscountProcessingCo
                     throw new Error(`Не найдены цены для offer_id: ${task.offer_id}`);
                 }
                 const minPrice = parseFloat(priceData.min_price) * (1 - maxDiscountPercent / 100);
+                if (!(minPrice > 0)) {
+                    throw new Error(`Некорректная min_price для offer_id: ${task.offer_id}`);
+                }
                 const requestedPrice = task.requested_price;
                 if (requestedPrice >= minPrice) {
                     approveTasks.push({

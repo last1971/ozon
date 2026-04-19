@@ -28,4 +28,20 @@ describe('MakeDecisionsCommand', () => {
     expect(result.decisions.declineTasks.length).toBe(1); // вторая заявка
     expect(result.errors.length).toBe(0);
   });
+
+  it('should skip tasks with zero or missing min_price and log error', async () => {
+    const command = new MakeDecisionsCommand(configService);
+    const tasks: DiscountTaskDto[] = [
+      { id: '1', offer_id: 'a', requested_price: 90, requested_quantity_min: 1, requested_quantity_max: 2, approved_quantity_min: 1, approved_quantity_max: 2, created_at: '', end_at: '', edited_till: '', status: '', customer_name: '', sku: 0, user_comment: '', seller_comment: '', approved_price: 0, original_price: 0, discount: 0, discount_percent: 0, base_price: 0, min_auto_price: 0, prev_task_id: 0, is_damaged: false, moderated_at: '', approved_discount: 0, approved_discount_percent: 0, is_purchased: false, is_auto_moderated: false, email: '', last_name: '', first_name: '', patronymic: '', requested_price_with_fee: 0, approved_price_with_fee: 0, approved_price_fee_percent: 0 },
+    ];
+    const pricesMap = new Map([
+      ['a', { min_price: '0' }],
+    ]);
+    const context = { tasks, pricesMap, errors: [] };
+    const result = await command.execute(context);
+    expect(result.decisions.approveTasks.length).toBe(0);
+    expect(result.decisions.declineTasks.length).toBe(0);
+    expect(result.errors.length).toBe(1);
+    expect(result.errors[0]).toContain('Некорректная min_price');
+  });
 }); 
