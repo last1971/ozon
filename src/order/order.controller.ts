@@ -2,7 +2,6 @@ import {
     Body,
     Controller,
     Get,
-    Inject,
     Param,
     ParseEnumPipe,
     ParseIntPipe,
@@ -30,10 +29,10 @@ import {
 } from "@nestjs/swagger";
 import { YandexOrderService } from '../yandex.order/yandex.order.service';
 import { WbOrderService } from '../wb.order/wb.order.service';
+import { PostingFboService } from '../posting.fbo/posting.fbo.service';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { GoodServiceEnum } from "../good/good.service.enum";
 import { PostingDto } from "../posting/dto/posting.dto";
-import { IInvoice, INVOICE_SERVICE } from "../interfaces/IInvoice";
 
 @ApiTags('order')
 @Controller('order')
@@ -42,7 +41,7 @@ export class OrderController {
         private readonly orderService: OrderService,
         private yandexOrderService: YandexOrderService,
         private wbOrder: WbOrderService,
-        @Inject(INVOICE_SERVICE) private invoiceService: IInvoice, // Добавить эту строку
+        private postingFboService: PostingFboService,
     ) {}
     @ApiOkResponse({
         description: 'Синхронизировать заказы',
@@ -63,38 +62,13 @@ export class OrderController {
         return { isSuccess: await this.wbOrder.addFboOrders() };
     }
     @ApiOkResponse({
-        description: 'Синхронизировать Ozon FBO заказы',
+        description: 'Проверить отменённые Ozon FBO заказы',
         type: ResultDto,
     })
     @Get('update-ozonfbo')
     async updateOzonFboOrder(): Promise<ResultDto> {
-        try {
-            // Получаем FBO сервис для Ozon
-            const postingFboService = this.orderService['orderServices'].find(
-                s => s.isFbo() && s.getBuyerId() === 24231
-            );
-            
-            if (!postingFboService) {
-                return { isSuccess: false, message: 'Ozon FBO сервис не найден' };
-            }
-    
-            // Получаем транзакцию
-            const transaction = await this.invoiceService.getTransaction();
-            
-            try {
-                // Дергаем существующий метод packageOrders
-                await this.orderService.packageOrders(postingFboService, transaction);
-                await transaction.commit(true);
-                
-                return { isSuccess: true, message: 'Ozon FBO заказы обработаны' };
-            } catch (error) {
-                await transaction.rollback(true);
-                throw error;
-            }
-            
-        } catch (error) {
-            return { isSuccess: false, message: `Ошибка: ${error.message}` };
-        }
+        await this.postingFboService.checkCanceledOrders();
+        return { isSuccess: true };
     }
     @ApiOkResponse({
         description: 'Обновить оплаты и закрыть счета',

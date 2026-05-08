@@ -22,6 +22,9 @@ describe('PostingFboService', () => {
     const date = new Date();
 
     beforeEach(async () => {
+        unPickupOzonFbo.mockReset();
+        createInvoiceFromPostingDto.mockReset();
+        emit.mockReset();
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 PostingFboService,
@@ -66,7 +69,7 @@ describe('PostingFboService', () => {
                     to: DateTime.now().endOf('day').toJSDate(),
                 },
                 limit: 1000,
-                with: { analytics_data: true },
+                with: { analytics_data: true, financial_data: true },
             },
         ]);
     });
@@ -82,7 +85,7 @@ describe('PostingFboService', () => {
                     to: DateTime.now().endOf('day').toJSDate(),
                 },
                 limit: 1000,
-                with: { analytics_data: true },
+                with: { analytics_data: true, financial_data: true },
             },
         ]);
     });
@@ -111,5 +114,21 @@ describe('PostingFboService', () => {
             null,
         ]);
         expect(createInvoiceFromPostingDto.mock.calls[0]).toEqual([123, posting, null]);
+    });
+
+    it('createInvoice fallbacks to cluster_from when warehouse_name lookup fails', async () => {
+        const posting = {
+            posting_number: '321',
+            status: 'string',
+            in_process_at: date.toISOString(),
+            products: [{ price: '1.11', offer_id: '444', quantity: 2 }],
+            analytics_data: { warehouse_name: 'ПУШКИНО_1_РФЦ' },
+            financial_data: { cluster_from: 'Москва, МО и Дальние регионы' },
+        };
+        unPickupOzonFbo.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+        await service.createInvoice(posting, null);
+        expect(unPickupOzonFbo).toHaveBeenCalledTimes(2);
+        expect(unPickupOzonFbo.mock.calls[0][1]).toBe('ПУШКИНО_1_РФЦ');
+        expect(unPickupOzonFbo.mock.calls[1][1]).toBe('Москва, МО и Дальние регионы');
     });
 });

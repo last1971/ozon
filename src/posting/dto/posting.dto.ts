@@ -19,6 +19,12 @@ export class PostingDto {
         warehouse_name: string;
     };
 
+    @ApiProperty({ description: 'Финансовые данные', required: false })
+    financial_data?: {
+        cluster_from?: string;
+        cluster_to?: string;
+    };
+
     @ApiProperty({ description: 'Флаг FBO', required: false })
     isFbo?: boolean;
 }
