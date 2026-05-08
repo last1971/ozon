@@ -27,21 +27,22 @@ export class PostingFboService implements IOrderable {
 
     async createInvoice(posting: PostingDto, transaction: FirebirdTransaction): Promise<InvoiceDto> {
         const buyerId = this.getBuyerId();
+        const warehouseName = posting.analytics_data?.warehouse_name;
+        const clusterFrom = posting.financial_data?.cluster_from;
         for (const product of posting.products) {
-            let res = await this.invoiceService.unPickupOzonFbo(
-                product,
-                posting.analytics_data.warehouse_name,
-                transaction,
-            );
+            let res = await this.invoiceService.unPickupOzonFbo(product, warehouseName, transaction);
+            if (!res && clusterFrom) {
+                res = await this.invoiceService.unPickupOzonFbo(product, clusterFrom, transaction);
+            }
             if (!res) {
                 res = await this.invoiceService.unPickupOzonFbo(product, OZON_ORDER_CANCELLATION_SUFFIX.FBO.trim(), transaction);
                 if (res)
-                    this.eventEmitter.emit('error.message', 'FBO cancels clean', posting.analytics_data.warehouse_name);
+                    this.eventEmitter.emit('error.message', 'FBO cancels clean', warehouseName);
             }
             if (!res) {
                 const id = goodCode(product);
                 const quantity = product.quantity * goodQuantityCoeff(product);
-                await this.invoiceService.deltaGood(id, quantity, posting.analytics_data.warehouse_name, transaction);
+                await this.invoiceService.deltaGood(id, quantity, clusterFrom || warehouseName, transaction);
             }
         }
         const invoice = await this.invoiceService.createInvoiceFromPostingDto(buyerId, posting, transaction); 
@@ -59,6 +60,7 @@ export class PostingFboService implements IOrderable {
             },
             with: {
                 analytics_data: true,
+                financial_data: true,
             },
         });
         return orders.result.map(order => ({

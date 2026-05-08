@@ -7,5 +7,6 @@ export class PostingsFboRequestDto {
     };
     with: {
         analytics_data: boolean;
+        financial_data?: boolean;
     };
 }
