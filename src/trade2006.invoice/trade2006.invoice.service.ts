@@ -469,6 +469,113 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         );
         this.eventEmitter.emit('error.message', `Delta ${id} code with quantity: ${quantity} for ${prim}`);
     }
+
+    getStorageSS(): 0 | 1 {
+        return this.configService.get<string>('STORAGE_TYPE', 'SHOPSKLAD').toUpperCase() === 'SHOPSKLAD' ? 1 : 0;
+    }
+
+    async findRealpriceCodes(
+        scode: number,
+        transaction: FirebirdTransaction = null,
+    ): Promise<number[]> {
+        const t = transaction ?? (await this.getTransaction());
+        const res = await t.query(
+            'SELECT REALPRICECODE FROM REALPRICE WHERE SCODE = ? ORDER BY REALPRICECODE',
+            [scode],
+            !transaction,
+        );
+        return res.map((r) => r.REALPRICECODE);
+    }
+
+    async findFboPodbposCandidates(
+        goodscode: string,
+        prims: string[],
+        transaction: FirebirdTransaction = null,
+    ): Promise<{ podbposcode: number; scode: number; realpricecode: number; quanAvail: number; prim: string }[]> {
+        if (prims.length === 0) return [];
+        const t = transaction ?? (await this.getTransaction());
+        const attribute = this.getStorageSS() === 1 ? 'SHOP' : 'SKLAD';
+        const containingClauses = prims.map(() => 's.PRIM CONTAINING ?').join(' OR ');
+        const sql =
+            `SELECT pp.PODBPOSCODE, pp.SCODE, rp.REALPRICECODE, pp.QUAN${attribute} AS QUANAVAIL, s.PRIM ` +
+            'FROM PODBPOS pp ' +
+            'JOIN S s ON s.SCODE = pp.SCODE ' +
+            'JOIN REALPRICE rp ON rp.SCODE = pp.SCODE AND rp.GOODSCODE = pp.GOODSCODE ' +
+            `WHERE pp.GOODSCODE = ? AND pp.QUAN${attribute} > 0 AND s.STATUS = 1 AND (${containingClauses})`;
+        const rows = await t.query(sql, [goodscode, ...prims], !transaction);
+        const candidates = rows.map((r) => ({
+            podbposcode: r.PODBPOSCODE,
+            scode: r.SCODE,
+            realpricecode: r.REALPRICECODE,
+            quanAvail: r.QUANAVAIL,
+            prim: r.PRIM,
+        }));
+        const priorityOf = (prim: string): number => {
+            for (let i = 0; i < prims.length; i++) {
+                if (prim && prim.includes(prims[i])) return i;
+            }
+            return prims.length;
+        };
+        candidates.sort((a, b) => priorityOf(a.prim) - priorityOf(b.prim));
+        return candidates;
+    }
+
+    async getAttachedMarkCodesForMigration(
+        realpricecode: number,
+        goodscode: string,
+        limit: number,
+        transaction: FirebirdTransaction = null,
+    ): Promise<{ ki: string }[]> {
+        if (limit <= 0) return [];
+        const t = transaction ?? (await this.getTransaction());
+        const rows = await t.query(
+            `SELECT FIRST ${limit} KI FROM MARKCODES ` +
+                'WHERE REALPRICECODE = ? AND GOODSCODE = ? ' +
+                'AND TRANSFER_TYPE IN (0, 2, 3) ' +
+                'AND REALPRICEFCODE IS NULL AND SHOPLOGCODE IS NULL AND SPISID IS NULL',
+            [realpricecode, goodscode],
+            !transaction,
+        );
+        return rows.map((r) => ({ ki: r.KI }));
+    }
+
+    async decrementPodbpos(
+        podbposcode: number,
+        take: number,
+        transaction: FirebirdTransaction = null,
+    ): Promise<void> {
+        const t = transaction ?? (await this.getTransaction());
+        const attribute = this.getStorageSS() === 1 ? 'SHOP' : 'SKLAD';
+        await t.execute(
+            `UPDATE PODBPOS SET QUAN${attribute} = QUAN${attribute} - ? WHERE PODBPOSCODE = ?`,
+            [take, podbposcode],
+            !transaction,
+        );
+    }
+
+    async detachMarkCode(
+        ki: string,
+        oldRpc: number,
+        s_s: 0 | 1,
+        transaction: FirebirdTransaction = null,
+    ): Promise<void> {
+        const t = transaction ?? (await this.getTransaction());
+        await t.execute('EXECUTE PROCEDURE MARKCODE_DETACH_FROM_REALPRICE (?, ?, ?)', [ki, oldRpc, s_s]);
+        if (!transaction) await t.commit(true);
+    }
+
+    async reattachMarkCodeTransferred(
+        ki: string,
+        newRpc: number,
+        gc: string,
+        s_s: 0 | 1,
+        transaction: FirebirdTransaction = null,
+    ): Promise<void> {
+        const t = transaction ?? (await this.getTransaction());
+        await t.execute('EXECUTE PROCEDURE MARKCODE_REATTACH_TRANSFERRED (?, ?, ?, ?)', [ki, newRpc, gc, s_s]);
+        if (!transaction) await t.commit(true);
+    }
+
     async getInvoiceLines(invoice: InvoiceDto, transaction: FirebirdTransaction = null): Promise<InvoiceLineDto[]> {
         return this.getInvoiceLinesByInvoiceId(invoice.id, transaction);
     }

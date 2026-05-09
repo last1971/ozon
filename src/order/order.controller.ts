@@ -70,6 +70,13 @@ export class OrderController {
         await this.postingFboService.checkCanceledOrders();
         return { isSuccess: true };
     }
+
+    @ApiOperation({ summary: '[DEV] Запустить FBO-обработку для одного посттинга из body' })
+    @ApiOkResponse({ description: 'Созданный NOT1C-счёт', type: InvoiceDto })
+    @Post('dev/run-fbo-package')
+    async devRunFboPackage(@Body() posting: PostingDto): Promise<InvoiceDto> {
+        return this.orderService.runFboPackageForTesting(posting);
+    }
     @ApiOkResponse({
         description: 'Обновить оплаты и закрыть счета',
         type: ResultDto,

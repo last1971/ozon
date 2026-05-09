@@ -23,6 +23,28 @@ export interface IInvoice {
     createInvoiceFromPostingDto(buyerId: number, posting: PostingDto, t: FirebirdTransaction): Promise<InvoiceDto>;
     unPickupOzonFbo(product: ProductPostingDto, prim: string, transaction: FirebirdTransaction): Promise<boolean>;
     deltaGood(id: string, quantity: number, prim: string, transaction: FirebirdTransaction): Promise<void>;
+    findFboPodbposCandidates(
+        goodscode: string,
+        prims: string[],
+        transaction: FirebirdTransaction,
+    ): Promise<{ podbposcode: number; scode: number; realpricecode: number; quanAvail: number; prim: string }[]>;
+    getAttachedMarkCodesForMigration(
+        realpricecode: number,
+        goodscode: string,
+        limit: number,
+        transaction: FirebirdTransaction,
+    ): Promise<{ ki: string }[]>;
+    decrementPodbpos(podbposcode: number, take: number, transaction: FirebirdTransaction): Promise<void>;
+    detachMarkCode(ki: string, oldRpc: number, s_s: 0 | 1, transaction: FirebirdTransaction): Promise<void>;
+    reattachMarkCodeTransferred(
+        ki: string,
+        newRpc: number,
+        gc: string,
+        s_s: 0 | 1,
+        transaction: FirebirdTransaction,
+    ): Promise<void>;
+    getStorageSS(): 0 | 1;
+    findRealpriceCodes(scode: number, transaction: FirebirdTransaction): Promise<number[]>;
     getByDto(invoiceGetDto: InvoiceGetDto): Promise<InvoiceDto[]>;
     getInvoiceLines(invoice: InvoiceDto, transaction: FirebirdTransaction): Promise<InvoiceLineDto[]>;
     unPickupAndDeltaInvoice(invoice: InvoiceDto, transaction: FirebirdTransaction): Promise<void>;

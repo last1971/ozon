@@ -1,5 +1,5 @@
 import { plainToInstance, Transform } from 'class-transformer';
-import { IsEmail, IsEnum, IsIP, IsNumber, IsOptional, IsString, IsUrl, validateSync } from "class-validator";
+import { IsBoolean, IsEmail, IsEnum, IsIP, IsNumber, IsOptional, IsString, IsUrl, validateSync } from "class-validator";
 import { GoodServiceEnum } from './good/good.service.enum';
 
 export enum Environment {
@@ -216,6 +216,10 @@ class EnvironmentVariables {
     @IsOptional()
     @IsString()
     STORAGE_TYPE: string;
+
+    @IsOptional()
+    @IsBoolean()
+    OZON_FBO_MARK_MIGRATION: boolean;
 
     @IsOptional()
     @IsNumber()
