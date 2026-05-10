@@ -45,3 +45,15 @@ lerna-debug.log*
 
 # HNSW index
 data/*.hnsw
+
+# Local Ozon/WB dumps and drafts
+ozon_attribute_values*.json
+ozon_card_*.json
+ozon_categories_tree.json
+ozon_category_attributes*.json
+ozon_common_attributes.md
+ozon_product_create_example.md
+wb_card_*.json
+
+# One-off diagnostic scripts
+tmp_*.js

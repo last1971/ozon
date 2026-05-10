@@ -150,8 +150,28 @@ export class PostingService implements IOrderable, ISuppliable {
     }
 
     async getByPostingNumber(postingNumber: string): Promise<PostingDto> {
-        const res = await this.ozonApiService.method('/v3/posting/fbs/get', { posting_number: postingNumber });
-        return res.result;
+        let result: PostingDto | null = null;
+        try {
+            const res = await this.ozonApiService.method('/v3/posting/fbs/get', { posting_number: postingNumber });
+            result = res?.result ?? null;
+        } catch (e) {
+            if (!this.configService.get<boolean>('OZON_FBO_MARK_MIGRATION', false)) throw e;
+        }
+        if (result) return result;
+        if (!this.configService.get<boolean>('OZON_FBO_MARK_MIGRATION', false)) return result;
+        const invoice = await this.invoiceService.getByPosting(postingNumber, null);
+        if (!invoice) return null;
+        const invoiceLines = await this.invoiceService.getInvoiceLines(invoice, null);
+        return {
+            posting_number: postingNumber,
+            status: invoice.status.toString(),
+            in_process_at: invoice.date.toString(),
+            products: invoiceLines.map((line) => ({
+                price: line.price,
+                offer_id: `${line.goodCode}${line.whereOrdered ? `-${line.whereOrdered}` : ''}`,
+                quantity: line.quantity,
+            })),
+        };
     }
 
     getBuyerId(): number {

@@ -576,6 +576,87 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         if (!transaction) await t.commit(true);
     }
 
+    async attachMarkCodeForFbs(
+        ki: string,
+        rpc: number,
+        gc: string,
+        s_s: 0 | 1,
+        transaction: FirebirdTransaction = null,
+    ): Promise<void> {
+        const t = transaction ?? (await this.getTransaction());
+        await t.execute('EXECUTE PROCEDURE MARKCODE_ATTACH_FOR_FBS (?, ?, ?, ?)', [ki, rpc, gc, s_s]);
+        if (!transaction) await t.commit(true);
+    }
+
+    async detachMarkCodeForFbs(
+        ki: string,
+        rpc: number,
+        s_s: 0 | 1,
+        transaction: FirebirdTransaction = null,
+    ): Promise<void> {
+        const t = transaction ?? (await this.getTransaction());
+        await t.execute('EXECUTE PROCEDURE MARKCODE_DETACH_FOR_FBS (?, ?, ?)', [ki, rpc, s_s]);
+        if (!transaction) await t.commit(true);
+    }
+
+    async countFreeMarkCodesForGood(
+        goodscode: string,
+        transaction: FirebirdTransaction = null,
+    ): Promise<number> {
+        const t = transaction ?? (await this.getTransaction());
+        const res = await t.query(
+            'SELECT FREE_COUNT FROM COUNT_FREE_MARKCODES_FOR_GOOD (?)',
+            [goodscode],
+            !transaction,
+        );
+        return res?.[0]?.FREE_COUNT ?? 0;
+    }
+
+    async findGoodscodeByKi(
+        ki: string,
+        transaction: FirebirdTransaction = null,
+    ): Promise<string | null> {
+        const t = transaction ?? (await this.getTransaction());
+        const res = await t.query('SELECT GOODSCODE FROM MARKCODES WHERE KI = ?', [ki], !transaction);
+        return res?.[0]?.GOODSCODE != null ? String(res[0].GOODSCODE) : null;
+    }
+
+    async getAttachedMarkCodesByScode(
+        scode: number,
+        transaction: FirebirdTransaction = null,
+    ): Promise<{ ki: string; goodscode: string; realpricecode: number }[]> {
+        const t = transaction ?? (await this.getTransaction());
+        const rows = await t.query(
+            'SELECT m.KI, m.GOODSCODE, m.REALPRICECODE FROM MARKCODES m ' +
+                'JOIN REALPRICE rp ON rp.REALPRICECODE = m.REALPRICECODE ' +
+                'WHERE rp.SCODE = ? AND m.TRANSFER_TYPE = 3',
+            [scode],
+            !transaction,
+        );
+        return rows.map((r) => ({
+            ki: r.KI,
+            goodscode: String(r.GOODSCODE),
+            realpricecode: r.REALPRICECODE,
+        }));
+    }
+
+    async getRealpriceLinesByScode(
+        scode: number,
+        transaction: FirebirdTransaction = null,
+    ): Promise<{ realpricecode: number; goodscode: string; quantity: number }[]> {
+        const t = transaction ?? (await this.getTransaction());
+        const rows = await t.query(
+            'SELECT REALPRICECODE, GOODSCODE, QUAN FROM REALPRICE WHERE SCODE = ?',
+            [scode],
+            !transaction,
+        );
+        return rows.map((r) => ({
+            realpricecode: r.REALPRICECODE,
+            goodscode: String(r.GOODSCODE),
+            quantity: r.QUAN,
+        }));
+    }
+
     async getInvoiceLines(invoice: InvoiceDto, transaction: FirebirdTransaction = null): Promise<InvoiceLineDto[]> {
         return this.getInvoiceLinesByInvoiceId(invoice.id, transaction);
     }

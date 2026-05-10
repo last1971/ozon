@@ -600,6 +600,92 @@ describe('Trade2006InvoiceService', () => {
         });
     });
 
+    describe('FBS mark scan helpers', () => {
+        it('attachMarkCodeForFbs — EXECUTE PROCEDURE MARKCODE_ATTACH_FOR_FBS', async () => {
+            const t = { execute: jest.fn(), commit: jest.fn() };
+            await service.attachMarkCodeForFbs('KI-1', 500, '444', 0, t as any);
+            expect(t.execute).toHaveBeenCalledWith(
+                'EXECUTE PROCEDURE MARKCODE_ATTACH_FOR_FBS (?, ?, ?, ?)',
+                ['KI-1', 500, '444', 0],
+            );
+            expect(t.commit).not.toHaveBeenCalled();
+        });
+
+        it('detachMarkCodeForFbs — EXECUTE PROCEDURE MARKCODE_DETACH_FOR_FBS', async () => {
+            const t = { execute: jest.fn(), commit: jest.fn() };
+            await service.detachMarkCodeForFbs('KI-1', 500, 0, t as any);
+            expect(t.execute).toHaveBeenCalledWith(
+                'EXECUTE PROCEDURE MARKCODE_DETACH_FOR_FBS (?, ?, ?)',
+                ['KI-1', 500, 0],
+            );
+            expect(t.commit).not.toHaveBeenCalled();
+        });
+
+        it('countFreeMarkCodesForGood — возвращает FREE_COUNT', async () => {
+            query.mockResolvedValueOnce([{ FREE_COUNT: 5 }]);
+            const res = await service.countFreeMarkCodesForGood('444', null);
+            expect(res).toBe(5);
+            expect(query.mock.calls[0]).toEqual([
+                'SELECT FREE_COUNT FROM COUNT_FREE_MARKCODES_FOR_GOOD (?)',
+                ['444'],
+                true,
+            ]);
+        });
+
+        it('countFreeMarkCodesForGood — пустой результат → 0', async () => {
+            query.mockResolvedValueOnce([]);
+            expect(await service.countFreeMarkCodesForGood('444', null)).toBe(0);
+        });
+
+        it('findGoodscodeByKi — найден', async () => {
+            query.mockResolvedValueOnce([{ GOODSCODE: 444 }]);
+            expect(await service.findGoodscodeByKi('KI-1', null)).toBe('444');
+            expect(query.mock.calls[0]).toEqual([
+                'SELECT GOODSCODE FROM MARKCODES WHERE KI = ?',
+                ['KI-1'],
+                true,
+            ]);
+        });
+
+        it('findGoodscodeByKi — не найден → null', async () => {
+            query.mockResolvedValueOnce([]);
+            expect(await service.findGoodscodeByKi('KI-X', null)).toBeNull();
+        });
+
+        it('getAttachedMarkCodesByScode — JOIN с REALPRICE и фильтр TT=3', async () => {
+            query.mockResolvedValueOnce([
+                { KI: 'A', GOODSCODE: 444, REALPRICECODE: 100 },
+                { KI: 'B', GOODSCODE: 444, REALPRICECODE: 100 },
+            ]);
+            const res = await service.getAttachedMarkCodesByScode(50, null);
+            expect(res).toEqual([
+                { ki: 'A', goodscode: '444', realpricecode: 100 },
+                { ki: 'B', goodscode: '444', realpricecode: 100 },
+            ]);
+            const sql = query.mock.calls[0][0];
+            expect(sql).toContain('JOIN REALPRICE');
+            expect(sql).toContain('m.TRANSFER_TYPE = 3');
+            expect(query.mock.calls[0][1]).toEqual([50]);
+        });
+
+        it('getRealpriceLinesByScode — все строки счёта', async () => {
+            query.mockResolvedValueOnce([
+                { REALPRICECODE: 100, GOODSCODE: 444, QUAN: 2 },
+                { REALPRICECODE: 101, GOODSCODE: 555, QUAN: 1 },
+            ]);
+            const res = await service.getRealpriceLinesByScode(50, null);
+            expect(res).toEqual([
+                { realpricecode: 100, goodscode: '444', quantity: 2 },
+                { realpricecode: 101, goodscode: '555', quantity: 1 },
+            ]);
+            expect(query.mock.calls[0]).toEqual([
+                'SELECT REALPRICECODE, GOODSCODE, QUAN FROM REALPRICE WHERE SCODE = ?',
+                [50],
+                true,
+            ]);
+        });
+    });
+
     it('deltaGood', async () => {
         query.mockResolvedValueOnce([{ PRICE: 10.01 }]);
         await service.deltaGood('111', 10, 'TEST', null);

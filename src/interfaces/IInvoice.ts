@@ -43,6 +43,29 @@ export interface IInvoice {
         s_s: 0 | 1,
         transaction: FirebirdTransaction,
     ): Promise<void>;
+    attachMarkCodeForFbs(
+        ki: string,
+        rpc: number,
+        gc: string,
+        s_s: 0 | 1,
+        transaction: FirebirdTransaction,
+    ): Promise<void>;
+    detachMarkCodeForFbs(
+        ki: string,
+        rpc: number,
+        s_s: 0 | 1,
+        transaction: FirebirdTransaction,
+    ): Promise<void>;
+    countFreeMarkCodesForGood(goodscode: string, transaction: FirebirdTransaction): Promise<number>;
+    findGoodscodeByKi(ki: string, transaction: FirebirdTransaction): Promise<string | null>;
+    getAttachedMarkCodesByScode(
+        scode: number,
+        transaction: FirebirdTransaction,
+    ): Promise<{ ki: string; goodscode: string; realpricecode: number }[]>;
+    getRealpriceLinesByScode(
+        scode: number,
+        transaction: FirebirdTransaction,
+    ): Promise<{ realpricecode: number; goodscode: string; quantity: number }[]>;
     getStorageSS(): 0 | 1;
     findRealpriceCodes(scode: number, transaction: FirebirdTransaction): Promise<number[]>;
     getByDto(invoiceGetDto: InvoiceGetDto): Promise<InvoiceDto[]>;

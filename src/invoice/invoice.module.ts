@@ -8,11 +8,13 @@ import { FirebirdPool } from 'ts-firebird';
 import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
 import { InvoiceController } from './invoice.controller';
 import { IsRemarkValid } from "../validators/is.remark.valid";
+import { MarkScanFbsService } from "./mark-scan-fbs.service";
 
 @Module({
     imports: [FirebirdModule],
     providers: [
         IsRemarkValid,
+        MarkScanFbsService,
         {
             provide: INVOICE_SERVICE,
             useFactory: (
