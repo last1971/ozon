@@ -274,8 +274,7 @@ describe('OrderService', () => {
         expect(result).toBeNull();
     });
 
-    it('should process orders with cache and skip already processed', async () => {
-        // Подготовка: создаем мок сервиса
+    it('should process orders with cache and skip already processed; cache flush deferred', async () => {
         const mockService = {
             constructor: { name: 'TestService' },
             listAwaitingPackaging: jest.fn().mockResolvedValue([
@@ -289,34 +288,69 @@ describe('OrderService', () => {
         cacheGet.mockResolvedValueOnce('002');
 
         const processor = jest.fn().mockResolvedValue(undefined);
+        const flushers: (() => Promise<void>)[] = [];
 
-        // Вызываем метод processWithCache напрямую
         await service['processWithCache'](
             'test',
             mockService as any,
             await mockService.listAwaitingPackaging(),
             processor,
+            flushers,
         );
 
-        // Проверяем что processor был вызван только для '001' и '003' (пропустили '002')
+        // processor вызван только для '001' и '003' (пропустили '002')
         expect(processor).toHaveBeenCalledTimes(2);
         expect(processor).toHaveBeenCalledWith({ posting_number: '001', products: [] });
         expect(processor).toHaveBeenCalledWith({ posting_number: '003', products: [] });
 
-        // Проверяем что все 3 заказа теперь в кеше как строка
-        expect(cacheSet).toHaveBeenCalled();
+        // Запись в Redis отложена — пока не выполнен flusher, кеш не трогаем
+        expect(cacheSet).not.toHaveBeenCalled();
+        expect(flushers).toHaveLength(1);
+
+        // Выполняем отложенный flush — только теперь пишем в Redis
+        await flushers[0]();
+
+        expect(cacheSet).toHaveBeenCalledTimes(1);
         expect(cacheSet).toHaveBeenCalledWith(
             'processed:test:TestService',
             expect.any(String),
             14 * 24 * 60 * 60 * 1000,
         );
+        const savedString = cacheSet.mock.calls[0][1];
+        expect(savedString).toContain('001');
+        expect(savedString).toContain('002');
+        expect(savedString).toContain('003');
+    });
 
-        if (cacheSet.mock.calls.length > 0) {
-            const savedString = cacheSet.mock.calls[0][1];
-            expect(savedString).toContain('001');
-            expect(savedString).toContain('002');
-            expect(savedString).toContain('003');
-        }
+    it('cache flusher НЕ выполняется при откате транзакции', async () => {
+        cacheSet.mockClear();
+        // Симулируем падение transaction.commit
+        const commit = jest.fn().mockRejectedValueOnce(new Error('DB shutdown'));
+        const rollback = jest.fn().mockResolvedValue(undefined);
+        const failingTx = { commit, rollback };
+        (service as any).invoiceService.getTransaction = jest.fn().mockResolvedValue(failingTx);
+
+        // Подкладываем один orderService который успешно обработает один заказ
+        const mockOrderable: any = {
+            constructor: { name: 'PostingService' },
+            isFbo: () => false,
+            getBuyerId: () => 1,
+            listCanceled: jest.fn().mockResolvedValue([]),
+            listAwaitingPackaging: jest.fn().mockResolvedValue([{ posting_number: 'NEW-1', products: [] }]),
+            listAwaitingDelivering: jest.fn().mockResolvedValue([]),
+            listReturns: jest.fn().mockResolvedValue([]),
+            createInvoice: jest.fn().mockResolvedValue({ id: 1 }),
+        };
+        (service as any).orderServices = [mockOrderable];
+        cacheGet.mockResolvedValue('');
+        (service as any).invoiceService.isExists = jest.fn().mockResolvedValue(false);
+
+        await service.checkNewOrders();
+
+        // commit упал → rollback вызван, cacheSet не должен быть тронут
+        expect(commit).toHaveBeenCalled();
+        expect(rollback).toHaveBeenCalled();
+        expect(cacheSet).not.toHaveBeenCalled();
     });
 
     describe('getInvoiceByClaimId', () => {
