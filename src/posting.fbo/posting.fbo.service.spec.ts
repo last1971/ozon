@@ -160,6 +160,31 @@ describe('PostingFboService', () => {
             expect(unPickupOzonFbo).toHaveBeenCalledTimes(2);
             expect(unPickupOzonFbo.mock.calls[0][1]).toBe('ПУШКИНО_1_РФЦ');
             expect(unPickupOzonFbo.mock.calls[1][1]).toBe('Москва, МО и Дальние регионы');
+            expect(emit).not.toHaveBeenCalled();
+        });
+
+        it('все три попытки провалились → deltaGood + одно письмо о недостаче', async () => {
+            const posting = {
+                posting_number: '321',
+                status: 'string',
+                in_process_at: date.toISOString(),
+                products: [{ price: '1.11', offer_id: '444', quantity: 2 }],
+                analytics_data: { warehouse_name: 'КЕМЕРОВО_РФЦ' },
+                financial_data: { cluster_from: 'Новосибирск' },
+            };
+            unPickupOzonFbo.mockResolvedValue(false);
+            await service.createInvoice(posting, null);
+            expect(unPickupOzonFbo).toHaveBeenCalledTimes(3);
+            expect(deltaGood).toHaveBeenCalledTimes(1);
+            expect(deltaGood.mock.calls[0]).toEqual(['444', 2, 'Новосибирск', null]);
+            expect(emit).toHaveBeenCalledTimes(1);
+            const [evt, subject, body] = emit.mock.calls[0];
+            expect(evt).toBe('error.message');
+            expect(subject).toBe('Ozon FBO: нет позиции — создана недостача');
+            expect(body).toContain('Posting: 321');
+            expect(body).toContain('GOODSCODE: 444, qty: 2');
+            expect(body).toContain('warehouse_name: КЕМЕРОВО_РФЦ');
+            expect(body).toContain('cluster_from:   Новосибирск');
         });
     });
 
@@ -212,7 +237,7 @@ describe('PostingFboService', () => {
             expect(reattachMarkCodeTransferred).toHaveBeenCalledTimes(3);
             expect(decrementPodbpos).toHaveBeenCalledTimes(3);
             expect(decrementPodbpos.mock.calls.map((c) => c[0])).toEqual([1001, 2002, 3003]);
-            expect(emit).toHaveBeenCalledWith('error.message', 'FBO cancels clean', 'ПУШКИНО_1_РФЦ');
+            expect(emit).not.toHaveBeenCalled();
         });
 
         it('(c) 2 марк + 1 не-марк в одной выборке — REATTACH 2, decrement общий = 3', async () => {
@@ -243,7 +268,7 @@ describe('PostingFboService', () => {
             expect(deltaGood).not.toHaveBeenCalled();
         });
 
-        it('(e) частичный fallback — need=3, candidates покрыли 2, deltaGood на 1', async () => {
+        it('(e) частичный fallback — need=3, candidates покрыли 2, deltaGood на 1 + письмо', async () => {
             findFboPodbposCandidates.mockResolvedValueOnce([
                 { podbposcode: 1001, scode: 100, realpricecode: 100, quanAvail: 2, prim: 'ПУШКИНО_1_РФЦ' },
             ]);
@@ -254,9 +279,17 @@ describe('PostingFboService', () => {
             expect(decrementPodbpos).toHaveBeenCalledWith(1001, 2, null);
             expect(deltaGood).toHaveBeenCalledTimes(1);
             expect(deltaGood.mock.calls[0]).toEqual(['444', 1, 'Москва, МО и Дальние регионы', null]);
+            expect(emit).toHaveBeenCalledTimes(1);
+            const [evt, subject, body] = emit.mock.calls[0];
+            expect(evt).toBe('error.message');
+            expect(subject).toBe('Ozon FBO: нет позиции — создана недостача');
+            expect(body).toContain('Posting: 321');
+            expect(body).toContain('GOODSCODE: 444, qty: 1');
+            expect(body).toContain('warehouse_name: ПУШКИНО_1_РФЦ');
+            expect(body).toContain('cluster_from:   Москва, МО и Дальние регионы');
         });
 
-        it('(f) suffix-возврат — emit FBO cancels clean', async () => {
+        it('(f) suffix-возврат — недостачи нет, письма нет', async () => {
             findFboPodbposCandidates.mockResolvedValueOnce([
                 { podbposcode: 9999, scode: 900, realpricecode: 900, quanAvail: 1, prim: '777-888 отмена FBO' },
             ]);
@@ -264,7 +297,8 @@ describe('PostingFboService', () => {
 
             await service.createInvoice(buildPosting('444', 1), null);
 
-            expect(emit).toHaveBeenCalledWith('error.message', 'FBO cancels clean', 'ПУШКИНО_1_РФЦ');
+            expect(deltaGood).not.toHaveBeenCalled();
+            expect(emit).not.toHaveBeenCalled();
         });
 
         it('(g) дубликаты goodCode в posting — RPC берётся по индексу, а не по goodscode', async () => {

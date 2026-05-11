@@ -423,12 +423,6 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         );
         if (pickups.length === 0) {
             if (!transaction) await workingTransaction.rollback(true);
-            const message = `Have not position on FBO. Warehouse - ${prim}. GOODSCODE - ${code}.`;
-            // if (!find(this.fboErrors, { prim, code })) {
-            //    this.fboErrors.push({ prim, code });
-            this.eventEmitter.emit('error.message', 'Check FBO cancels!', message);
-            // }
-            // throw new Error(message);
             return false;
         }
         // remove(this.fboErrors, { prim, code });
@@ -467,7 +461,6 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             [id, Trade2006InvoiceService.name, -quantity, prim, price],
             !transaction,
         );
-        this.eventEmitter.emit('error.message', `Delta ${id} code with quantity: ${quantity} for ${prim}`);
     }
 
     getStorageSS(): 0 | 1 {

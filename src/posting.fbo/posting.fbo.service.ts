@@ -43,18 +43,34 @@ export class PostingFboService implements IOrderable {
             }
             if (!res) {
                 res = await this.invoiceService.unPickupOzonFbo(product, OZON_ORDER_CANCELLATION_SUFFIX.FBO.trim(), transaction);
-                if (res)
-                    this.eventEmitter.emit('error.message', 'FBO cancels clean', warehouseName);
             }
             if (!res) {
                 const id = goodCode(product);
                 const quantity = product.quantity * goodQuantityCoeff(product);
                 await this.invoiceService.deltaGood(id, quantity, clusterFrom || warehouseName, transaction);
+                this.emitFboShortage(posting, id, quantity, warehouseName, clusterFrom);
             }
         }
         const invoice = await this.invoiceService.createInvoiceFromPostingDto(buyerId, posting, transaction);
         await this.invoiceService.update(invoice, { IGK: 'NOT1C' }, transaction);
         return invoice;
+    }
+
+    private emitFboShortage(
+        posting: PostingDto,
+        gc: string,
+        qty: number,
+        warehouseName: string | undefined,
+        clusterFrom: string | undefined,
+    ): void {
+        const message = [
+            'Сервис: Ozon FBO',
+            `Posting: ${posting.posting_number}`,
+            `GOODSCODE: ${gc}, qty: ${qty}`,
+            `warehouse_name: ${warehouseName || '-'}`,
+            `cluster_from:   ${clusterFrom || '-'}`,
+        ].join('\n');
+        this.eventEmitter.emit('error.message', 'Ozon FBO: нет позиции — создана недостача', message);
     }
 
     private async createInvoiceWithMarkMigration(
@@ -77,7 +93,6 @@ export class PostingFboService implements IOrderable {
             let need = product.quantity * goodQuantityCoeff(product);
             const newRpc = newRpcs[i];
             const candidates = await this.invoiceService.findFboPodbposCandidates(gc, prims, transaction);
-            let suffixHit = false;
 
             for (const cand of candidates) {
                 if (need === 0) break;
@@ -95,15 +110,12 @@ export class PostingFboService implements IOrderable {
                 for (const { ki } of codes) {
                     await this.invoiceService.reattachMarkCodeTransferred(ki, newRpc, gc, ss, transaction);
                 }
-                if (cand.prim && cand.prim.includes(suffix)) suffixHit = true;
                 need -= take;
             }
 
-            if (suffixHit) {
-                this.eventEmitter.emit('error.message', 'FBO cancels clean', warehouseName);
-            }
             if (need > 0) {
                 await this.invoiceService.deltaGood(gc, need, clusterFrom || warehouseName, transaction);
+                this.emitFboShortage(posting, gc, need, warehouseName, clusterFrom);
             }
         }
 
