@@ -31,7 +31,7 @@ describe('PostingFboService', () => {
 
     let migrationEnabled = false;
     const configGet = (key: string, def?: unknown) => {
-        if (key === 'OZON_FBO_MARK_MIGRATION') return migrationEnabled;
+        if (key === 'MARK_CODES_ENABLED') return migrationEnabled;
         if (key === 'OZON_BUYER_ID') return 123;
         return def !== undefined ? def : 123;
     };

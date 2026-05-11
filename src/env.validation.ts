@@ -219,7 +219,8 @@ class EnvironmentVariables {
 
     @IsOptional()
     @IsBoolean()
-    OZON_FBO_MARK_MIGRATION: boolean;
+    @Transform(({ obj }) => obj.MARK_CODES_ENABLED === 'true' || obj.MARK_CODES_ENABLED === true)
+    MARK_CODES_ENABLED: boolean;
 
     @IsOptional()
     @IsNumber()

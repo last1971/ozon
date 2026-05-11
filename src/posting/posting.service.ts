@@ -155,10 +155,10 @@ export class PostingService implements IOrderable, ISuppliable {
             const res = await this.ozonApiService.method('/v3/posting/fbs/get', { posting_number: postingNumber });
             result = res?.result ?? null;
         } catch (e) {
-            if (!this.configService.get<boolean>('OZON_FBO_MARK_MIGRATION', false)) throw e;
+            if (!this.configService.get<boolean>('MARK_CODES_ENABLED', false)) throw e;
         }
         if (result) return result;
-        if (!this.configService.get<boolean>('OZON_FBO_MARK_MIGRATION', false)) return result;
+        if (!this.configService.get<boolean>('MARK_CODES_ENABLED', false)) return result;
         const invoice = await this.invoiceService.getByPosting(postingNumber, null);
         if (!invoice) return null;
         const invoiceLines = await this.invoiceService.getInvoiceLines(invoice, null);

@@ -574,10 +574,14 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         rpc: number,
         gc: string,
         s_s: 0 | 1,
+        km_full: string,
         transaction: FirebirdTransaction = null,
     ): Promise<void> {
         const t = transaction ?? (await this.getTransaction());
-        await t.execute('EXECUTE PROCEDURE MARKCODE_ATTACH_FOR_FBS (?, ?, ?, ?)', [ki, rpc, gc, s_s]);
+        await t.execute(
+            'EXECUTE PROCEDURE MARKCODE_ATTACH_FOR_FBS (?, ?, ?, ?, ?)',
+            [ki, rpc, gc, s_s, km_full],
+        );
         if (!transaction) await t.commit(true);
     }
 
@@ -612,6 +616,38 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         const t = transaction ?? (await this.getTransaction());
         const res = await t.query('SELECT GOODSCODE FROM MARKCODES WHERE KI = ?', [ki], !transaction);
         return res?.[0]?.GOODSCODE != null ? String(res[0].GOODSCODE) : null;
+    }
+
+    async getKmFullByKi(
+        ki: string,
+        transaction: FirebirdTransaction = null,
+    ): Promise<string | null> {
+        const t = transaction ?? (await this.getTransaction());
+        const res = await t.query('SELECT KM_FULL FROM MARKCODES WHERE KI = ?', [ki], !transaction);
+        return res?.[0]?.KM_FULL != null ? String(res[0].KM_FULL) : null;
+    }
+
+    async listFbsAwaitingShip(
+        buyerId: number,
+        transaction: FirebirdTransaction = null,
+    ): Promise<InvoiceDto[]> {
+        const t = transaction ?? (await this.getTransaction());
+        const fromDate = new Date();
+        fromDate.setDate(fromDate.getDate() - 2);
+        fromDate.setHours(0, 0, 0, 0);
+        const rows = await t.query(
+            'SELECT DISTINCT s.* FROM S s ' +
+                'JOIN REALPRICE rp ON rp.SCODE = s.SCODE ' +
+                'JOIN MARKCODES m ON m.REALPRICECODE = rp.REALPRICECODE ' +
+                'WHERE s.POKUPATCODE = ? ' +
+                "AND s.FINISH_PICKUP IS NOT NULL " +
+                "AND s.IGK IS NOT NULL AND s.IGK <> '' " +
+                'AND m.TRANSFER_TYPE = 3 ' +
+                'AND s.DATA >= ?',
+            [buyerId, fromDate],
+            !transaction,
+        );
+        return InvoiceDto.map(rows);
     }
 
     async getAttachedMarkCodesByScode(

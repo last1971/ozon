@@ -601,12 +601,12 @@ describe('Trade2006InvoiceService', () => {
     });
 
     describe('FBS mark scan helpers', () => {
-        it('attachMarkCodeForFbs — EXECUTE PROCEDURE MARKCODE_ATTACH_FOR_FBS', async () => {
+        it('attachMarkCodeForFbs — EXECUTE PROCEDURE MARKCODE_ATTACH_FOR_FBS с km_full', async () => {
             const t = { execute: jest.fn(), commit: jest.fn() };
-            await service.attachMarkCodeForFbs('KI-1', 500, '444', 0, t as any);
+            await service.attachMarkCodeForFbs('KI-1', 500, '444', 0, 'RAW-SCAN-FULL', t as any);
             expect(t.execute).toHaveBeenCalledWith(
-                'EXECUTE PROCEDURE MARKCODE_ATTACH_FOR_FBS (?, ?, ?, ?)',
-                ['KI-1', 500, '444', 0],
+                'EXECUTE PROCEDURE MARKCODE_ATTACH_FOR_FBS (?, ?, ?, ?, ?)',
+                ['KI-1', 500, '444', 0, 'RAW-SCAN-FULL'],
             );
             expect(t.commit).not.toHaveBeenCalled();
         });
@@ -650,6 +650,65 @@ describe('Trade2006InvoiceService', () => {
         it('findGoodscodeByKi — не найден → null', async () => {
             query.mockResolvedValueOnce([]);
             expect(await service.findGoodscodeByKi('KI-X', null)).toBeNull();
+        });
+
+        it('getKmFullByKi — возвращает полный rawScan', async () => {
+            query.mockResolvedValueOnce([{ KM_FULL: '01001234...91...92...' }]);
+            expect(await service.getKmFullByKi('KI-1', null)).toBe('01001234...91...92...');
+            expect(query.mock.calls[0]).toEqual([
+                'SELECT KM_FULL FROM MARKCODES WHERE KI = ?',
+                ['KI-1'],
+                true,
+            ]);
+        });
+
+        it('getKmFullByKi — KM_FULL=NULL или нет строки → null', async () => {
+            query.mockResolvedValueOnce([{ KM_FULL: null }]);
+            expect(await service.getKmFullByKi('KI-1', null)).toBeNull();
+            query.mockResolvedValueOnce([]);
+            expect(await service.getKmFullByKi('KI-X', null)).toBeNull();
+        });
+
+        it('listFbsAwaitingShip — JOIN MARKCODES TT=3 + FINISH_PICKUP + IGK + buyerId', async () => {
+            query.mockResolvedValueOnce([
+                {
+                    SCODE: 85241,
+                    NS: 8344,
+                    STATUS: 3,
+                    POKUPATCODE: 24231,
+                    DATA: new Date('2026-05-11'),
+                    PRIM: 'TEST-FULL',
+                    IGK: 'BARCODE',
+                    START_PICKUP: null,
+                    FINISH_PICKUP: new Date('2026-05-11'),
+                },
+            ]);
+            const res = await service.listFbsAwaitingShip(24231, null);
+            expect(res).toHaveLength(1);
+            expect(res[0]).toMatchObject({
+                id: 85241,
+                number: 8344,
+                remark: 'TEST-FULL',
+                buyerId: 24231,
+                barcode: 'BARCODE',
+            });
+            const [sql, params, autoCommit] = query.mock.calls[0];
+            expect(sql).toContain('JOIN REALPRICE');
+            expect(sql).toContain('JOIN MARKCODES');
+            expect(sql).toContain('m.TRANSFER_TYPE = 3');
+            expect(sql).toContain('s.FINISH_PICKUP IS NOT NULL');
+            expect(sql).toContain('s.IGK IS NOT NULL');
+            expect(sql).toContain('s.POKUPATCODE = ?');
+            expect(sql).toContain('s.DATA >= ?');
+            expect(params).toHaveLength(2);
+            expect(params[0]).toBe(24231);
+            expect(params[1]).toBeInstanceOf(Date);
+            // дата = сегодня - 2 дня, 00:00:00
+            const expected = new Date();
+            expected.setDate(expected.getDate() - 2);
+            expected.setHours(0, 0, 0, 0);
+            expect((params[1] as Date).getTime()).toBe(expected.getTime());
+            expect(autoCommit).toBe(true);
         });
 
         it('getAttachedMarkCodesByScode — JOIN с REALPRICE и фильтр TT=3', async () => {

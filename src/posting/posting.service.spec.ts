@@ -59,7 +59,7 @@ describe('PostingService', () => {
                     useValue: {
                         get: (key: string, def?: any) => {
                             if (key === 'OZON_BUYER_ID') return 24416;
-                            if (key === 'OZON_FBO_MARK_MIGRATION') return markMigrationEnabled;
+                            if (key === 'MARK_CODES_ENABLED') return markMigrationEnabled;
                             return def;
                         },
                     },
