@@ -8,12 +8,14 @@ import { PostingFboService } from '../posting.fbo/posting.fbo.service';
 describe('OrderController', () => {
     let controller: OrderController;
     const checkCanceledOrders = jest.fn();
+    const runFboPackageForTesting = jest.fn();
 
     beforeEach(async () => {
         checkCanceledOrders.mockReset();
+        runFboPackageForTesting.mockReset();
         const module: TestingModule = await Test.createTestingModule({
             providers: [
-                { provide: OrderService, useValue: {} },
+                { provide: OrderService, useValue: { runFboPackageForTesting } },
                 { provide: YandexOrderService, useValue: {} },
                 { provide: WbOrderService, useValue: {} },
                 { provide: PostingFboService, useValue: { checkCanceledOrders } },
@@ -42,6 +44,18 @@ describe('OrderController', () => {
             checkCanceledOrders.mockRejectedValueOnce(new Error('boom'));
 
             await expect(controller.updateOzonFboOrder()).rejects.toThrow('boom');
+        });
+    });
+
+    describe('devRunFboPackage', () => {
+        it('делегирует в OrderService.runFboPackageForTesting', async () => {
+            const posting = { posting_number: 'TEST-001' } as any;
+            runFboPackageForTesting.mockResolvedValueOnce({ id: 999 });
+
+            const result = await controller.devRunFboPackage(posting);
+
+            expect(runFboPackageForTesting).toHaveBeenCalledWith(posting);
+            expect(result).toEqual({ id: 999 });
         });
     });
 });

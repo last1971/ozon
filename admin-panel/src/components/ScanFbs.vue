@@ -6,6 +6,11 @@ import BarcodeImage from "@/components/BarcodeImage.vue";
 import { GoodServiceEnum, goodStore } from "@/stores/goods";
 import { find } from "lodash";
 import type { GoodInfoDto } from "@/contracts/good.info.dto";
+import type {
+    MarkScanProgressDto,
+    MarkScanProgressLineDto,
+    MarkScanResultDto,
+} from "@/contracts/mark-scan-progress.dto";
 
 const url = import.meta.env.VITE_URL;
 
@@ -17,15 +22,38 @@ const extractQuantity = (sku: string) => {
     return parts.length > 1 ? parseInt(parts[1], 10) : 1; // Если есть количество, возвращаем его, иначе 1
 }
 
+const markProgress = ref<MarkScanProgressDto | null>(null);
+
+const linesByGoodscode = computed<Map<string, MarkScanProgressLineDto[]>>(() => {
+    const map = new Map<string, MarkScanProgressLineDto[]>();
+    if (!markProgress.value) return map;
+    for (const line of markProgress.value.lines) {
+        const arr = map.get(line.goodscode) ?? [];
+        arr.push(line);
+        map.set(line.goodscode, arr);
+    }
+    return map;
+});
+
 const lines = computed(
     () => products.value.map((a) => {
         const good: GoodInfoDto | undefined = find(goods.goodInfos.get(service.value), { sku: a.offer_id });
+        const goodscode = good?.id || '';
+        const progressLines = linesByGoodscode.value.get(goodscode) ?? [];
+        const requiresScan = progressLines.some((l) => l.requiresScan);
+        const quantityScanned = progressLines.reduce((s, l) => s + l.quantityScanned, 0);
+        const quantityNeeded = progressLines.reduce((s, l) => s + l.quantityNeeded, 0);
         return {
             offer_id: a.offer_id,
             quantity: a.quantity,
             name: good?.remark || '',
             barcode: good?.barCode || '',
             image: good?.primaryImage || '',
+            goodscode,
+            requiresScan,
+            quantityScanned,
+            quantityNeeded,
+            isComplete: !requiresScan || quantityScanned >= quantityNeeded,
         }
     }),
 );
@@ -38,12 +66,14 @@ const headers = ref([
     { title: 'Картинка', key: 'image', sortable: false },     // Колонка с картинкой товара
     { title: 'Штрихкод', key: 'barcode', sortable: false },   // Колонка с картинкой штрихкода
     { title: 'Название', key: 'name' },                       // Название товара
-    { title: 'Количество', key: 'quantity' },                       // Название товара
+    { title: 'Количество', key: 'quantity' },
+    { title: 'КМ', key: 'mark', sortable: false },
 ]);
 
 // Переменные для полей ввода и времени
 const firstInput = ref<string>('');
 const secondInput = ref<string>('');
+const markScanInput = ref<string>('');
 const invoice = ref<any>(null);
 
 const snackbar = ref(false); // Переменная для показа snackbar
@@ -54,6 +84,7 @@ const snackbarTimeout =  ref<number>(5000);
 // Переменные для состояния задизабленности полей
 const firstDisabled = ref<boolean>(false);
 const secondDisabled = ref<boolean>(true);
+const markScanDisabled = ref<boolean>(true);
 
 // Переменные для времени
 const firstTime = ref<string>('');
@@ -62,6 +93,23 @@ const secondTime = ref<string>('');
 // Refs для фокусировки
 const firstInputRef = ref<any>(null);
 const secondInputRef = ref<any>(null);
+const markScanInputRef = ref<any>(null);
+
+const isReadyToFinish = computed(() => markProgress.value?.isReadyToFinish ?? true);
+const requiresMarkScan = computed(() =>
+    !!markProgress.value && markProgress.value.lines.some((l) => l.requiresScan),
+);
+const lastAttachedKi = computed(() => {
+    const kis = markProgress.value?.attachedKis ?? [];
+    return kis.length ? kis[kis.length - 1] : '';
+});
+
+function showSnackbar(message: string, color: string, timeout = 5000) {
+    snackbarMessage.value = message;
+    snackbarColor.value = color;
+    snackbarTimeout.value = timeout;
+    snackbar.value = true;
+}
 
 async function update(remark: string, data: any, text: string): Promise<boolean> {
     let result = true;
@@ -98,6 +146,18 @@ async function update(remark: string, data: any, text: string): Promise<boolean>
     return result;
 }
 
+async function loadMarkProgress(remark: string): Promise<boolean> {
+    try {
+        const res = await axios.get<MarkScanProgressDto>(`/api/invoice/${remark}/markcode/progress`);
+        markProgress.value = res.data;
+        return true;
+    } catch (e: any) {
+        markProgress.value = null;
+        showSnackbar(`Не удалось получить прогресс КМ: ${e?.response?.data?.message ?? e.message}`, 'error', 60000);
+        return false;
+    }
+}
+
 // Функция для получения текущего времени
 function getCurrentTime(): string {
     const date = new Date();
@@ -124,12 +184,68 @@ async function onFirstInput() {
             'Сборка начата'
         );
         if (res) {
-            secondDisabled.value = false;
-            await setFocus(secondInputRef);
+            const progressOk = await loadMarkProgress(firstInput.value);
+            if (progressOk && requiresMarkScan.value && !isReadyToFinish.value) {
+                markScanDisabled.value = false;
+                secondDisabled.value = true;
+                await setFocus(markScanInputRef);
+            } else {
+                markScanDisabled.value = true;
+                secondDisabled.value = false;
+                await setFocus(secondInputRef);
+            }
         } else {
             firstDisabled.value = false;
             await setFocus(firstInputRef);
         }
+    }
+}
+
+async function onMarkScanInput() {
+    const raw = markScanInput.value.trim();
+    if (!raw) return;
+    try {
+        const res = await axios.post<MarkScanResultDto>(
+            `/api/invoice/${firstInput.value}/markcode`,
+            { ki: raw },
+        );
+        markProgress.value = res.data.progress;
+        markScanInput.value = '';
+        showSnackbar(`КМ привязан (${res.data.attached.ki.slice(0, 18)}…)`, 'success');
+        if (markProgress.value.isReadyToFinish) {
+            markScanDisabled.value = true;
+            secondDisabled.value = false;
+            await setFocus(secondInputRef);
+        } else {
+            await setFocus(markScanInputRef);
+        }
+    } catch (e: any) {
+        markScanInput.value = '';
+        const status = e?.response?.status;
+        const message = e?.response?.data?.message ?? e.message;
+        const color = status === 404 || status === 409 ? 'warning' : 'error';
+        showSnackbar(`КМ не привязан: ${message}`, color, status === 404 || status === 409 ? 5000 : 60000);
+        await setFocus(markScanInputRef);
+    }
+}
+
+async function onUnscanLast() {
+    const ki = lastAttachedKi.value;
+    if (!ki) return;
+    try {
+        const res = await axios.delete<MarkScanProgressDto>(
+            `/api/invoice/${firstInput.value}/markcode/${encodeURIComponent(ki)}`,
+        );
+        markProgress.value = res.data;
+        showSnackbar('Последний КМ отвязан', 'success');
+        if (!markProgress.value.isReadyToFinish) {
+            markScanDisabled.value = false;
+            secondDisabled.value = true;
+            await setFocus(markScanInputRef);
+        }
+    } catch (e: any) {
+        const message = e?.response?.data?.message ?? e.message;
+        showSnackbar(`Не удалось отвязать КМ: ${message}`, 'error', 10000);
     }
 }
 
@@ -171,11 +287,14 @@ async function unlockSecondInput() {
 async function resetFields() {
     firstInput.value = '';
     secondInput.value = '';
+    markScanInput.value = '';
     firstDisabled.value = false;
     secondDisabled.value = true;
+    markScanDisabled.value = true;
     firstTime.value = '';
     secondTime.value = '';
     products.value = [];
+    markProgress.value = null;
     await setFocus(firstInputRef);
 }
 
@@ -224,6 +343,32 @@ async function setFocus(ref: any) {
                     label="Время начала сборки"
                     :disabled="true"
                 ></v-text-field>
+            </v-col>
+
+            <!-- Поле сканирования КМ -->
+            <v-col cols="3">
+                <v-text-field
+                    v-model="markScanInput"
+                    label="Сканируйте КМ (Честный Знак)"
+                    :disabled="markScanDisabled"
+                    @keyup.enter="onMarkScanInput"
+                    outlined
+                    ref="markScanInputRef"
+                ></v-text-field>
+            </v-col>
+
+            <!-- Кнопка отвязки последнего КМ -->
+            <v-col cols="auto">
+                <v-btn
+                    @click="onUnscanLast"
+                    :disabled="!lastAttachedKi"
+                    class="mb-4"
+                    color="warning"
+                    variant="outlined"
+                    size="small"
+                >
+                    Отвязать последний
+                </v-btn>
             </v-col>
 
             <!-- Второе текстовое поле ввода -->
@@ -312,6 +457,21 @@ async function setFocus(ref: any) {
                 >
                     {{ extractQuantity(item.offer_id) * item.quantity }}
                 </div>
+            </template>
+
+            <template #item.mark="{ item }">
+                <div
+                    v-if="item.requiresScan"
+                    :style="{
+                        fontWeight: 'bold',
+                        fontSize: '1.25rem',
+                        textAlign: 'center',
+                        color: item.isComplete ? '#229A16' : '#B72136',
+                    }"
+                >
+                    {{ item.quantityScanned }}/{{ item.quantityNeeded }}
+                </div>
+                <div v-else style="text-align: center; color: #919EAB;">—</div>
             </template>
 
         </v-data-table>

@@ -12,9 +12,11 @@ describe('PostingService', () => {
     const createInvoiceFromPostingDto = jest.fn();
     const commit = jest.fn();
     const getByPosting = jest.fn();
+    const getInvoiceLines = jest.fn();
     const bulkSetStatus = jest.fn();
     const updatePrim = jest.fn();
     const ozonApiMethod = jest.fn();
+    let markMigrationEnabled = false;
     const date = new Date();
     const postings = [
         {
@@ -46,12 +48,22 @@ describe('PostingService', () => {
                         create,
                         createInvoiceFromPostingDto,
                         getByPosting,
+                        getInvoiceLines,
                         bulkSetStatus,
                         updatePrim,
                         getTransaction: () => ({ commit }),
                     },
                 },
-                { provide: ConfigService, useValue: { get: () => 24416 } },
+                {
+                    provide: ConfigService,
+                    useValue: {
+                        get: (key: string, def?: any) => {
+                            if (key === 'OZON_BUYER_ID') return 24416;
+                            if (key === 'OZON_FBO_MARK_MIGRATION') return markMigrationEnabled;
+                            return def;
+                        },
+                    },
+                },
                 {
                     provide: ProductService,
                     useValue: { orderList },
@@ -67,6 +79,9 @@ describe('PostingService', () => {
 
         orderList.mockClear();
         ozonApiMethod.mockClear();
+        getByPosting.mockReset();
+        getInvoiceLines.mockReset();
+        markMigrationEnabled = false;
         service = module.get<PostingService>(PostingService);
     });
 
@@ -129,6 +144,83 @@ describe('PostingService', () => {
             },
             limit: 500,
             last_id: 0,
+        });
+    });
+
+    describe('getByPostingNumber', () => {
+        it('returns Ozon result when posting found', async () => {
+            const posting = { posting_number: 'P-1', status: 'awaiting_packaging', in_process_at: date.toISOString(), products: [] };
+            ozonApiMethod.mockResolvedValueOnce({ result: posting });
+
+            const res = await service.getByPostingNumber('P-1');
+
+            expect(res).toEqual(posting);
+            expect(ozonApiMethod).toHaveBeenCalledWith('/v3/posting/fbs/get', { posting_number: 'P-1' });
+            expect(getByPosting).not.toHaveBeenCalled();
+        });
+
+        it('returns null when Ozon empty and migration flag is OFF', async () => {
+            ozonApiMethod.mockResolvedValueOnce({ result: null });
+
+            const res = await service.getByPostingNumber('P-2');
+
+            expect(res).toBeNull();
+            expect(getByPosting).not.toHaveBeenCalled();
+        });
+
+        it('falls back to local invoice when Ozon empty and migration flag is ON', async () => {
+            markMigrationEnabled = true;
+            ozonApiMethod.mockResolvedValueOnce({ result: null });
+            getByPosting.mockResolvedValueOnce({ id: 8341, status: 1, date: '2026-05-08' });
+            getInvoiceLines.mockResolvedValueOnce([
+                { goodCode: '531557', whereOrdered: '', price: '739.00', quantity: 1 },
+                { goodCode: '999', whereOrdered: 'cluster-A', price: '100.00', quantity: 2 },
+            ]);
+
+            const res = await service.getByPostingNumber('FBS-MIG-TEST-A');
+
+            expect(res).toEqual({
+                posting_number: 'FBS-MIG-TEST-A',
+                status: '1',
+                in_process_at: '2026-05-08',
+                products: [
+                    { price: '739.00', offer_id: '531557', quantity: 1 },
+                    { price: '100.00', offer_id: '999-cluster-A', quantity: 2 },
+                ],
+            });
+            expect(getByPosting).toHaveBeenCalledWith('FBS-MIG-TEST-A', null);
+        });
+
+        it('returns null when Ozon empty, flag ON, but no local invoice', async () => {
+            markMigrationEnabled = true;
+            ozonApiMethod.mockResolvedValueOnce({ result: null });
+            getByPosting.mockResolvedValueOnce(null);
+
+            const res = await service.getByPostingNumber('FBS-UNKNOWN');
+
+            expect(res).toBeNull();
+            expect(getInvoiceLines).not.toHaveBeenCalled();
+        });
+
+        it('falls back when Ozon throws and migration flag is ON', async () => {
+            markMigrationEnabled = true;
+            ozonApiMethod.mockRejectedValueOnce(new Error('Ozon 404'));
+            getByPosting.mockResolvedValueOnce({ id: 8341, status: 1, date: '2026-05-08' });
+            getInvoiceLines.mockResolvedValueOnce([
+                { goodCode: '531557', whereOrdered: '', price: '739.00', quantity: 1 },
+            ]);
+
+            const res = await service.getByPostingNumber('FBS-MIG-TEST-A');
+
+            expect(res?.posting_number).toBe('FBS-MIG-TEST-A');
+            expect(res?.products).toHaveLength(1);
+        });
+
+        it('rethrows when Ozon throws and migration flag is OFF', async () => {
+            ozonApiMethod.mockRejectedValueOnce(new Error('Ozon 500'));
+
+            await expect(service.getByPostingNumber('P-X')).rejects.toThrow('Ozon 500');
+            expect(getByPosting).not.toHaveBeenCalled();
         });
     });
 

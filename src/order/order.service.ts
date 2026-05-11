@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, Logger } from '@nestjs/common';
 import { ProductService } from '../product/product.service';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { ResultDto } from '../helpers/dto/result.dto';
@@ -92,6 +92,21 @@ export class OrderService {
         this.logger.log(`updateTransactions: скорректировано ${correctedCount} отрицательных транзакций`);
 
         return this.invoiceService.updateByTransactions(transactions, null);
+    }
+
+    async runFboPackageForTesting(posting: PostingDto): Promise<InvoiceDto> {
+        if (this.configService.get<string>('NODE_ENV') !== 'development') {
+            throw new ForbiddenException('Endpoint доступен только в development.');
+        }
+        const transaction = await this.invoiceService.getTransaction();
+        try {
+            const invoice = await this.postingFboService.createInvoice(posting, transaction);
+            await transaction.commit(true);
+            return invoice;
+        } catch (e) {
+            await transaction.rollback(true);
+            throw e;
+        }
     }
 
     @Cron('0 */5 * * * *', { name: 'checkNewOrders' })

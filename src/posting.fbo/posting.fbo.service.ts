@@ -26,6 +26,13 @@ export class PostingFboService implements IOrderable {
     }
 
     async createInvoice(posting: PostingDto, transaction: FirebirdTransaction): Promise<InvoiceDto> {
+        if (this.configService.get<boolean>('OZON_FBO_MARK_MIGRATION', false)) {
+            return this.createInvoiceWithMarkMigration(posting, transaction);
+        }
+        return this.createInvoiceLegacy(posting, transaction);
+    }
+
+    private async createInvoiceLegacy(posting: PostingDto, transaction: FirebirdTransaction): Promise<InvoiceDto> {
         const buyerId = this.getBuyerId();
         const warehouseName = posting.analytics_data?.warehouse_name;
         const clusterFrom = posting.financial_data?.cluster_from;
@@ -36,16 +43,82 @@ export class PostingFboService implements IOrderable {
             }
             if (!res) {
                 res = await this.invoiceService.unPickupOzonFbo(product, OZON_ORDER_CANCELLATION_SUFFIX.FBO.trim(), transaction);
-                if (res)
-                    this.eventEmitter.emit('error.message', 'FBO cancels clean', warehouseName);
             }
             if (!res) {
                 const id = goodCode(product);
                 const quantity = product.quantity * goodQuantityCoeff(product);
                 await this.invoiceService.deltaGood(id, quantity, clusterFrom || warehouseName, transaction);
+                this.emitFboShortage(posting, id, quantity, warehouseName, clusterFrom);
             }
         }
-        const invoice = await this.invoiceService.createInvoiceFromPostingDto(buyerId, posting, transaction); 
+        const invoice = await this.invoiceService.createInvoiceFromPostingDto(buyerId, posting, transaction);
+        await this.invoiceService.update(invoice, { IGK: 'NOT1C' }, transaction);
+        return invoice;
+    }
+
+    private emitFboShortage(
+        posting: PostingDto,
+        gc: string,
+        qty: number,
+        warehouseName: string | undefined,
+        clusterFrom: string | undefined,
+    ): void {
+        const message = [
+            'Сервис: Ozon FBO',
+            `Posting: ${posting.posting_number}`,
+            `GOODSCODE: ${gc}, qty: ${qty}`,
+            `warehouse_name: ${warehouseName || '-'}`,
+            `cluster_from:   ${clusterFrom || '-'}`,
+        ].join('\n');
+        this.eventEmitter.emit('error.message', 'Ozon FBO: нет позиции — создана недостача', message);
+    }
+
+    private async createInvoiceWithMarkMigration(
+        posting: PostingDto,
+        transaction: FirebirdTransaction,
+    ): Promise<InvoiceDto> {
+        const buyerId = this.getBuyerId();
+        const warehouseName = posting.analytics_data?.warehouse_name;
+        const clusterFrom = posting.financial_data?.cluster_from;
+        const suffix = OZON_ORDER_CANCELLATION_SUFFIX.FBO.trim();
+        const prims = [warehouseName, clusterFrom, suffix].filter((p): p is string => Boolean(p));
+        const ss = this.invoiceService.getStorageSS();
+
+        const invoice = await this.invoiceService.createInvoiceFromPostingDto(buyerId, posting, transaction);
+        const newRpcs = await this.invoiceService.findRealpriceCodes(invoice.id, transaction);
+
+        for (let i = 0; i < posting.products.length; i++) {
+            const product = posting.products[i];
+            const gc = goodCode(product);
+            let need = product.quantity * goodQuantityCoeff(product);
+            const newRpc = newRpcs[i];
+            const candidates = await this.invoiceService.findFboPodbposCandidates(gc, prims, transaction);
+
+            for (const cand of candidates) {
+                if (need === 0) break;
+                const take = Math.min(cand.quanAvail, need);
+                const codes = await this.invoiceService.getAttachedMarkCodesForMigration(
+                    cand.realpricecode,
+                    gc,
+                    take,
+                    transaction,
+                );
+                for (const { ki } of codes) {
+                    await this.invoiceService.detachMarkCode(ki, cand.realpricecode, ss, transaction);
+                }
+                await this.invoiceService.decrementPodbpos(cand.podbposcode, take, transaction);
+                for (const { ki } of codes) {
+                    await this.invoiceService.reattachMarkCodeTransferred(ki, newRpc, gc, ss, transaction);
+                }
+                need -= take;
+            }
+
+            if (need > 0) {
+                await this.invoiceService.deltaGood(gc, need, clusterFrom || warehouseName, transaction);
+                this.emitFboShortage(posting, gc, need, warehouseName, clusterFrom);
+            }
+        }
+
         await this.invoiceService.update(invoice, { IGK: 'NOT1C' }, transaction);
         return invoice;
     }

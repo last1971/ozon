@@ -33,7 +33,12 @@ describe('OrderService', () => {
     const cacheGet = jest.fn().mockResolvedValue('');
     const cacheSet = jest.fn().mockResolvedValue(undefined);
     const eventEmitterEmit = jest.fn();
+    let nodeEnv = 'development';
     beforeEach(async () => {
+        nodeEnv = 'development';
+        commit.mockReset();
+        rollback.mockReset();
+        createInvoice.mockClear();
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 OrderService,
@@ -135,6 +140,7 @@ describe('OrderService', () => {
                         get: (key: string, defaultValue?: any) => {
                             if (key === 'SERVICES') return Object.values(GoodServiceEnum);
                             if (key === 'CACHE_TTL_DAYS') return 14;
+                            if (key === 'NODE_ENV') return nodeEnv;
                             return defaultValue;
                         }
                     }
@@ -474,6 +480,41 @@ describe('OrderService', () => {
                 'Cancel wrong status',
                 '789: status=2'
             );
+        });
+    });
+
+    describe('runFboPackageForTesting', () => {
+        const posting = {
+            posting_number: 'TEST-MIG-001',
+            status: 'awaiting_packaging',
+            in_process_at: date.toISOString(),
+            products: [{ price: '100', offer_id: '531557', quantity: 1 }],
+            analytics_data: { warehouse_name: 'TEST_FBO_MIG_531557' },
+            financial_data: { cluster_from: 'Москва, МО и Дальние регионы' },
+        } as any;
+
+        it('в development дёргает PostingFboService.createInvoice и коммитит', async () => {
+            createInvoice.mockResolvedValueOnce({ id: 999 });
+            const result = await service.runFboPackageForTesting(posting);
+            expect(createInvoice).toHaveBeenCalledTimes(1);
+            expect(createInvoice.mock.calls[0][0]).toBe(posting);
+            expect(commit).toHaveBeenCalledTimes(1);
+            expect(rollback).not.toHaveBeenCalled();
+            expect(result).toEqual({ id: 999 });
+        });
+
+        it('откат транзакции и проброс ошибки при exception в createInvoice', async () => {
+            createInvoice.mockRejectedValueOnce(new Error('boom'));
+            await expect(service.runFboPackageForTesting(posting)).rejects.toThrow('boom');
+            expect(rollback).toHaveBeenCalledTimes(1);
+            expect(commit).not.toHaveBeenCalled();
+        });
+
+        it('бросает ForbiddenException когда NODE_ENV !== development', async () => {
+            nodeEnv = 'production';
+            await expect(service.runFboPackageForTesting(posting)).rejects.toThrow(/development/);
+            expect(createInvoice).not.toHaveBeenCalled();
+            expect(commit).not.toHaveBeenCalled();
         });
     });
 });

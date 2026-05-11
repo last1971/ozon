@@ -513,6 +513,179 @@ describe('Trade2006InvoiceService', () => {
             true,
         ]);
     });
+    describe('FBO mark migration helpers', () => {
+        it('getStorageSS — SHOPSKLAD → 1', () => {
+            expect(service.getStorageSS()).toBe(1);
+        });
+
+        it('findRealpriceCodes — все RPC по SCODE в порядке вставки', async () => {
+            query.mockResolvedValueOnce([
+                { REALPRICECODE: 301 },
+                { REALPRICECODE: 302 },
+                { REALPRICECODE: 303 },
+            ]);
+            const res = await service.findRealpriceCodes(100, null);
+            expect(res).toEqual([301, 302, 303]);
+            expect(query.mock.calls[0][0]).toBe('SELECT REALPRICECODE FROM REALPRICE WHERE SCODE = ? ORDER BY REALPRICECODE');
+            expect(query.mock.calls[0][1]).toEqual([100]);
+        });
+
+        it('findFboPodbposCandidates — JOIN + sort по prim-приоритету', async () => {
+            query.mockResolvedValueOnce([
+                { PODBPOSCODE: 3003, SCODE: 300, REALPRICECODE: 300, QUANAVAIL: 1, PRIM: '777-1 отмена FBO' },
+                { PODBPOSCODE: 1001, SCODE: 100, REALPRICECODE: 100, QUANAVAIL: 1, PRIM: 'ПУШКИНО_1_РФЦ 555' },
+                { PODBPOSCODE: 2002, SCODE: 200, REALPRICECODE: 200, QUANAVAIL: 1, PRIM: 'Москва, МО и Дальние регионы 666' },
+            ]);
+            const res = await service.findFboPodbposCandidates(
+                '444',
+                ['ПУШКИНО_1_РФЦ', 'Москва, МО и Дальние регионы', 'отмена FBO'],
+                null,
+            );
+            expect(res.map((c) => c.podbposcode)).toEqual([1001, 2002, 3003]);
+            const sql = query.mock.calls[0][0];
+            expect(sql).toContain('s.PRIM CONTAINING ? OR s.PRIM CONTAINING ? OR s.PRIM CONTAINING ?');
+            expect(sql).toContain('QUANSHOP');
+        });
+
+        it('findFboPodbposCandidates — пустой prims даёт []', async () => {
+            const res = await service.findFboPodbposCandidates('444', [], null);
+            expect(res).toEqual([]);
+            expect(query).not.toHaveBeenCalled();
+        });
+
+        it('getAttachedMarkCodesForMigration — SQL и фильтр TT IN (0,2,3)', async () => {
+            query.mockResolvedValueOnce([{ KI: 'A' }, { KI: 'B' }]);
+            const res = await service.getAttachedMarkCodesForMigration(100, '444', 2, null);
+            expect(res).toEqual([{ ki: 'A' }, { ki: 'B' }]);
+            const [sql, params] = query.mock.calls[0];
+            expect(sql).toContain('SELECT FIRST 2 KI FROM MARKCODES');
+            expect(sql).toContain('TRANSFER_TYPE IN (0, 2, 3)');
+            expect(sql).toContain('REALPRICEFCODE IS NULL');
+            expect(params).toEqual([100, '444']);
+        });
+
+        it('getAttachedMarkCodesForMigration — limit=0 не делает SQL', async () => {
+            const res = await service.getAttachedMarkCodesForMigration(100, '444', 0, null);
+            expect(res).toEqual([]);
+            expect(query).not.toHaveBeenCalled();
+        });
+
+        it('decrementPodbpos — UPDATE QUANSHOP -= take', async () => {
+            await service.decrementPodbpos(1001, 2, null);
+            expect(execute.mock.calls[0]).toEqual([
+                'UPDATE PODBPOS SET QUANSHOP = QUANSHOP - ? WHERE PODBPOSCODE = ?',
+                [2, 1001],
+                true,
+            ]);
+        });
+
+        it('detachMarkCode — EXECUTE PROCEDURE MARKCODE_DETACH_FROM_REALPRICE', async () => {
+            const t = { execute: jest.fn(), commit: jest.fn() };
+            await service.detachMarkCode('A', 100, 1, t as any);
+            expect(t.execute).toHaveBeenCalledWith(
+                'EXECUTE PROCEDURE MARKCODE_DETACH_FROM_REALPRICE (?, ?, ?)',
+                ['A', 100, 1],
+            );
+            expect(t.commit).not.toHaveBeenCalled();
+        });
+
+        it('reattachMarkCodeTransferred — EXECUTE PROCEDURE MARKCODE_REATTACH_TRANSFERRED', async () => {
+            const t = { execute: jest.fn(), commit: jest.fn() };
+            await service.reattachMarkCodeTransferred('A', 300, '444', 1, t as any);
+            expect(t.execute).toHaveBeenCalledWith(
+                'EXECUTE PROCEDURE MARKCODE_REATTACH_TRANSFERRED (?, ?, ?, ?)',
+                ['A', 300, '444', 1],
+            );
+            expect(t.commit).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('FBS mark scan helpers', () => {
+        it('attachMarkCodeForFbs — EXECUTE PROCEDURE MARKCODE_ATTACH_FOR_FBS', async () => {
+            const t = { execute: jest.fn(), commit: jest.fn() };
+            await service.attachMarkCodeForFbs('KI-1', 500, '444', 0, t as any);
+            expect(t.execute).toHaveBeenCalledWith(
+                'EXECUTE PROCEDURE MARKCODE_ATTACH_FOR_FBS (?, ?, ?, ?)',
+                ['KI-1', 500, '444', 0],
+            );
+            expect(t.commit).not.toHaveBeenCalled();
+        });
+
+        it('detachMarkCodeForFbs — EXECUTE PROCEDURE MARKCODE_DETACH_FOR_FBS', async () => {
+            const t = { execute: jest.fn(), commit: jest.fn() };
+            await service.detachMarkCodeForFbs('KI-1', 500, 0, t as any);
+            expect(t.execute).toHaveBeenCalledWith(
+                'EXECUTE PROCEDURE MARKCODE_DETACH_FOR_FBS (?, ?, ?)',
+                ['KI-1', 500, 0],
+            );
+            expect(t.commit).not.toHaveBeenCalled();
+        });
+
+        it('countFreeMarkCodesForGood — возвращает FREE_COUNT', async () => {
+            query.mockResolvedValueOnce([{ FREE_COUNT: 5 }]);
+            const res = await service.countFreeMarkCodesForGood('444', null);
+            expect(res).toBe(5);
+            expect(query.mock.calls[0]).toEqual([
+                'SELECT FREE_COUNT FROM COUNT_FREE_MARKCODES_FOR_GOOD (?)',
+                ['444'],
+                true,
+            ]);
+        });
+
+        it('countFreeMarkCodesForGood — пустой результат → 0', async () => {
+            query.mockResolvedValueOnce([]);
+            expect(await service.countFreeMarkCodesForGood('444', null)).toBe(0);
+        });
+
+        it('findGoodscodeByKi — найден', async () => {
+            query.mockResolvedValueOnce([{ GOODSCODE: 444 }]);
+            expect(await service.findGoodscodeByKi('KI-1', null)).toBe('444');
+            expect(query.mock.calls[0]).toEqual([
+                'SELECT GOODSCODE FROM MARKCODES WHERE KI = ?',
+                ['KI-1'],
+                true,
+            ]);
+        });
+
+        it('findGoodscodeByKi — не найден → null', async () => {
+            query.mockResolvedValueOnce([]);
+            expect(await service.findGoodscodeByKi('KI-X', null)).toBeNull();
+        });
+
+        it('getAttachedMarkCodesByScode — JOIN с REALPRICE и фильтр TT=3', async () => {
+            query.mockResolvedValueOnce([
+                { KI: 'A', GOODSCODE: 444, REALPRICECODE: 100 },
+                { KI: 'B', GOODSCODE: 444, REALPRICECODE: 100 },
+            ]);
+            const res = await service.getAttachedMarkCodesByScode(50, null);
+            expect(res).toEqual([
+                { ki: 'A', goodscode: '444', realpricecode: 100 },
+                { ki: 'B', goodscode: '444', realpricecode: 100 },
+            ]);
+            const sql = query.mock.calls[0][0];
+            expect(sql).toContain('JOIN REALPRICE');
+            expect(sql).toContain('m.TRANSFER_TYPE = 3');
+            expect(query.mock.calls[0][1]).toEqual([50]);
+        });
+
+        it('getRealpriceLinesByScode — все строки счёта', async () => {
+            query.mockResolvedValueOnce([
+                { REALPRICECODE: 100, GOODSCODE: 444, QUAN: 2 },
+                { REALPRICECODE: 101, GOODSCODE: 555, QUAN: 1 },
+            ]);
+            const res = await service.getRealpriceLinesByScode(50, null);
+            expect(res).toEqual([
+                { realpricecode: 100, goodscode: '444', quantity: 2 },
+                { realpricecode: 101, goodscode: '555', quantity: 1 },
+            ]);
+            expect(query.mock.calls[0]).toEqual([
+                'SELECT REALPRICECODE, GOODSCODE, QUAN FROM REALPRICE WHERE SCODE = ?',
+                [50],
+                true,
+            ]);
+        });
+    });
+
     it('deltaGood', async () => {
         query.mockResolvedValueOnce([{ PRICE: 10.01 }]);
         await service.deltaGood('111', 10, 'TEST', null);
