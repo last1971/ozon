@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ConflictException, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { MarkScanFbsService } from './mark-scan-fbs.service';
 import { INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { InvoiceDto } from './dto/invoice.dto';
@@ -23,6 +24,7 @@ describe('MarkScanFbsService', () => {
         rollback: jest.fn().mockResolvedValue(undefined),
     };
     const invoice = { id: 100, remark: 'TEST' } as InvoiceDto;
+    let migrationEnabled = true;
 
     beforeEach(async () => {
         Object.values(invoiceService).forEach((m: any) => m.mockReset?.());
@@ -30,11 +32,19 @@ describe('MarkScanFbsService', () => {
         tx.rollback.mockReset().mockResolvedValue(undefined);
         invoiceService.getTransaction.mockResolvedValue(tx);
         invoiceService.getStorageSS.mockReturnValue(0);
+        migrationEnabled = true;
 
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 MarkScanFbsService,
                 { provide: INVOICE_SERVICE, useValue: invoiceService },
+                {
+                    provide: ConfigService,
+                    useValue: {
+                        get: (key: string, def?: unknown) =>
+                            key === 'OZON_FBO_MARK_MIGRATION' ? migrationEnabled : def,
+                    },
+                },
             ],
         }).compile();
         service = module.get(MarkScanFbsService);
@@ -188,6 +198,38 @@ describe('MarkScanFbsService', () => {
         it('attached не найден → 404', async () => {
             invoiceService.getAttachedMarkCodesByScode.mockResolvedValue([]);
             await expect(service.unscan(invoice, 'X')).rejects.toThrow(NotFoundException);
+            expect(invoiceService.detachMarkCodeForFbs).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('флаг OZON_FBO_MARK_MIGRATION выключен', () => {
+        beforeEach(() => {
+            migrationEnabled = false;
+        });
+
+        it('getProgress → пустой прогресс, isReadyToFinish=true, БД не дёргается', async () => {
+            const progress = await service.getProgress(invoice);
+            expect(progress).toEqual({ lines: [], isReadyToFinish: true, attachedKis: [] });
+            expect(invoiceService.getTransaction).not.toHaveBeenCalled();
+            expect(invoiceService.getRealpriceLinesByScode).not.toHaveBeenCalled();
+            expect(invoiceService.getAttachedMarkCodesByScode).not.toHaveBeenCalled();
+            expect(invoiceService.countFreeMarkCodesForGood).not.toHaveBeenCalled();
+        });
+
+        it('isReadyToFinish → true без обращения к БД', async () => {
+            await expect(service.isReadyToFinish(invoice)).resolves.toBe(true);
+            expect(invoiceService.getTransaction).not.toHaveBeenCalled();
+        });
+
+        it('scan → 409 без обращения к БД', async () => {
+            await expect(service.scan(invoice, KI)).rejects.toThrow(ConflictException);
+            expect(invoiceService.findGoodscodeByKi).not.toHaveBeenCalled();
+            expect(invoiceService.attachMarkCodeForFbs).not.toHaveBeenCalled();
+        });
+
+        it('unscan → 409 без обращения к БД', async () => {
+            await expect(service.unscan(invoice, 'A')).rejects.toThrow(ConflictException);
+            expect(invoiceService.getAttachedMarkCodesByScode).not.toHaveBeenCalled();
             expect(invoiceService.detachMarkCodeForFbs).not.toHaveBeenCalled();
         });
     });

@@ -1,4 +1,5 @@
 import { ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { FirebirdTransaction } from 'ts-firebird';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { InvoiceDto } from './dto/invoice.dto';
@@ -11,9 +12,17 @@ import { extractKi } from '../helpers';
 export class MarkScanFbsService {
     private readonly logger = new Logger(MarkScanFbsService.name);
 
-    constructor(@Inject(INVOICE_SERVICE) private invoiceService: IInvoice) {}
+    constructor(
+        @Inject(INVOICE_SERVICE) private invoiceService: IInvoice,
+        private configService: ConfigService,
+    ) {}
+
+    private isEnabled(): boolean {
+        return this.configService.get<boolean>('OZON_FBO_MARK_MIGRATION', false);
+    }
 
     async scan(invoice: InvoiceDto, rawScan: string): Promise<MarkScanResultDto> {
+        if (!this.isEnabled()) throw new ConflictException('Сканирование КМ отключено');
         const ki = extractKi(rawScan);
         const transaction = await this.invoiceService.getTransaction();
         try {
@@ -38,6 +47,7 @@ export class MarkScanFbsService {
     }
 
     async unscan(invoice: InvoiceDto, ki: string): Promise<MarkScanProgressDto> {
+        if (!this.isEnabled()) throw new ConflictException('Сканирование КМ отключено');
         const attached = await this.invoiceService.getAttachedMarkCodesByScode(invoice.id, null);
         const row = attached.find((a) => a.ki === ki);
         if (!row) throw new NotFoundException('КМ не привязан к этому счёту');
@@ -54,6 +64,9 @@ export class MarkScanFbsService {
     }
 
     async getProgress(invoice: InvoiceDto): Promise<MarkScanProgressDto> {
+        if (!this.isEnabled()) {
+            return { lines: [], isReadyToFinish: true, attachedKis: [] };
+        }
         const transaction = await this.invoiceService.getTransaction();
         try {
             const lines = await this.invoiceService.getRealpriceLinesByScode(invoice.id, transaction);
