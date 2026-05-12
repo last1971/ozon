@@ -17,3 +17,16 @@ export interface MarkScanResultDto {
     attached: { ki: string; goodscode: string; realpricecode: number };
     progress: MarkScanProgressDto;
 }
+
+export interface SubmitFailureDto {
+    ki: string;
+    reason: string;
+}
+
+export interface SubmitResultDto {
+    ok: boolean;
+    failed?: SubmitFailureDto[];
+    skipped?: string;
+    skipRetry?: boolean;
+    dryRun?: boolean;
+}
