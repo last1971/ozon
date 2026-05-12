@@ -33,12 +33,20 @@ describe('OrderService', () => {
     const cacheGet = jest.fn().mockResolvedValue('');
     const cacheSet = jest.fn().mockResolvedValue(undefined);
     const eventEmitterEmit = jest.fn();
+    const listFbsAwaitingShip = jest.fn().mockResolvedValue([]);
+    const ozonSubmitFbsMarkCodes = jest.fn();
+    const wbSubmitFbsMarkCodes = jest.fn();
     let nodeEnv = 'development';
+    let markCodesEnabled = false;
     beforeEach(async () => {
         nodeEnv = 'development';
+        markCodesEnabled = false;
         commit.mockReset();
         rollback.mockReset();
         createInvoice.mockClear();
+        listFbsAwaitingShip.mockReset().mockResolvedValue([]);
+        ozonSubmitFbsMarkCodes.mockReset();
+        wbSubmitFbsMarkCodes.mockReset();
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 OrderService,
@@ -53,6 +61,7 @@ describe('OrderService', () => {
                         updatePrim,
                         update: jest.fn(),
                         isExists: async (remark: string) => remark === '123' || remark === '111',
+                        listFbsAwaitingShip,
                     },
                 },
                 {
@@ -60,6 +69,9 @@ describe('OrderService', () => {
                     useValue: {
                         constructor: { name: 'PostingService' },
                         createInvoice,
+                        submitFbsMarkCodes: ozonSubmitFbsMarkCodes,
+                        getBuyerId: () => 11,
+                        isFbo: () => false,
                         listReturns: jest.fn().mockResolvedValue([]),
                         listAwaitingPackaging: () => [
                             {
@@ -122,6 +134,9 @@ describe('OrderService', () => {
                     provide: WbOrderService,
                     useValue: {
                         createInvoice,
+                        submitFbsMarkCodes: wbSubmitFbsMarkCodes,
+                        getBuyerId: () => 22,
+                        isFbo: () => false,
                         listAwaitingPackaging: () => [],
                         listAwaitingDelivering: () => [],
                         listCanceled: () => [],
@@ -141,6 +156,7 @@ describe('OrderService', () => {
                             if (key === 'SERVICES') return Object.values(GoodServiceEnum);
                             if (key === 'CACHE_TTL_DAYS') return 14;
                             if (key === 'NODE_ENV') return nodeEnv;
+                            if (key === 'MARK_CODES_ENABLED') return markCodesEnabled;
                             return defaultValue;
                         }
                     }
@@ -514,6 +530,167 @@ describe('OrderService', () => {
                 'Cancel wrong status',
                 '789: status=2'
             );
+        });
+    });
+
+    describe('submitFbsMarkCodes (cron retry)', () => {
+        const ozonService = () => (service as any).postingService;
+        const wbService = () => (service as any).wbOrder;
+
+        beforeEach(() => {
+            cacheGet.mockReset().mockResolvedValue('');
+            cacheSet.mockReset().mockResolvedValue(undefined);
+        });
+
+        it('пустой список awaiting ship → processWithCache не зовём, cacheSet не пишется', async () => {
+            listFbsAwaitingShip.mockResolvedValueOnce([]);
+            const flushers: (() => Promise<void>)[] = [];
+
+            await service.submitFbsMarkCodes(ozonService(), null, flushers);
+
+            expect(listFbsAwaitingShip).toHaveBeenCalledWith(11, null);
+            expect(ozonSubmitFbsMarkCodes).not.toHaveBeenCalled();
+            expect(flushers).toHaveLength(0);
+        });
+
+        it('happy: 2 invoice ok=true — оба попадают в cache flush', async () => {
+            listFbsAwaitingShip.mockResolvedValueOnce([
+                { id: 1, remark: 'P-1', buyerId: 11 },
+                { id: 2, remark: 'P-2', buyerId: 11 },
+            ]);
+            ozonSubmitFbsMarkCodes.mockResolvedValue({ ok: true });
+            const flushers: (() => Promise<void>)[] = [];
+
+            await service.submitFbsMarkCodes(ozonService(), null, flushers);
+
+            expect(ozonSubmitFbsMarkCodes).toHaveBeenCalledTimes(2);
+            expect(ozonSubmitFbsMarkCodes.mock.calls[0][0]).toMatchObject({ id: 1, remark: 'P-1', posting_number: 'P-1' });
+            expect(flushers).toHaveLength(1);
+            await flushers[0]();
+            expect(cacheSet).toHaveBeenCalledTimes(1);
+            const [, savedString] = cacheSet.mock.calls[0];
+            expect(savedString).toContain('P-1');
+            expect(savedString).toContain('P-2');
+        });
+
+        it('ok:false + skipRetry:true → не бросает, добавляется в cache (не ретраим)', async () => {
+            listFbsAwaitingShip.mockResolvedValueOnce([{ id: 1, remark: 'MIG-1', buyerId: 11 }]);
+            ozonSubmitFbsMarkCodes.mockResolvedValueOnce({ ok: false, skipRetry: true, failed: [{ ki: '*', reason: '404' }] });
+            const flushers: (() => Promise<void>)[] = [];
+
+            await expect(service.submitFbsMarkCodes(ozonService(), null, flushers)).resolves.toBeUndefined();
+            expect(flushers).toHaveLength(1);
+            await flushers[0]();
+            expect(cacheSet.mock.calls[0][1]).toContain('MIG-1');
+        });
+
+        it('ok:false без skipRetry → throw, flusher не пушится (ретраим в след. тик)', async () => {
+            listFbsAwaitingShip.mockResolvedValueOnce([{ id: 1, remark: 'P-9', buyerId: 11 }]);
+            ozonSubmitFbsMarkCodes.mockResolvedValueOnce({ ok: false, failed: [{ ki: 'A', reason: 'оз 500' }] });
+            const flushers: (() => Promise<void>)[] = [];
+
+            await expect(service.submitFbsMarkCodes(ozonService(), null, flushers)).rejects.toThrow(/P-9/);
+            expect(flushers).toHaveLength(0);
+            expect(cacheSet).not.toHaveBeenCalled();
+        });
+
+        it('уже обработанные (в cache) пропускаются', async () => {
+            cacheGet.mockResolvedValueOnce('P-1');
+            listFbsAwaitingShip.mockResolvedValueOnce([
+                { id: 1, remark: 'P-1', buyerId: 11 },
+                { id: 2, remark: 'P-2', buyerId: 11 },
+            ]);
+            ozonSubmitFbsMarkCodes.mockResolvedValue({ ok: true });
+            const flushers: (() => Promise<void>)[] = [];
+
+            await service.submitFbsMarkCodes(ozonService(), null, flushers);
+
+            expect(ozonSubmitFbsMarkCodes).toHaveBeenCalledTimes(1);
+            expect(ozonSubmitFbsMarkCodes.mock.calls[0][0]).toMatchObject({ id: 2, remark: 'P-2' });
+        });
+
+        it('WbOrderService: используется его getBuyerId и его submitFbsMarkCodes', async () => {
+            listFbsAwaitingShip.mockResolvedValueOnce([{ id: 5, remark: '123456789', buyerId: 22 }]);
+            wbSubmitFbsMarkCodes.mockResolvedValueOnce({ ok: true, skipped: 'no sgtin required' });
+            const flushers: (() => Promise<void>)[] = [];
+
+            await service.submitFbsMarkCodes(wbService(), null, flushers);
+
+            expect(listFbsAwaitingShip).toHaveBeenCalledWith(22, null);
+            expect(wbSubmitFbsMarkCodes).toHaveBeenCalledTimes(1);
+            expect(ozonSubmitFbsMarkCodes).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('checkNewOrders + MARK_CODES_ENABLED', () => {
+        beforeEach(() => {
+            cacheGet.mockReset().mockResolvedValue('');
+            cacheSet.mockReset().mockResolvedValue(undefined);
+            commit.mockResolvedValue(undefined);
+            rollback.mockResolvedValue(undefined);
+            (service as any).invoiceService.getTransaction = jest.fn().mockResolvedValue({ commit, rollback });
+            (service as any).invoiceService.isExists = jest.fn().mockResolvedValue(false);
+        });
+
+        it('флаг выключен → submitFbsMarkCodes не вызывается даже если сервис IMarkSubmittable', async () => {
+            markCodesEnabled = false;
+            const mockOrderable: any = {
+                constructor: { name: 'PostingService' },
+                isFbo: () => false,
+                getBuyerId: () => 11,
+                submitFbsMarkCodes: ozonSubmitFbsMarkCodes,
+                listCanceled: jest.fn().mockResolvedValue([]),
+                listAwaitingPackaging: jest.fn().mockResolvedValue([]),
+                listAwaitingDelivering: jest.fn().mockResolvedValue([]),
+                listReturns: jest.fn().mockResolvedValue([]),
+            };
+            (service as any).orderServices = [mockOrderable];
+
+            await service.checkNewOrders();
+
+            expect(listFbsAwaitingShip).not.toHaveBeenCalled();
+            expect(ozonSubmitFbsMarkCodes).not.toHaveBeenCalled();
+        });
+
+        it('флаг включён + сервис IMarkSubmittable → submitFbsMarkCodes вызывается', async () => {
+            markCodesEnabled = true;
+            listFbsAwaitingShip.mockResolvedValueOnce([{ id: 1, remark: 'P-1', buyerId: 11 }]);
+            ozonSubmitFbsMarkCodes.mockResolvedValueOnce({ ok: true });
+            const mockOrderable: any = {
+                constructor: { name: 'PostingService' },
+                isFbo: () => false,
+                getBuyerId: () => 11,
+                submitFbsMarkCodes: ozonSubmitFbsMarkCodes,
+                listCanceled: jest.fn().mockResolvedValue([]),
+                listAwaitingPackaging: jest.fn().mockResolvedValue([]),
+                listAwaitingDelivering: jest.fn().mockResolvedValue([]),
+                listReturns: jest.fn().mockResolvedValue([]),
+            };
+            (service as any).orderServices = [mockOrderable];
+
+            await service.checkNewOrders();
+
+            expect(listFbsAwaitingShip).toHaveBeenCalledWith(11, expect.anything());
+            expect(ozonSubmitFbsMarkCodes).toHaveBeenCalledTimes(1);
+        });
+
+        it('флаг включён + сервис не IMarkSubmittable → submitFbsMarkCodes не вызывается', async () => {
+            markCodesEnabled = true;
+            const mockOrderable: any = {
+                constructor: { name: 'PostingFboService' },
+                isFbo: () => true,
+                getBuyerId: () => 33,
+                // НЕТ submitFbsMarkCodes
+                listCanceled: jest.fn().mockResolvedValue([]),
+                listAwaitingPackaging: jest.fn().mockResolvedValue([]),
+                listAwaitingDelivering: jest.fn().mockResolvedValue([]),
+                listReturns: jest.fn().mockResolvedValue([]),
+            };
+            (service as any).orderServices = [mockOrderable];
+
+            await service.checkNewOrders();
+
+            expect(listFbsAwaitingShip).not.toHaveBeenCalled();
         });
     });
 

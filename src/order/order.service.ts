@@ -19,6 +19,7 @@ import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { OZON_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { IMarkSubmittable, isMarkSubmittable } from '../interfaces/IMarkSubmittable';
 
 @Injectable()
 export class OrderService {
@@ -109,6 +110,11 @@ export class OrderService {
         }
     }
 
+    private isMarkCodesEnabled(): boolean {
+        const v = this.configService.get<boolean | string>('MARK_CODES_ENABLED', false);
+        return v === true || v === 'true';
+    }
+
     @Cron('0 */5 * * * *', { name: 'checkNewOrders' })
     async checkNewOrders(): Promise<void> {
         for (const service of this.orderServices) {
@@ -117,6 +123,9 @@ export class OrderService {
             try {
                 await this.cancelOrders(service, transaction, flushers);
                 await this.processReturns(service, transaction, flushers);
+                if (this.isMarkCodesEnabled() && isMarkSubmittable(service)) {
+                    await this.submitFbsMarkCodes(service, transaction, flushers);
+                }
                 await this.packageOrders(service, transaction, flushers);
                 await this.deliveryOrders(service, transaction, flushers);
                 await transaction.commit(true);
@@ -132,6 +141,25 @@ export class OrderService {
                 this.logger.error(e.message + ' IN ' + service.constructor.name);
             }
         }
+    }
+
+    async submitFbsMarkCodes(
+        service: IOrderable & IMarkSubmittable,
+        transaction: FirebirdTransaction,
+        flushers: (() => Promise<void>)[],
+    ): Promise<void> {
+        const buyerId = service.getBuyerId();
+        const invoices = await this.invoiceService.listFbsAwaitingShip(buyerId, transaction);
+        if (invoices.length === 0) return;
+        const items = invoices.map((inv) => ({ ...inv, posting_number: inv.remark }));
+        await this.processWithCache('fbs-marks-sent', service, items, async (item) => {
+            const res = await service.submitFbsMarkCodes(item);
+            if (!res.ok && !res.skipRetry) {
+                throw new Error(
+                    `submitFbsMarkCodes failed for ${item.posting_number}: ${JSON.stringify(res.failed)}`,
+                );
+            }
+        }, flushers);
     }
 
     private async processWithCache<T extends { posting_number: string }>(
