@@ -42,7 +42,7 @@ describe('MarkScanFbsService', () => {
                     provide: ConfigService,
                     useValue: {
                         get: (key: string, def?: unknown) =>
-                            key === 'OZON_FBO_MARK_MIGRATION' ? migrationEnabled : def,
+                            key === 'MARK_CODES_ENABLED' ? migrationEnabled : def,
                     },
                 },
             ],
@@ -61,7 +61,7 @@ describe('MarkScanFbsService', () => {
 
             const res = await service.scan(invoice, KI);
 
-            expect(invoiceService.attachMarkCodeForFbs).toHaveBeenCalledWith(KI, 500, '444', 0, tx);
+            expect(invoiceService.attachMarkCodeForFbs).toHaveBeenCalledWith(KI, 500, '444', 0, KI, tx);
             expect(tx.commit).toHaveBeenCalled();
             expect(res.attached).toEqual({ ki: KI, goodscode: '444', realpricecode: 500 });
             expect(res.progress.isReadyToFinish).toBe(false);
@@ -80,7 +80,7 @@ describe('MarkScanFbsService', () => {
 
             await service.scan(invoice, KI);
 
-            expect(invoiceService.attachMarkCodeForFbs).toHaveBeenCalledWith(KI, 501, '444', 0, tx);
+            expect(invoiceService.attachMarkCodeForFbs).toHaveBeenCalledWith(KI, 501, '444', 0, KI, tx);
         });
 
         it('КМ не найден → 404', async () => {
@@ -202,7 +202,7 @@ describe('MarkScanFbsService', () => {
         });
     });
 
-    describe('флаг OZON_FBO_MARK_MIGRATION выключен', () => {
+    describe('флаг MARK_CODES_ENABLED выключен', () => {
         beforeEach(() => {
             migrationEnabled = false;
         });

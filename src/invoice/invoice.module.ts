@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { ConfigService } from '@nestjs/config';
 import { Trade2006InvoiceService } from '../trade2006.invoice/trade2006.invoice.service';
@@ -9,9 +9,10 @@ import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
 import { InvoiceController } from './invoice.controller';
 import { IsRemarkValid } from "../validators/is.remark.valid";
 import { MarkScanFbsService } from "./mark-scan-fbs.service";
+import { OrderModule } from "../order/order.module";
 
 @Module({
-    imports: [FirebirdModule],
+    imports: [FirebirdModule, forwardRef(() => OrderModule)],
     providers: [
         IsRemarkValid,
         MarkScanFbsService,

@@ -27,6 +27,8 @@ describe('WbOrderService', () => {
     const commit = jest.fn();
     const updatePrim = jest.fn();
     const getByPosting = jest.fn();
+    const getAttachedMarkCodesByScode = jest.fn();
+    const getKmFullByKi = jest.fn();
     const fetchSalesByStickerExecute = jest.fn();
     const fetchOrdersByStickerExecute = jest.fn();
     const fetchTransactionsExecute = jest.fn();
@@ -52,6 +54,8 @@ describe('WbOrderService', () => {
                         getTransaction,
                         updatePrim,
                         getByPosting,
+                        getAttachedMarkCodesByScode,
+                        getKmFullByKi,
                     },
                 },
                 {
@@ -93,6 +97,8 @@ describe('WbOrderService', () => {
         commit.mockClear();
         isExists.mockClear();
         getByPosting.mockClear();
+        getAttachedMarkCodesByScode.mockReset();
+        getKmFullByKi.mockReset();
         fetchSalesByStickerExecute.mockClear();
         fetchOrdersByStickerExecute.mockClear();
         fetchTransactionsExecute.mockClear();
@@ -255,6 +261,17 @@ describe('WbOrderService', () => {
                 rrdid: 0,
             },
         ]);
+    });
+
+    it.each([
+        ['204 No Content (пустая строка)', ''],
+        ['undefined', undefined],
+        ['null', null],
+    ])('getTransactions returns [] when WB responds with %s', async (_label, value) => {
+        method.mockResolvedValueOnce(value);
+        const date = new Date();
+        const result = await service.getTransactions({ from: date, to: date });
+        expect(result).toEqual([]);
     });
 
     it('updateTransactions', async () => {
@@ -594,5 +611,104 @@ describe('WbOrderService', () => {
         expect(result).toBeNull();
         expect(fetchSalesByStickerExecute).not.toHaveBeenCalled();
         expect(fetchOrdersByStickerExecute).not.toHaveBeenCalled();
+    });
+
+    describe('submitFbsMarkCodes', () => {
+        const invoice = { id: 8344, remark: '592715', buyerId: 123456 } as any;
+
+        it('возвращает ok=true если нет привязанных КМ', async () => {
+            getAttachedMarkCodesByScode.mockResolvedValueOnce([]);
+            const res = await service.submitFbsMarkCodes(invoice);
+            expect(res).toEqual({ ok: true });
+            expect(method).not.toHaveBeenCalled();
+        });
+
+        it('некорректный orderId → skipRetry=true', async () => {
+            getAttachedMarkCodesByScode.mockResolvedValueOnce([
+                { ki: 'KI-1', goodscode: '531557', realpricecode: 1 },
+            ]);
+            const res = await service.submitFbsMarkCodes({ ...invoice, remark: 'NOT-A-NUMBER' });
+            expect(res.ok).toBe(false);
+            expect(res.skipRetry).toBe(true);
+            expect(method).not.toHaveBeenCalled();
+        });
+
+        it('meta без sgtin → skipped', async () => {
+            getAttachedMarkCodesByScode.mockResolvedValueOnce([
+                { ki: 'KI-1', goodscode: '531557', realpricecode: 1 },
+            ]);
+            method.mockResolvedValueOnce({ meta: {}, requiredMeta: [], optionalMeta: ['gtin'] });
+            const res = await service.submitFbsMarkCodes(invoice);
+            expect(res).toEqual({ ok: true, skipped: 'no sgtin required' });
+            expect(method).toHaveBeenCalledTimes(1);
+            expect(method).toHaveBeenCalledWith('/api/v3/orders/592715/meta', 'get', {});
+        });
+
+        it('happy path: meta(requires sgtin) → setOrderKiz', async () => {
+            getAttachedMarkCodesByScode.mockResolvedValueOnce([
+                { ki: 'KI-1', goodscode: '531557', realpricecode: 1 },
+                { ki: 'KI-2', goodscode: '531557', realpricecode: 1 },
+            ]);
+            method.mockResolvedValueOnce({ meta: {}, requiredMeta: ['sgtin'] });
+            getKmFullByKi.mockResolvedValueOnce('01FULL-1').mockResolvedValueOnce('01FULL-2');
+            method.mockResolvedValueOnce({});
+
+            const res = await service.submitFbsMarkCodes(invoice);
+
+            expect(res).toEqual({ ok: true });
+            expect(method).toHaveBeenNthCalledWith(2, '/api/v3/orders/592715/meta/sgtin', 'put', {
+                sgtins: ['01FULL-1', '01FULL-2'],
+            });
+        });
+
+        it('часть KM_FULL пуста → ok=true с failed для пустых', async () => {
+            getAttachedMarkCodesByScode.mockResolvedValueOnce([
+                { ki: 'KI-1', goodscode: '531557', realpricecode: 1 },
+                { ki: 'KI-2', goodscode: '531557', realpricecode: 1 },
+            ]);
+            method.mockResolvedValueOnce({ meta: {}, optionalMeta: ['sgtin'] });
+            getKmFullByKi.mockResolvedValueOnce('01FULL-1').mockResolvedValueOnce(null);
+            method.mockResolvedValueOnce({});
+
+            const res = await service.submitFbsMarkCodes(invoice);
+
+            expect(res.ok).toBe(false);
+            expect(res.failed).toEqual([{ ki: 'KI-2', reason: 'KM_FULL пуст' }]);
+            expect(method).toHaveBeenNthCalledWith(2, '/api/v3/orders/592715/meta/sgtin', 'put', {
+                sgtins: ['01FULL-1'],
+            });
+        });
+
+        it('все KM_FULL пусты → ok=false, setOrderKiz не вызывается', async () => {
+            getAttachedMarkCodesByScode.mockResolvedValueOnce([
+                { ki: 'KI-1', goodscode: '531557', realpricecode: 1 },
+            ]);
+            method.mockResolvedValueOnce({ meta: {}, requiredMeta: ['sgtin'] });
+            getKmFullByKi.mockResolvedValueOnce(null);
+
+            const res = await service.submitFbsMarkCodes(invoice);
+
+            expect(res.ok).toBe(false);
+            expect(res.failed).toEqual([{ ki: 'KI-1', reason: 'KM_FULL пуст' }]);
+            expect(method).toHaveBeenCalledTimes(1);
+        });
+
+        it('>100 КМ → skipRetry=true, без вызова setOrderKiz', async () => {
+            const many = Array.from({ length: 101 }, (_, i) => ({
+                ki: `KI-${i}`,
+                goodscode: '531557',
+                realpricecode: 1,
+            }));
+            getAttachedMarkCodesByScode.mockResolvedValueOnce(many);
+            method.mockResolvedValueOnce({ meta: {}, requiredMeta: ['sgtin'] });
+            getKmFullByKi.mockImplementation((ki: string) => Promise.resolve(`01FULL-${ki}`));
+
+            const res = await service.submitFbsMarkCodes(invoice);
+
+            expect(res.ok).toBe(false);
+            expect(res.skipRetry).toBe(true);
+            expect(res.failed?.[0]?.reason).toContain('>100 КМ');
+            expect(method).toHaveBeenCalledTimes(1);
+        });
     });
 });

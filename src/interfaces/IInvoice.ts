@@ -48,6 +48,7 @@ export interface IInvoice {
         rpc: number,
         gc: string,
         s_s: 0 | 1,
+        km_full: string,
         transaction: FirebirdTransaction,
     ): Promise<void>;
     detachMarkCodeForFbs(
@@ -58,6 +59,8 @@ export interface IInvoice {
     ): Promise<void>;
     countFreeMarkCodesForGood(goodscode: string, transaction: FirebirdTransaction): Promise<number>;
     findGoodscodeByKi(ki: string, transaction: FirebirdTransaction): Promise<string | null>;
+    getKmFullByKi(ki: string, transaction: FirebirdTransaction): Promise<string | null>;
+    listFbsAwaitingShip(buyerId: number, transaction: FirebirdTransaction): Promise<InvoiceDto[]>;
     getAttachedMarkCodesByScode(
         scode: number,
         transaction: FirebirdTransaction,

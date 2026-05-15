@@ -26,7 +26,7 @@ export class PostingFboService implements IOrderable {
     }
 
     async createInvoice(posting: PostingDto, transaction: FirebirdTransaction): Promise<InvoiceDto> {
-        if (this.configService.get<boolean>('OZON_FBO_MARK_MIGRATION', false)) {
+        if (this.configService.get<boolean>('MARK_CODES_ENABLED', false)) {
             return this.createInvoiceWithMarkMigration(posting, transaction);
         }
         return this.createInvoiceLegacy(posting, transaction);

@@ -28,9 +28,12 @@ import { FetchInvoiceByRemarkCommand } from './commands/fetch-invoice-by-remark.
 import { WbInvoiceQueryDto } from '../order/dto/wb-invoice-query.dto';
 import { WbInvoiceSridQueryDto } from '../order/dto/wb-invoice-srid-query.dto';
 import { RateLimit, setRateLimitBlocked } from '../helpers/decorators/rate-limit.decorator';
+import { IMarkSubmittable, SubmitFailureDto, SubmitResultDto } from '../interfaces/IMarkSubmittable';
+import { WbOrderMetaDto } from './dto/wb.order.meta.dto';
+import { WbOrderSetKizRequestDto } from './dto/wb.order.set-kiz.dto';
 
 @Injectable()
-export class WbOrderService implements IOrderable {
+export class WbOrderService implements IOrderable, IMarkSubmittable {
     private readonly logger = new Logger(WbOrderService.name);
     private postingDtos: Map<string, PostingDto>;
     constructor(
@@ -246,7 +249,8 @@ export class WbOrderService implements IOrderable {
 
     @RateLimit(60000)
     async getTransactions(data: TransactionFilterDate, rrdid = 0): Promise<Array<WbTransactionDto>> {
-        return this.api.method(
+        // WB на пустой период отдаёт 204 No Content → axios кладёт пустую строку
+        const res = await this.api.method(
             '/api/v5/supplier/reportDetailByPeriod',
             'statistics',
             {
@@ -255,9 +259,7 @@ export class WbOrderService implements IOrderable {
                 rrdid,
             },
         );
-        // return transactions;
-        // if (!transactions) return [];
-        // return transactions.concat(await this.getTransactions(data, last(transactions).rrd_id));
+        return Array.isArray(res) ? res : [];
     }
 
     async getTransactionsFromFile(file: Express.Multer.File): Promise<Array<WbTransactionDto>> {
@@ -419,6 +421,57 @@ export class WbOrderService implements IOrderable {
         });
 
         return context.invoice || null;
+    }
+
+    async getOrderMeta(orderId: number): Promise<WbOrderMetaDto> {
+        return this.api.method(`/api/v3/orders/${orderId}/meta`, 'get', {});
+    }
+
+    async setOrderKiz(orderId: number, sgtins: string[]): Promise<void> {
+        const body: WbOrderSetKizRequestDto = { sgtins };
+        await this.api.method(`/api/v3/orders/${orderId}/meta/sgtin`, 'put', body);
+    }
+
+    async submitFbsMarkCodes(invoice: InvoiceDto): Promise<SubmitResultDto> {
+        const attached = await this.invoiceService.getAttachedMarkCodesByScode(invoice.id, null);
+        if (attached.length === 0) return { ok: true };
+
+        const orderId = parseInt(invoice.remark, 10);
+        if (!orderId || Number.isNaN(orderId)) {
+            return {
+                ok: false,
+                failed: [{ ki: '*', reason: `некорректный orderId: ${invoice.remark}` }],
+                skipRetry: true,
+            };
+        }
+
+        const meta = await this.getOrderMeta(orderId);
+        const needsSgtin =
+            meta?.requiredMeta?.includes('sgtin') || meta?.optionalMeta?.includes('sgtin');
+        if (!needsSgtin) {
+            return { ok: true, skipped: 'no sgtin required' };
+        }
+
+        const sgtins: string[] = [];
+        const failed: SubmitFailureDto[] = [];
+        for (const a of attached) {
+            const full = await this.invoiceService.getKmFullByKi(a.ki, null);
+            if (!full) failed.push({ ki: a.ki, reason: 'KM_FULL пуст' });
+            else sgtins.push(full);
+        }
+
+        if (sgtins.length === 0) return { ok: false, failed };
+        if (sgtins.length > 100) {
+            return {
+                ok: false,
+                failed: [{ ki: '*', reason: '>100 КМ, нужен batching' }],
+                skipRetry: true,
+            };
+        }
+
+        await this.setOrderKiz(orderId, sgtins);
+
+        return failed.length === 0 ? { ok: true } : { ok: false, failed };
     }
 
     async getInvoiceBySrid(query: WbInvoiceSridQueryDto): Promise<InvoiceDto | null> {

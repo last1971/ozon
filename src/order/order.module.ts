@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { forwardRef, Module } from '@nestjs/common';
 import { OrderService } from './order.service';
 import { ProductModule } from '../product/product.module';
 import { InvoiceModule } from '../invoice/invoice.module';
@@ -10,8 +10,17 @@ import { WbOrderModule } from '../wb.order/wb.order.module';
 import { WbCustomerModule } from '../wb.customer/wb.customer.module';
 
 @Module({
-    imports: [ProductModule, PostingModule, InvoiceModule, YandexOrderModule, PostingFboModule, WbOrderModule, WbCustomerModule],
+    imports: [
+        ProductModule,
+        PostingModule,
+        forwardRef(() => InvoiceModule),
+        YandexOrderModule,
+        PostingFboModule,
+        WbOrderModule,
+        WbCustomerModule,
+    ],
     providers: [OrderService],
     controllers: [OrderController],
+    exports: [OrderService],
 })
 export class OrderModule {}

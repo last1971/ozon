@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ProductService } from '../product/product.service';
 import { PostingsRequestDto } from './dto/postings.request.dto';
 import { PostingDto } from './dto/posting.dto';
@@ -17,9 +17,29 @@ import { SupplyPositionDto } from 'src/supply/dto/supply.position.dto';
 import { OzonApiService } from "../ozon.api/ozon.api.service";
 import { ReturnsListDto } from './dto/returns.list.dto';
 import { ReturnDto } from './dto/return.dto';
+import { IMarkSubmittable, SubmitFailureDto, SubmitResultDto } from '../interfaces/IMarkSubmittable';
+import {
+    ExemplarCreateOrGetResponseDto,
+    ExemplarItemDto,
+    ExemplarProductDto,
+} from './dto/exemplar.create-or-get.dto';
+import {
+    ExemplarSetItemDto,
+    ExemplarSetProductDto,
+    ExemplarSetRequestDto,
+    ExemplarSetResponseDto,
+} from './dto/exemplar.set.dto';
+import { ExemplarStatusResponseDto } from './dto/exemplar.status.dto';
+import {
+    ShipPostingPackageDto,
+    ShipPostingRequestDto,
+    ShipPostingResponseDto,
+} from './dto/ship.posting.dto';
+import { pollUntil, PollDecision } from '../helpers/poll.util';
 
 @Injectable()
-export class PostingService implements IOrderable, ISuppliable {
+export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable {
+    private readonly logger = new Logger(PostingService.name);
     constructor(
         private productService: ProductService,
         @Inject(INVOICE_SERVICE) private invoiceService: IInvoice,
@@ -155,10 +175,10 @@ export class PostingService implements IOrderable, ISuppliable {
             const res = await this.ozonApiService.method('/v3/posting/fbs/get', { posting_number: postingNumber });
             result = res?.result ?? null;
         } catch (e) {
-            if (!this.configService.get<boolean>('OZON_FBO_MARK_MIGRATION', false)) throw e;
+            if (!this.configService.get<boolean>('MARK_CODES_ENABLED', false)) throw e;
         }
         if (result) return result;
-        if (!this.configService.get<boolean>('OZON_FBO_MARK_MIGRATION', false)) return result;
+        if (!this.configService.get<boolean>('MARK_CODES_ENABLED', false)) return result;
         const invoice = await this.invoiceService.getByPosting(postingNumber, null);
         if (!invoice) return null;
         const invoiceLines = await this.invoiceService.getInvoiceLines(invoice, null);
@@ -176,5 +196,171 @@ export class PostingService implements IOrderable, ISuppliable {
 
     getBuyerId(): number {
         return this.configService.get<number>('OZON_BUYER_ID', 24416);
+    }
+
+    async createOrGetExemplars(postingNumber: string): Promise<ExemplarCreateOrGetResponseDto> {
+        return this.ozonApiService.method('/v6/fbs/posting/product/exemplar/create-or-get', {
+            posting_number: postingNumber,
+        });
+    }
+
+    async setExemplars(req: ExemplarSetRequestDto): Promise<ExemplarSetResponseDto> {
+        return this.ozonApiService.method('/v6/fbs/posting/product/exemplar/set', req);
+    }
+
+    async getExemplarStatus(postingNumber: string): Promise<ExemplarStatusResponseDto> {
+        return this.ozonApiService.method('/v5/fbs/posting/product/exemplar/status', {
+            posting_number: postingNumber,
+        });
+    }
+
+    async shipPosting(req: ShipPostingRequestDto): Promise<ShipPostingResponseDto> {
+        return this.ozonApiService.method('/v4/posting/fbs/ship', req);
+    }
+
+    private async getPostingProductMap(postingNumber: string): Promise<Map<string, number>> {
+        const res = await this.ozonApiService.method('/v3/posting/fbs/get', {
+            posting_number: postingNumber,
+        });
+        const products = res?.result?.products ?? [];
+        const map = new Map<string, number>();
+        for (const p of products) {
+            const goodscode = String(p.offer_id ?? '').split('-')[0];
+            const productId = Number(p.sku);
+            if (goodscode && productId) map.set(goodscode, productId);
+        }
+        return map;
+    }
+
+    async submitFbsMarkCodes(invoice: InvoiceDto): Promise<SubmitResultDto> {
+        const postingNumber = invoice.remark;
+        const isDryRun =
+            postingNumber?.startsWith('FBS-MIG-') &&
+            this.configService.get<string>('NODE_ENV') === 'development';
+
+        const attached = await this.invoiceService.getAttachedMarkCodesByScode(invoice.id, null);
+        if (attached.length === 0) return { ok: true };
+
+        const failed: SubmitFailureDto[] = [];
+        const kmFullByKi = new Map<string, string>();
+        for (const a of attached) {
+            const full = await this.invoiceService.getKmFullByKi(a.ki, null);
+            if (!full) failed.push({ ki: a.ki, reason: 'KM_FULL пуст' });
+            else kmFullByKi.set(a.ki, full);
+        }
+        if (kmFullByKi.size === 0) return { ok: false, failed };
+
+        if (isDryRun) {
+            return {
+                ok: true,
+                dryRun: true,
+                payload: {
+                    posting_number: postingNumber,
+                    marks: Array.from(kmFullByKi.values()),
+                    failed,
+                },
+            };
+        }
+
+        const exResp = await this.createOrGetExemplars(postingNumber);
+        if (!exResp || !exResp.products) {
+            return {
+                ok: false,
+                failed: [{ ki: '*', reason: 'createOrGet вернул пустой ответ' }],
+                skipRetry: true,
+            };
+        }
+
+        const productMap = await this.getPostingProductMap(postingNumber);
+        if (productMap.size === 0) {
+            return {
+                ok: false,
+                failed: [{ ki: '*', reason: 'posting/fbs/get не вернул products' }],
+                skipRetry: true,
+            };
+        }
+
+        const attachedByProduct = new Map<number, { ki: string; mark: string }[]>();
+        for (const a of attached) {
+            const mark = kmFullByKi.get(a.ki);
+            if (!mark) continue;
+            const productId = productMap.get(a.goodscode);
+            if (!productId) {
+                failed.push({ ki: a.ki, reason: `goodscode ${a.goodscode} не найден в posting` });
+                continue;
+            }
+            if (!attachedByProduct.has(productId)) attachedByProduct.set(productId, []);
+            attachedByProduct.get(productId).push({ ki: a.ki, mark });
+        }
+
+        const setProducts: ExemplarSetProductDto[] = [];
+        const shipProducts: ShipPostingPackageDto['products'] = [];
+        for (const exProduct of exResp.products as ExemplarProductDto[]) {
+            const group = attachedByProduct.get(exProduct.product_id) ?? [];
+            if (group.length === 0) continue;
+            if (group.length !== exProduct.quantity) {
+                failed.push({
+                    ki: '*',
+                    reason: `product_id ${exProduct.product_id}: КМ ${group.length}, ожидается ${exProduct.quantity}`,
+                });
+                continue;
+            }
+            const exemplars: ExemplarSetItemDto[] = exProduct.exemplars
+                .slice(0, group.length)
+                .map((ex: ExemplarItemDto, i: number) => ({
+                    exemplar_id: ex.exemplar_id,
+                    marks: [{ mark: group[i].mark, mark_type: 'mandatory_mark' as const }],
+                    gtd: '',
+                    is_gtd_absent: true as const,
+                    is_rnpt_absent: true as const,
+                }));
+            setProducts.push({ product_id: exProduct.product_id, exemplars });
+            shipProducts.push({
+                product_id: exProduct.product_id,
+                quantity: group.length,
+                exemplar_ids: exemplars.map((e) => e.exemplar_id),
+            });
+        }
+
+        if (setProducts.length === 0) {
+            return { ok: false, failed };
+        }
+
+        const setResp = await this.setExemplars({
+            posting_number: postingNumber,
+            multi_box_qty: exResp.multi_box_qty || 1,
+            products: setProducts,
+        });
+        if (!setResp?.result) {
+            return {
+                ok: false,
+                failed: [...failed, { ki: '*', reason: 'setExemplars result=false' }],
+            };
+        }
+
+        const pollRes = await pollUntil<ExemplarStatusResponseDto>(
+            () => this.getExemplarStatus(postingNumber),
+            (v): PollDecision => {
+                if (v?.status === 'ship_available') return 'done';
+                if (v?.status === 'ship_not_available') return 'fail';
+                return 'continue';
+            },
+        );
+        if (pollRes.status !== 'done') {
+            return {
+                ok: false,
+                failed: [
+                    ...failed,
+                    { ki: '*', reason: `polling ${pollRes.status} (last=${pollRes.value?.status})` },
+                ],
+            };
+        }
+
+        await this.shipPosting({
+            posting_number: postingNumber,
+            packages: [{ products: shipProducts }],
+        });
+
+        return failed.length === 0 ? { ok: true } : { ok: false, failed };
     }
 }

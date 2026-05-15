@@ -19,6 +19,7 @@ import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { OZON_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { IMarkSubmittable, isMarkSubmittable } from '../interfaces/IMarkSubmittable';
 
 @Injectable()
 export class OrderService {
@@ -109,16 +110,32 @@ export class OrderService {
         }
     }
 
+    private isMarkCodesEnabled(): boolean {
+        const v = this.configService.get<boolean | string>('MARK_CODES_ENABLED', false);
+        return v === true || v === 'true';
+    }
+
     @Cron('0 */5 * * * *', { name: 'checkNewOrders' })
     async checkNewOrders(): Promise<void> {
         for (const service of this.orderServices) {
             const transaction = await this.invoiceService.getTransaction();
+            const flushers: (() => Promise<void>)[] = [];
             try {
-                await this.cancelOrders(service, transaction);
-                await this.processReturns(service, transaction);
-                await this.packageOrders(service, transaction);
-                await this.deliveryOrders(service, transaction);
+                await this.cancelOrders(service, transaction, flushers);
+                await this.processReturns(service, transaction, flushers);
+                if (this.isMarkCodesEnabled() && isMarkSubmittable(service)) {
+                    await this.submitFbsMarkCodes(service, transaction, flushers);
+                }
+                await this.packageOrders(service, transaction, flushers);
+                await this.deliveryOrders(service, transaction, flushers);
                 await transaction.commit(true);
+                for (const flush of flushers) {
+                    try {
+                        await flush();
+                    } catch (e) {
+                        this.logger.error(`Cache flush failed: ${e.message}`);
+                    }
+                }
             } catch (e) {
                 await transaction.rollback(true);
                 this.logger.error(e.message + ' IN ' + service.constructor.name);
@@ -126,11 +143,31 @@ export class OrderService {
         }
     }
 
+    async submitFbsMarkCodes(
+        service: IOrderable & IMarkSubmittable,
+        transaction: FirebirdTransaction,
+        flushers: (() => Promise<void>)[],
+    ): Promise<void> {
+        const buyerId = service.getBuyerId();
+        const invoices = await this.invoiceService.listFbsAwaitingShip(buyerId, transaction);
+        if (invoices.length === 0) return;
+        const items = invoices.map((inv) => ({ ...inv, posting_number: inv.remark }));
+        await this.processWithCache('fbs-marks-sent', service, items, async (item) => {
+            const res = await service.submitFbsMarkCodes(item);
+            if (!res.ok && !res.skipRetry) {
+                throw new Error(
+                    `submitFbsMarkCodes failed for ${item.posting_number}: ${JSON.stringify(res.failed)}`,
+                );
+            }
+        }, flushers);
+    }
+
     private async processWithCache<T extends { posting_number: string }>(
         cacheName: string,
         service: IOrderable,
         items: T[],
         processor: (item: T) => Promise<void>,
+        flushers: (() => Promise<void>)[],
     ): Promise<void> {
         const serviceName = service.constructor.name;
         const cacheKey = `processed:${cacheName}:${serviceName}`;
@@ -148,11 +185,21 @@ export class OrderService {
             processedSet.add(item.posting_number);
         }
 
-        // Сохраняем как строку с разделителями
-        await this.cacheManager.set(cacheKey, Array.from(processedSet).join(','), cacheTtlDays * 24 * 60 * 60 * 1000);
+        // Запись в Redis откладывается до успешного commit транзакции
+        flushers.push(async () => {
+            await this.cacheManager.set(
+                cacheKey,
+                Array.from(processedSet).join(','),
+                cacheTtlDays * 24 * 60 * 60 * 1000,
+            );
+        });
     }
 
-    async deliveryOrders(service: IOrderable, transaction: FirebirdTransaction): Promise<void> {
+    async deliveryOrders(
+        service: IOrderable,
+        transaction: FirebirdTransaction,
+        flushers: (() => Promise<void>)[],
+    ): Promise<void> {
         const deliveringPostings = await service.listAwaitingDelivering();
 
         await this.processWithCache('delivery', service, deliveringPostings, async (posting) => {
@@ -163,30 +210,42 @@ export class OrderService {
             if (invoice) {
                 await this.invoiceService.pickupInvoice(invoice, transaction);
             }
-        });
+        }, flushers);
     }
 
-    async packageOrders(service: IOrderable, transaction: FirebirdTransaction): Promise<void> {
+    async packageOrders(
+        service: IOrderable,
+        transaction: FirebirdTransaction,
+        flushers: (() => Promise<void>)[],
+    ): Promise<void> {
         const packagingPostings = await service.listAwaitingPackaging();
 
         await this.processWithCache('packaging', service, packagingPostings, async (posting) => {
             if (!(await this.invoiceService.isExists(posting.posting_number, transaction))) {
                 await service.createInvoice(posting, transaction);
             }
-        });
+        }, flushers);
     }
 
-    async cancelOrders(service: IOrderable, transaction: FirebirdTransaction): Promise<void> {
+    async cancelOrders(
+        service: IOrderable,
+        transaction: FirebirdTransaction,
+        flushers: (() => Promise<void>)[],
+    ): Promise<void> {
         const orders = await service.listCanceled();
 
         await this.processWithCache('cancellations', service, orders, async (order) => {
             if (await this.invoiceService.isExists(order.posting_number, transaction)) {
                 await this.cancelOrder(order, transaction);
             }
-        });
+        }, flushers);
     }
 
-    async processReturns(service: IOrderable, transaction: FirebirdTransaction): Promise<void> {
+    async processReturns(
+        service: IOrderable,
+        transaction: FirebirdTransaction,
+        flushers: (() => Promise<void>)[],
+    ): Promise<void> {
         if (service.constructor.name !== 'PostingService') {
             return;
         }
@@ -200,7 +259,7 @@ export class OrderService {
                 await this.invoiceService.update(invoice, { IGK: 'NOT1C' }, transaction);
                 await this.processInvoiceStatus4(invoice, returnItem.posting_number, transaction, 'returned');
             }
-        });
+        }, flushers);
     }
 
     private async processInvoiceStatus4(

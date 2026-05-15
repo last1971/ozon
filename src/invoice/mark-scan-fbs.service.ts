@@ -1,4 +1,4 @@
-import { ConflictException, Inject, Injectable, Logger, NotFoundException } from '@nestjs/common';
+import { ConflictException, Inject, Injectable, NotFoundException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FirebirdTransaction } from 'ts-firebird';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
@@ -10,15 +10,14 @@ import { extractKi } from '../helpers';
 
 @Injectable()
 export class MarkScanFbsService {
-    private readonly logger = new Logger(MarkScanFbsService.name);
-
     constructor(
         @Inject(INVOICE_SERVICE) private invoiceService: IInvoice,
         private configService: ConfigService,
     ) {}
 
     private isEnabled(): boolean {
-        return this.configService.get<boolean>('OZON_FBO_MARK_MIGRATION', false);
+        const v = this.configService.get<boolean | string>('MARK_CODES_ENABLED', false);
+        return v === true || v === 'true';
     }
 
     async scan(invoice: InvoiceDto, rawScan: string): Promise<MarkScanResultDto> {
@@ -33,7 +32,7 @@ export class MarkScanFbsService {
             }
             const rpc = await this.pickTargetRpc(invoice.id, goodscode, transaction);
             const ss = this.invoiceService.getStorageSS();
-            await this.invoiceService.attachMarkCodeForFbs(ki, rpc, goodscode, ss, transaction);
+            await this.invoiceService.attachMarkCodeForFbs(ki, rpc, goodscode, ss, rawScan.trim(), transaction);
             await transaction.commit(true);
             return {
                 attached: { ki, goodscode, realpricecode: rpc },

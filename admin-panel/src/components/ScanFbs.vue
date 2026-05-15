@@ -10,6 +10,7 @@ import type {
     MarkScanProgressDto,
     MarkScanProgressLineDto,
     MarkScanResultDto,
+    SubmitResultDto,
 } from "@/contracts/mark-scan-progress.dto";
 
 const url = import.meta.env.VITE_URL;
@@ -111,12 +112,14 @@ function showSnackbar(message: string, color: string, timeout = 5000) {
     snackbar.value = true;
 }
 
-async function update(remark: string, data: any, text: string): Promise<boolean> {
-    let result = true;
+async function update(remark: string, data: any, text: string): Promise<{ ok: boolean; submit?: SubmitResultDto }> {
+    let ok = true;
+    let submit: SubmitResultDto | undefined;
     snackbarTimeout.value = 5000;
     try {
         const res = await axios.put(`/api/invoice/update/${remark}`, data);
         invoice.value = res.data.invoice;
+        submit = res.data.submit;
         const order = await axios.get(`/api/order/${invoice.value.buyerId}/${remark}`);
             //axios.get(`/api/order/${remark}`);
         if (!order.data?.products) {
@@ -140,10 +143,10 @@ async function update(remark: string, data: any, text: string): Promise<boolean>
                `Система не работает, сообщить ВВ, код: ${e.status}, ошибка: ${e.response.data.message.join(', ')}`;
             snackbarColor.value = 'error';
         }
-        result = false;
+        ok = false;
     }
     snackbar.value = true;
-    return result;
+    return { ok, submit };
 }
 
 async function loadMarkProgress(remark: string): Promise<boolean> {
@@ -183,7 +186,7 @@ async function onFirstInput() {
             { START_PICKUP: firstTime.value },
             'Сборка начата'
         );
-        if (res) {
+        if (res.ok) {
             const progressOk = await loadMarkProgress(firstInput.value);
             if (progressOk && requiresMarkScan.value && !isReadyToFinish.value) {
                 markScanDisabled.value = false;
@@ -259,7 +262,20 @@ async function onSecondInput() {
             { FINISH_PICKUP: secondTime.value, IGK: secondInput.value },
             'Сборка завершена'
         );
-        if (res) await resetFields();
+        if (res.ok) {
+            const submit = res.submit;
+            if (submit?.ok === true) {
+                const msg = submit.skipped
+                    ? `Сборка завершена (${submit.skipped})`
+                    : 'Сборка завершена, КМ переданы маркетплейсу';
+                showSnackbar(msg, 'success');
+            } else if (submit?.ok === false) {
+                showSnackbar('Сборка завершена, КМ не переданы — повторим автоматически', 'warning', 8000);
+            }
+            // submit === undefined → флаг выключен или сервис без IMarkSubmittable —
+            // оставляем "Сборка завершена" из update()
+            await resetFields();
+        }
     }
 }
 
