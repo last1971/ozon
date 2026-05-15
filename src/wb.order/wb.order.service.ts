@@ -249,7 +249,8 @@ export class WbOrderService implements IOrderable, IMarkSubmittable {
 
     @RateLimit(60000)
     async getTransactions(data: TransactionFilterDate, rrdid = 0): Promise<Array<WbTransactionDto>> {
-        return this.api.method(
+        // WB на пустой период отдаёт 204 No Content → axios кладёт пустую строку
+        const res = await this.api.method(
             '/api/v5/supplier/reportDetailByPeriod',
             'statistics',
             {
@@ -258,9 +259,7 @@ export class WbOrderService implements IOrderable, IMarkSubmittable {
                 rrdid,
             },
         );
-        // return transactions;
-        // if (!transactions) return [];
-        // return transactions.concat(await this.getTransactions(data, last(transactions).rrd_id));
+        return Array.isArray(res) ? res : [];
     }
 
     async getTransactionsFromFile(file: Express.Multer.File): Promise<Array<WbTransactionDto>> {

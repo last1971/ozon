@@ -263,6 +263,17 @@ describe('WbOrderService', () => {
         ]);
     });
 
+    it.each([
+        ['204 No Content (пустая строка)', ''],
+        ['undefined', undefined],
+        ['null', null],
+    ])('getTransactions returns [] when WB responds with %s', async (_label, value) => {
+        method.mockResolvedValueOnce(value);
+        const date = new Date();
+        const result = await service.getTransactions({ from: date, to: date });
+        expect(result).toEqual([]);
+    });
+
     it('updateTransactions', async () => {
         const date = new Date();
         method.mockResolvedValueOnce([
