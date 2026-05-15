@@ -19,7 +19,7 @@ import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { OZON_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { IMarkSubmittable, isMarkSubmittable } from '../interfaces/IMarkSubmittable';
+import { IMarkSubmittable, isMarkSubmittable, SubmitResultDto } from '../interfaces/IMarkSubmittable';
 
 @Injectable()
 export class OrderService {
@@ -160,6 +160,19 @@ export class OrderService {
                 );
             }
         }, flushers);
+    }
+
+    async submitFbsMarkCodesForInvoice(invoice: InvoiceDto): Promise<SubmitResultDto | undefined> {
+        if (!this.isMarkCodesEnabled()) return undefined;
+        const service = this.getServiceByBuyerId(invoice.buyerId, true);
+        if (!isMarkSubmittable(service)) return undefined;
+        try {
+            return await service.submitFbsMarkCodes(invoice);
+        } catch (e) {
+            const message = e?.message ?? String(e);
+            this.logger.warn(`submitFbsMarkCodes failed for ${invoice.remark}: ${message}, cron retry`);
+            return { ok: false, failed: [{ ki: '*', reason: message }] };
+        }
     }
 
     private async processWithCache<T extends { posting_number: string }>(

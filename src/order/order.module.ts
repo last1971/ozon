@@ -1,4 +1,4 @@
-import { forwardRef, Module } from '@nestjs/common';
+import { Module } from '@nestjs/common';
 import { OrderService } from './order.service';
 import { ProductModule } from '../product/product.module';
 import { InvoiceModule } from '../invoice/invoice.module';
@@ -13,7 +13,7 @@ import { WbCustomerModule } from '../wb.customer/wb.customer.module';
     imports: [
         ProductModule,
         PostingModule,
-        forwardRef(() => InvoiceModule),
+        InvoiceModule,
         YandexOrderModule,
         PostingFboModule,
         WbOrderModule,

@@ -622,6 +622,72 @@ describe('OrderService', () => {
         });
     });
 
+    describe('submitFbsMarkCodesForInvoice (single-invoice public API)', () => {
+        const invoice = { id: 1, remark: 'P-1', buyerId: 11 } as any;
+        const ozonOrderable = {
+            constructor: { name: 'PostingService' },
+            getBuyerId: () => 11,
+            isFbo: () => false,
+            submitFbsMarkCodes: ozonSubmitFbsMarkCodes,
+        };
+        const wbOrderable = {
+            constructor: { name: 'WbOrderService' },
+            getBuyerId: () => 22,
+            isFbo: () => false,
+            submitFbsMarkCodes: wbSubmitFbsMarkCodes,
+        };
+
+        beforeEach(() => {
+            ozonSubmitFbsMarkCodes.mockReset();
+            wbSubmitFbsMarkCodes.mockReset();
+            (service as any).orderServices = [ozonOrderable, wbOrderable];
+        });
+
+        it('MARK_CODES_ENABLED=false → undefined, никаких вызовов', async () => {
+            markCodesEnabled = false;
+            const r = await service.submitFbsMarkCodesForInvoice(invoice);
+            expect(r).toBeUndefined();
+            expect(ozonSubmitFbsMarkCodes).not.toHaveBeenCalled();
+        });
+
+        it('сервис не isMarkSubmittable → undefined', async () => {
+            markCodesEnabled = true;
+            (service as any).orderServices = [
+                {
+                    constructor: { name: 'PostingFboService' },
+                    getBuyerId: () => 11,
+                    isFbo: () => false,
+                },
+            ];
+            const r = await service.submitFbsMarkCodesForInvoice(invoice);
+            expect(r).toBeUndefined();
+        });
+
+        it('happy path → результат service.submitFbsMarkCodes пробрасывается', async () => {
+            markCodesEnabled = true;
+            ozonSubmitFbsMarkCodes.mockResolvedValueOnce({ ok: true });
+            const r = await service.submitFbsMarkCodesForInvoice(invoice);
+            expect(r).toEqual({ ok: true });
+            expect(ozonSubmitFbsMarkCodes).toHaveBeenCalledWith(invoice);
+        });
+
+        it('service.submitFbsMarkCodes throw → завёрнутый SubmitResultDto, не бросается наружу', async () => {
+            markCodesEnabled = true;
+            ozonSubmitFbsMarkCodes.mockRejectedValueOnce(new Error('Ozon 500'));
+            const r = await service.submitFbsMarkCodesForInvoice(invoice);
+            expect(r).toEqual({ ok: false, failed: [{ ki: '*', reason: 'Ozon 500' }] });
+        });
+
+        it('WB invoice (buyerId=22) → попадает в WbOrderService', async () => {
+            markCodesEnabled = true;
+            wbSubmitFbsMarkCodes.mockResolvedValueOnce({ ok: true, skipped: 'no sgtin required' });
+            const r = await service.submitFbsMarkCodesForInvoice({ ...invoice, buyerId: 22 });
+            expect(r).toEqual({ ok: true, skipped: 'no sgtin required' });
+            expect(wbSubmitFbsMarkCodes).toHaveBeenCalledTimes(1);
+            expect(ozonSubmitFbsMarkCodes).not.toHaveBeenCalled();
+        });
+    });
+
     describe('checkNewOrders + MARK_CODES_ENABLED', () => {
         beforeEach(() => {
             cacheGet.mockReset().mockResolvedValue('');

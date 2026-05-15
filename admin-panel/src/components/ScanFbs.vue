@@ -117,7 +117,7 @@ async function update(remark: string, data: any, text: string): Promise<{ ok: bo
     let submit: SubmitResultDto | undefined;
     snackbarTimeout.value = 5000;
     try {
-        const res = await axios.put(`/api/invoice/update/${remark}`, data);
+        const res = await axios.put(`/api/pickup/${remark}`, data);
         invoice.value = res.data.invoice;
         submit = res.data.submit;
         const order = await axios.get(`/api/order/${invoice.value.buyerId}/${remark}`);
