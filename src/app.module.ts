@@ -48,6 +48,7 @@ import { SyliusPriceModule } from './sylius.price/sylius.price.module';
 import { AIModule } from './ai/ai.module';
 import { AIProductModule } from './ai.product/ai.product.module';
 import { OzonCategoryModule } from './ozon.category/ozon.category.module';
+import { PickupModule } from './pickup/pickup.module';
 import { CacheableModule } from 'nestjs-cacheable';
 import JSONbig from 'json-bigint';
 
@@ -153,6 +154,7 @@ import JSONbig from 'json-bigint';
         AIModule,
         AIProductModule,
         OzonCategoryModule,
+        PickupModule,
     ],
     controllers: [AppController],
     providers: [AppService, CronSetupProviderService],
