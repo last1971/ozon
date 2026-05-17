@@ -20,6 +20,7 @@ import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { OZON_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { IMarkSubmittable, isMarkSubmittable, SubmitResultDto } from '../interfaces/IMarkSubmittable';
+import { isMarkCodesEnabled } from '../helpers';
 
 @Injectable()
 export class OrderService {
@@ -111,8 +112,7 @@ export class OrderService {
     }
 
     private isMarkCodesEnabled(): boolean {
-        const v = this.configService.get<boolean | string>('MARK_CODES_ENABLED', false);
-        return v === true || v === 'true';
+        return isMarkCodesEnabled(this.configService);
     }
 
     @Cron('0 */5 * * * *', { name: 'checkNewOrders' })

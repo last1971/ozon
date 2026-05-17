@@ -6,7 +6,7 @@ import { InvoiceDto } from './dto/invoice.dto';
 import { MarkScanProgressDto } from './dto/mark-scan-progress.dto';
 import { MarkScanProgressLineDto } from './dto/mark-scan-progress-line.dto';
 import { MarkScanResultDto } from './dto/mark-scan-result.dto';
-import { extractKi } from '../helpers';
+import { extractKi, isMarkCodesEnabled } from '../helpers';
 
 @Injectable()
 export class MarkScanFbsService {
@@ -16,8 +16,7 @@ export class MarkScanFbsService {
     ) {}
 
     private isEnabled(): boolean {
-        const v = this.configService.get<boolean | string>('MARK_CODES_ENABLED', false);
-        return v === true || v === 'true';
+        return isMarkCodesEnabled(this.configService);
     }
 
     async scan(invoice: InvoiceDto, rawScan: string): Promise<MarkScanResultDto> {

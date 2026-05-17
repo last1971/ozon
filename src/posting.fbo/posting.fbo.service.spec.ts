@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PostingFboService } from './posting.fbo.service';
+import { FboMarkMigrationService } from './fbo-mark-migration.service';
 import { ProductService } from '../product/product.service';
 import { ConfigService } from '@nestjs/config';
 import { INVOICE_SERVICE } from '../interfaces/IInvoice';
@@ -56,6 +57,7 @@ describe('PostingFboService', () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 PostingFboService,
+                FboMarkMigrationService,
                 { provide: ProductService, useValue: { orderFboList } },
                 { provide: ConfigService, useValue: { get: configGet } },
                 {
