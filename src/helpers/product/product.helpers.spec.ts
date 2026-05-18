@@ -1,4 +1,4 @@
-import { goodCode, goodQuantityCoeff, productQuantity, isSkuMatch, getPieces, StringToIOfferIdableAdapter, skusToGoodIds, barCodeSkuPairs } from './product.helpers';
+import { goodCode, goodQuantityCoeff, productQuantity, isSkuMatch, getPieces, StringToIOfferIdableAdapter, skusToGoodIds, chrtIdVendorCodePairs } from './product.helpers';
 
 describe('Product helpers', () => {
     it('goodCode', () => {
@@ -65,8 +65,8 @@ describe('Product helpers', () => {
     it('skusToGoodIds', () => {
         expect(skusToGoodIds(['1111', '1111-10', '1111-20', '23', '24-2'])).toEqual(['1111', '23', '24']);
     });
-    it('barCodeSkuPairs', () => {
-        const res = barCodeSkuPairs([
+    it('chrtIdVendorCodePairs', () => {
+        const res = chrtIdVendorCodePairs([
             {
                 nmID: 1,
                 vendorCode: '1',
@@ -74,6 +74,7 @@ describe('Product helpers', () => {
                 subjectName: 'OneOneOne',
                 sizes: [
                     {
+                        chrtID: 1551826536,
                         skus: ['1-1', '1-2'],
                     },
                 ],
@@ -81,15 +82,17 @@ describe('Product helpers', () => {
                 photos: [],
             },
             {
-                nmID: 1,
+                nmID: 2,
                 vendorCode: '2',
                 subjectID: 111,
                 subjectName: 'OneOneOne',
                 sizes: [
                     {
+                        chrtID: 1551826537,
                         skus: ['2-1', '2-2'],
                     },
                     {
+                        chrtID: 1551826538,
                         skus: ['3-1', '3-2'],
                     },
                 ],
@@ -98,9 +101,9 @@ describe('Product helpers', () => {
             },
         ] as any);
         expect(res).toEqual(
-            new Map([
-                ['1-1', '1'],
-                ['2-1', '2'],
+            new Map<number, string>([
+                [1551826536, '1'],
+                [1551826537, '2'],
             ]),
         );
     });

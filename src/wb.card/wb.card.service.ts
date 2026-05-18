@@ -2,7 +2,7 @@ import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { GoodCountsDto, ICountUpdateable } from '../interfaces/ICountUpdatebale';
 import { WbApiService } from '../wb.api/wb.api.service';
 import { VaultService } from 'vault-module/lib/vault.service';
-import { barCodeSkuPairs } from '../helpers';
+import { chrtIdVendorCodePairs } from '../helpers';
 import { WbCardDto } from './dto/wb.card.dto';
 import { Environment } from '../env.validation';
 import { ConfigService } from '@nestjs/config';
@@ -32,7 +32,7 @@ import { ProductService } from '../product/product.service';
 export class WbCardService extends ICountUpdateable implements OnModuleInit, IProductable {
     private readonly logger = new Logger(WbCardService.name);
     private warehouseId: number;
-    private skuBarcodePair: Map<string, string>;
+    private skuChrtIdPair: Map<string, number>;
     private skuNmIDPair: Map<string, string>;
     private productInfos: Map<string, ProductInfoDto>;
     private wbCards: Map<string, WbCardDto>
@@ -52,7 +52,7 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
         private productService: ProductService,
     ) {
         super();
-        this.skuBarcodePair = new Map<string, string>();
+        this.skuChrtIdPair = new Map<string, number>();
         this.skuNmIDPair = new Map<string, string>();
         this.productInfos = new Map<string, ProductInfoDto>();
         this.clearWbCards();
@@ -160,9 +160,9 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
     async getGoodIds(args: any): Promise<GoodCountsDto<number>> {
         const res = await this.getWbCards(args);
         const { cards, cursor } = res;
-        const barcodes = barCodeSkuPairs(cards);
-        for (const [key, value] of barcodes) {
-            this.skuBarcodePair.set(value, key);
+        const chrtIdToVendor = chrtIdVendorCodePairs(cards);
+        for (const [chrtID, vendorCode] of chrtIdToVendor) {
+            this.skuChrtIdPair.set(vendorCode, chrtID);
         }
         cards.forEach((card) => {
             this.skuNmIDPair.set(card.vendorCode, card.nmID.toString());
@@ -170,13 +170,13 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
         const quantities = await this.api.method(
             '/api/v3/stocks/' + this.warehouseId,
             'post',
-            { skus: Array.from(barcodes.keys()) },
+            { chrtIds: Array.from(chrtIdToVendor.keys()) },
         );
         const goods = new Map<string, number>();
         if (quantities?.stocks) {
             quantities.stocks.forEach((stock) => {
-                const sku = barcodes.get(stock.sku);
-                goods.set(sku, stock.amount);
+                const vendorCode = chrtIdToVendor.get(stock.chrtId);
+                goods.set(vendorCode, stock.amount);
             });
         }
         const { updatedAt, nmID, total } = cursor;
@@ -202,9 +202,9 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
 
     async updateGoodCounts(goods: Map<string, number>): Promise<number> {
         const stocks = [...goods]
-            .filter((good) => this.skuBarcodePair.get(good[0]))
+            .filter((good) => this.skuChrtIdPair.get(good[0]))
             .map((good) => ({
-                sku: this.skuBarcodePair.get(good[0]),
+                chrtId: this.skuChrtIdPair.get(good[0]),
                 amount: good[1],
             }));
         if (stocks && stocks.length) {
