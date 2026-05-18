@@ -71,7 +71,7 @@ describe('WbApiService', () => {
         expect(get.mock.calls[1]).toEqual([
             'undefined4',
             {
-                headers: { Authorization: 'undefined', Accept: 'application/json', 'Content-Type': 'application/json' },
+                headers: { Authorization: 'token', Accept: 'application/json', 'Content-Type': 'application/json' },
                 params: { post: 2 },
             },
         ]);

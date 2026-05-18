@@ -62,6 +62,7 @@ describe('WbCardService', () => {
                         vendorCode: '1',
                         sizes: [
                             {
+                                chrtID: 1551826536,
                                 skus: ['1-1'],
                             },
                         ],
@@ -70,7 +71,7 @@ describe('WbCardService', () => {
                 ],
                 cursor: { total: 1 },
             })
-            .mockResolvedValueOnce({ stocks: [{ sku: '1-1', amount: 10 }] });
+            .mockResolvedValueOnce({ stocks: [{ chrtId: 1551826536, amount: 10 }] });
         const res = await service.getGoodIds('');
         expect(res).toEqual({ goods: new Map([['1', 10]]), nextArgs: null });
         expect(method.mock.calls).toHaveLength(2);
@@ -89,7 +90,7 @@ describe('WbCardService', () => {
             },
             true,
         ]);
-        expect(method.mock.calls[1]).toEqual(['/api/v3/stocks/undefined', 'post', { skus: ['1-1'] }]);
+        expect(method.mock.calls[1]).toEqual(['/api/v3/stocks/undefined', 'post', { chrtIds: [1551826536] }]);
     });
 
     it('updateGoodCounts', async () => {
@@ -101,6 +102,7 @@ describe('WbCardService', () => {
                         vendorCode: '1',
                         sizes: [
                             {
+                                chrtID: 1551826536,
                                 skus: ['1-1'],
                             },
                         ],
@@ -109,7 +111,7 @@ describe('WbCardService', () => {
                 ],
                 cursor: { total: 1 },
             })
-            .mockResolvedValueOnce({ stocks: [{ sku: '1-1', amount: 10 }] });
+            .mockResolvedValueOnce({ stocks: [{ chrtId: 1551826536, amount: 10 }] });
         await service.getGoodIds('');
         method.mockResolvedValueOnce({
             data: [
@@ -118,6 +120,7 @@ describe('WbCardService', () => {
                     vendorCode: '1',
                     sizes: [
                         {
+                            chrtID: 1551826536,
                             skus: ['1-1'],
                         },
                     ],
@@ -128,6 +131,7 @@ describe('WbCardService', () => {
                     vendorCode: '2',
                     sizes: [
                         {
+                            chrtID: 1551826537,
                             skus: ['1-2'],
                         },
                     ],
@@ -148,7 +152,7 @@ describe('WbCardService', () => {
             '/api/v3/stocks/undefined',
             'put',
             {
-                stocks: [{ amount: 1, sku: '1-1' }],
+                stocks: [{ amount: 1, chrtId: 1551826536 }],
             },
         ]);
     });

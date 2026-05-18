@@ -78,13 +78,16 @@ export const skusToGoodIds = (skus: string[]): string[] => {
 };
 
 /**
- * Формирует пары barcode → vendorCode из массива карточек WB
+ * Формирует пары chrtID → vendorCode из массива карточек WB.
+ * chrtID берётся из первого размера карточки (sizes[0].chrtID).
  */
-export const barCodeSkuPairs = (cards: WbCardDto[]): Map<string, string> => {
-    const skus = new Map<string, string>();
+export const chrtIdVendorCodePairs = (cards: WbCardDto[]): Map<number, string> => {
+    const pairs = new Map<number, string>();
     cards.forEach((card) => {
-        const barcode = head(head(card.sizes).skus);
-        skus.set(barcode, card.vendorCode);
+        const chrtID = head(card.sizes)?.chrtID;
+        if (chrtID) {
+            pairs.set(chrtID, card.vendorCode);
+        }
     });
-    return skus;
-}; 
+    return pairs;
+};

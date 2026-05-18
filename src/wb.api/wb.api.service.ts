@@ -18,7 +18,7 @@ export class WbApiService {
         const url = fullName ? name : (method === 'statistics' ? wb.STATISTICS_URL : wb.URL) + name;
         let response: Observable<AxiosResponse>;
         const headers = {
-            Authorization: `${(method === 'statistics' ? wb.STATISTICS_TOKEN : wb.API_TOKEN) as string}`,
+            Authorization: `${wb.API_TOKEN as string}`,
             Accept: 'application/json',
             'Content-Type': 'application/json',
         };

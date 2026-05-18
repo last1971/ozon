@@ -9,8 +9,9 @@ import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { FirebirdTransaction } from 'ts-firebird';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 // import { Cron } from '@nestjs/schedule';
-import { goodCode, goodQuantityCoeff } from '../helpers';
+import { goodCode, goodQuantityCoeff, isMarkCodesEnabled } from '../helpers';
 import { OZON_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
+import { FboMarkMigrationService } from './fbo-mark-migration.service';
 
 @Injectable()
 export class PostingFboService implements IOrderable {
@@ -19,6 +20,7 @@ export class PostingFboService implements IOrderable {
         private configService: ConfigService,
         @Inject(INVOICE_SERVICE) private invoiceService: IInvoice,
         private eventEmitter: EventEmitter2,
+        private migrationService: FboMarkMigrationService,
     ) {}
 
     isFbo(): boolean {
@@ -26,7 +28,7 @@ export class PostingFboService implements IOrderable {
     }
 
     async createInvoice(posting: PostingDto, transaction: FirebirdTransaction): Promise<InvoiceDto> {
-        if (this.configService.get<boolean>('MARK_CODES_ENABLED', false)) {
+        if (isMarkCodesEnabled(this.configService)) {
             return this.createInvoiceWithMarkMigration(posting, transaction);
         }
         return this.createInvoiceLegacy(posting, transaction);
@@ -82,41 +84,24 @@ export class PostingFboService implements IOrderable {
         const clusterFrom = posting.financial_data?.cluster_from;
         const suffix = OZON_ORDER_CANCELLATION_SUFFIX.FBO.trim();
         const prims = [warehouseName, clusterFrom, suffix].filter((p): p is string => Boolean(p));
-        const ss = this.invoiceService.getStorageSS();
 
         const invoice = await this.invoiceService.createInvoiceFromPostingDto(buyerId, posting, transaction);
         const newRpcs = await this.invoiceService.findRealpriceCodes(invoice.id, transaction);
 
-        for (let i = 0; i < posting.products.length; i++) {
-            const product = posting.products[i];
-            const gc = goodCode(product);
-            let need = product.quantity * goodQuantityCoeff(product);
-            const newRpc = newRpcs[i];
-            const candidates = await this.invoiceService.findFboPodbposCandidates(gc, prims, transaction);
-
-            for (const cand of candidates) {
-                if (need === 0) break;
-                const take = Math.min(cand.quanAvail, need);
-                const codes = await this.invoiceService.getAttachedMarkCodesForMigration(
-                    cand.realpricecode,
-                    gc,
-                    take,
-                    transaction,
-                );
-                for (const { ki } of codes) {
-                    await this.invoiceService.detachMarkCode(ki, cand.realpricecode, ss, transaction);
-                }
-                await this.invoiceService.decrementPodbpos(cand.podbposcode, take, transaction);
-                for (const { ki } of codes) {
-                    await this.invoiceService.reattachMarkCodeTransferred(ki, newRpc, gc, ss, transaction);
-                }
-                need -= take;
-            }
-
-            if (need > 0) {
-                await this.invoiceService.deltaGood(gc, need, clusterFrom || warehouseName, transaction);
-                this.emitFboShortage(posting, gc, need, warehouseName, clusterFrom);
-            }
+        const shortages = await this.migrationService.migrate(
+            posting.products,
+            newRpcs,
+            prims,
+            transaction,
+        );
+        for (const s of shortages) {
+            await this.invoiceService.deltaGood(
+                s.goodscode,
+                s.quantity,
+                clusterFrom || warehouseName,
+                transaction,
+            );
+            this.emitFboShortage(posting, s.goodscode, s.quantity, warehouseName, clusterFrom);
         }
 
         await this.invoiceService.update(invoice, { IGK: 'NOT1C' }, transaction);

@@ -11,6 +11,7 @@ import { FetchOrdersByStickerCommand } from './commands/fetch-orders-by-sticker.
 import { FetchTransactionsCommand } from './commands/fetch-transactions.command';
 import { SelectBestIdCommand } from './commands/select-best-id.command';
 import { FetchInvoiceByRemarkCommand } from './commands/fetch-invoice-by-remark.command';
+import { FboMarkMigrationService } from '../posting.fbo/fbo-mark-migration.service';
 import { clearRateLimitCache } from '../helpers/decorators/rate-limit.decorator';
 
 describe('WbOrderService', () => {
@@ -25,24 +26,44 @@ describe('WbOrderService', () => {
     const pickupInvoice = jest.fn();
     const getTransaction = jest.fn();
     const commit = jest.fn();
+    const rollback = jest.fn();
     const updatePrim = jest.fn();
     const getByPosting = jest.fn();
     const getAttachedMarkCodesByScode = jest.fn();
     const getKmFullByKi = jest.fn();
+    const findFboPodbposCandidates = jest.fn();
+    const findRealpriceCodes = jest.fn();
+    const getAttachedMarkCodesForMigration = jest.fn();
+    const detachMarkCode = jest.fn();
+    const decrementPodbpos = jest.fn();
+    const reattachMarkCodeTransferred = jest.fn();
+    const getStorageSS = jest.fn();
+    let markCodesEnabled = false;
     const fetchSalesByStickerExecute = jest.fn();
     const fetchOrdersByStickerExecute = jest.fn();
     const fetchTransactionsExecute = jest.fn();
     const selectBestIdExecute = jest.fn();
     const fetchInvoiceByRemarkExecute = jest.fn();
-    getTransaction.mockResolvedValue({ commit });
+    getTransaction.mockResolvedValue({ commit, rollback });
 
     beforeEach(async () => {
         // Clear rate limit cache before each test to prevent timeouts
         clearRateLimitCache();
+        markCodesEnabled = false;
+        getStorageSS.mockReturnValue(1);
+        [
+            findFboPodbposCandidates,
+            findRealpriceCodes,
+            getAttachedMarkCodesForMigration,
+            detachMarkCode,
+            decrementPodbpos,
+            reattachMarkCodeTransferred,
+        ].forEach((m) => m.mockReset());
 
         module = await Test.createTestingModule({
             providers: [
                 WbOrderService,
+                FboMarkMigrationService,
                 {
                     provide: INVOICE_SERVICE,
                     useValue: {
@@ -56,6 +77,13 @@ describe('WbOrderService', () => {
                         getByPosting,
                         getAttachedMarkCodesByScode,
                         getKmFullByKi,
+                        findFboPodbposCandidates,
+                        findRealpriceCodes,
+                        getAttachedMarkCodesForMigration,
+                        detachMarkCode,
+                        decrementPodbpos,
+                        reattachMarkCodeTransferred,
+                        getStorageSS,
                     },
                 },
                 {
@@ -64,7 +92,12 @@ describe('WbOrderService', () => {
                 },
                 {
                     provide: ConfigService,
-                    useValue: { get: () => 123456 },
+                    useValue: {
+                        get: (key: string) => {
+                            if (key === 'MARK_CODES_ENABLED') return markCodesEnabled;
+                            return 123456;
+                        },
+                    },
                 },
                 {
                     provide: EventEmitter2,
@@ -359,7 +392,7 @@ describe('WbOrderService', () => {
                 quantity: 1,
             },
             'WBFBO',
-            { commit },
+            { commit, rollback },
         ]);
         expect(createInvoiceFromPostingDto.mock.calls[0]).toEqual([
             123456,
@@ -375,10 +408,161 @@ describe('WbOrderService', () => {
                 ],
                 status: 'fbo',
             },
-            { commit },
+            { commit, rollback },
         ]);
-        expect(pickupInvoice.mock.calls[0]).toEqual(['invoice', { commit }]);
+        expect(pickupInvoice.mock.calls[0]).toEqual(['invoice', { commit, rollback }]);
         expect(commit.mock.calls).toHaveLength(1);
+    });
+
+    describe('addFboOrders — mark migration (flag on)', () => {
+        beforeEach(() => {
+            markCodesEnabled = true;
+            unPickupOzonFbo.mockReset();
+            pickupInvoice.mockReset();
+            createInvoiceFromPostingDto.mockReset();
+            isExists.mockReset();
+            commit.mockClear();
+            emit.mockClear();
+        });
+
+        const mockOrders = () => {
+            method
+                .mockResolvedValueOnce([
+                    { srid: '3', totalPrice: 100, supplierArticle: '111', date: '2026-01-01' },
+                ])
+                .mockResolvedValueOnce({ orders: [] });
+        };
+
+        it('кандидатов нет → continue, invoice не создан, миграция не вызвана', async () => {
+            mockOrders();
+            isExists.mockResolvedValueOnce(false);
+            findFboPodbposCandidates.mockResolvedValueOnce([]);
+
+            const ok = await service.addFboOrders();
+
+            expect(ok).toBe(true);
+            expect(findFboPodbposCandidates.mock.calls[0]).toEqual([
+                '111', ['WBFBO'], { commit, rollback },
+            ]);
+            expect(createInvoiceFromPostingDto).not.toHaveBeenCalled();
+            expect(unPickupOzonFbo).not.toHaveBeenCalled();
+            expect(pickupInvoice).not.toHaveBeenCalled();
+            expect(detachMarkCode).not.toHaveBeenCalled();
+            expect(reattachMarkCodeTransferred).not.toHaveBeenCalled();
+            expect(emit).not.toHaveBeenCalled();
+        });
+
+        it('happy path: кандидат → createInvoice → migrate (DETACH/REATTACH) → pickupInvoice → emit', async () => {
+            mockOrders();
+            isExists.mockResolvedValueOnce(false);
+            // findFboPodbposCandidates зовётся дважды: 1) pre-check в WbOrderService, 2) внутри migrate
+            const cand = { podbposcode: 1001, scode: 100, realpricecode: 100, quanAvail: 1, prim: 'WBFBO' };
+            findFboPodbposCandidates
+                .mockResolvedValueOnce([cand])
+                .mockResolvedValueOnce([cand]);
+            createInvoiceFromPostingDto.mockResolvedValueOnce({ id: 999 });
+            findRealpriceCodes.mockResolvedValueOnce([300]);
+            getAttachedMarkCodesForMigration.mockResolvedValueOnce([{ ki: 'K1' }]);
+
+            await service.addFboOrders();
+
+            expect(createInvoiceFromPostingDto).toHaveBeenCalledTimes(1);
+            expect(createInvoiceFromPostingDto.mock.calls[0][0]).toBe(123456);
+            expect(createInvoiceFromPostingDto.mock.calls[0][1].posting_number).toBe('3');
+            expect(findRealpriceCodes).toHaveBeenCalledWith(999, { commit, rollback });
+            expect(detachMarkCode).toHaveBeenCalledWith('K1', 100, 1, { commit, rollback });
+            expect(decrementPodbpos).toHaveBeenCalledWith(1001, 1, { commit, rollback });
+            expect(reattachMarkCodeTransferred).toHaveBeenCalledWith('K1', 300, '111', 1, { commit, rollback });
+            expect(pickupInvoice).toHaveBeenCalledWith({ id: 999 }, { commit, rollback });
+            expect(unPickupOzonFbo).not.toHaveBeenCalled();
+            expect(emit).toHaveBeenCalledWith(
+                'wb.order.content',
+                'Добавлены WB FBO заказы',
+                [{ prim: '3', offer_id: '111' }],
+            );
+        });
+
+        it('pre-check видит кандидата, а migrate уже нет (race) → warn в лог, не падаем', async () => {
+            mockOrders();
+            isExists.mockResolvedValueOnce(false);
+            // 1-й вызов из pre-check — кандидат есть; 2-й из migrate — пусто
+            findFboPodbposCandidates
+                .mockResolvedValueOnce([
+                    { podbposcode: 1001, scode: 100, realpricecode: 100, quanAvail: 1, prim: 'WBFBO' },
+                ])
+                .mockResolvedValueOnce([]);
+            createInvoiceFromPostingDto.mockResolvedValueOnce({ id: 999 });
+            findRealpriceCodes.mockResolvedValueOnce([300]);
+            const warnSpy = jest.spyOn(service['logger'], 'warn').mockImplementation(() => undefined);
+
+            const ok = await service.addFboOrders();
+
+            expect(ok).toBe(true);
+            expect(warnSpy).toHaveBeenCalled();
+            expect(warnSpy.mock.calls[0][0]).toContain('WB FBO migration: unexpected shortage on 3');
+            expect(pickupInvoice).toHaveBeenCalledWith({ id: 999 }, { commit, rollback });
+            warnSpy.mockRestore();
+        });
+
+        it('wh-service-podmena всегда пропускается до checkов миграции', async () => {
+            method
+                .mockResolvedValueOnce([
+                    { srid: '3', totalPrice: 100, supplierArticle: 'wh-service-podmena', date: '2026-01-01' },
+                ])
+                .mockResolvedValueOnce({ orders: [] });
+            isExists.mockResolvedValueOnce(false);
+
+            await service.addFboOrders();
+
+            expect(findFboPodbposCandidates).not.toHaveBeenCalled();
+            expect(createInvoiceFromPostingDto).not.toHaveBeenCalled();
+        });
+
+        // Defensive regression tests: транзакция должна commit'ится на happy path и rollback'аться
+        // на любой ошибке. Защита от случайной правки try/catch вокруг цикла или удаления rollback.
+        it('happy path: транзакция commit (rollback НЕ вызывался)', async () => {
+            mockOrders();
+            isExists.mockResolvedValueOnce(false);
+            const cand = { podbposcode: 1001, scode: 100, realpricecode: 100, quanAvail: 1, prim: 'WBFBO' };
+            findFboPodbposCandidates
+                .mockResolvedValueOnce([cand])
+                .mockResolvedValueOnce([cand]);
+            createInvoiceFromPostingDto.mockResolvedValueOnce({ id: 999 });
+            findRealpriceCodes.mockResolvedValueOnce([300]);
+            getAttachedMarkCodesForMigration.mockResolvedValueOnce([{ ki: 'K1' }]);
+            rollback.mockClear();
+            commit.mockClear();
+
+            const ok = await service.addFboOrders();
+
+            expect(ok).toBe(true);
+            expect(commit).toHaveBeenCalledTimes(1);
+            expect(rollback).not.toHaveBeenCalled();
+        });
+
+        it('ошибка внутри migrate → rollback вызывается, commit НЕ вызывается, return false', async () => {
+            mockOrders();
+            isExists.mockResolvedValueOnce(false);
+            const cand = { podbposcode: 1001, scode: 100, realpricecode: 100, quanAvail: 1, prim: 'WBFBO' };
+            findFboPodbposCandidates
+                .mockResolvedValueOnce([cand])
+                .mockResolvedValueOnce([cand]);
+            createInvoiceFromPostingDto.mockResolvedValueOnce({ id: 999 });
+            findRealpriceCodes.mockResolvedValueOnce([300]);
+            getAttachedMarkCodesForMigration.mockResolvedValueOnce([{ ki: 'K1' }]);
+            // detach падает внутри миграции
+            detachMarkCode.mockRejectedValueOnce(new Error('DB lock'));
+            rollback.mockClear();
+            commit.mockClear();
+            const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);
+
+            const ok = await service.addFboOrders();
+
+            expect(ok).toBe(false);
+            expect(rollback).toHaveBeenCalledWith(true);
+            expect(commit).not.toHaveBeenCalled();
+            logSpy.mockRestore();
+        });
     });
 
     it('checkCanceledOrders', async () => {

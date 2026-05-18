@@ -31,6 +31,8 @@ import { RateLimit, setRateLimitBlocked } from '../helpers/decorators/rate-limit
 import { IMarkSubmittable, SubmitFailureDto, SubmitResultDto } from '../interfaces/IMarkSubmittable';
 import { WbOrderMetaDto } from './dto/wb.order.meta.dto';
 import { WbOrderSetKizRequestDto } from './dto/wb.order.set-kiz.dto';
+import { FboMarkMigrationService } from '../posting.fbo/fbo-mark-migration.service';
+import { goodCode, isMarkCodesEnabled } from '../helpers';
 
 @Injectable()
 export class WbOrderService implements IOrderable, IMarkSubmittable {
@@ -46,6 +48,7 @@ export class WbOrderService implements IOrderable, IMarkSubmittable {
         private readonly fetchTransactionsCommand: FetchTransactionsCommand,
         private readonly selectBestIdCommand: SelectBestIdCommand,
         private readonly fetchInvoiceByRemarkCommand: FetchInvoiceByRemarkCommand,
+        private readonly migrationService: FboMarkMigrationService,
     ) {
         this.postingDtos = new Map<string, PostingDto>();
     }
@@ -106,6 +109,7 @@ export class WbOrderService implements IOrderable, IMarkSubmittable {
         const transaction = await this.invoiceService.getTransaction();
         const buyerId = this.getBuyerId();
         const addFboOrders: WbFboOrder[] = [];
+        const useMigration = this.isMarkCodesEnabled();
         try {
             for (const order of newFboOrders) {
                 if (order.supplierArticle === 'wh-service-podmena') continue;
@@ -114,25 +118,39 @@ export class WbOrderService implements IOrderable, IMarkSubmittable {
                     offer_id: order.supplierArticle,
                     quantity: 1,
                 };
-                const res = await this.invoiceService.unPickupOzonFbo(product, 'WBFBO', transaction);
-                if (!res) {
-                    continue;
-                    // Ощущуение что много левых
-                    // const id = goodCode(product);
-                    // const quantity = product.quantity * goodQuantityCoeff(product);
-                    // await this.invoiceService.deltaGood(id, quantity, 'WBFBO', transaction);
+                const posting: PostingDto = {
+                    posting_number: order.srid,
+                    status: 'fbo',
+                    in_process_at: order.date,
+                    products: [product],
+                };
+                if (useMigration) {
+                    // Pre-check: «левые» заказы без подбора — пропуск без создания invoice (legacy WB-spec)
+                    const candidates = await this.invoiceService.findFboPodbposCandidates(
+                        goodCode(product), ['WBFBO'], transaction,
+                    );
+                    if (candidates.length === 0) continue;
+                    const invoice = await this.invoiceService.createInvoiceFromPostingDto(
+                        buyerId, posting, transaction,
+                    );
+                    const newRpcs = await this.invoiceService.findRealpriceCodes(invoice.id, transaction);
+                    const shortages = await this.migrationService.migrate(
+                        [product], newRpcs, ['WBFBO'], transaction,
+                    );
+                    if (shortages.length > 0) {
+                        this.logger.warn(
+                            `WB FBO migration: unexpected shortage on ${order.srid}: ${JSON.stringify(shortages)}`,
+                        );
+                    }
+                    await this.invoiceService.pickupInvoice(invoice, transaction);
+                } else {
+                    const res = await this.invoiceService.unPickupOzonFbo(product, 'WBFBO', transaction);
+                    if (!res) continue;
+                    const invoice = await this.invoiceService.createInvoiceFromPostingDto(
+                        buyerId, posting, transaction,
+                    );
+                    await this.invoiceService.pickupInvoice(invoice, transaction);
                 }
-                const invoice = await this.invoiceService.createInvoiceFromPostingDto(
-                    buyerId,
-                    {
-                        posting_number: order.srid,
-                        status: 'fbo',
-                        in_process_at: order.date,
-                        products: [product],
-                    },
-                    transaction,
-                );
-                await this.invoiceService.pickupInvoice(invoice, transaction);
                 addFboOrders.push(order);
             }
             await transaction.commit(true);
@@ -149,6 +167,10 @@ export class WbOrderService implements IOrderable, IMarkSubmittable {
             console.log(e);
             return false;
         }
+    }
+
+    private isMarkCodesEnabled(): boolean {
+        return isMarkCodesEnabled(this.configService);
     }
 
     @Cron('0 */5 * * * *', { name: 'checkCanceledWbOrders' })
