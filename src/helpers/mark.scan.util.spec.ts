@@ -16,18 +16,18 @@ describe('extractKi', () => {
         expect(extractKi(KI + 'ABCD')).toBe(KI);
     });
 
-    it('обрезает по AI 91 (>= позиция 31)', () => {
-        const long = KI + '91EE06';
+    it('обрезает крипто-хвост по паре 91(ключ)92', () => {
+        const long = KI + '91EE0692dGVzdA';
         expect(extractKi(long)).toBe(KI);
     });
 
-    it('обрезает по AI 92 (>= позиция 31)', () => {
-        const long = KI + '92dGVzdA';
+    it('ключ между 91 и 92 — любые 4 символа', () => {
+        const long = KI + '91ZZ0092base64crypto';
         expect(extractKi(long)).toBe(KI);
     });
 
-    it('берёт самый ранний из 91/92', () => {
-        const long = KI + '92aa91bb';
+    it('режет по первой встреченной паре 91..92', () => {
+        const long = KI + '91AAAA9291BBBB92';
         expect(extractKi(long)).toBe(KI);
     });
 
