@@ -15,7 +15,7 @@ import { GoodServiceEnum } from '../good/good.service.enum';
 import { FirebirdTransaction } from "ts-firebird";
 import { PostingDto } from "../posting/dto/posting.dto";
 import { find } from 'lodash';
-import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
+import { ProcessedCacheService } from '../processed-cache/processed-cache.service';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { OZON_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -41,7 +41,7 @@ export class OrderService {
         private wbOrder: WbOrderService,
         private wbCustomer: WbCustomerService,
         private configService: ConfigService,
-        @Inject(CACHE_MANAGER) private cacheManager: Cache,
+        private processedCache: ProcessedCacheService,
         private eventEmitter: EventEmitter2,
     ) {
         const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
@@ -182,30 +182,14 @@ export class OrderService {
         processor: (item: T) => Promise<void>,
         flushers: (() => Promise<void>)[],
     ): Promise<void> {
-        const serviceName = service.constructor.name;
-        const cacheKey = `processed:${cacheName}:${serviceName}`;
-        const cacheTtlDays = this.configService.get<number>('CACHE_TTL_DAYS', 14);
-
-        // Redis хранит строку с разделителями, конвертируем в Set
-        const cachedString = await this.cacheManager.get<string>(cacheKey) || '';
-        const processedSet = new Set<string>(cachedString ? cachedString.split(',') : []);
-
-        for (const item of items) {
-            if (processedSet.has(item.posting_number)) {
-                continue;
-            }
-            await processor(item);
-            processedSet.add(item.posting_number);
-        }
-
-        // Запись в Redis откладывается до успешного commit транзакции
-        flushers.push(async () => {
-            await this.cacheManager.set(
-                cacheKey,
-                Array.from(processedSet).join(','),
-                cacheTtlDays * 24 * 60 * 60 * 1000,
-            );
-        });
+        await this.processedCache.process(
+            cacheName,
+            service.constructor.name,
+            items,
+            (item) => item.posting_number,
+            processor,
+            flushers,
+        );
     }
 
     async deliveryOrders(

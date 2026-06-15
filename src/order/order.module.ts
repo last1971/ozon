@@ -8,6 +8,7 @@ import { YandexOrderModule } from '../yandex.order/yandex.order.module';
 import { PostingFboModule } from '../posting.fbo/posting.fbo.module';
 import { WbOrderModule } from '../wb.order/wb.order.module';
 import { WbCustomerModule } from '../wb.customer/wb.customer.module';
+import { ProcessedCacheModule } from '../processed-cache/processed-cache.module';
 
 @Module({
     imports: [
@@ -18,6 +19,7 @@ import { WbCustomerModule } from '../wb.customer/wb.customer.module';
         PostingFboModule,
         WbOrderModule,
         WbCustomerModule,
+        ProcessedCacheModule,
     ],
     providers: [OrderService],
     controllers: [OrderController],

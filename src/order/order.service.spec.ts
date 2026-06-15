@@ -10,6 +10,7 @@ import { WbCustomerService } from '../wb.customer/wb.customer.service';
 import { ConfigService } from '@nestjs/config';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
+import { ProcessedCacheService } from '../processed-cache/processed-cache.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
 describe('OrderService', () => {
@@ -168,6 +169,7 @@ describe('OrderService', () => {
                         set: cacheSet,
                     },
                 },
+                ProcessedCacheService,
                 {
                     provide: EventEmitter2,
                     useValue: {

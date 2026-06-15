@@ -12,6 +12,7 @@ import { FetchTransactionsCommand } from './commands/fetch-transactions.command'
 import { SelectBestIdCommand } from './commands/select-best-id.command';
 import { FetchInvoiceByRemarkCommand } from './commands/fetch-invoice-by-remark.command';
 import { FboMarkMigrationService } from '../posting.fbo/fbo-mark-migration.service';
+import { ProcessedCacheService } from '../processed-cache/processed-cache.service';
 import { clearRateLimitCache } from '../helpers/decorators/rate-limit.decorator';
 
 describe('WbOrderService', () => {
@@ -44,6 +45,8 @@ describe('WbOrderService', () => {
     const fetchTransactionsExecute = jest.fn();
     const selectBestIdExecute = jest.fn();
     const fetchInvoiceByRemarkExecute = jest.fn();
+    const processedCacheLoad = jest.fn();
+    const processedCacheSave = jest.fn();
     getTransaction.mockResolvedValue({ commit, rollback });
 
     beforeEach(async () => {
@@ -123,12 +126,20 @@ describe('WbOrderService', () => {
                     provide: FetchInvoiceByRemarkCommand,
                     useValue: { execute: fetchInvoiceByRemarkExecute },
                 },
+                {
+                    provide: ProcessedCacheService,
+                    useValue: { load: processedCacheLoad, save: processedCacheSave, process: jest.fn() },
+                },
             ],
         }).compile();
         method.mockClear();
         createInvoiceFromPostingDto.mockClear();
         commit.mockClear();
         isExists.mockClear();
+        unPickupOzonFbo.mockClear();
+        updatePrim.mockClear();
+        processedCacheLoad.mockReset().mockImplementation(async () => new Set<string>());
+        processedCacheSave.mockReset().mockResolvedValue(undefined);
         getByPosting.mockClear();
         getAttachedMarkCodesByScode.mockReset();
         getKmFullByKi.mockReset();
@@ -412,6 +423,24 @@ describe('WbOrderService', () => {
         ]);
         expect(pickupInvoice.mock.calls[0]).toEqual(['invoice', { commit, rollback }]);
         expect(commit.mock.calls).toHaveLength(1);
+        // srid '3' помечен обработанным и сохранён после commit
+        expect(processedCacheSave).toHaveBeenCalledWith('fbo-orders', 'WbOrderService', new Set(['3']));
+    });
+
+    it('addFboOrders: srid уже в кеше → invoice не создаётся', async () => {
+        processedCacheLoad.mockImplementationOnce(async () => new Set(['3']));
+        method
+            .mockResolvedValueOnce([
+                { srid: '3', totalPrice: 112, supplierArticle: '111', date: '2011-11-11' },
+            ])
+            .mockResolvedValueOnce({ orders: [] });
+        isExists.mockResolvedValue(false);
+
+        await service.addFboOrders();
+
+        expect(createInvoiceFromPostingDto).not.toHaveBeenCalled();
+        expect(unPickupOzonFbo).not.toHaveBeenCalled();
+        expect(processedCacheSave).toHaveBeenCalledWith('fbo-orders', 'WbOrderService', new Set(['3']));
     });
 
     describe('addFboOrders — mark migration (flag on)', () => {
@@ -586,6 +615,25 @@ describe('WbOrderService', () => {
         expect(updatePrim.mock.calls).toHaveLength(2);
         expect(updatePrim.mock.calls[0]).toEqual(['1', '1 возврат WBFBO', null]);
         expect(updatePrim.mock.calls[1]).toEqual(['14', '14 возврат WBFBO', null]);
+        // обработанные prim сохранены в кеш
+        expect(processedCacheSave).toHaveBeenCalledWith(
+            'fbo-cancellations', 'WbOrderService', new Set(['1', '14']),
+        );
+    });
+
+    it('checkCanceledOrders: prim уже в кеше → updatePrim не вызывается', async () => {
+        processedCacheLoad.mockImplementationOnce(async () => new Set(['1']));
+        method
+            .mockResolvedValueOnce([{ srid: '1', isCancel: true, date: '2019-11-11' }])
+            .mockResolvedValueOnce({ orders: [] });
+
+        await service.checkCanceledOrders();
+
+        expect(isExists).not.toHaveBeenCalled();
+        expect(updatePrim).not.toHaveBeenCalled();
+        expect(processedCacheSave).toHaveBeenCalledWith(
+            'fbo-cancellations', 'WbOrderService', new Set(['1']),
+        );
     });
 
     it('transformToPostingDto', async () => {
