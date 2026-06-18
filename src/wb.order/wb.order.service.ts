@@ -32,6 +32,7 @@ import { IMarkSubmittable, SubmitFailureDto, SubmitResultDto } from '../interfac
 import { WbOrderMetaDto } from './dto/wb.order.meta.dto';
 import { WbOrderSetKizRequestDto } from './dto/wb.order.set-kiz.dto';
 import { FboMarkMigrationService } from '../posting.fbo/fbo-mark-migration.service';
+import { ProcessedCacheService } from '../processed-cache/processed-cache.service';
 import { goodCode, isMarkCodesEnabled } from '../helpers';
 
 @Injectable()
@@ -49,6 +50,7 @@ export class WbOrderService implements IOrderable, IMarkSubmittable {
         private readonly selectBestIdCommand: SelectBestIdCommand,
         private readonly fetchInvoiceByRemarkCommand: FetchInvoiceByRemarkCommand,
         private readonly migrationService: FboMarkMigrationService,
+        private readonly processedCache: ProcessedCacheService,
     ) {
         this.postingDtos = new Map<string, PostingDto>();
     }
@@ -102,10 +104,13 @@ export class WbOrderService implements IOrderable, IMarkSubmittable {
     @Cron('0 */5 * * * *', { name: 'checkFboWbOrders' })
     async addFboOrders(): Promise<boolean> {
         const allFboOrders = await this.getOnlyFboOrders(7);
+        const processed = await this.processedCache.load('fbo-orders', WbOrderService.name);
         const oldFboOrders: boolean[] = await Promise.all(
             allFboOrders.map((order) => this.invoiceService.isExists(order.srid, null)),
         );
-        const newFboOrders = allFboOrders.filter((order, index) => !oldFboOrders[index] && !order.isCancel);
+        const newFboOrders = allFboOrders.filter(
+            (order, index) => !processed.has(order.srid) && !oldFboOrders[index] && !order.isCancel,
+        );
         const transaction = await this.invoiceService.getTransaction();
         const buyerId = this.getBuyerId();
         const addFboOrders: WbFboOrder[] = [];
@@ -152,8 +157,11 @@ export class WbOrderService implements IOrderable, IMarkSubmittable {
                     await this.invoiceService.pickupInvoice(invoice, transaction);
                 }
                 addFboOrders.push(order);
+                processed.add(order.srid);
             }
             await transaction.commit(true);
+            // Запись в Redis только после успешного commit
+            await this.processedCache.save('fbo-orders', WbOrderService.name, processed);
             if (addFboOrders.length > 0) {
                 this.eventEmitter.emit(
                     'wb.order.content',
@@ -184,6 +192,7 @@ export class WbOrderService implements IOrderable, IMarkSubmittable {
                 .map((date) => DateTime.fromISO(date).toUnixInteger()),
         );
         const orders = await this.list(dateFrom);
+        const processed = await this.processedCache.load('fbo-cancellations', WbOrderService.name);
         const offerIds = new Map<string, string>();
         const prims: string[] = allCanceledFboOrders.map((order) => {
             const fbs = orders.find((o) => o.rid === order.srid);
@@ -192,12 +201,18 @@ export class WbOrderService implements IOrderable, IMarkSubmittable {
             return prim;
         });
         for (const prim of prims) {
+            if (processed.has(prim)) {
+                offerIds.delete(prim);
+                continue;
+            }
             if (await this.invoiceService.isExists(prim, null)) {
                 await this.invoiceService.updatePrim(prim, prim + ' возврат WBFBO', null);
+                processed.add(prim);
             } else {
                 offerIds.delete(prim);
             }
         }
+        await this.processedCache.save('fbo-cancellations', WbOrderService.name, processed);
         if (offerIds.size > 0) {
             this.eventEmitter.emit(
                 'wb.order.content',

@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from "@nestjs/common";
+import { Inject, Injectable, Logger, OnApplicationBootstrap } from "@nestjs/common";
 import { ProductService } from "../product/product.service";
 import { YandexOfferService } from "../yandex.offer/yandex.offer.service";
 import { ExpressOfferService } from "../yandex.offer/express.offer.service";
@@ -9,12 +9,13 @@ import { GOOD_SERVICE, IGood } from "../interfaces/IGood";
 import { ICountUpdateable } from "../interfaces/ICountUpdatebale";
 import { GoodServiceEnum } from "./good.service.enum";
 import { ResultDto } from "../helpers/dto/result.dto";
-import { OnEvent } from "@nestjs/event-emitter";
+import { EventEmitter2, OnEvent } from "@nestjs/event-emitter";
 import { IsSwitchedDto } from "./dto/is.switched.dto";
 import { chunk } from "lodash";
 import { Cron } from "@nestjs/schedule";
 import { GoodDto } from "./dto/good.dto";
 import { ConfigService } from "@nestjs/config";
+import { Environment } from "../env.validation";
 import { ProductInfoDto } from "../product/dto/product.info.dto";
 import { GoodsCountProcessor } from "../helpers/good/goods.count.processor";
 import Excel from 'exceljs';
@@ -23,7 +24,7 @@ import { GoodAvitoDto } from "./dto/good.avito.dto";
 import { GoodPercentDto } from "./dto/good.percent.dto";
 
 @Injectable()
-export class ExtraGoodService {
+export class ExtraGoodService implements OnApplicationBootstrap {
     private logger = new Logger(ExtraGoodService.name);
     private services: Map<GoodServiceEnum, { service: ICountUpdateable; isSwitchedOn: boolean }>;
     constructor(
@@ -35,6 +36,7 @@ export class ExtraGoodService {
         private syliusProduct: SyliusProductService,
         @Inject(GOOD_SERVICE) private goodService: IGood,
         private configService: ConfigService,
+        private eventEmitter: EventEmitter2,
     ) {
         this.services = new Map<GoodServiceEnum, { service: ICountUpdateable; isSwitchedOn: boolean }>();
         const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
@@ -121,6 +123,17 @@ export class ExtraGoodService {
         return count;
     }
 
+    async onApplicationBootstrap(): Promise<void> {
+        if (this.configService.get<Environment>('NODE_ENV') !== 'production') {
+            return;
+        }
+        // Загружаем все сервисы параллельно — они независимы (свой маркетплейс, свой skuList, свой ключ Map).
+        // loadSkuList сам ловит падение и наружу не бросает; allSettled — подстраховка от неожиданного throw.
+        await Promise.allSettled(
+            Array.from(this.services.keys()).map((serviceEnum) => this.loadSkuList(serviceEnum)),
+        );
+    }
+
     async loadSkuList(serviceEnum: GoodServiceEnum): Promise<ResultDto> {
         const service = this.services.get(serviceEnum);
         if (!service) {
@@ -130,7 +143,23 @@ export class ExtraGoodService {
             };
         }
         if (service.isSwitchedOn) {
-            await service.service.loadSkuList();
+            try {
+                await service.service.loadSkuList();
+            } catch (error) {
+                service.isSwitchedOn = false;
+                const subject = `Сервис ${serviceEnum} отключён: ошибка загрузки SKU`;
+                let message = error.message;
+                if (error.response?.data) {
+                    try {
+                        message += '\nОтвет: ' + JSON.stringify(error.response.data);
+                    } catch {
+                        // тело ответа не сериализуется — оставляем только error.message
+                    }
+                }
+                this.logger.error(`${subject}. ${message}`);
+                this.eventEmitter.emit('error.message', subject, message);
+                return { isSuccess: false, message: subject };
+            }
         }
         return {
             isSuccess: service.isSwitchedOn,

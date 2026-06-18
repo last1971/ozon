@@ -4,7 +4,6 @@ import { WbApiService } from '../wb.api/wb.api.service';
 import { VaultService } from 'vault-module/lib/vault.service';
 import { chrtIdVendorCodePairs } from '../helpers';
 import { WbCardDto } from './dto/wb.card.dto';
-import { Environment } from '../env.validation';
 import { ConfigService } from '@nestjs/config';
 import { WbCardAnswerDto } from './dto/wb.card.answer.dto';
 import { GoodServiceEnum } from '../good/good.service.enum';
@@ -64,7 +63,6 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
         }
         const wb = await this.vault.get('wildberries');
         this.warehouseId = wb.WAREHOUSE_ID as number;
-        await this.loadSkuList(this.configService.get<Environment>('NODE_ENV') === 'production');
     }
 
     public getNmID(sku: string): string {

@@ -8,9 +8,10 @@ import { FetchOrdersByStickerCommand } from './commands/fetch-orders-by-sticker.
 import { FetchTransactionsCommand } from './commands/fetch-transactions.command';
 import { SelectBestIdCommand } from './commands/select-best-id.command';
 import { FetchInvoiceByRemarkCommand } from './commands/fetch-invoice-by-remark.command';
+import { ProcessedCacheModule } from '../processed-cache/processed-cache.module';
 
 @Module({
-    imports: [WbApiModule, InvoiceModule, PostingFboModule],
+    imports: [WbApiModule, InvoiceModule, PostingFboModule, ProcessedCacheModule],
     providers: [
         WbOrderService,
         FetchSalesByStickerCommand,
