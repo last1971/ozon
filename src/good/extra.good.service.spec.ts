@@ -9,6 +9,7 @@ import { SyliusProductService } from "../sylius/sylius.product.service";
 import { ExtraGoodService } from "./extra.good.service";
 import { GoodServiceEnum } from "./good.service.enum";
 import { ConfigService } from "@nestjs/config";
+import { EventEmitter2 } from "@nestjs/event-emitter";
 import { GoodsCountProcessor } from "../helpers/good/goods.count.processor";
 import Excel from 'exceljs';
 
@@ -25,6 +26,7 @@ describe('ExtraGoodService', () => {
     const getGoodIds = jest.fn().mockResolvedValue(
         { goods: new Map<string, number>(), nextArgs: '' },
     );
+    const emit = jest.fn();
     beforeEach(async () => {
         jest.clearAllMocks();
 
@@ -38,7 +40,8 @@ describe('ExtraGoodService', () => {
                 { provide: WbCardService, useValue: { loadSkuList, skuList: ["111"], updateGoodCounts, getGoodIds } },
                 { provide: AvitoCardService, useValue: { skuList: [], updateGoodCounts, getGoodIds } },
                 { provide: SyliusProductService, useValue: { skuList: [], updateGoodCounts, getGoodIds } },
-                { provide: ConfigService, useValue: { get: () => Object.values(GoodServiceEnum) } }
+                { provide: ConfigService, useValue: { get: () => Object.values(GoodServiceEnum) } },
+                { provide: EventEmitter2, useValue: { emit } },
             ],
         }).compile();
 
@@ -90,6 +93,27 @@ describe('ExtraGoodService', () => {
         await service.serviceIsSwitchedOn({ service: GoodServiceEnum.YANDEX, isSwitchedOn: false });
         await service.loadSkuList(GoodServiceEnum.YANDEX);
         expect(loadSkuList.mock.calls).toHaveLength(1);
+    });
+
+    it("loadSkuList отключает сервис и шлёт письмо при падении", async () => {
+        const err: any = new Error("boom");
+        err.response = { data: { message: "Некорректный формат входных параметров" } };
+        loadSkuList.mockRejectedValueOnce(err);
+
+        const res = await service.loadSkuList(GoodServiceEnum.WB);
+
+        expect(res.isSuccess).toBe(false);
+        expect(emit).toHaveBeenCalledWith(
+            'error.message',
+            expect.stringContaining('wb'),
+            expect.stringContaining('Некорректный формат входных параметров'),
+        );
+
+        // сервис отключён → повторный вызов не дёргает loadSkuList и возвращает "is switched off"
+        loadSkuList.mockClear();
+        const res2 = await service.loadSkuList(GoodServiceEnum.WB);
+        expect(loadSkuList).not.toHaveBeenCalled();
+        expect(res2.message).toContain('is switched off');
     });
 
     it("countsChanged", async () => {

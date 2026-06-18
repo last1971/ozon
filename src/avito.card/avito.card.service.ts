@@ -1,4 +1,4 @@
-import { Injectable, Inject, OnModuleInit } from '@nestjs/common';
+import { Injectable, Inject } from '@nestjs/common';
 import { ICountUpdateable, GoodCountsDto } from '../interfaces/ICountUpdatebale';
 import { IProductable } from '../interfaces/i.productable';
 import { ProductInfoDto } from '../product/dto/product.info.dto';
@@ -6,11 +6,9 @@ import { AvitoApiService } from '../avito.api/avito.api.service';
 import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
 import { chunk } from 'lodash';
 import { ConfigService } from '@nestjs/config';
-import { GoodServiceEnum } from '../good/good.service.enum';
-import { Environment } from '../env.validation';
 
 @Injectable()
-export class AvitoCardService extends ICountUpdateable implements IProductable, OnModuleInit {
+export class AvitoCardService extends ICountUpdateable implements IProductable {
     private skuAvitoIdPair: Map<string, string> = new Map<string, string>();
     constructor(
         private readonly api: AvitoApiService,
@@ -18,14 +16,6 @@ export class AvitoCardService extends ICountUpdateable implements IProductable, 
         private readonly configService: ConfigService,
     ) {
         super();
-    }
-
-    async onModuleInit(): Promise<void> {
-        const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
-        if (!services.includes(GoodServiceEnum.AVITO)) {
-            return;
-        }
-        await this.loadSkuList(this.configService.get<Environment>('NODE_ENV') === 'production');
     }
 
     // Load and map SKUs to Avito item IDs; return nextArgs for pagination if applicable

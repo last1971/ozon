@@ -37,28 +37,6 @@ describe('SyliusProductService', () => {
         expect(service).toBeDefined();
     });
 
-    describe('onModuleInit', () => {
-        it('should not load SKU list if SYLIUS not in SERVICES', async () => {
-            configService.get.mockReturnValue([GoodServiceEnum.OZON]);
-            const loadSkuListSpy = jest.spyOn(service, 'loadSkuList');
-
-            await service.onModuleInit();
-
-            expect(loadSkuListSpy).not.toHaveBeenCalled();
-        });
-
-        it('should load SKU list in production', async () => {
-            configService.get
-                .mockReturnValueOnce([GoodServiceEnum.SYLIUS])
-                .mockReturnValueOnce('production');
-            const loadSkuListSpy = jest.spyOn(service, 'loadSkuList').mockResolvedValue();
-
-            await service.onModuleInit();
-
-            expect(loadSkuListSpy).toHaveBeenCalledWith(true);
-        });
-    });
-
     describe('getGoodIds', () => {
         it('should fetch variants and return only numeric codes', async () => {
             apiService.method.mockResolvedValue({

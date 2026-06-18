@@ -15,7 +15,6 @@ import { GoodCountsDto, ICountUpdateable } from '../interfaces/ICountUpdatebale'
 import { StockType } from './stock.type';
 import { PostingsFboRequestDto } from '../posting.fbo/dto/postings.fbo.request.dto';
 import { PostingDto } from '../posting/dto/posting.dto';
-import { Environment } from '../env.validation';
 import { ConfigService } from '@nestjs/config';
 import { ProductFilterDto } from "./dto/product.filter.dto";
 import { ProductInfoDto } from "./dto/product.info.dto";
@@ -40,7 +39,6 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
         super();
     }
     async onModuleInit(): Promise<void> {
-        await this.loadSkuList(this.configService.get<Environment>('NODE_ENV') === 'production');
         const ozon = await this.vaultService.get('ozon');
         this.warehouseId = ozon.STORE as number;
     }

@@ -43,42 +43,6 @@ describe('AvitoCardService', () => {
         expect(service).toBeDefined();
     });
 
-    describe('onModuleInit', () => {
-        it('should not initialize if AVITO service is not in config', async () => {
-            configService.get.mockReturnValue([GoodServiceEnum.WB, GoodServiceEnum.OZON]);
-            const loadSkuListSpy = jest.spyOn(service, 'loadSkuList');
-
-            await service.onModuleInit();
-
-            expect(configService.get).toHaveBeenCalledWith('SERVICES', []);
-            expect(loadSkuListSpy).not.toHaveBeenCalled();
-        });
-
-        it('should initialize and load sku list in production', async () => {
-            configService.get
-                .mockReturnValueOnce([GoodServiceEnum.AVITO])
-                .mockReturnValueOnce('production');
-            const loadSkuListSpy = jest.spyOn(service, 'loadSkuList').mockResolvedValue();
-
-            await service.onModuleInit();
-
-            expect(configService.get).toHaveBeenCalledWith('SERVICES', []);
-            expect(configService.get).toHaveBeenCalledWith('NODE_ENV');
-            expect(loadSkuListSpy).toHaveBeenCalledWith(true);
-        });
-
-        it('should initialize and load sku list in development', async () => {
-            configService.get
-                .mockReturnValueOnce([GoodServiceEnum.AVITO])
-                .mockReturnValueOnce('development');
-            const loadSkuListSpy = jest.spyOn(service, 'loadSkuList').mockResolvedValue();
-
-            await service.onModuleInit();
-
-            expect(loadSkuListSpy).toHaveBeenCalledWith(false);
-        });
-    });
-
     describe('getStock', () => {
         it('should call avito api with correct parameters', async () => {
             const mockResponse = {
