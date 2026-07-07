@@ -481,7 +481,7 @@ describe('WbOrderService', () => {
             expect(emit).not.toHaveBeenCalled();
         });
 
-        it('happy path: кандидат → createInvoice → migrate (DETACH/REATTACH) → pickupInvoice → emit', async () => {
+        it('happy path: кандидат → createInvoice → migrate (только PODBPOS) → pickupInvoice → emit', async () => {
             mockOrders();
             isExists.mockResolvedValueOnce(false);
             // findFboPodbposCandidates зовётся дважды: 1) pre-check в WbOrderService, 2) внутри migrate
@@ -490,18 +490,14 @@ describe('WbOrderService', () => {
                 .mockResolvedValueOnce([cand])
                 .mockResolvedValueOnce([cand]);
             createInvoiceFromPostingDto.mockResolvedValueOnce({ id: 999 });
-            findRealpriceCodes.mockResolvedValueOnce([300]);
-            getAttachedMarkCodesForMigration.mockResolvedValueOnce([{ ki: 'K1' }]);
 
             await service.addFboOrders();
 
             expect(createInvoiceFromPostingDto).toHaveBeenCalledTimes(1);
             expect(createInvoiceFromPostingDto.mock.calls[0][0]).toBe(123456);
             expect(createInvoiceFromPostingDto.mock.calls[0][1].posting_number).toBe('3');
-            expect(findRealpriceCodes).toHaveBeenCalledWith(999, { commit, rollback });
-            expect(detachMarkCode).toHaveBeenCalledWith('K1', 100, 1, { commit, rollback });
+            // коды при FBO-переезде не трогаем (они уже в УПД-2) — только PODBPOS
             expect(decrementPodbpos).toHaveBeenCalledWith(1001, 1, { commit, rollback });
-            expect(reattachMarkCodeTransferred).toHaveBeenCalledWith('K1', 300, '111', 1, { commit, rollback });
             expect(pickupInvoice).toHaveBeenCalledWith({ id: 999 }, { commit, rollback });
             expect(unPickupOzonFbo).not.toHaveBeenCalled();
             expect(emit).toHaveBeenCalledWith(
@@ -521,7 +517,6 @@ describe('WbOrderService', () => {
                 ])
                 .mockResolvedValueOnce([]);
             createInvoiceFromPostingDto.mockResolvedValueOnce({ id: 999 });
-            findRealpriceCodes.mockResolvedValueOnce([300]);
             const warnSpy = jest.spyOn(service['logger'], 'warn').mockImplementation(() => undefined);
 
             const ok = await service.addFboOrders();
@@ -557,8 +552,6 @@ describe('WbOrderService', () => {
                 .mockResolvedValueOnce([cand])
                 .mockResolvedValueOnce([cand]);
             createInvoiceFromPostingDto.mockResolvedValueOnce({ id: 999 });
-            findRealpriceCodes.mockResolvedValueOnce([300]);
-            getAttachedMarkCodesForMigration.mockResolvedValueOnce([{ ki: 'K1' }]);
             rollback.mockClear();
             commit.mockClear();
 
@@ -577,10 +570,8 @@ describe('WbOrderService', () => {
                 .mockResolvedValueOnce([cand])
                 .mockResolvedValueOnce([cand]);
             createInvoiceFromPostingDto.mockResolvedValueOnce({ id: 999 });
-            findRealpriceCodes.mockResolvedValueOnce([300]);
-            getAttachedMarkCodesForMigration.mockResolvedValueOnce([{ ki: 'K1' }]);
-            // detach падает внутри миграции
-            detachMarkCode.mockRejectedValueOnce(new Error('DB lock'));
+            // decrementPodbpos падает внутри миграции
+            decrementPodbpos.mockRejectedValueOnce(new Error('DB lock'));
             rollback.mockClear();
             commit.mockClear();
             const logSpy = jest.spyOn(console, 'log').mockImplementation(() => undefined);

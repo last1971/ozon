@@ -138,9 +138,8 @@ export class WbOrderService implements IOrderable, IMarkSubmittable {
                     const invoice = await this.invoiceService.createInvoiceFromPostingDto(
                         buyerId, posting, transaction,
                     );
-                    const newRpcs = await this.invoiceService.findRealpriceCodes(invoice.id, transaction);
                     const shortages = await this.migrationService.migrate(
-                        [product], newRpcs, ['WBFBO'], transaction,
+                        [product], ['WBFBO'], transaction,
                     );
                     if (shortages.length > 0) {
                         this.logger.warn(

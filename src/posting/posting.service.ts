@@ -280,7 +280,7 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
             };
         }
 
-        const attachedByProduct = new Map<number, { ki: string; mark: string }[]>();
+        const attachedByProduct = new Map<number, { ki: string; mark: string; quantity: number }[]>();
         for (const a of attached) {
             const mark = kmFullByKi.get(a.ki);
             if (!mark) continue;
@@ -290,7 +290,7 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
                 continue;
             }
             if (!attachedByProduct.has(productId)) attachedByProduct.set(productId, []);
-            attachedByProduct.get(productId).push({ ki: a.ki, mark });
+            attachedByProduct.get(productId).push({ ki: a.ki, mark, quantity: a.quantity });
         }
 
         const setProducts: ExemplarSetProductDto[] = [];
@@ -298,10 +298,22 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         for (const exProduct of exResp.products as ExemplarProductDto[]) {
             const group = attachedByProduct.get(exProduct.product_id) ?? [];
             if (group.length === 0) continue;
-            if (group.length !== exProduct.quantity) {
+            // экземпляры Ozon штучные: количественный КМ (QUANTITY>1) сюда не ложится
+            const multi = group.find((g) => g.quantity > 1);
+            if (multi) {
+                failed.push({
+                    ki: multi.ki,
+                    reason:
+                        `количественный КМ (x${multi.quantity}): Ozon FBS требует штучные экземпляры — ` +
+                        'поделите код (MARKCODE_SPLIT / деление в ЛК ЧЗ)',
+                });
+                continue;
+            }
+            const qtySum = group.reduce((s, g) => s + g.quantity, 0);
+            if (qtySum !== exProduct.quantity) {
                 failed.push({
                     ki: '*',
-                    reason: `product_id ${exProduct.product_id}: КМ ${group.length}, ожидается ${exProduct.quantity}`,
+                    reason: `product_id ${exProduct.product_id}: КМ на ${qtySum} шт, ожидается ${exProduct.quantity}`,
                 });
                 continue;
             }

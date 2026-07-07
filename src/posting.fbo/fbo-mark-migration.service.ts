@@ -9,39 +9,26 @@ import { FboShortageDto } from './dto/fbo-shortage.dto';
 export class FboMarkMigrationService {
     constructor(@Inject(INVOICE_SERVICE) private invoiceService: IInvoice) {}
 
+    // Коды при FBO-переезде НЕ трогаем: они уже ушли в УПД-2 (TT=2, retired).
+    // Переезжает только количество в подборке (PODBPOS).
     async migrate(
         products: ProductPostingDto[],
-        newRpcs: number[],
         prims: string[],
         transaction: FirebirdTransaction,
     ): Promise<FboShortageDto[]> {
-        const ss = this.invoiceService.getStorageSS();
         const shortages: FboShortageDto[] = [];
 
         for (let i = 0; i < products.length; i++) {
             const product = products[i];
             const gc = goodCode(product);
             let need = product.quantity * goodQuantityCoeff(product);
-            const newRpc = newRpcs[i];
             const candidates = await this.invoiceService.findFboPodbposCandidates(gc, prims, transaction);
 
             for (const cand of candidates) {
                 if (need === 0) break;
                 const take = Math.min(cand.quanAvail, need);
                 if (take === 0) continue;
-                const codes = await this.invoiceService.getAttachedMarkCodesForMigration(
-                    cand.realpricecode,
-                    gc,
-                    take,
-                    transaction,
-                );
-                for (const { ki } of codes) {
-                    await this.invoiceService.detachMarkCode(ki, cand.realpricecode, ss, transaction);
-                }
                 await this.invoiceService.decrementPodbpos(cand.podbposcode, take, transaction);
-                for (const { ki } of codes) {
-                    await this.invoiceService.reattachMarkCodeTransferred(ki, newRpc, gc, ss, transaction);
-                }
                 need -= take;
             }
 

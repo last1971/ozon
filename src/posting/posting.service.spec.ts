@@ -269,7 +269,7 @@ describe('PostingService', () => {
 
         it('возвращает failed если все KM_FULL пусты', async () => {
             getAttachedMarkCodesByScode.mockResolvedValueOnce([
-                { ki: 'KI-1', goodscode: '531557', realpricecode: 1 },
+                { ki: 'KI-1', goodscode: '531557', realpricecode: 1, quantity: 1 },
             ]);
             getKmFullByKi.mockResolvedValueOnce(null);
             const res = await service.submitFbsMarkCodes(invoice);
@@ -280,7 +280,7 @@ describe('PostingService', () => {
 
         it('happy path: createOrGet → getMap → set → poll done → ship → ok=true', async () => {
             getAttachedMarkCodesByScode.mockResolvedValueOnce([
-                { ki: 'KI-1', goodscode: '531557', realpricecode: 1 },
+                { ki: 'KI-1', goodscode: '531557', realpricecode: 1, quantity: 1 },
             ]);
             getKmFullByKi.mockResolvedValueOnce('01FULL-MARK-1');
             ozonApiMethod
@@ -339,9 +339,36 @@ describe('PostingService', () => {
             });
         });
 
+        it('количественный КМ (quantity>1) → failed с подсказкой про деление', async () => {
+            getAttachedMarkCodesByScode.mockResolvedValueOnce([
+                { ki: 'KI-50', goodscode: '531557', realpricecode: 1, quantity: 50 },
+            ]);
+            getKmFullByKi.mockResolvedValueOnce('01FULL-MARK-50');
+            ozonApiMethod
+                .mockResolvedValueOnce({
+                    posting_number: 'P-1',
+                    multi_box_qty: 1,
+                    products: [
+                        {
+                            product_id: 999,
+                            quantity: 50,
+                            is_mandatory_mark_needed: true,
+                            exemplars: [{ exemplar_id: 111, marks: [] }],
+                        },
+                    ],
+                })
+                .mockResolvedValueOnce({
+                    result: { products: [{ offer_id: '531557', sku: 999 }] },
+                });
+            const res = await service.submitFbsMarkCodes(invoice);
+            expect(res.ok).toBe(false);
+            expect(res.failed[0].ki).toBe('KI-50');
+            expect(res.failed[0].reason).toContain('поделите код');
+        });
+
         it('createOrGet вернул пустой ответ → skipRetry=true', async () => {
             getAttachedMarkCodesByScode.mockResolvedValueOnce([
-                { ki: 'KI-1', goodscode: '531557', realpricecode: 1 },
+                { ki: 'KI-1', goodscode: '531557', realpricecode: 1, quantity: 1 },
             ]);
             getKmFullByKi.mockResolvedValueOnce('01FULL');
             ozonApiMethod.mockResolvedValueOnce({ result: null, error: { message: 'Not found' } });
@@ -352,7 +379,7 @@ describe('PostingService', () => {
 
         it('goodscode не найден в posting → failed запись', async () => {
             getAttachedMarkCodesByScode.mockResolvedValueOnce([
-                { ki: 'KI-1', goodscode: 'WRONG', realpricecode: 1 },
+                { ki: 'KI-1', goodscode: 'WRONG', realpricecode: 1, quantity: 1 },
             ]);
             getKmFullByKi.mockResolvedValueOnce('01FULL');
             ozonApiMethod
@@ -378,7 +405,7 @@ describe('PostingService', () => {
 
         it('poll status=ship_not_available → ok=false', async () => {
             getAttachedMarkCodesByScode.mockResolvedValueOnce([
-                { ki: 'KI-1', goodscode: '531557', realpricecode: 1 },
+                { ki: 'KI-1', goodscode: '531557', realpricecode: 1, quantity: 1 },
             ]);
             getKmFullByKi.mockResolvedValueOnce('01FULL');
             ozonApiMethod
@@ -410,7 +437,7 @@ describe('PostingService', () => {
         it('dry-run для FBS-MIG-* в development не вызывает Ozon', async () => {
             nodeEnv = 'development';
             getAttachedMarkCodesByScode.mockResolvedValueOnce([
-                { ki: 'KI-1', goodscode: '531557', realpricecode: 1 },
+                { ki: 'KI-1', goodscode: '531557', realpricecode: 1, quantity: 1 },
             ]);
             getKmFullByKi.mockResolvedValueOnce('01FULL');
             const res = await service.submitFbsMarkCodes({

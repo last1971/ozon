@@ -513,25 +513,6 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         return candidates;
     }
 
-    async getAttachedMarkCodesForMigration(
-        realpricecode: number,
-        goodscode: string,
-        limit: number,
-        transaction: FirebirdTransaction = null,
-    ): Promise<{ ki: string }[]> {
-        if (limit <= 0) return [];
-        const t = transaction ?? (await this.getTransaction());
-        const rows = await t.query(
-            `SELECT FIRST ${limit} KI FROM MARKCODES ` +
-                'WHERE REALPRICECODE = ? AND GOODSCODE = ? ' +
-                'AND TRANSFER_TYPE IN (0, 2, 3) ' +
-                'AND REALPRICEFCODE IS NULL AND SHOPLOGCODE IS NULL AND SPISID IS NULL',
-            [realpricecode, goodscode],
-            !transaction,
-        );
-        return rows.map((r) => ({ ki: r.KI }));
-    }
-
     async decrementPodbpos(
         podbposcode: number,
         take: number,
@@ -544,29 +525,6 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             [take, podbposcode],
             !transaction,
         );
-    }
-
-    async detachMarkCode(
-        ki: string,
-        oldRpc: number,
-        s_s: 0 | 1,
-        transaction: FirebirdTransaction = null,
-    ): Promise<void> {
-        const t = transaction ?? (await this.getTransaction());
-        await t.execute('EXECUTE PROCEDURE MARKCODE_DETACH_FROM_REALPRICE (?, ?, ?)', [ki, oldRpc, s_s]);
-        if (!transaction) await t.commit(true);
-    }
-
-    async reattachMarkCodeTransferred(
-        ki: string,
-        newRpc: number,
-        gc: string,
-        s_s: 0 | 1,
-        transaction: FirebirdTransaction = null,
-    ): Promise<void> {
-        const t = transaction ?? (await this.getTransaction());
-        await t.execute('EXECUTE PROCEDURE MARKCODE_REATTACH_TRANSFERRED (?, ?, ?, ?)', [ki, newRpc, gc, s_s]);
-        if (!transaction) await t.commit(true);
     }
 
     async attachMarkCodeForFbs(
@@ -609,13 +567,18 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         return res?.[0]?.FREE_COUNT ?? 0;
     }
 
-    async findGoodscodeByKi(
+    async getMarkCodeInfoByKi(
         ki: string,
         transaction: FirebirdTransaction = null,
-    ): Promise<string | null> {
+    ): Promise<{ goodscode: string; quantity: number } | null> {
         const t = transaction ?? (await this.getTransaction());
-        const res = await t.query('SELECT GOODSCODE FROM MARKCODES WHERE KI = ?', [ki], !transaction);
-        return res?.[0]?.GOODSCODE != null ? String(res[0].GOODSCODE) : null;
+        const res = await t.query(
+            'SELECT GOODSCODE, COALESCE(QUANTITY, 1) AS QUANTITY FROM MARKCODES WHERE KI = ?',
+            [ki],
+            !transaction,
+        );
+        if (res?.[0]?.GOODSCODE == null) return null;
+        return { goodscode: String(res[0].GOODSCODE), quantity: Number(res[0].QUANTITY) || 1 };
     }
 
     async getKmFullByKi(
@@ -653,10 +616,10 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
     async getAttachedMarkCodesByScode(
         scode: number,
         transaction: FirebirdTransaction = null,
-    ): Promise<{ ki: string; goodscode: string; realpricecode: number }[]> {
+    ): Promise<{ ki: string; goodscode: string; realpricecode: number; quantity: number }[]> {
         const t = transaction ?? (await this.getTransaction());
         const rows = await t.query(
-            'SELECT m.KI, m.GOODSCODE, m.REALPRICECODE FROM MARKCODES m ' +
+            'SELECT m.KI, m.GOODSCODE, m.REALPRICECODE, COALESCE(m.QUANTITY, 1) AS QUANTITY FROM MARKCODES m ' +
                 'JOIN REALPRICE rp ON rp.REALPRICECODE = m.REALPRICECODE ' +
                 'WHERE rp.SCODE = ? AND m.TRANSFER_TYPE = 3',
             [scode],
@@ -666,6 +629,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             ki: r.KI,
             goodscode: String(r.GOODSCODE),
             realpricecode: r.REALPRICECODE,
+            quantity: Number(r.QUANTITY) || 1,
         }));
     }
 

@@ -86,11 +86,9 @@ export class PostingFboService implements IOrderable {
         const prims = [warehouseName, clusterFrom, suffix].filter((p): p is string => Boolean(p));
 
         const invoice = await this.invoiceService.createInvoiceFromPostingDto(buyerId, posting, transaction);
-        const newRpcs = await this.invoiceService.findRealpriceCodes(invoice.id, transaction);
 
         const shortages = await this.migrationService.migrate(
             posting.products,
-            newRpcs,
             prims,
             transaction,
         );
