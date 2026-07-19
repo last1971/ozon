@@ -11,7 +11,7 @@ describe('MarkScanFbsService', () => {
     let service: MarkScanFbsService;
     const invoiceService = {
         getTransaction: jest.fn(),
-        findGoodscodeByKi: jest.fn(),
+        getMarkCodeInfoByKi: jest.fn(),
         attachMarkCodeForFbs: jest.fn(),
         detachMarkCodeForFbs: jest.fn(),
         getStorageSS: jest.fn(),
@@ -52,7 +52,7 @@ describe('MarkScanFbsService', () => {
 
     describe('scan', () => {
         it('happy path — gc найден, одна rpc, attach с правильными параметрами', async () => {
-            invoiceService.findGoodscodeByKi.mockResolvedValueOnce('444');
+            invoiceService.getMarkCodeInfoByKi.mockResolvedValueOnce({ goodscode: '444', quantity: 1 });
             invoiceService.getRealpriceLinesByScode.mockResolvedValue([
                 { realpricecode: 500, goodscode: '444', quantity: 2 },
             ]);
@@ -68,13 +68,13 @@ describe('MarkScanFbsService', () => {
         });
 
         it('две rpc одного gc, первая полна → выбрана вторая', async () => {
-            invoiceService.findGoodscodeByKi.mockResolvedValueOnce('444');
+            invoiceService.getMarkCodeInfoByKi.mockResolvedValueOnce({ goodscode: '444', quantity: 1 });
             invoiceService.getRealpriceLinesByScode.mockResolvedValue([
                 { realpricecode: 500, goodscode: '444', quantity: 1 },
                 { realpricecode: 501, goodscode: '444', quantity: 2 },
             ]);
             invoiceService.getAttachedMarkCodesByScode.mockResolvedValue([
-                { ki: 'OLD', goodscode: '444', realpricecode: 500 },
+                { ki: 'OLD', goodscode: '444', realpricecode: 500, quantity: 1 },
             ]);
             invoiceService.countFreeMarkCodesForGood.mockResolvedValue(2);
 
@@ -84,14 +84,14 @@ describe('MarkScanFbsService', () => {
         });
 
         it('КМ не найден → 404', async () => {
-            invoiceService.findGoodscodeByKi.mockResolvedValueOnce(null);
+            invoiceService.getMarkCodeInfoByKi.mockResolvedValueOnce(null);
             await expect(service.scan(invoice, KI)).rejects.toThrow(NotFoundException);
             expect(invoiceService.attachMarkCodeForFbs).not.toHaveBeenCalled();
             expect(tx.rollback).toHaveBeenCalled();
         });
 
         it('КМ от другого товара → 409', async () => {
-            invoiceService.findGoodscodeByKi.mockResolvedValueOnce('999');
+            invoiceService.getMarkCodeInfoByKi.mockResolvedValueOnce({ goodscode: '999', quantity: 1 });
             invoiceService.getRealpriceLinesByScode.mockResolvedValue([
                 { realpricecode: 500, goodscode: '444', quantity: 2 },
             ]);
@@ -101,18 +101,55 @@ describe('MarkScanFbsService', () => {
         });
 
         it('лимит исчерпан → 409', async () => {
-            invoiceService.findGoodscodeByKi.mockResolvedValueOnce('444');
+            invoiceService.getMarkCodeInfoByKi.mockResolvedValueOnce({ goodscode: '444', quantity: 1 });
             invoiceService.getRealpriceLinesByScode.mockResolvedValue([
                 { realpricecode: 500, goodscode: '444', quantity: 1 },
             ]);
             invoiceService.getAttachedMarkCodesByScode.mockResolvedValue([
-                { ki: 'OLD', goodscode: '444', realpricecode: 500 },
+                { ki: 'OLD', goodscode: '444', realpricecode: 500, quantity: 1 },
             ]);
             await expect(service.scan(invoice, KI)).rejects.toThrow(ConflictException);
         });
 
+        it('количественный код (x2) помещается в остаток строки → привязан', async () => {
+            invoiceService.getMarkCodeInfoByKi.mockResolvedValueOnce({ goodscode: '444', quantity: 2 });
+            invoiceService.getRealpriceLinesByScode.mockResolvedValue([
+                { realpricecode: 500, goodscode: '444', quantity: 2 },
+            ]);
+            invoiceService.getAttachedMarkCodesByScode.mockResolvedValue([]);
+            invoiceService.countFreeMarkCodesForGood.mockResolvedValue(2);
+
+            await service.scan(invoice, KI);
+
+            expect(invoiceService.attachMarkCodeForFbs).toHaveBeenCalledWith(KI, 500, '444', 0, KI, tx);
+        });
+
+        it('количественный код больше остатка строки → 409 с подсказкой про деление', async () => {
+            invoiceService.getMarkCodeInfoByKi.mockResolvedValueOnce({ goodscode: '444', quantity: 50 });
+            invoiceService.getRealpriceLinesByScode.mockResolvedValue([
+                { realpricecode: 500, goodscode: '444', quantity: 2 },
+            ]);
+            invoiceService.getAttachedMarkCodesByScode.mockResolvedValue([]);
+
+            await expect(service.scan(invoice, KI)).rejects.toThrow(/поделите код/);
+            expect(invoiceService.attachMarkCodeForFbs).not.toHaveBeenCalled();
+        });
+
+        it('прогресс в штуках: код x2 на строке из 2 закрывает её', async () => {
+            invoiceService.getRealpriceLinesByScode.mockResolvedValue([
+                { realpricecode: 500, goodscode: '444', quantity: 2 },
+            ]);
+            invoiceService.getAttachedMarkCodesByScode.mockResolvedValue([
+                { ki: 'Q2', goodscode: '444', realpricecode: 500, quantity: 2 },
+            ]);
+            invoiceService.countFreeMarkCodesForGood.mockResolvedValue(0);
+            const p = await service.getProgress(invoice);
+            expect(p.lines[0]).toMatchObject({ quantityScanned: 2, isComplete: true });
+            expect(p.isReadyToFinish).toBe(true);
+        });
+
         it('SP exception (повторный скан) → 409', async () => {
-            invoiceService.findGoodscodeByKi.mockResolvedValueOnce('444');
+            invoiceService.getMarkCodeInfoByKi.mockResolvedValueOnce({ goodscode: '444', quantity: 1 });
             invoiceService.getRealpriceLinesByScode.mockResolvedValue([
                 { realpricecode: 500, goodscode: '444', quantity: 5 },
             ]);
@@ -153,7 +190,7 @@ describe('MarkScanFbsService', () => {
                 { realpricecode: 500, goodscode: '444', quantity: 2 },
             ]);
             invoiceService.getAttachedMarkCodesByScode.mockResolvedValue([
-                { ki: 'A', goodscode: '444', realpricecode: 500 },
+                { ki: 'A', goodscode: '444', realpricecode: 500, quantity: 1 },
             ]);
             invoiceService.countFreeMarkCodesForGood.mockResolvedValue(2);
             const p = await service.getProgress(invoice);
@@ -170,7 +207,7 @@ describe('MarkScanFbsService', () => {
                 { realpricecode: 501, goodscode: '555', quantity: 1 },
             ]);
             invoiceService.getAttachedMarkCodesByScode.mockResolvedValue([
-                { ki: 'A', goodscode: '444', realpricecode: 500 },
+                { ki: 'A', goodscode: '444', realpricecode: 500, quantity: 1 },
             ]);
             invoiceService.countFreeMarkCodesForGood
                 .mockResolvedValueOnce(2)   // 444 — есть свободные
@@ -185,7 +222,7 @@ describe('MarkScanFbsService', () => {
     describe('unscan', () => {
         it('attached найден → detach с правильным rpc', async () => {
             invoiceService.getAttachedMarkCodesByScode
-                .mockResolvedValueOnce([{ ki: 'A', goodscode: '444', realpricecode: 500 }])
+                .mockResolvedValueOnce([{ ki: 'A', goodscode: '444', realpricecode: 500, quantity: 1 }])
                 .mockResolvedValue([]);
             invoiceService.getRealpriceLinesByScode.mockResolvedValue([
                 { realpricecode: 500, goodscode: '444', quantity: 1 },
@@ -223,7 +260,7 @@ describe('MarkScanFbsService', () => {
 
         it('scan → 409 без обращения к БД', async () => {
             await expect(service.scan(invoice, KI)).rejects.toThrow(ConflictException);
-            expect(invoiceService.findGoodscodeByKi).not.toHaveBeenCalled();
+            expect(invoiceService.getMarkCodeInfoByKi).not.toHaveBeenCalled();
             expect(invoiceService.attachMarkCodeForFbs).not.toHaveBeenCalled();
         });
 

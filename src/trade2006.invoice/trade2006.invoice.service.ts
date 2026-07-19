@@ -71,12 +71,17 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
                 ]);
             }
             await transaction.execute('UPDATE S SET STATUS = 3 WHERE SCODE = ?', [scode]);
+            const realpriceCodes = await this.findRealpriceCodes(scode, transaction);
+            const invoiceLines = invoice.invoiceLines.map((line, i) => ({
+                ...line,
+                realpricecode: realpriceCodes[i],
+            }));
             if (!t) await transaction.commit(true);
             this.eventEmitter.emit(
                 'reserve.created',
                 invoice.invoiceLines.map((line) => line.originalCode || line.goodCode),
             );
-            return { id: scode, status: 3, ...invoice };
+            return { id: scode, status: 3, ...invoice, invoiceLines };
         } catch (e) {
             this.logger.error(e.message);
             if (!t) await transaction.rollback(true);
@@ -480,56 +485,124 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         return res.map((r) => r.REALPRICECODE);
     }
 
+    // Живой код к переносу: не отгружен фактически, не продан в розницу, не списан,
+    // передан маркету (TT=2 обычный FBO, TT=3 подвисший FBS).
+    private static readonly LIVE_CODE_FILTER =
+        'm.REALPRICEFCODE IS NULL AND m.SHOPLOGCODE IS NULL AND m.SPISID IS NULL AND m.TRANSFER_TYPE IN (2, 3)';
+
     async findFboPodbposCandidates(
         goodscode: string,
         prims: string[],
+        nominal: number,
         transaction: FirebirdTransaction = null,
-    ): Promise<{ podbposcode: number; scode: number; realpricecode: number; quanAvail: number; prim: string }[]> {
+    ): Promise<{ podbposcode: number; scode: number; realpricecode: number; quanAvail: number; prim: string; cntNom: number; cntLive: number; cntTt3: number }[]> {
         if (prims.length === 0) return [];
         const t = transaction ?? (await this.getTransaction());
         const attribute = this.getStorageSS() === 1 ? 'SHOP' : 'SKLAD';
+        const live = Trade2006InvoiceService.LIVE_CODE_FILTER;
+        // Уровень склада считается в SQL: CONTAINING регистронезависим, JS includes() — нет.
+        const lvlCase =
+            'CASE ' + prims.map((_, i) => `WHEN s.PRIM CONTAINING ? THEN ${i} `).join('') + 'ELSE 99 END AS LVL';
         const containingClauses = prims.map(() => 's.PRIM CONTAINING ?').join(' OR ');
         const sql =
-            `SELECT pp.PODBPOSCODE, pp.SCODE, rp.REALPRICECODE, pp.QUAN${attribute} AS QUANAVAIL, s.PRIM ` +
+            `SELECT pp.PODBPOSCODE, pp.SCODE, rp.REALPRICECODE, pp.QUAN${attribute} AS QUANAVAIL, s.PRIM, ` +
+            `(SELECT COUNT(*) FROM MARKCODES m WHERE m.REALPRICECODE = rp.REALPRICECODE AND ${live} AND COALESCE(m.QUANTITY, 1) = ?) AS CNT_NOM, ` +
+            `(SELECT COUNT(*) FROM MARKCODES m WHERE m.REALPRICECODE = rp.REALPRICECODE AND ${live}) AS CNT_LIVE, ` +
+            `(SELECT COUNT(*) FROM MARKCODES m WHERE m.REALPRICECODE = rp.REALPRICECODE AND ${live} AND m.TRANSFER_TYPE = 3 AND COALESCE(m.QUANTITY, 1) = ?) AS CNT_TT3, ` +
+            `${lvlCase} ` +
             'FROM PODBPOS pp ' +
             'JOIN S s ON s.SCODE = pp.SCODE ' +
-            'JOIN REALPRICE rp ON rp.SCODE = pp.SCODE AND rp.GOODSCODE = pp.GOODSCODE ' +
-            `WHERE pp.GOODSCODE = ? AND pp.QUAN${attribute} > 0 AND s.STATUS = 1 AND (${containingClauses})`;
-        const rows = await t.query(sql, [goodscode, ...prims], !transaction);
+            'JOIN REALPRICE rp ON rp.REALPRICECODE = pp.REALPRICECODE ' +
+            `WHERE pp.GOODSCODE = ? AND pp.QUAN${attribute} > 0 AND pp.SKLAD_ID IS NULL AND s.STATUS = 1 AND (${containingClauses})`;
+        const rows = await t.query(sql, [nominal, nominal, ...prims, goodscode, ...prims], !transaction);
         const candidates = rows.map((r) => ({
             podbposcode: r.PODBPOSCODE,
             scode: r.SCODE,
             realpricecode: r.REALPRICECODE,
             quanAvail: r.QUANAVAIL,
             prim: r.PRIM,
+            cntNom: Number(r.CNT_NOM) || 0,
+            cntLive: Number(r.CNT_LIVE) || 0,
+            cntTt3: Number(r.CNT_TT3) || 0,
+            lvl: Number(r.LVL),
         }));
-        const priorityOf = (prim: string): number => {
-            for (let i = 0; i < prims.length; i++) {
-                if (prim && prim.includes(prims[i])) return i;
-            }
-            return prims.length;
-        };
-        candidates.sort((a, b) => priorityOf(a.prim) - priorityOf(b.prim));
+        // Ярусы: (а) есть живые коды нужного номинала (вперёд — с TT=3), (б) кодов нет, (в) чужой номинал.
+        const tierOf = (c: { cntNom: number; cntLive: number }): number =>
+            c.cntNom > 0 ? 0 : c.cntLive === 0 ? 1 : 2;
+        candidates.sort(
+            (a, b) => a.lvl - b.lvl || tierOf(a) - tierOf(b) || b.cntTt3 - a.cntTt3,
+        );
         return candidates;
     }
 
-    async getAttachedMarkCodesForMigration(
+    async findLiveMigratableCodes(
         realpricecode: number,
-        goodscode: string,
-        limit: number,
+        nominal: number,
         transaction: FirebirdTransaction = null,
     ): Promise<{ ki: string }[]> {
-        if (limit <= 0) return [];
         const t = transaction ?? (await this.getTransaction());
         const rows = await t.query(
-            `SELECT FIRST ${limit} KI FROM MARKCODES ` +
-                'WHERE REALPRICECODE = ? AND GOODSCODE = ? ' +
-                'AND TRANSFER_TYPE IN (0, 2, 3) ' +
-                'AND REALPRICEFCODE IS NULL AND SHOPLOGCODE IS NULL AND SPISID IS NULL',
-            [realpricecode, goodscode],
+            'SELECT m.KI FROM MARKCODES m WHERE m.REALPRICECODE = ? AND ' +
+                Trade2006InvoiceService.LIVE_CODE_FILTER +
+                ' AND COALESCE(m.QUANTITY, 1) = ? ORDER BY m.TRANSFER_TYPE DESC, m.MARKCODE',
+            [realpricecode, nominal],
             !transaction,
         );
-        return rows.map((r) => ({ ki: r.KI }));
+        return rows.map((r) => ({ ki: String(r.KI) }));
+    }
+
+    async migrateMarkCode(
+        ki: string,
+        oldRpc: number,
+        newRpc: number,
+        gc: string,
+        s_s: 0 | 1,
+        transaction: FirebirdTransaction = null,
+    ): Promise<void> {
+        const t = transaction ?? (await this.getTransaction());
+        await t.execute('EXECUTE PROCEDURE MARKCODE_MIGRATE (?, ?, ?, ?, ?)', [ki, oldRpc, newRpc, gc, s_s]);
+        if (!transaction) await t.commit(true);
+    }
+
+    async migratePodbpos(
+        oldPodbposcode: number,
+        newScode: number,
+        newRpc: number,
+        gc: string,
+        take: number,
+        transaction: FirebirdTransaction = null,
+    ): Promise<void> {
+        const t = transaction ?? (await this.getTransaction());
+        await t.execute('EXECUTE PROCEDURE PODBPOS_MIGRATE_QTY (?, ?, ?, ?, ?, ?)', [
+            oldPodbposcode,
+            newScode,
+            newRpc,
+            gc,
+            take,
+            this.getStorageSS(),
+        ]);
+        if (!transaction) await t.commit(true);
+    }
+
+    // Зачистка фантомного резерва счёта Б: create() (S.STATUS 0->3) через RESERVPOS6
+    // резервирует товар со свободного полочного остатка, хотя при FBO-миграции товар
+    // приезжает прямым переносом со счёта А. Снимаем резерв тем же путём, что S_AU1
+    // при закрытии счёта: DELETE RESERVEDPOS + зануление всех need + удаление пустых строк.
+    async clearInvoiceReserve(scode: number, transaction: FirebirdTransaction = null): Promise<void> {
+        const t = transaction ?? (await this.getTransaction());
+        await t.execute(
+            'DELETE FROM RESERVEDPOS WHERE REALPRICECODE IN (SELECT REALPRICECODE FROM REALPRICE WHERE SCODE = ?)',
+            [scode],
+        );
+        await t.execute(
+            'UPDATE PODBPOS SET QUANSKLADNEED = 0, QUANSHOPNEED = 0, QUANNEED = 0 WHERE SCODE = ?',
+            [scode],
+        );
+        await t.execute(
+            'DELETE FROM PODBPOS WHERE SCODE = ? AND QUANSKLAD = 0 AND QUANSHOP = 0 AND COALESCE(QUAN, 0) = 0',
+            [scode],
+        );
+        if (!transaction) await t.commit(true);
     }
 
     async decrementPodbpos(
@@ -544,29 +617,6 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             [take, podbposcode],
             !transaction,
         );
-    }
-
-    async detachMarkCode(
-        ki: string,
-        oldRpc: number,
-        s_s: 0 | 1,
-        transaction: FirebirdTransaction = null,
-    ): Promise<void> {
-        const t = transaction ?? (await this.getTransaction());
-        await t.execute('EXECUTE PROCEDURE MARKCODE_DETACH_FROM_REALPRICE (?, ?, ?)', [ki, oldRpc, s_s]);
-        if (!transaction) await t.commit(true);
-    }
-
-    async reattachMarkCodeTransferred(
-        ki: string,
-        newRpc: number,
-        gc: string,
-        s_s: 0 | 1,
-        transaction: FirebirdTransaction = null,
-    ): Promise<void> {
-        const t = transaction ?? (await this.getTransaction());
-        await t.execute('EXECUTE PROCEDURE MARKCODE_REATTACH_TRANSFERRED (?, ?, ?, ?)', [ki, newRpc, gc, s_s]);
-        if (!transaction) await t.commit(true);
     }
 
     async attachMarkCodeForFbs(
@@ -609,13 +659,18 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         return res?.[0]?.FREE_COUNT ?? 0;
     }
 
-    async findGoodscodeByKi(
+    async getMarkCodeInfoByKi(
         ki: string,
         transaction: FirebirdTransaction = null,
-    ): Promise<string | null> {
+    ): Promise<{ goodscode: string; quantity: number } | null> {
         const t = transaction ?? (await this.getTransaction());
-        const res = await t.query('SELECT GOODSCODE FROM MARKCODES WHERE KI = ?', [ki], !transaction);
-        return res?.[0]?.GOODSCODE != null ? String(res[0].GOODSCODE) : null;
+        const res = await t.query(
+            'SELECT GOODSCODE, COALESCE(QUANTITY, 1) AS QUANTITY FROM MARKCODES WHERE KI = ?',
+            [ki],
+            !transaction,
+        );
+        if (res?.[0]?.GOODSCODE == null) return null;
+        return { goodscode: String(res[0].GOODSCODE), quantity: Number(res[0].QUANTITY) || 1 };
     }
 
     async getKmFullByKi(
@@ -653,10 +708,10 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
     async getAttachedMarkCodesByScode(
         scode: number,
         transaction: FirebirdTransaction = null,
-    ): Promise<{ ki: string; goodscode: string; realpricecode: number }[]> {
+    ): Promise<{ ki: string; goodscode: string; realpricecode: number; quantity: number }[]> {
         const t = transaction ?? (await this.getTransaction());
         const rows = await t.query(
-            'SELECT m.KI, m.GOODSCODE, m.REALPRICECODE FROM MARKCODES m ' +
+            'SELECT m.KI, m.GOODSCODE, m.REALPRICECODE, COALESCE(m.QUANTITY, 1) AS QUANTITY FROM MARKCODES m ' +
                 'JOIN REALPRICE rp ON rp.REALPRICECODE = m.REALPRICECODE ' +
                 'WHERE rp.SCODE = ? AND m.TRANSFER_TYPE = 3',
             [scode],
@@ -666,6 +721,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             ki: r.KI,
             goodscode: String(r.GOODSCODE),
             realpricecode: r.REALPRICECODE,
+            quantity: Number(r.QUANTITY) || 1,
         }));
     }
 

@@ -24,17 +24,17 @@ export class MarkScanFbsService {
         const ki = extractKi(rawScan);
         const transaction = await this.invoiceService.getTransaction();
         try {
-            const goodscode = await this.invoiceService.findGoodscodeByKi(ki, transaction);
-            if (!goodscode) {
+            const info = await this.invoiceService.getMarkCodeInfoByKi(ki, transaction);
+            if (!info) {
                 await transaction.rollback(true);
                 throw new NotFoundException('КМ не найден в базе');
             }
-            const rpc = await this.pickTargetRpc(invoice.id, goodscode, transaction);
+            const rpc = await this.pickTargetRpc(invoice.id, info.goodscode, info.quantity, transaction);
             const ss = this.invoiceService.getStorageSS();
-            await this.invoiceService.attachMarkCodeForFbs(ki, rpc, goodscode, ss, rawScan.trim(), transaction);
+            await this.invoiceService.attachMarkCodeForFbs(ki, rpc, info.goodscode, ss, rawScan.trim(), transaction);
             await transaction.commit(true);
             return {
-                attached: { ki, goodscode, realpricecode: rpc },
+                attached: { ki, goodscode: info.goodscode, realpricecode: rpc },
                 progress: await this.getProgress(invoice),
             };
         } catch (e) {
@@ -76,13 +76,14 @@ export class MarkScanFbsService {
                 freeByGc.set(gc, await this.invoiceService.countFreeMarkCodesForGood(gc, transaction));
             }
 
+            // штуки (SUM QUANTITY), не число кодов: количественный КМ покрывает N штук
             const scannedByRpc = new Map<number, number>();
             for (const a of attached) {
-                scannedByRpc.set(a.realpricecode, (scannedByRpc.get(a.realpricecode) ?? 0) + 1);
+                scannedByRpc.set(a.realpricecode, (scannedByRpc.get(a.realpricecode) ?? 0) + a.quantity);
             }
             const scannedByGc = new Map<string, number>();
             for (const a of attached) {
-                scannedByGc.set(a.goodscode, (scannedByGc.get(a.goodscode) ?? 0) + 1);
+                scannedByGc.set(a.goodscode, (scannedByGc.get(a.goodscode) ?? 0) + a.quantity);
             }
 
             const progressLines: MarkScanProgressLineDto[] = lines.map((line) => {
@@ -117,6 +118,7 @@ export class MarkScanFbsService {
     private async pickTargetRpc(
         scode: number,
         goodscode: string,
+        codeQty: number,
         transaction: FirebirdTransaction,
     ): Promise<number> {
         const lines = await this.invoiceService.getRealpriceLinesByScode(scode, transaction);
@@ -127,11 +129,21 @@ export class MarkScanFbsService {
         const attached = await this.invoiceService.getAttachedMarkCodesByScode(scode, transaction);
         const scannedByRpc = new Map<number, number>();
         for (const a of attached) {
-            scannedByRpc.set(a.realpricecode, (scannedByRpc.get(a.realpricecode) ?? 0) + 1);
+            scannedByRpc.set(a.realpricecode, (scannedByRpc.get(a.realpricecode) ?? 0) + a.quantity);
         }
-        const target = matching.find((l) => (scannedByRpc.get(l.realpricecode) ?? 0) < l.quantity);
+        // код неделим: его QUANTITY должно целиком поместиться в остаток строки
+        const remainingOf = (l: { realpricecode: number; quantity: number }) =>
+            l.quantity - (scannedByRpc.get(l.realpricecode) ?? 0);
+        const target = matching.find((l) => remainingOf(l) >= codeQty);
         if (!target) {
-            throw new ConflictException('Лимит КМ для этого товара исчерпан');
+            const maxRemaining = Math.max(...matching.map(remainingOf));
+            if (maxRemaining <= 0) {
+                throw new ConflictException('Лимит КМ для этого товара исчерпан');
+            }
+            throw new ConflictException(
+                `Код на ${codeQty} шт не помещается в остаток строки (свободно ${maxRemaining} шт) — ` +
+                    'поделите код (MARKCODE_SPLIT / деление в ЛК ЧЗ)',
+            );
         }
         return target.realpricecode;
     }

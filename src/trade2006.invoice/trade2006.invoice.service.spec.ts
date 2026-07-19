@@ -80,6 +80,7 @@ describe('Trade2006InvoiceService', () => {
         query
             .mockResolvedValueOnce([{ MAX: 1, SUMMAP: 1, SCODE: 2, PRIM: '2-2' }])
             .mockResolvedValueOnce([{ GEN_ID: 2 }])
+            .mockResolvedValueOnce([{ REALPRICECODE: 10 }])
             .mockRejectedValueOnce({ message: 'Test error' });
         const date = new Date();
         let res = await service.create({
@@ -100,6 +101,8 @@ describe('Trade2006InvoiceService', () => {
             [1, DateTime.now().startOf('year').toISODate()],
         ]);
         expect(query.mock.calls[1]).toEqual(['SELECT GEN_ID(SCODE_GEN, 0) from rdb$database', []]);
+        // строки счёта возвращаются с realpricecode (S12: маппинг для миграции КМ)
+        expect(res.invoiceLines[0].realpricecode).toBe(10);
         expect(execute.mock.calls).toHaveLength(3);
         expect(commit.mock.calls).toHaveLength(1);
         expect(rollback.mock.calls).toHaveLength(0);
@@ -530,44 +533,92 @@ describe('Trade2006InvoiceService', () => {
             expect(query.mock.calls[0][1]).toEqual([100]);
         });
 
-        it('findFboPodbposCandidates — JOIN + sort по prim-приоритету', async () => {
+        it('findFboPodbposCandidates — уровень склада из SQL (LVL), внутри уровня ярусы по кодам', async () => {
+            // LVL считается в SQL (CONTAINING регистронезависим), ярусы — по счётчикам кодов
             query.mockResolvedValueOnce([
-                { PODBPOSCODE: 3003, SCODE: 300, REALPRICECODE: 300, QUANAVAIL: 1, PRIM: '777-1 отмена FBO' },
-                { PODBPOSCODE: 1001, SCODE: 100, REALPRICECODE: 100, QUANAVAIL: 1, PRIM: 'ПУШКИНО_1_РФЦ 555' },
-                { PODBPOSCODE: 2002, SCODE: 200, REALPRICECODE: 200, QUANAVAIL: 1, PRIM: 'Москва, МО и Дальние регионы 666' },
+                { PODBPOSCODE: 3003, SCODE: 300, REALPRICECODE: 300, QUANAVAIL: 1, PRIM: '777-1 отмена FBO', LVL: 2, CNT_NOM: 0, CNT_LIVE: 0, CNT_TT3: 0 },
+                { PODBPOSCODE: 1001, SCODE: 100, REALPRICECODE: 100, QUANAVAIL: 1, PRIM: 'ПУШКИНО_1_РФЦ 555', LVL: 0, CNT_NOM: 0, CNT_LIVE: 0, CNT_TT3: 0 },
+                { PODBPOSCODE: 2002, SCODE: 200, REALPRICECODE: 200, QUANAVAIL: 1, PRIM: 'Москва, МО и Дальние регионы 666', LVL: 1, CNT_NOM: 0, CNT_LIVE: 0, CNT_TT3: 0 },
             ]);
             const res = await service.findFboPodbposCandidates(
                 '444',
                 ['ПУШКИНО_1_РФЦ', 'Москва, МО и Дальние регионы', 'отмена FBO'],
+                1,
                 null,
             );
             expect(res.map((c) => c.podbposcode)).toEqual([1001, 2002, 3003]);
             const sql = query.mock.calls[0][0];
             expect(sql).toContain('s.PRIM CONTAINING ? OR s.PRIM CONTAINING ? OR s.PRIM CONTAINING ?');
+            expect(sql).toContain('CASE WHEN s.PRIM CONTAINING ? THEN 0');
+            expect(sql).toContain('rp.REALPRICECODE = pp.REALPRICECODE');
+            expect(sql).toContain('pp.SKLAD_ID IS NULL');
             expect(sql).toContain('QUANSHOP');
+            // параметры: nominal (CNT_NOM), nominal (CNT_TT3), prims для LVL, goodscode, prims для WHERE
+            expect(query.mock.calls[0][1]).toEqual([
+                1, 1,
+                'ПУШКИНО_1_РФЦ', 'Москва, МО и Дальние регионы', 'отмена FBO',
+                '444',
+                'ПУШКИНО_1_РФЦ', 'Москва, МО и Дальние регионы', 'отмена FBO',
+            ]);
+        });
+
+        it('findFboPodbposCandidates — ярусы: коды номинала → без кодов → чужой номинал; TT=3 вперёд', async () => {
+            query.mockResolvedValueOnce([
+                { PODBPOSCODE: 1, SCODE: 10, REALPRICECODE: 10, QUANAVAIL: 5, PRIM: 'W', LVL: 0, CNT_NOM: 0, CNT_LIVE: 2, CNT_TT3: 0 }, // ярус (в): чужой номинал
+                { PODBPOSCODE: 2, SCODE: 20, REALPRICECODE: 20, QUANAVAIL: 5, PRIM: 'W', LVL: 0, CNT_NOM: 1, CNT_LIVE: 1, CNT_TT3: 0 }, // ярус (а)
+                { PODBPOSCODE: 3, SCODE: 30, REALPRICECODE: 30, QUANAVAIL: 5, PRIM: 'W', LVL: 0, CNT_NOM: 0, CNT_LIVE: 0, CNT_TT3: 0 }, // ярус (б): без кодов
+                { PODBPOSCODE: 4, SCODE: 40, REALPRICECODE: 40, QUANAVAIL: 5, PRIM: 'W', LVL: 0, CNT_NOM: 2, CNT_LIVE: 2, CNT_TT3: 1 }, // ярус (а) + TT=3
+            ]);
+            const res = await service.findFboPodbposCandidates('444', ['W'], 5, null);
+            expect(res.map((c) => c.podbposcode)).toEqual([4, 2, 3, 1]);
         });
 
         it('findFboPodbposCandidates — пустой prims даёт []', async () => {
-            const res = await service.findFboPodbposCandidates('444', [], null);
+            const res = await service.findFboPodbposCandidates('444', [], 1, null);
             expect(res).toEqual([]);
             expect(query).not.toHaveBeenCalled();
         });
 
-        it('getAttachedMarkCodesForMigration — SQL и фильтр TT IN (0,2,3)', async () => {
-            query.mockResolvedValueOnce([{ KI: 'A' }, { KI: 'B' }]);
-            const res = await service.getAttachedMarkCodesForMigration(100, '444', 2, null);
-            expect(res).toEqual([{ ki: 'A' }, { ki: 'B' }]);
-            const [sql, params] = query.mock.calls[0];
-            expect(sql).toContain('SELECT FIRST 2 KI FROM MARKCODES');
-            expect(sql).toContain('TRANSFER_TYPE IN (0, 2, 3)');
-            expect(sql).toContain('REALPRICEFCODE IS NULL');
-            expect(params).toEqual([100, '444']);
+        it('findLiveMigratableCodes — живые коды номинала, TT=3 вперёд', async () => {
+            query.mockResolvedValueOnce([{ KI: 'KI-3' }, { KI: 'KI-1' }]);
+            const res = await service.findLiveMigratableCodes(100, 5, null);
+            expect(res).toEqual([{ ki: 'KI-3' }, { ki: 'KI-1' }]);
+            const sql = query.mock.calls[0][0];
+            expect(sql).toContain('m.REALPRICEFCODE IS NULL');
+            expect(sql).toContain('m.TRANSFER_TYPE IN (2, 3)');
+            expect(sql).toContain('COALESCE(m.QUANTITY, 1) = ?');
+            expect(sql).toContain('ORDER BY m.TRANSFER_TYPE DESC');
+            expect(query.mock.calls[0][1]).toEqual([100, 5]);
         });
 
-        it('getAttachedMarkCodesForMigration — limit=0 не делает SQL', async () => {
-            const res = await service.getAttachedMarkCodesForMigration(100, '444', 0, null);
-            expect(res).toEqual([]);
-            expect(query).not.toHaveBeenCalled();
+        it('migrateMarkCode — EXECUTE PROCEDURE MARKCODE_MIGRATE', async () => {
+            const t = { execute: jest.fn(), commit: jest.fn() };
+            await service.migrateMarkCode('KI-1', 100, 900, '444', 1, t as any);
+            expect(t.execute).toHaveBeenCalledWith(
+                'EXECUTE PROCEDURE MARKCODE_MIGRATE (?, ?, ?, ?, ?)',
+                ['KI-1', 100, 900, '444', 1],
+            );
+            expect(t.commit).not.toHaveBeenCalled();
+        });
+
+        it('migratePodbpos — EXECUTE PROCEDURE PODBPOS_MIGRATE_QTY (s_s из конфига)', async () => {
+            const t = { execute: jest.fn(), commit: jest.fn() };
+            await service.migratePodbpos(1001, 999, 900, '444', 10, t as any);
+            expect(t.execute).toHaveBeenCalledWith(
+                'EXECUTE PROCEDURE PODBPOS_MIGRATE_QTY (?, ?, ?, ?, ?, ?)',
+                [1001, 999, 900, '444', 10, 1],
+            );
+            expect(t.commit).not.toHaveBeenCalled();
+        });
+
+        it('clearInvoiceReserve — DELETE RESERVEDPOS + зануление need + удаление пустых строк', async () => {
+            const t = { execute: jest.fn(), commit: jest.fn() };
+            await service.clearInvoiceReserve(999, t as any);
+            expect(t.execute.mock.calls[0][0]).toContain('DELETE FROM RESERVEDPOS');
+            expect(t.execute.mock.calls[1][0]).toContain('QUANSKLADNEED = 0, QUANSHOPNEED = 0, QUANNEED = 0');
+            expect(t.execute.mock.calls[2][0]).toContain('DELETE FROM PODBPOS');
+            expect(t.execute.mock.calls.map((c) => c[1])).toEqual([[999], [999], [999]]);
+            expect(t.commit).not.toHaveBeenCalled();
         });
 
         it('decrementPodbpos — UPDATE QUANSHOP -= take', async () => {
@@ -579,25 +630,6 @@ describe('Trade2006InvoiceService', () => {
             ]);
         });
 
-        it('detachMarkCode — EXECUTE PROCEDURE MARKCODE_DETACH_FROM_REALPRICE', async () => {
-            const t = { execute: jest.fn(), commit: jest.fn() };
-            await service.detachMarkCode('A', 100, 1, t as any);
-            expect(t.execute).toHaveBeenCalledWith(
-                'EXECUTE PROCEDURE MARKCODE_DETACH_FROM_REALPRICE (?, ?, ?)',
-                ['A', 100, 1],
-            );
-            expect(t.commit).not.toHaveBeenCalled();
-        });
-
-        it('reattachMarkCodeTransferred — EXECUTE PROCEDURE MARKCODE_REATTACH_TRANSFERRED', async () => {
-            const t = { execute: jest.fn(), commit: jest.fn() };
-            await service.reattachMarkCodeTransferred('A', 300, '444', 1, t as any);
-            expect(t.execute).toHaveBeenCalledWith(
-                'EXECUTE PROCEDURE MARKCODE_REATTACH_TRANSFERRED (?, ?, ?, ?)',
-                ['A', 300, '444', 1],
-            );
-            expect(t.commit).not.toHaveBeenCalled();
-        });
     });
 
     describe('FBS mark scan helpers', () => {
@@ -637,19 +669,22 @@ describe('Trade2006InvoiceService', () => {
             expect(await service.countFreeMarkCodesForGood('444', null)).toBe(0);
         });
 
-        it('findGoodscodeByKi — найден', async () => {
-            query.mockResolvedValueOnce([{ GOODSCODE: 444 }]);
-            expect(await service.findGoodscodeByKi('KI-1', null)).toBe('444');
+        it('getMarkCodeInfoByKi — найден, QUANTITY из базы', async () => {
+            query.mockResolvedValueOnce([{ GOODSCODE: 444, QUANTITY: 50 }]);
+            expect(await service.getMarkCodeInfoByKi('KI-1', null)).toEqual({
+                goodscode: '444',
+                quantity: 50,
+            });
             expect(query.mock.calls[0]).toEqual([
-                'SELECT GOODSCODE FROM MARKCODES WHERE KI = ?',
+                'SELECT GOODSCODE, COALESCE(QUANTITY, 1) AS QUANTITY FROM MARKCODES WHERE KI = ?',
                 ['KI-1'],
                 true,
             ]);
         });
 
-        it('findGoodscodeByKi — не найден → null', async () => {
+        it('getMarkCodeInfoByKi — не найден → null', async () => {
             query.mockResolvedValueOnce([]);
-            expect(await service.findGoodscodeByKi('KI-X', null)).toBeNull();
+            expect(await service.getMarkCodeInfoByKi('KI-X', null)).toBeNull();
         });
 
         it('getKmFullByKi — возвращает полный rawScan', async () => {
@@ -711,19 +746,20 @@ describe('Trade2006InvoiceService', () => {
             expect(autoCommit).toBe(true);
         });
 
-        it('getAttachedMarkCodesByScode — JOIN с REALPRICE и фильтр TT=3', async () => {
+        it('getAttachedMarkCodesByScode — JOIN с REALPRICE, фильтр TT=3, QUANTITY в штуках', async () => {
             query.mockResolvedValueOnce([
-                { KI: 'A', GOODSCODE: 444, REALPRICECODE: 100 },
-                { KI: 'B', GOODSCODE: 444, REALPRICECODE: 100 },
+                { KI: 'A', GOODSCODE: 444, REALPRICECODE: 100, QUANTITY: 1 },
+                { KI: 'B', GOODSCODE: 444, REALPRICECODE: 100, QUANTITY: 50 },
             ]);
             const res = await service.getAttachedMarkCodesByScode(50, null);
             expect(res).toEqual([
-                { ki: 'A', goodscode: '444', realpricecode: 100 },
-                { ki: 'B', goodscode: '444', realpricecode: 100 },
+                { ki: 'A', goodscode: '444', realpricecode: 100, quantity: 1 },
+                { ki: 'B', goodscode: '444', realpricecode: 100, quantity: 50 },
             ]);
             const sql = query.mock.calls[0][0];
             expect(sql).toContain('JOIN REALPRICE');
             expect(sql).toContain('m.TRANSFER_TYPE = 3');
+            expect(sql).toContain('COALESCE(m.QUANTITY, 1)');
             expect(query.mock.calls[0][1]).toEqual([50]);
         });
 

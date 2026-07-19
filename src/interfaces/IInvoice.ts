@@ -26,23 +26,32 @@ export interface IInvoice {
     findFboPodbposCandidates(
         goodscode: string,
         prims: string[],
+        nominal: number,
         transaction: FirebirdTransaction,
-    ): Promise<{ podbposcode: number; scode: number; realpricecode: number; quanAvail: number; prim: string }[]>;
-    getAttachedMarkCodesForMigration(
+    ): Promise<{ podbposcode: number; scode: number; realpricecode: number; quanAvail: number; prim: string; cntNom: number; cntLive: number; cntTt3: number }[]>;
+    decrementPodbpos(podbposcode: number, take: number, transaction: FirebirdTransaction): Promise<void>;
+    findLiveMigratableCodes(
         realpricecode: number,
-        goodscode: string,
-        limit: number,
+        nominal: number,
         transaction: FirebirdTransaction,
     ): Promise<{ ki: string }[]>;
-    decrementPodbpos(podbposcode: number, take: number, transaction: FirebirdTransaction): Promise<void>;
-    detachMarkCode(ki: string, oldRpc: number, s_s: 0 | 1, transaction: FirebirdTransaction): Promise<void>;
-    reattachMarkCodeTransferred(
+    migrateMarkCode(
         ki: string,
+        oldRpc: number,
         newRpc: number,
         gc: string,
         s_s: 0 | 1,
         transaction: FirebirdTransaction,
     ): Promise<void>;
+    migratePodbpos(
+        oldPodbposcode: number,
+        newScode: number,
+        newRpc: number,
+        gc: string,
+        take: number,
+        transaction: FirebirdTransaction,
+    ): Promise<void>;
+    clearInvoiceReserve(scode: number, transaction: FirebirdTransaction): Promise<void>;
     attachMarkCodeForFbs(
         ki: string,
         rpc: number,
@@ -58,13 +67,16 @@ export interface IInvoice {
         transaction: FirebirdTransaction,
     ): Promise<void>;
     countFreeMarkCodesForGood(goodscode: string, transaction: FirebirdTransaction): Promise<number>;
-    findGoodscodeByKi(ki: string, transaction: FirebirdTransaction): Promise<string | null>;
+    getMarkCodeInfoByKi(
+        ki: string,
+        transaction: FirebirdTransaction,
+    ): Promise<{ goodscode: string; quantity: number } | null>;
     getKmFullByKi(ki: string, transaction: FirebirdTransaction): Promise<string | null>;
     listFbsAwaitingShip(buyerId: number, transaction: FirebirdTransaction): Promise<InvoiceDto[]>;
     getAttachedMarkCodesByScode(
         scode: number,
         transaction: FirebirdTransaction,
-    ): Promise<{ ki: string; goodscode: string; realpricecode: number }[]>;
+    ): Promise<{ ki: string; goodscode: string; realpricecode: number; quantity: number }[]>;
     getRealpriceLinesByScode(
         scode: number,
         transaction: FirebirdTransaction,

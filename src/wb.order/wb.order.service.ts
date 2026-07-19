@@ -33,7 +33,7 @@ import { WbOrderMetaDto } from './dto/wb.order.meta.dto';
 import { WbOrderSetKizRequestDto } from './dto/wb.order.set-kiz.dto';
 import { FboMarkMigrationService } from '../posting.fbo/fbo-mark-migration.service';
 import { ProcessedCacheService } from '../processed-cache/processed-cache.service';
-import { goodCode, isMarkCodesEnabled } from '../helpers';
+import { goodCode, goodQuantityCoeff, isMarkCodesEnabled } from '../helpers';
 
 @Injectable()
 export class WbOrderService implements IOrderable, IMarkSubmittable {
@@ -132,19 +132,24 @@ export class WbOrderService implements IOrderable, IMarkSubmittable {
                 if (useMigration) {
                     // Pre-check: «левые» заказы без подбора — пропуск без создания invoice (legacy WB-spec)
                     const candidates = await this.invoiceService.findFboPodbposCandidates(
-                        goodCode(product), ['WBFBO'], transaction,
+                        goodCode(product), ['WBFBO'], goodQuantityCoeff(product), transaction,
                     );
                     if (candidates.length === 0) continue;
                     const invoice = await this.invoiceService.createInvoiceFromPostingDto(
                         buyerId, posting, transaction,
                     );
-                    const newRpcs = await this.invoiceService.findRealpriceCodes(invoice.id, transaction);
+                    if (!invoice) {
+                        throw new Error(`WB FBO migration: счёт для ${order.srid} не создан`);
+                    }
                     const shortages = await this.migrationService.migrate(
-                        [product], newRpcs, ['WBFBO'], transaction,
+                        [product], ['WBFBO'], invoice.invoiceLines, invoice.id, transaction,
                     );
-                    if (shortages.length > 0) {
-                        this.logger.warn(
-                            `WB FBO migration: unexpected shortage on ${order.srid}: ${JSON.stringify(shortages)}`,
+                    for (const s of shortages) {
+                        await this.invoiceService.deltaGood(s.goodscode, s.quantity, 'WBFBO', transaction);
+                        this.eventEmitter.emit(
+                            'error.message',
+                            'WB FBO: нет позиции — создана недостача',
+                            `Заказ ${order.srid}, GOODSCODE ${s.goodscode}, qty ${s.quantity}`,
                         );
                     }
                     await this.invoiceService.pickupInvoice(invoice, transaction);
