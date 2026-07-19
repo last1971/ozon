@@ -32,4 +32,11 @@ export class InvoiceLineDto {
         required: false,
     })
     whereOrdered?: string;
+
+    @ApiProperty({
+        description: 'Код строки счёта в Trade2006 (REALPRICECODE), заполняется после создания',
+        example: 987654,
+        required: false,
+    })
+    realpricecode?: number;
 }

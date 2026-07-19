@@ -21,10 +21,10 @@ describe('PostingFboService', () => {
     const updatePrim = jest.fn();
     const deltaGood = jest.fn();
     const findFboPodbposCandidates = jest.fn();
-    const getAttachedMarkCodesForMigration = jest.fn();
-    const decrementPodbpos = jest.fn();
-    const detachMarkCode = jest.fn();
-    const reattachMarkCodeTransferred = jest.fn();
+    const findLiveMigratableCodes = jest.fn();
+    const migrateMarkCode = jest.fn();
+    const migratePodbpos = jest.fn();
+    const clearInvoiceReserve = jest.fn();
     const findRealpriceCodes = jest.fn();
     const getStorageSS = jest.fn();
     const emit = jest.fn();
@@ -45,10 +45,10 @@ describe('PostingFboService', () => {
             emit,
             deltaGood,
             findFboPodbposCandidates,
-            getAttachedMarkCodesForMigration,
-            decrementPodbpos,
-            detachMarkCode,
-            reattachMarkCodeTransferred,
+            findLiveMigratableCodes,
+            migrateMarkCode,
+            migratePodbpos,
+            clearInvoiceReserve,
             findRealpriceCodes,
             getStorageSS,
         ].forEach((m) => m.mockReset());
@@ -73,10 +73,10 @@ describe('PostingFboService', () => {
                         update: jest.fn(),
                         deltaGood,
                         findFboPodbposCandidates,
-                        getAttachedMarkCodesForMigration,
-                        decrementPodbpos,
-                        detachMarkCode,
-                        reattachMarkCodeTransferred,
+                        findLiveMigratableCodes,
+                        migrateMarkCode,
+                        migratePodbpos,
+                        clearInvoiceReserve,
                         findRealpriceCodes,
                         getStorageSS,
                     },
@@ -191,10 +191,34 @@ describe('PostingFboService', () => {
     });
 
     describe('createInvoice — mark migration (flag on)', () => {
+        const cand = (podbposcode: number, scode: number, rpc: number, quanAvail: number, prim: string) => ({
+            podbposcode,
+            scode,
+            realpricecode: rpc,
+            quanAvail,
+            prim,
+            cntNom: 0,
+            cntLive: 0,
+            cntTt3: 0,
+        });
+
         beforeEach(() => {
             migrationEnabled = true;
-            createInvoiceFromPostingDto.mockResolvedValue({ id: 999 });
-            findRealpriceCodes.mockResolvedValue([300]);
+            createInvoiceFromPostingDto.mockImplementation((buyerId, posting) =>
+                Promise.resolve({
+                    id: 999,
+                    status: 3,
+                    invoiceLines: posting.products.map((p, i) => ({
+                        goodCode: p.offer_id.replace(/-.*/g, ''),
+                        quantity: p.quantity,
+                        price: p.price,
+                        realpricecode: 300 + i,
+                    })),
+                }),
+            );
+            findLiveMigratableCodes.mockResolvedValue([]);
+            migratePodbpos.mockResolvedValue(undefined);
+            clearInvoiceReserve.mockResolvedValue(undefined);
         });
 
         const buildPosting = (offer: string, qty: number) => ({
@@ -206,60 +230,54 @@ describe('PostingFboService', () => {
             financial_data: { cluster_from: 'Москва, МО и Дальние регионы' },
         });
 
-        it('(a) 1 prim, 1 шт — decrement 1 раз, коды не трогаем (они уже в УПД-2)', async () => {
-            findFboPodbposCandidates.mockResolvedValueOnce([
-                { podbposcode: 1001, scode: 100, realpricecode: 100, quanAvail: 1, prim: 'ПУШКИНО_1_РФЦ' },
-            ]);
+        it('(a) 1 prim, 1 шт — перенос подборки на строку счёта Б, резерв Б зачищен', async () => {
+            findFboPodbposCandidates.mockResolvedValueOnce([cand(1001, 100, 100, 1, 'ПУШКИНО_1_РФЦ')]);
 
             await service.createInvoice(buildPosting('444', 1), null);
 
-            expect(decrementPodbpos).toHaveBeenCalledWith(1001, 1, null);
+            expect(clearInvoiceReserve).toHaveBeenCalledWith(999, null);
+            expect(migratePodbpos).toHaveBeenCalledWith(1001, 999, 300, '444', 1, null);
             expect(deltaGood).not.toHaveBeenCalled();
         });
 
-        it('(b) 3 шт, 3 разных prim по 1 шт — 3 decrement', async () => {
+        it('(b) 3 шт, 3 разных prim по 1 шт — 3 переноса', async () => {
             findFboPodbposCandidates.mockResolvedValueOnce([
-                { podbposcode: 1001, scode: 100, realpricecode: 100, quanAvail: 1, prim: 'ПУШКИНО_1_РФЦ' },
-                { podbposcode: 2002, scode: 200, realpricecode: 200, quanAvail: 1, prim: 'Москва, МО и Дальние регионы' },
-                { podbposcode: 3003, scode: 300, realpricecode: 300, quanAvail: 1, prim: 'отмена FBO 555' },
+                cand(1001, 100, 100, 1, 'ПУШКИНО_1_РФЦ'),
+                cand(2002, 200, 200, 1, 'Москва, МО и Дальние регионы'),
+                cand(3003, 300, 300, 1, 'отмена FBO 555'),
             ]);
 
             await service.createInvoice(buildPosting('444', 3), null);
 
-            expect(decrementPodbpos).toHaveBeenCalledTimes(3);
-            expect(decrementPodbpos.mock.calls.map((c) => c[0])).toEqual([1001, 2002, 3003]);
+            expect(migratePodbpos).toHaveBeenCalledTimes(3);
+            expect(migratePodbpos.mock.calls.map((c) => c[0])).toEqual([1001, 2002, 3003]);
             expect(emit).not.toHaveBeenCalled();
         });
 
-        it('(c) кандидат покрывает всё количество — decrement общий = 3', async () => {
-            findFboPodbposCandidates.mockResolvedValueOnce([
-                { podbposcode: 1001, scode: 100, realpricecode: 100, quanAvail: 3, prim: 'ПУШКИНО_1_РФЦ' },
-            ]);
+        it('(c) кандидат покрывает всё количество — один перенос на 3', async () => {
+            findFboPodbposCandidates.mockResolvedValueOnce([cand(1001, 100, 100, 3, 'ПУШКИНО_1_РФЦ')]);
 
             await service.createInvoice(buildPosting('444', 3), null);
 
-            expect(decrementPodbpos).toHaveBeenCalledWith(1001, 3, null);
+            expect(migratePodbpos).toHaveBeenCalledWith(1001, 999, 300, '444', 3, null);
             expect(deltaGood).not.toHaveBeenCalled();
         });
 
-        it('(d) товар без КМ — только decrement', async () => {
-            findFboPodbposCandidates.mockResolvedValueOnce([
-                { podbposcode: 1001, scode: 100, realpricecode: 100, quanAvail: 2, prim: 'ПУШКИНО_1_РФЦ' },
-            ]);
+        it('(d) товар без КМ — только штуки, коды не трогаются', async () => {
+            findFboPodbposCandidates.mockResolvedValueOnce([cand(1001, 100, 100, 2, 'ПУШКИНО_1_РФЦ')]);
 
             await service.createInvoice(buildPosting('444', 2), null);
 
-            expect(decrementPodbpos).toHaveBeenCalledWith(1001, 2, null);
+            expect(migratePodbpos).toHaveBeenCalledWith(1001, 999, 300, '444', 2, null);
+            expect(migrateMarkCode).not.toHaveBeenCalled();
             expect(deltaGood).not.toHaveBeenCalled();
         });
 
         it('(e) частичный fallback — need=3, candidates покрыли 2, deltaGood на 1 + письмо', async () => {
-            findFboPodbposCandidates.mockResolvedValueOnce([
-                { podbposcode: 1001, scode: 100, realpricecode: 100, quanAvail: 2, prim: 'ПУШКИНО_1_РФЦ' },
-            ]);
+            findFboPodbposCandidates.mockResolvedValueOnce([cand(1001, 100, 100, 2, 'ПУШКИНО_1_РФЦ')]);
             await service.createInvoice(buildPosting('444', 3), null);
 
-            expect(decrementPodbpos).toHaveBeenCalledWith(1001, 2, null);
+            expect(migratePodbpos).toHaveBeenCalledWith(1001, 999, 300, '444', 2, null);
             expect(deltaGood).toHaveBeenCalledTimes(1);
             expect(deltaGood.mock.calls[0]).toEqual(['444', 1, 'Москва, МО и Дальние регионы', null]);
             expect(emit).toHaveBeenCalledTimes(1);
@@ -273,16 +291,14 @@ describe('PostingFboService', () => {
         });
 
         it('(f) suffix-возврат — недостачи нет, письма нет', async () => {
-            findFboPodbposCandidates.mockResolvedValueOnce([
-                { podbposcode: 9999, scode: 900, realpricecode: 900, quanAvail: 1, prim: '777-888 отмена FBO' },
-            ]);
+            findFboPodbposCandidates.mockResolvedValueOnce([cand(9999, 900, 900, 1, '777-888 отмена FBO')]);
             await service.createInvoice(buildPosting('444', 1), null);
 
             expect(deltaGood).not.toHaveBeenCalled();
             expect(emit).not.toHaveBeenCalled();
         });
 
-        it('(g) дубликаты goodCode в posting — каждый продукт получает свой decrement', async () => {
+        it('(g) дубликаты goodCode в posting — каждый продукт едет на свою строку счёта Б', async () => {
             const posting = {
                 posting_number: '321',
                 status: 's',
@@ -295,26 +311,24 @@ describe('PostingFboService', () => {
                 financial_data: { cluster_from: 'Москва, МО и Дальние регионы' },
             };
             findFboPodbposCandidates
-                .mockResolvedValueOnce([{ podbposcode: 1001, scode: 100, realpricecode: 100, quanAvail: 1, prim: 'ПУШКИНО_1_РФЦ' }])
-                .mockResolvedValueOnce([{ podbposcode: 2002, scode: 200, realpricecode: 200, quanAvail: 1, prim: 'ПУШКИНО_1_РФЦ' }]);
+                .mockResolvedValueOnce([cand(1001, 100, 100, 1, 'ПУШКИНО_1_РФЦ')])
+                .mockResolvedValueOnce([cand(2002, 200, 200, 1, 'ПУШКИНО_1_РФЦ')]);
 
             await service.createInvoice(posting, null);
 
-            expect(decrementPodbpos).toHaveBeenCalledTimes(2);
-            expect(decrementPodbpos.mock.calls[0]).toEqual([1001, 1, null]);
-            expect(decrementPodbpos.mock.calls[1]).toEqual([2002, 1, null]);
+            expect(migratePodbpos).toHaveBeenCalledTimes(2);
+            expect(migratePodbpos.mock.calls[0]).toEqual([1001, 999, 300, '444', 1, null]);
+            expect(migratePodbpos.mock.calls[1]).toEqual([2002, 999, 301, '444', 1, null]);
         });
 
-        it('порядок: createInvoice → decrementPodbpos', async () => {
-            findFboPodbposCandidates.mockResolvedValueOnce([
-                { podbposcode: 1001, scode: 100, realpricecode: 100, quanAvail: 1, prim: 'ПУШКИНО_1_РФЦ' },
-            ]);
+        it('порядок: createInvoice → перенос подборки', async () => {
+            findFboPodbposCandidates.mockResolvedValueOnce([cand(1001, 100, 100, 1, 'ПУШКИНО_1_РФЦ')]);
 
             await service.createInvoice(buildPosting('444', 1), null);
 
             const createOrder = createInvoiceFromPostingDto.mock.invocationCallOrder[0];
-            const decOrder = decrementPodbpos.mock.invocationCallOrder[0];
-            expect(createOrder).toBeLessThan(decOrder);
+            const migrateOrder = migratePodbpos.mock.invocationCallOrder[0];
+            expect(createOrder).toBeLessThan(migrateOrder);
         });
     });
 });

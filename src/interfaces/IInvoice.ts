@@ -26,9 +26,32 @@ export interface IInvoice {
     findFboPodbposCandidates(
         goodscode: string,
         prims: string[],
+        nominal: number,
         transaction: FirebirdTransaction,
-    ): Promise<{ podbposcode: number; scode: number; realpricecode: number; quanAvail: number; prim: string }[]>;
+    ): Promise<{ podbposcode: number; scode: number; realpricecode: number; quanAvail: number; prim: string; cntNom: number; cntLive: number; cntTt3: number }[]>;
     decrementPodbpos(podbposcode: number, take: number, transaction: FirebirdTransaction): Promise<void>;
+    findLiveMigratableCodes(
+        realpricecode: number,
+        nominal: number,
+        transaction: FirebirdTransaction,
+    ): Promise<{ ki: string }[]>;
+    migrateMarkCode(
+        ki: string,
+        oldRpc: number,
+        newRpc: number,
+        gc: string,
+        s_s: 0 | 1,
+        transaction: FirebirdTransaction,
+    ): Promise<void>;
+    migratePodbpos(
+        oldPodbposcode: number,
+        newScode: number,
+        newRpc: number,
+        gc: string,
+        take: number,
+        transaction: FirebirdTransaction,
+    ): Promise<void>;
+    clearInvoiceReserve(scode: number, transaction: FirebirdTransaction): Promise<void>;
     attachMarkCodeForFbs(
         ki: string,
         rpc: number,

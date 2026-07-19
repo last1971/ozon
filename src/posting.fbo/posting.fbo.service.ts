@@ -86,10 +86,15 @@ export class PostingFboService implements IOrderable {
         const prims = [warehouseName, clusterFrom, suffix].filter((p): p is string => Boolean(p));
 
         const invoice = await this.invoiceService.createInvoiceFromPostingDto(buyerId, posting, transaction);
+        if (!invoice) {
+            throw new Error(`FBO migration: счёт для ${posting.posting_number} не создан`);
+        }
 
         const shortages = await this.migrationService.migrate(
             posting.products,
             prims,
+            invoice.invoiceLines,
+            invoice.id,
             transaction,
         );
         for (const s of shortages) {
