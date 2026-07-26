@@ -24,8 +24,8 @@ export interface WbPriceTask {
     discount: number;
 }
 
-/** Что нужно из кабинета ВБ для расчёта: nmID и базовая (зачёркнутая) цена. */
-export type WbCurrentPrice = Pick<WbPriceTask, 'nmID' | 'price'>;
+/** Текущее состояние товара в кабинете ВБ — те же поля, что и в задаче отправки. */
+export type WbCurrentPrice = WbPriceTask;
 
 /** Построчный итог массовой ВБ-ручки. */
 export interface WbBulkPriceReport {
@@ -241,6 +241,7 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
                 map.set(g.vendorCode, {
                     nmID: g.nmID,
                     price: Number(g.sizes?.[0]?.price ?? 0),
+                    discount: Number(g.discount ?? 0),
                 });
             }
             if (goods.length < limit) break;
@@ -255,7 +256,7 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
      */
     private async applyWb(
         articles: string[],
-        calcDiscount: (base: number, minPrice: number) => number | null,
+        calcDiscount: (base: number, minPrice: number, currentDiscount: number) => number | null,
     ): Promise<WbBulkPriceReport> {
         const wbData = await this.goodService.getWbData(articles);
         const minPriceByArt = new Map(wbData.map((w) => [w.id, Number(w.minPrice)]));
@@ -279,7 +280,7 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
             const minPrice = minPriceByArt.get(article);
             let discount: number | null;
             try {
-                discount = calcDiscount(cur.price, minPrice);
+                discount = calcDiscount(cur.price, minPrice, cur.discount);
             } catch (error: any) {
                 errors.push(`${article}: ${error.message}`);
                 continue;
@@ -320,6 +321,13 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
             const maxSafe = Math.max(0, Math.floor((1 - minPrice / base) * 100));
             return Math.min(percent, maxSafe);
         });
+    }
+
+    /** Ручка 4: поднять скидку до percent, если текущая меньше; у кого уже ≥ percent — не трогаем. */
+    async setMinDiscount(articles: string[], percent: number): Promise<WbBulkPriceReport> {
+        return this.applyWb(articles, (_base, _minPrice, currentDiscount) =>
+            currentDiscount >= percent ? null : percent,
+        );
     }
 
     /** Список артикулов из xlsx-файла (столбец «Артикул продавца»/«Артикул»). */
