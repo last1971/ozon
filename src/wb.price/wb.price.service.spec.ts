@@ -263,4 +263,59 @@ describe('WbPriceService', () => {
             }]);
         });
     });
+
+    describe('массовые цены/скидки ВБ', () => {
+        // Мокаем кабинет ВБ: list/goods/filter отдаёт товары, upload/task принимает задачу.
+        const mockCabinet = (goods: any[]) =>
+            method.mockImplementation((name: string) => {
+                if (name.includes('list/goods/filter')) return Promise.resolve({ data: { listGoods: goods } });
+                if (name.includes('upload/task')) return Promise.resolve({ data: { id: 'task-1' } });
+                return Promise.resolve({});
+            });
+
+        // Что реально ушло в upload/task.
+        const uploadPayload = () =>
+            method.mock.calls.find((c) => String(c[0]).includes('upload/task'))?.[2]?.data;
+
+        it('setMinPrices: floor — цена НЕ падает ниже min_price', async () => {
+            getWbData.mockResolvedValueOnce([{ id: 'A', minPrice: 94.5, commission: 0, tariff: 0 }]);
+            mockCabinet([{ vendorCode: 'A', nmID: 1, discount: 0, sizes: [{ price: 100 }] }]);
+
+            const report = await service.setMinPrices(['A']);
+
+            // round дал бы 6% → цена 94 < 94.5. floor даёт 5% → цена 95 ≥ 94.5.
+            expect(uploadPayload()).toEqual([{ nmID: 1, price: 100, discount: 5 }]);
+            expect(report.toUpdate).toBe(1);
+        });
+
+        it('setDiscount: ставит переданный процент как есть', async () => {
+            getWbData.mockResolvedValueOnce([{ id: 'A', minPrice: 0, commission: 0, tariff: 0 }]);
+            mockCabinet([{ vendorCode: 'A', nmID: 1, discount: 0, sizes: [{ price: 100 }] }]);
+
+            await service.setDiscount(['A'], 40);
+
+            expect(uploadPayload()).toEqual([{ nmID: 1, price: 100, discount: 40 }]);
+        });
+
+        it('setDiscountSafe: не уходит ниже min_price — берёт меньший процент', async () => {
+            getWbData.mockResolvedValueOnce([{ id: 'A', minPrice: 75, commission: 0, tariff: 0 }]);
+            mockCabinet([{ vendorCode: 'A', nmID: 1, discount: 0, sizes: [{ price: 100 }] }]);
+
+            // percent=40, но до min_price (75) можно только 25% → берём 25.
+            await service.setDiscountSafe(['A'], 40);
+
+            expect(uploadPayload()).toEqual([{ nmID: 1, price: 100, discount: 25 }]);
+        });
+
+        it('артикул не из кабинета → в missing, в ВБ не шлётся', async () => {
+            getWbData.mockResolvedValueOnce([{ id: 'B', minPrice: 50, commission: 0, tariff: 0 }]);
+            mockCabinet([{ vendorCode: 'A', nmID: 1, discount: 0, sizes: [{ price: 100 }] }]);
+
+            const report = await service.setMinPrices(['B']);
+
+            expect(report.missing).toEqual(['B']);
+            expect(report.toUpdate).toBe(0);
+            expect(method.mock.calls.some((c) => String(c[0]).includes('upload/task'))).toBe(false);
+        });
+    });
 });

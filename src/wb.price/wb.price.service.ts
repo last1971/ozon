@@ -10,11 +10,32 @@ import { WbPriceUpdateDto } from './dto/wb.price.update.dto';
 import { WbApiService } from '../wb.api/wb.api.service';
 import { WbDiscountUpdateDto } from './dto/wb.discount.update.dto';
 import { WbCardService } from '../wb.card/wb.card.service';
+import { readColumnByHeader } from '../helpers';
 import { find, first } from 'lodash';
 import Excel from 'exceljs';
 import { GoodWbDto } from '../good/dto/good.wb.dto';
 import { WbCardDto } from '../wb.card/dto/wb.card.dto';
 import { IVatUpdateable } from 'src/interfaces/i.vat.updateable';
+
+/** Задача для ВБ upload/task: nmID + базовая цена + скидка, %. */
+export interface WbPriceTask {
+    nmID: number;
+    price: number;
+    discount: number;
+}
+
+/** Что нужно из кабинета ВБ для расчёта: nmID и базовая (зачёркнутая) цена. */
+export type WbCurrentPrice = Pick<WbPriceTask, 'nmID' | 'price'>;
+
+/** Построчный итог массовой ВБ-ручки. */
+export interface WbBulkPriceReport {
+    total: number;
+    toUpdate: number;
+    missing: string[];
+    skipped: string[];
+    errors: string[];
+    uploadId: string | null;
+}
 
 @Injectable()
 export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
@@ -185,12 +206,126 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
             updateDiscounts: await this.updateDiscounts(discounts),
         };
          */
+        return this.pushPriceTasks(data);
+    }
+
+    /**
+     * Отправка задачи «цена + скидка» в ВБ (discounts-prices upload/task).
+     * Единая точка вызова: используется и updatePrices, и массовыми ручками applyWb.
+     */
+    private async pushPriceTasks(data: WbPriceTask[]): Promise<any> {
         return this.api.method(
             'https://discounts-prices-api.wildberries.ru/api/v2/upload/task',
             'post',
             { data },
             true,
         );
+    }
+
+    /**
+     * Текущие цены кабинета из ВБ (discounts-prices list/goods/filter), постранично.
+     * Ключ — vendorCode (артикул продавца); значение — nmID, базовая (зачёркнутая) цена и текущая скидка.
+     */
+    private async getCurrentPrices(): Promise<Map<string, WbCurrentPrice>> {
+        const map = new Map<string, WbCurrentPrice>();
+        const limit = 1000;
+        for (let offset = 0; ; offset += limit) {
+            const res = await this.api.method(
+                'https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter',
+                'get',
+                { limit, offset },
+                true,
+            );
+            const goods = res?.data?.listGoods ?? [];
+            for (const g of goods) {
+                map.set(g.vendorCode, {
+                    nmID: g.nmID,
+                    price: Number(g.sizes?.[0]?.price ?? 0),
+                });
+            }
+            if (goods.length < limit) break;
+        }
+        return map;
+    }
+
+    /**
+     * Общее ядро массовых ВБ-ручек. Считает скидку каждому артикулу через calcDiscount
+     * и одной задачей отправляет в ВБ. minPrice берётся из Firebird, базовая цена — из кабинета ВБ.
+     * calcDiscount: вернуть процент, вернуть null — пропустить, бросить — записать в errors.
+     */
+    private async applyWb(
+        articles: string[],
+        calcDiscount: (base: number, minPrice: number) => number | null,
+    ): Promise<WbBulkPriceReport> {
+        const wbData = await this.goodService.getWbData(articles);
+        const minPriceByArt = new Map(wbData.map((w) => [w.id, Number(w.minPrice)]));
+        const current = await this.getCurrentPrices();
+
+        const data: WbPriceTask[] = [];
+        const missing: string[] = [];
+        const skipped: string[] = [];
+        const errors: string[] = [];
+
+        for (const article of articles) {
+            const cur = current.get(article);
+            if (!cur) {
+                missing.push(article);
+                continue;
+            }
+            if (!(cur.price > 0)) {
+                errors.push(`${article}: нет базовой цены в кабинете ВБ`);
+                continue;
+            }
+            const minPrice = minPriceByArt.get(article);
+            let discount: number | null;
+            try {
+                discount = calcDiscount(cur.price, minPrice);
+            } catch (error: any) {
+                errors.push(`${article}: ${error.message}`);
+                continue;
+            }
+            if (discount === null) {
+                skipped.push(article);
+                continue;
+            }
+            data.push({ nmID: cur.nmID, price: cur.price, discount });
+        }
+
+        let uploadId: string | null = null;
+        if (data.length) {
+            const res = await this.pushPriceTasks(data);
+            uploadId = res?.data?.id ?? null;
+        }
+        return { total: articles.length, toUpdate: data.length, missing, skipped, errors, uploadId };
+    }
+
+    /** Ручка 1: выставить в ВБ цену = минимальной (min_price из Firebird) для списка артикулов. */
+    async setMinPrices(articles: string[]): Promise<WbBulkPriceReport> {
+        return this.applyWb(articles, (base, minPrice) => {
+            if (!(minPrice > 0)) throw new Error('нет min_price в Firebird');
+            // floor, а не round: округление вверх дало бы бо́льшую скидку и цену ниже min_price.
+            return Math.max(0, Math.floor((1 - minPrice / base) * 100));
+        });
+    }
+
+    /** Ручка 2: выставить фиксированную скидку percent на список артикулов. */
+    async setDiscount(articles: string[], percent: number): Promise<WbBulkPriceReport> {
+        return this.applyWb(articles, () => percent);
+    }
+
+    /** Ручка 3: то же, но не ниже min_price — берём меньшую из {percent, скидка до min_price}. */
+    async setDiscountSafe(articles: string[], percent: number): Promise<WbBulkPriceReport> {
+        return this.applyWb(articles, (base, minPrice) => {
+            if (!(minPrice > 0)) throw new Error('нет min_price в Firebird');
+            const maxSafe = Math.max(0, Math.floor((1 - minPrice / base) * 100));
+            return Math.min(percent, maxSafe);
+        });
+    }
+
+    /** Список артикулов из xlsx-файла (столбец «Артикул продавца»/«Артикул»). */
+    async articlesFromFile(file: Express.Multer.File): Promise<string[]> {
+        const articles = await readColumnByHeader(file.buffer, ['Артикул продавца', 'Артикул']);
+        return articles.filter((a) => a !== 'ИТОГО');
     }
 
     // Not using remove
