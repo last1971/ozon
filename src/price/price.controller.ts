@@ -34,8 +34,9 @@ import { ObtainCoeffsDto } from '../helpers/dto/obtain.coeffs.dto';
 import { calculatePay, calculatePrice, PayResultDto } from '../helpers';
 import { WbCommissionDto } from '../wb.card/dto/wb.commission.dto';
 import { ExtraPriceService } from './extra.price.service';
-import { WbPriceService } from '../wb.price/wb.price.service';
+import { WbPriceService, WbBulkPriceReport } from '../wb.price/wb.price.service';
 import { GoodPercentDto } from '../good/dto/good.percent.dto';
+import { WbBulkPriceDto, WbBulkDiscountDto } from './dto/wb.bulk.price.dto';
 
 @ApiTags('price')
 @Controller('price')
@@ -214,6 +215,76 @@ export class PriceController {
             res.send(buffer);
         }
         throw new HttpException('Bad service', 400);
+    }
+
+    @Post('wb/min-price')
+    @ApiOperation({ summary: 'ВБ: выставить цену = минимальной (min_price из Firebird) для списка артикулов' })
+    @ApiConsumes('multipart/form-data', 'application/json')
+    @ApiBody({
+        schema: {
+            type: 'object',
+            properties: {
+                file: { type: 'string', format: 'binary', description: 'xlsx со столбцом «Артикул продавца»/«Артикул»' },
+                articles: { type: 'array', items: { type: 'string' }, description: 'Список артикулов (если без файла)' },
+            },
+        },
+    })
+    @UseInterceptors(FileInterceptor('file'))
+    async wbSetMinPrices(
+        @Body() body: WbBulkPriceDto,
+        @UploadedFile('file') file?: Express.Multer.File,
+    ): Promise<WbBulkPriceReport> {
+        const wb = this.extraService.getService(GoodServiceEnum.WB) as WbPriceService;
+        const articles = file ? await wb.articlesFromFile(file) : (body.articles ?? []);
+        return wb.setMinPrices(articles);
+    }
+
+    @Post('wb/discount')
+    @ApiOperation({ summary: 'ВБ: выставить фиксированную скидку percent на список артикулов' })
+    @ApiConsumes('multipart/form-data', 'application/json')
+    @ApiBody({
+        schema: {
+            type: 'object',
+            required: ['percent'],
+            properties: {
+                file: { type: 'string', format: 'binary', description: 'xlsx со столбцом «Артикул продавца»/«Артикул»' },
+                articles: { type: 'array', items: { type: 'string' }, description: 'Список артикулов (если без файла)' },
+                percent: { type: 'integer', minimum: 0, maximum: 99, example: 40, description: 'Скидка, %' },
+            },
+        },
+    })
+    @UseInterceptors(FileInterceptor('file'))
+    async wbSetDiscount(
+        @Body() body: WbBulkDiscountDto,
+        @UploadedFile('file') file?: Express.Multer.File,
+    ): Promise<WbBulkPriceReport> {
+        const wb = this.extraService.getService(GoodServiceEnum.WB) as WbPriceService;
+        const articles = file ? await wb.articlesFromFile(file) : (body.articles ?? []);
+        return wb.setDiscount(articles, body.percent);
+    }
+
+    @Post('wb/discount-safe')
+    @ApiOperation({ summary: 'ВБ: скидка percent, но не ниже min_price (берётся меньшая из двух)' })
+    @ApiConsumes('multipart/form-data', 'application/json')
+    @ApiBody({
+        schema: {
+            type: 'object',
+            required: ['percent'],
+            properties: {
+                file: { type: 'string', format: 'binary', description: 'xlsx со столбцом «Артикул продавца»/«Артикул»' },
+                articles: { type: 'array', items: { type: 'string' }, description: 'Список артикулов (если без файла)' },
+                percent: { type: 'integer', minimum: 0, maximum: 99, example: 40, description: 'Скидка, %' },
+            },
+        },
+    })
+    @UseInterceptors(FileInterceptor('file'))
+    async wbSetDiscountSafe(
+        @Body() body: WbBulkDiscountDto,
+        @UploadedFile('file') file?: Express.Multer.File,
+    ): Promise<WbBulkPriceReport> {
+        const wb = this.extraService.getService(GoodServiceEnum.WB) as WbPriceService;
+        const articles = file ? await wb.articlesFromFile(file) : (body.articles ?? []);
+        return wb.setDiscountSafe(articles, body.percent);
     }
 
     @Post('wb-coefficients')
