@@ -307,6 +307,26 @@ describe('WbPriceService', () => {
             expect(uploadPayload()).toEqual([{ nmID: 1, price: 100, discount: 25 }]);
         });
 
+        it('setMinDiscount: текущая скидка меньше — поднимаем до percent', async () => {
+            getWbData.mockResolvedValueOnce([{ id: 'A', minPrice: 0, commission: 0, tariff: 0 }]);
+            mockCabinet([{ vendorCode: 'A', nmID: 1, discount: 20, sizes: [{ price: 100 }] }]);
+
+            await service.setMinDiscount(['A'], 30);
+
+            expect(uploadPayload()).toEqual([{ nmID: 1, price: 100, discount: 30 }]);
+        });
+
+        it('setMinDiscount: текущая скидка больше — не трогаем (skipped, в ВБ не шлётся)', async () => {
+            getWbData.mockResolvedValueOnce([{ id: 'A', minPrice: 0, commission: 0, tariff: 0 }]);
+            mockCabinet([{ vendorCode: 'A', nmID: 1, discount: 40, sizes: [{ price: 100 }] }]);
+
+            const report = await service.setMinDiscount(['A'], 30);
+
+            expect(report.skipped).toEqual(['A']);
+            expect(report.toUpdate).toBe(0);
+            expect(method.mock.calls.some((c) => String(c[0]).includes('upload/task'))).toBe(false);
+        });
+
         it('артикул не из кабинета → в missing, в ВБ не шлётся', async () => {
             getWbData.mockResolvedValueOnce([{ id: 'B', minPrice: 50, commission: 0, tariff: 0 }]);
             mockCabinet([{ vendorCode: 'A', nmID: 1, discount: 0, sizes: [{ price: 100 }] }]);

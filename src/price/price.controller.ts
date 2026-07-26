@@ -287,6 +287,30 @@ export class PriceController {
         return wb.setDiscountSafe(articles, body.percent);
     }
 
+    @Post('wb/discount-min')
+    @ApiOperation({ summary: 'ВБ: поднять скидку до percent, если текущая меньше (у кого уже больше — не трогаем)' })
+    @ApiConsumes('multipart/form-data', 'application/json')
+    @ApiBody({
+        schema: {
+            type: 'object',
+            required: ['percent'],
+            properties: {
+                file: { type: 'string', format: 'binary', description: 'xlsx со столбцом «Артикул продавца»/«Артикул»' },
+                articles: { type: 'array', items: { type: 'string' }, description: 'Список артикулов (если без файла)' },
+                percent: { type: 'integer', minimum: 0, maximum: 99, example: 30, description: 'Скидка, %' },
+            },
+        },
+    })
+    @UseInterceptors(FileInterceptor('file'))
+    async wbSetMinDiscount(
+        @Body() body: WbBulkDiscountDto,
+        @UploadedFile('file') file?: Express.Multer.File,
+    ): Promise<WbBulkPriceReport> {
+        const wb = this.extraService.getService(GoodServiceEnum.WB) as WbPriceService;
+        const articles = file ? await wb.articlesFromFile(file) : (body.articles ?? []);
+        return wb.setMinDiscount(articles, body.percent);
+    }
+
     @Post('wb-coefficients')
     async updateWbCoeffs(): Promise<any> {
         await (this.extraService.getService(GoodServiceEnum.WB) as WbPriceService).updateWbSaleCoeffs();
