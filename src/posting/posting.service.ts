@@ -338,15 +338,36 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
             return { ok: false, failed };
         }
 
-        const setResp = await this.setExemplars({
+        const setReq = {
             posting_number: postingNumber,
             multi_box_qty: exResp.multi_box_qty || 1,
             products: setProducts,
-        });
+        };
+        this.logger.log(`[km ${postingNumber}] set req=${JSON.stringify(setReq)}`);
+        const setResp = await this.setExemplars(setReq);
+        this.logger.log(`[km ${postingNumber}] set resp=${JSON.stringify(setResp)}`);
         if (!setResp?.result) {
+            // Озон вернул false — не верим на слово, спрашиваем фактическое состояние.
+            const status = await this.getExemplarStatus(postingNumber);
+            const allPassed =
+                (status?.products?.length ?? 0) > 0 &&
+                status.products.every((p) =>
+                    p.exemplars?.every((e) => e.marks?.every((m) => m.check_status === 'passed')),
+                );
+            this.logger.warn(
+                `[km ${postingNumber}] set=false; overall=${status?.status}; allPassed=${allPassed}`,
+            );
+            if (allPassed) {
+                // Экземпляры уже стоят и прошли проверку — коды фактически на месте.
+                // Считаем успехом, чтобы крон перестал ретраить.
+                return { ok: true };
+            }
             return {
                 ok: false,
-                failed: [...failed, { ki: '*', reason: 'setExemplars result=false' }],
+                failed: [
+                    ...failed,
+                    { ki: '*', reason: `setExemplars result=false; status=${status?.status}` },
+                ],
             };
         }
 
