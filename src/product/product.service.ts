@@ -242,6 +242,30 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
         return allValues;
     }
 
+    /** Точечный поиск значений атрибута категории по подстроке (не тянет весь словарь). */
+    @Cacheable({
+        key: (attr_id: number, desc_cat_id: number, type_id: number, value: string) =>
+            `${attr_id}:${desc_cat_id}:${type_id}:${value}`,
+        namespace: 'ozon:attr-vals-search',
+        ttl: 86400,
+    })
+    async searchCategoryAttributeValues(
+        attribute_id: number,
+        desc_cat_id: number,
+        type_id: number,
+        value: string,
+        limit = 50,
+    ): Promise<any[]> {
+        const resp = await this.ozonApiService.method('/v1/description-category/attribute/values/search', {
+            attribute_id,
+            description_category_id: desc_cat_id,
+            type_id,
+            value,
+            limit,
+        });
+        return resp?.result ?? [];
+    }
+
     /**
      * Получает цены для списка товаров акции с поддержкой постраничной выборки.
      *
