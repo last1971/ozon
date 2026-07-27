@@ -17,6 +17,7 @@ export interface TnvedFixItem {
     ozon: string | null; // текущий ТНВЭД на Озоне
     base: string; // наш ТНВЭД из базы
     dictValueId?: number; // dictionary_value_id варианта «МАРКИРОВКА РФ»
+    reason: string; // почему считается требующим правки
     action: string;
     taskId?: number; // после apply
     error?: string; // после apply
@@ -114,22 +115,22 @@ export class TnvedSyncService {
 
         const cat = prod.description_category_id;
         const type = prod.type_id;
-        const attr = (prod.attributes || []).find((a: any) => a.id === this.tnvedAttrId);
-        const currentVal: string = attr?.values?.[0]?.value ?? '';
+        const attrs: any[] = prod.attributes || [];
+        const tnvedAttr = attrs.find((a) => a.id === this.tnvedAttrId);
+        const currentDictId: number | null = tnvedAttr?.values?.[0]?.dictionary_value_id ?? null;
+        const currentVal: string = tnvedAttr?.values?.[0]?.value ?? '';
         const currentCode = (/^\s*(\d{4,10})/.exec(currentVal) || [])[1] ?? null;
+        const markAttr = attrs.find((a) => a.id === this.markAttrId);
+        const markOn = String(markAttr?.values?.[0]?.value ?? '').toLowerCase() === 'true';
 
-        if (currentCode === tnved) {
-            report.alreadyOk++;
-            return;
-        }
-
+        // Целевой вариант «МАРКИРОВКА РФ» нашего ТНВЭД в категории карточки
         const key = `${cat}:${type}:${tnved}`;
-        let dictId = dictCache.get(key);
-        if (dictId === undefined) {
-            dictId = await this.resolveMarkDictValue(cat, type, tnved);
-            dictCache.set(key, dictId);
+        let targetDictId = dictCache.get(key);
+        if (targetDictId === undefined) {
+            targetDictId = await this.resolveMarkDictValue(cat, type, tnved);
+            dictCache.set(key, targetDictId);
         }
-        if (!dictId) {
+        if (!targetDictId) {
             report.ambiguous.push({
                 offer: offerId,
                 reason: `нет варианта «${MARK_LABEL}» для ТНВЭД ${tnved} (cat ${cat}/${type})`,
@@ -137,19 +138,32 @@ export class TnvedSyncService {
             return;
         }
 
+        // ОК = ровно нужный dictionary_value_id (вариант с маркировкой) И включённый чекбокс маркировки.
+        // Совпадения одних лишь цифр ТНВЭД мало: плоский вариант без «МАРКИРОВКА РФ» / выключенный чекбокс — это НЕ ок.
+        if (currentDictId === targetDictId && markOn) {
+            report.alreadyOk++;
+            return;
+        }
+
+        const reasons: string[] = [];
+        if (currentCode !== tnved) reasons.push(`ТНВЭД ${currentCode ?? '—'}→${tnved}`);
+        else if (currentDictId !== targetDictId) reasons.push(`вариант без «${MARK_LABEL}»`);
+        if (!markOn) reasons.push('чекбокс маркировки выкл');
+
         const fix: TnvedFixItem = {
             offer: offerId,
             goodscode,
             name: prod.name,
             ozon: currentCode,
             base: tnved,
-            dictValueId: dictId,
+            dictValueId: targetDictId,
+            reason: reasons.join('; '),
             action: `set ${tnved} (${MARK_LABEL}) + Нужен код маркировки`,
         };
 
         if (apply) {
             try {
-                fix.taskId = await this.applyFix(offerId, dictId);
+                fix.taskId = await this.applyFix(offerId, targetDictId);
             } catch (e) {
                 fix.error = e?.message ?? String(e);
             }
