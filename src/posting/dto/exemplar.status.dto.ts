@@ -1,4 +1,8 @@
-export type ExemplarShipStatus = 'ship_available' | 'ship_not_available' | 'validation_in_process';
+export type ExemplarShipStatus =
+    | 'ship_available'
+    | 'ship_not_available'
+    | 'validation_in_process'
+    | 'update_available';
 
 export interface ExemplarStatusMarkDto {
     mark: string;

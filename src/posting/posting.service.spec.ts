@@ -434,6 +434,87 @@ describe('PostingService', () => {
             });
         });
 
+        it('set result=false, но exemplar/status все passed → ok=true (идемпотентно)', async () => {
+            getAttachedMarkCodesByScode.mockResolvedValueOnce([
+                { ki: 'KI-1', goodscode: '531557', realpricecode: 1, quantity: 1 },
+            ]);
+            getKmFullByKi.mockResolvedValueOnce('01FULL');
+            ozonApiMethod
+                .mockResolvedValueOnce({
+                    posting_number: 'P-1',
+                    multi_box_qty: 1,
+                    products: [
+                        {
+                            product_id: 999,
+                            quantity: 1,
+                            is_mandatory_mark_needed: true,
+                            exemplars: [{ exemplar_id: 111, marks: [] }],
+                        },
+                    ],
+                })
+                .mockResolvedValueOnce({
+                    result: { products: [{ offer_id: '531557', sku: 999 }] },
+                })
+                .mockResolvedValueOnce({ result: false })
+                .mockResolvedValueOnce({
+                    posting_number: 'P-1',
+                    status: 'update_available',
+                    products: [
+                        {
+                            product_id: 999,
+                            exemplars: [{ exemplar_id: 111, marks: [{ check_status: 'passed' }] }],
+                        },
+                    ],
+                });
+            const res = await service.submitFbsMarkCodes(invoice);
+            expect(res).toEqual({ ok: true });
+            expect(ozonApiMethod).toHaveBeenNthCalledWith(
+                4,
+                '/v5/fbs/posting/product/exemplar/status',
+                { posting_number: 'P-1' },
+            );
+        });
+
+        it('set result=false и exemplar/status не passed → ok=false с причиной', async () => {
+            getAttachedMarkCodesByScode.mockResolvedValueOnce([
+                { ki: 'KI-1', goodscode: '531557', realpricecode: 1, quantity: 1 },
+            ]);
+            getKmFullByKi.mockResolvedValueOnce('01FULL');
+            ozonApiMethod
+                .mockResolvedValueOnce({
+                    posting_number: 'P-1',
+                    multi_box_qty: 1,
+                    products: [
+                        {
+                            product_id: 999,
+                            quantity: 1,
+                            is_mandatory_mark_needed: true,
+                            exemplars: [{ exemplar_id: 111, marks: [] }],
+                        },
+                    ],
+                })
+                .mockResolvedValueOnce({
+                    result: { products: [{ offer_id: '531557', sku: 999 }] },
+                })
+                .mockResolvedValueOnce({ result: false })
+                .mockResolvedValueOnce({
+                    posting_number: 'P-1',
+                    status: 'ship_not_available',
+                    products: [
+                        {
+                            product_id: 999,
+                            exemplars: [{ exemplar_id: 111, marks: [{ check_status: 'failed' }] }],
+                        },
+                    ],
+                });
+            const res = await service.submitFbsMarkCodes(invoice);
+            expect(res.ok).toBe(false);
+            expect(res.failed).toContainEqual({
+                ki: '*',
+                reason: 'setExemplars result=false; status=ship_not_available',
+            });
+        });
+
         it('dry-run для FBS-MIG-* в development не вызывает Ozon', async () => {
             nodeEnv = 'development';
             getAttachedMarkCodesByScode.mockResolvedValueOnce([
