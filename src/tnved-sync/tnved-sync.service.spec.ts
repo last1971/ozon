@@ -35,36 +35,72 @@ describe('TnvedSyncService', () => {
         name: `PROD-${offer}`,
         description_category_id: 42872319,
         type_id: 99309,
-        attributes: tnved
-            ? [{ id: 22232, values: [{ value: `${tnved} - Что-то там` }] }]
-            : [],
+        attributes: tnved ? [{ id: 22232, values: [{ value: `${tnved} - Что-то там` }] }] : [],
     });
 
-    it('ТНВЭД отличается → попадает в toFix с dictValueId варианта «МАРКИРОВКА РФ», без записи (dry-run)', async () => {
-        query.mockResolvedValueOnce([{ GOODSCODE: 568651, TNVED: '8504409100' }]);
-        method.mockImplementation((path: string) => {
-            if (path === '/v4/product/info/attributes') return Promise.resolve({ result: [productAttrs('568651', '8504408500')] });
-            if (path === '/v1/description-category/attribute/values/search')
-                return Promise.resolve({ result: [
-                    { id: 972997562, value: '8504409100 - МАРКИРОВКА РФ - Преобразователи' },
-                    { id: 971399915, value: '8504409100 - Преобразователи' },
-                ] });
+    /**
+     * Диспетчер моков Ozon по пути.
+     * @param offers список offer_id, которые «есть» на Озоне (для /v3/product/list)
+     * @param attrs  map offer_id -> текущий ТНВЭД карточки
+     * @param search результат values/search
+     */
+    const mockOzon = (
+        offers: string[],
+        attrs: Record<string, string | null>,
+        search: any[] = [],
+        update: any = { task_id: 5221013431 },
+    ) => {
+        method.mockImplementation((path: string, body: any) => {
+            if (path === '/v3/product/list')
+                return Promise.resolve({ result: { items: offers.map((o) => ({ offer_id: o })), last_id: '' } });
+            if (path === '/v4/product/info/attributes') {
+                const o = body.filter.offer_id[0];
+                return Promise.resolve({ result: o in attrs ? [productAttrs(o, attrs[o])] : [] });
+            }
+            if (path === '/v1/description-category/attribute/values/search') return Promise.resolve({ result: search });
+            if (path === '/v1/product/attributes/update') return Promise.resolve(update);
             return Promise.resolve({});
         });
+    };
+
+    const MARK = [
+        { id: 972997562, value: '8504409100 - МАРКИРОВКА РФ - Преобразователи' },
+        { id: 971399915, value: '8504409100 - Преобразователи' },
+    ];
+
+    it('ТНВЭД отличается → toFix с dictValueId «МАРКИРОВКА РФ», без записи (dry-run)', async () => {
+        query.mockResolvedValueOnce([{ GOODSCODE: 568651, TNVED: '8504409100' }]);
+        mockOzon(['568651'], { '568651': '8504408500' }, MARK);
 
         const rep = await service.sync({ apply: false });
 
-        expect(rep.checked).toBe(1);
-        expect(rep.alreadyOk).toBe(0);
+        expect(rep.checkedGoods).toBe(1);
+        expect(rep.checkedOffers).toBe(1);
         expect(rep.toFix).toHaveLength(1);
-        expect(rep.toFix[0]).toMatchObject({ offer: '568651', ozon: '8504408500', base: '8504409100', dictValueId: 972997562 });
-        // dry-run: attributes/update НЕ вызывался
+        expect(rep.toFix[0]).toMatchObject({
+            offer: '568651',
+            goodscode: '568651',
+            ozon: '8504408500',
+            base: '8504409100',
+            dictValueId: 972997562,
+        });
         expect(method).not.toHaveBeenCalledWith('/v1/product/attributes/update', expect.anything());
     });
 
-    it('ТНВЭД совпадает → alreadyOk, не в toFix', async () => {
+    it('суффиксные варианты (531557 и 531557-10) — правятся ОБА', async () => {
+        query.mockResolvedValueOnce([{ GOODSCODE: 531557, TNVED: '8504409100' }]);
+        mockOzon(['531557', '531557-10', '999999'], { '531557': '8504408500', '531557-10': null }, MARK);
+
+        const rep = await service.sync({ apply: false });
+
+        expect(rep.checkedOffers).toBe(2); // обе карточки товара 531557
+        expect(rep.toFix.map((f) => f.offer).sort()).toEqual(['531557', '531557-10']);
+        expect(rep.notFoundOnOzon).toHaveLength(0);
+    });
+
+    it('ТНВЭД совпадает → alreadyOk', async () => {
         query.mockResolvedValueOnce([{ GOODSCODE: 111, TNVED: '8504409100' }]);
-        method.mockResolvedValueOnce({ result: [productAttrs('111', '8504409100')] });
+        mockOzon(['111'], { '111': '8504409100' }, MARK);
 
         const rep = await service.sync({ apply: false });
 
@@ -72,24 +108,20 @@ describe('TnvedSyncService', () => {
         expect(rep.toFix).toHaveLength(0);
     });
 
-    it('товара нет на Озоне → notFoundOnOzon', async () => {
+    it('на Озоне нет ни одной карточки товара → notFoundOnOzon', async () => {
         query.mockResolvedValueOnce([{ GOODSCODE: 222, TNVED: '8504409100' }]);
-        method.mockResolvedValueOnce({ result: [] });
+        mockOzon(['777', '888'], {}, MARK); // среди offer'ов нет goodscode 222
 
         const rep = await service.sync({ apply: false });
 
         expect(rep.notFoundOnOzon).toEqual(['222']);
+        expect(rep.checkedOffers).toBe(0);
         expect(rep.toFix).toHaveLength(0);
     });
 
     it('нет варианта «МАРКИРОВКА РФ» → ambiguous', async () => {
         query.mockResolvedValueOnce([{ GOODSCODE: 333, TNVED: '8541410008' }]);
-        method.mockImplementation((path: string) => {
-            if (path === '/v4/product/info/attributes') return Promise.resolve({ result: [productAttrs('333', '8504408500')] });
-            if (path === '/v1/description-category/attribute/values/search')
-                return Promise.resolve({ result: [{ id: 1, value: '8541410008 - Светодиоды (без маркировки)' }] });
-            return Promise.resolve({});
-        });
+        mockOzon(['333'], { '333': '8504408500' }, [{ id: 1, value: '8541410008 - Светодиоды (без маркировки)' }]);
 
         const rep = await service.sync({ apply: false });
 
@@ -100,13 +132,7 @@ describe('TnvedSyncService', () => {
 
     it('apply=true → зовёт attributes/update с ТНВЭД+маркировкой и возвращает task_id', async () => {
         query.mockResolvedValueOnce([{ GOODSCODE: 568651, TNVED: '8504409100' }]);
-        method.mockImplementation((path: string, body: any) => {
-            if (path === '/v4/product/info/attributes') return Promise.resolve({ result: [productAttrs('568651', '8504408500')] });
-            if (path === '/v1/description-category/attribute/values/search')
-                return Promise.resolve({ result: [{ id: 972997562, value: '8504409100 - МАРКИРОВКА РФ - Преобразователи' }] });
-            if (path === '/v1/product/attributes/update') return Promise.resolve({ task_id: 5221013431 });
-            return Promise.resolve({});
-        });
+        mockOzon(['568651'], { '568651': '8504408500' }, MARK);
 
         const rep = await service.sync({ apply: true });
 

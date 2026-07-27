@@ -6,12 +6,13 @@ import { OzonApiService } from '../ozon.api/ozon.api.service';
 
 export interface TnvedSyncOptions {
     apply?: boolean; // false = dry-run (только отчёт), true = писать на Озон
-    offer?: string; // ограничить одним offer_id (обкатка)
-    limit?: number; // ограничить количество товаров
+    offer?: string; // ограничить одним GOODSCODE (обкатка) — берутся все его варианты
+    limit?: number; // ограничить количество товаров базы
 }
 
 export interface TnvedFixItem {
-    offer: string;
+    offer: string; // конкретный offer_id на Озоне (может быть суффиксным)
+    goodscode: string;
     name?: string;
     ozon: string | null; // текущий ТНВЭД на Озоне
     base: string; // наш ТНВЭД из базы
@@ -23,10 +24,11 @@ export interface TnvedFixItem {
 
 export interface TnvedSyncReport {
     apply: boolean;
-    checked: number;
+    checkedGoods: number; // товаров из базы
+    checkedOffers: number; // карточек на Озоне (с учётом суффиксных вариантов)
     toFix: TnvedFixItem[];
     alreadyOk: number;
-    notFoundOnOzon: string[];
+    notFoundOnOzon: string[]; // goodscode, у которых на Озоне нет ни одной карточки
     ambiguous: { offer: string; reason: string }[];
 }
 
@@ -50,9 +52,11 @@ export class TnvedSyncService {
 
     async sync(opts: TnvedSyncOptions = {}): Promise<TnvedSyncReport> {
         const base = await this.loadBaseTnved(opts.offer, opts.limit);
+        const offerMap = await this.loadOzonOfferMap();
         const report: TnvedSyncReport = {
             apply: !!opts.apply,
-            checked: base.length,
+            checkedGoods: base.length,
+            checkedOffers: 0,
             toFix: [],
             alreadyOk: 0,
             notFoundOnOzon: [],
@@ -61,69 +65,92 @@ export class TnvedSyncService {
         // dictionary_value_id варианта «МАРКИРОВКА РФ», ключ (cat:type:tnved) — резолвим один раз
         const dictCache = new Map<string, number | null>();
 
-        for (const { offer, tnved } of base) {
-            let prod: any;
-            try {
-                prod = await this.getProductAttributes(offer);
-            } catch (e) {
-                report.ambiguous.push({ offer, reason: `info/attributes error: ${e?.message ?? e}` });
+        for (const { offer: goodscode, tnved } of base) {
+            // все карточки Озона этого товара: точный goodscode + суффиксные варианты (531557, 531557-10, …)
+            const offers = offerMap.get(goodscode) ?? [];
+            if (offers.length === 0) {
+                report.notFoundOnOzon.push(goodscode);
                 continue;
             }
-            if (!prod) {
-                report.notFoundOnOzon.push(offer);
-                continue;
+            for (const offerId of offers) {
+                report.checkedOffers++;
+                await this.processOffer(offerId, goodscode, tnved, dictCache, report, !!opts.apply);
             }
-
-            const cat = prod.description_category_id;
-            const type = prod.type_id;
-            const attr = (prod.attributes || []).find((a: any) => a.id === this.tnvedAttrId);
-            const currentVal: string = attr?.values?.[0]?.value ?? '';
-            const currentCode = (/^\s*(\d{4,10})/.exec(currentVal) || [])[1] ?? null;
-
-            if (currentCode === tnved) {
-                report.alreadyOk++;
-                continue;
-            }
-
-            const key = `${cat}:${type}:${tnved}`;
-            let dictId = dictCache.get(key);
-            if (dictId === undefined) {
-                dictId = await this.resolveMarkDictValue(cat, type, tnved);
-                dictCache.set(key, dictId);
-            }
-            if (!dictId) {
-                report.ambiguous.push({
-                    offer,
-                    reason: `нет варианта «${MARK_LABEL}» для ТНВЭД ${tnved} (cat ${cat}/${type})`,
-                });
-                continue;
-            }
-
-            const fix: TnvedFixItem = {
-                offer,
-                name: prod.name,
-                ozon: currentCode,
-                base: tnved,
-                dictValueId: dictId,
-                action: `set ${tnved} (${MARK_LABEL}) + Нужен код маркировки`,
-            };
-
-            if (opts.apply) {
-                try {
-                    const res = await this.applyFix(offer, dictId);
-                    fix.taskId = res?.task_id;
-                } catch (e) {
-                    fix.error = e?.message ?? String(e);
-                }
-            }
-            report.toFix.push(fix);
         }
 
         this.logger.log(
-            `[tnved-sync] apply=${report.apply} checked=${report.checked} toFix=${report.toFix.length} ` +
-                `ok=${report.alreadyOk} notFound=${report.notFoundOnOzon.length} ambiguous=${report.ambiguous.length}`,
+            `[tnved-sync] apply=${report.apply} goods=${report.checkedGoods} offers=${report.checkedOffers} ` +
+                `toFix=${report.toFix.length} ok=${report.alreadyOk} notFound=${report.notFoundOnOzon.length} ` +
+                `ambiguous=${report.ambiguous.length}`,
         );
         return report;
+    }
+
+    /** Сверка/правка одной карточки Озона (одного offer_id). */
+    private async processOffer(
+        offerId: string,
+        goodscode: string,
+        tnved: string,
+        dictCache: Map<string, number | null>,
+        report: TnvedSyncReport,
+        apply: boolean,
+    ): Promise<void> {
+        let prod: any;
+        try {
+            prod = await this.getProductAttributes(offerId);
+        } catch (e) {
+            report.ambiguous.push({ offer: offerId, reason: `info/attributes error: ${e?.message ?? e}` });
+            return;
+        }
+        if (!prod) {
+            report.ambiguous.push({ offer: offerId, reason: 'карточка не отдала атрибуты' });
+            return;
+        }
+
+        const cat = prod.description_category_id;
+        const type = prod.type_id;
+        const attr = (prod.attributes || []).find((a: any) => a.id === this.tnvedAttrId);
+        const currentVal: string = attr?.values?.[0]?.value ?? '';
+        const currentCode = (/^\s*(\d{4,10})/.exec(currentVal) || [])[1] ?? null;
+
+        if (currentCode === tnved) {
+            report.alreadyOk++;
+            return;
+        }
+
+        const key = `${cat}:${type}:${tnved}`;
+        let dictId = dictCache.get(key);
+        if (dictId === undefined) {
+            dictId = await this.resolveMarkDictValue(cat, type, tnved);
+            dictCache.set(key, dictId);
+        }
+        if (!dictId) {
+            report.ambiguous.push({
+                offer: offerId,
+                reason: `нет варианта «${MARK_LABEL}» для ТНВЭД ${tnved} (cat ${cat}/${type})`,
+            });
+            return;
+        }
+
+        const fix: TnvedFixItem = {
+            offer: offerId,
+            goodscode,
+            name: prod.name,
+            ozon: currentCode,
+            base: tnved,
+            dictValueId: dictId,
+            action: `set ${tnved} (${MARK_LABEL}) + Нужен код маркировки`,
+        };
+
+        if (apply) {
+            try {
+                const res = await this.applyFix(offerId, dictId);
+                fix.taskId = res?.task_id;
+            } catch (e) {
+                fix.error = e?.message ?? String(e);
+            }
+        }
+        report.toFix.push(fix);
     }
 
     /** Источник истины — наша база: маркируемые товары с заполненным ТНВЭД. */
@@ -148,7 +175,32 @@ export class TnvedSyncService {
         }
     }
 
-    /** Свежие атрибуты товара с Озона (без кэша — решение о правке должно быть на актуальных данных). */
+    /** Карта goodscode -> [offer_id…] по всему каталогу Озона (учитывает суффиксные варианты фасовки). */
+    private async loadOzonOfferMap(): Promise<Map<string, string[]>> {
+        const map = new Map<string, string[]>();
+        let lastId = '';
+        for (let guard = 0; guard < 100; guard++) {
+            const res = await this.ozonApi.method('/v3/product/list', {
+                filter: { visibility: 'ALL' },
+                last_id: lastId,
+                limit: 1000,
+            });
+            const items: any[] = res?.result?.items ?? [];
+            for (const it of items) {
+                const offer = String(it.offer_id ?? '');
+                if (!offer) continue;
+                const gc = offer.split('-')[0];
+                const arr = map.get(gc) ?? [];
+                arr.push(offer);
+                map.set(gc, arr);
+            }
+            lastId = res?.result?.last_id ?? '';
+            if (!items.length || !lastId) break;
+        }
+        return map;
+    }
+
+    /** Свежие атрибуты карточки с Озона (без кэша — решение о правке должно быть на актуальных данных). */
     private async getProductAttributes(offer: string): Promise<any> {
         const res = await this.ozonApi.method('/v4/product/info/attributes', {
             filter: { offer_id: [offer], visibility: 'ALL' },
