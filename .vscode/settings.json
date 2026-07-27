@@ -12,5 +12,6 @@
         "localhost",
         "127.0.0.1",
         "api-seller.ozon.ru"
-    ]
+    ],
+    "js/ts.tsdk.path": "node_modules/typescript/lib"
 }
