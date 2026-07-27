@@ -2,7 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FirebirdPool } from 'ts-firebird';
 import { FIREBIRD } from '../firebird/firebird.module';
-import { OzonApiService } from '../ozon.api/ozon.api.service';
+import { ProductService } from '../product/product.service';
 
 export interface TnvedSyncOptions {
     apply?: boolean; // false = dry-run (только отчёт), true = писать на Озон
@@ -34,6 +34,11 @@ export interface TnvedSyncReport {
 
 const MARK_LABEL = 'МАРКИРОВКА РФ';
 
+/**
+ * Сверка ТНВЭД маркируемых товаров с Озоном и (опц.) автоправка.
+ * Оркестрирует: база (источник истины) + ProductService (все операции с Озоном).
+ * Собственных вызовов Ozon API не делает — только через ProductService.
+ */
 @Injectable()
 export class TnvedSyncService {
     private readonly logger = new Logger(TnvedSyncService.name);
@@ -42,10 +47,10 @@ export class TnvedSyncService {
 
     constructor(
         @Inject(FIREBIRD) private readonly pool: FirebirdPool,
-        private readonly ozonApi: OzonApiService,
+        private readonly productService: ProductService,
         config: ConfigService,
     ) {
-        // ТН ВЭД коды ЕАЭС / «Нужен код маркировки» — id атрибутов Ozon (глобальные, но вынесены в конфиг)
+        // ТН ВЭД коды ЕАЭС / «Нужен код маркировки» — id атрибутов Ozon (глобальные, вынесены в конфиг)
         this.tnvedAttrId = config.get<number>('OZON_TNVED_ATTR_ID', 22232);
         this.markAttrId = config.get<number>('OZON_MARK_REQUIRED_ATTR_ID', 23536);
     }
@@ -97,7 +102,7 @@ export class TnvedSyncService {
     ): Promise<void> {
         let prod: any;
         try {
-            prod = await this.getProductAttributes(offerId);
+            prod = await this.productService.getProductAttributes(offerId);
         } catch (e) {
             report.ambiguous.push({ offer: offerId, reason: `info/attributes error: ${e?.message ?? e}` });
             return;
@@ -144,8 +149,7 @@ export class TnvedSyncService {
 
         if (apply) {
             try {
-                const res = await this.applyFix(offerId, dictId);
-                fix.taskId = res?.task_id;
+                fix.taskId = await this.applyFix(offerId, dictId);
             } catch (e) {
                 fix.error = e?.message ?? String(e);
             }
@@ -180,11 +184,7 @@ export class TnvedSyncService {
         const map = new Map<string, string[]>();
         let lastId = '';
         for (let guard = 0; guard < 100; guard++) {
-            const res = await this.ozonApi.method('/v3/product/list', {
-                filter: { visibility: 'ALL' },
-                last_id: lastId,
-                limit: 1000,
-            });
+            const res: any = await this.productService.list(lastId, 1000);
             const items: any[] = res?.result?.items ?? [];
             for (const it of items) {
                 const offer = String(it.offer_id ?? '');
@@ -200,43 +200,24 @@ export class TnvedSyncService {
         return map;
     }
 
-    /** Свежие атрибуты карточки с Озона (без кэша — решение о правке должно быть на актуальных данных). */
-    private async getProductAttributes(offer: string): Promise<any> {
-        const res = await this.ozonApi.method('/v4/product/info/attributes', {
-            filter: { offer_id: [offer], visibility: 'ALL' },
-            limit: 1,
-        });
-        return res?.result?.[0] ?? res?.items?.[0] ?? null;
-    }
-
     /** dictionary_value_id варианта «МАРКИРОВКА РФ» для данного ТНВЭД в категории товара. */
     private async resolveMarkDictValue(cat: number, type: number, tnved: string): Promise<number | null> {
-        const res = await this.ozonApi.method('/v1/description-category/attribute/values/search', {
-            description_category_id: cat,
-            type_id: type,
-            attribute_id: this.tnvedAttrId,
-            value: tnved,
-            limit: 50,
-        });
-        const vals: any[] = res?.result ?? [];
+        const vals = await this.productService.searchCategoryAttributeValues(this.tnvedAttrId, cat, type, tnved);
         const marked = vals.find(
             (v) => (v.value ?? '').includes(MARK_LABEL) && (v.value ?? '').trim().startsWith(tnved),
         );
         return marked?.id ?? null;
     }
 
-    /** Записать ТНВЭД (вариант с маркировкой) + включить «Нужен код маркировки». */
-    private async applyFix(offer: string, dictValueId: number): Promise<any> {
-        return this.ozonApi.method('/v1/product/attributes/update', {
-            items: [
-                {
-                    offer_id: offer,
-                    attributes: [
-                        { id: this.tnvedAttrId, values: [{ dictionary_value_id: dictValueId }] },
-                        { id: this.markAttrId, values: [{ value: 'true' }] },
-                    ],
-                },
+    /** Записать ТНВЭД (вариант с маркировкой) + включить «Нужен код маркировки». Возвращает task_id. */
+    private async applyFix(offer: string, dictValueId: number): Promise<number | undefined> {
+        const res = await this.productService.updateAttributes({
+            offer_ids: [offer],
+            attributes: [
+                { complex_id: 0, id: this.tnvedAttrId, values: [{ dictionary_value_id: dictValueId }] },
+                { complex_id: 0, id: this.markAttrId, values: [{ value: 'true' }] },
             ],
         });
+        return res?.[0]?.task_id;
     }
 }
