@@ -866,40 +866,60 @@ describe('WbOrderService', () => {
             expect(method).not.toHaveBeenCalled();
         });
 
-        it('meta без sgtin → skipped', async () => {
+        it('не делает GET /meta (его нет в API v3), сразу PUT sgtin', async () => {
             getAttachedMarkCodesByScode.mockResolvedValueOnce([
                 { ki: 'KI-1', goodscode: '531557', realpricecode: 1 },
             ]);
-            method.mockResolvedValueOnce({ meta: {}, requiredMeta: [], optionalMeta: ['gtin'] });
+            getKmFullByKi.mockResolvedValueOnce('01FULL-1');
+            method.mockResolvedValueOnce({});
+
             const res = await service.submitFbsMarkCodes(invoice);
-            expect(res).toEqual({ ok: true, skipped: 'no sgtin required' });
+
+            expect(res).toEqual({ ok: true });
             expect(method).toHaveBeenCalledTimes(1);
-            expect(method).toHaveBeenCalledWith('/api/v3/orders/592715/meta', 'get', {});
+            expect(method).toHaveBeenCalledWith('/api/v3/orders/592715/meta/sgtin', 'put', {
+                sgtins: ['01FULL-1'],
+            });
         });
 
-        it('happy path: meta(requires sgtin) → setOrderKiz', async () => {
+        it('happy path: attached КМ → setOrderKiz (PUT sgtin)', async () => {
             getAttachedMarkCodesByScode.mockResolvedValueOnce([
                 { ki: 'KI-1', goodscode: '531557', realpricecode: 1 },
                 { ki: 'KI-2', goodscode: '531557', realpricecode: 1 },
             ]);
-            method.mockResolvedValueOnce({ meta: {}, requiredMeta: ['sgtin'] });
             getKmFullByKi.mockResolvedValueOnce('01FULL-1').mockResolvedValueOnce('01FULL-2');
             method.mockResolvedValueOnce({});
 
             const res = await service.submitFbsMarkCodes(invoice);
 
             expect(res).toEqual({ ok: true });
-            expect(method).toHaveBeenNthCalledWith(2, '/api/v3/orders/592715/meta/sgtin', 'put', {
+            expect(method).toHaveBeenCalledWith('/api/v3/orders/592715/meta/sgtin', 'put', {
                 sgtins: ['01FULL-1', '01FULL-2'],
             });
         });
 
-        it('часть KM_FULL пуста → ok=true с failed для пустых', async () => {
+        it('PUT вернул NotOk → ok=false без skipRetry (крон повторит)', async () => {
+            getAttachedMarkCodesByScode.mockResolvedValueOnce([
+                { ki: 'KI-1', goodscode: '531557', realpricecode: 1 },
+            ]);
+            getKmFullByKi.mockResolvedValueOnce('01FULL-1');
+            method.mockResolvedValueOnce({
+                status: 'NotOk',
+                error: { status: 405, message: 'method not allowed' },
+            });
+
+            const res = await service.submitFbsMarkCodes(invoice);
+
+            expect(res.ok).toBe(false);
+            expect(res.skipRetry).toBeUndefined();
+            expect(res.failed?.[0]?.reason).toContain('405');
+        });
+
+        it('часть KM_FULL пуста → ok=false с failed для пустых', async () => {
             getAttachedMarkCodesByScode.mockResolvedValueOnce([
                 { ki: 'KI-1', goodscode: '531557', realpricecode: 1 },
                 { ki: 'KI-2', goodscode: '531557', realpricecode: 1 },
             ]);
-            method.mockResolvedValueOnce({ meta: {}, optionalMeta: ['sgtin'] });
             getKmFullByKi.mockResolvedValueOnce('01FULL-1').mockResolvedValueOnce(null);
             method.mockResolvedValueOnce({});
 
@@ -907,33 +927,31 @@ describe('WbOrderService', () => {
 
             expect(res.ok).toBe(false);
             expect(res.failed).toEqual([{ ki: 'KI-2', reason: 'KM_FULL пуст' }]);
-            expect(method).toHaveBeenNthCalledWith(2, '/api/v3/orders/592715/meta/sgtin', 'put', {
+            expect(method).toHaveBeenCalledWith('/api/v3/orders/592715/meta/sgtin', 'put', {
                 sgtins: ['01FULL-1'],
             });
         });
 
-        it('все KM_FULL пусты → ok=false, setOrderKiz не вызывается', async () => {
+        it('все KM_FULL пусты → ok=false, PUT не вызывается', async () => {
             getAttachedMarkCodesByScode.mockResolvedValueOnce([
                 { ki: 'KI-1', goodscode: '531557', realpricecode: 1 },
             ]);
-            method.mockResolvedValueOnce({ meta: {}, requiredMeta: ['sgtin'] });
             getKmFullByKi.mockResolvedValueOnce(null);
 
             const res = await service.submitFbsMarkCodes(invoice);
 
             expect(res.ok).toBe(false);
             expect(res.failed).toEqual([{ ki: 'KI-1', reason: 'KM_FULL пуст' }]);
-            expect(method).toHaveBeenCalledTimes(1);
+            expect(method).not.toHaveBeenCalled();
         });
 
-        it('>100 КМ → skipRetry=true, без вызова setOrderKiz', async () => {
+        it('>100 КМ → skipRetry=true, PUT не вызывается', async () => {
             const many = Array.from({ length: 101 }, (_, i) => ({
                 ki: `KI-${i}`,
                 goodscode: '531557',
                 realpricecode: 1,
             }));
             getAttachedMarkCodesByScode.mockResolvedValueOnce(many);
-            method.mockResolvedValueOnce({ meta: {}, requiredMeta: ['sgtin'] });
             getKmFullByKi.mockImplementation((ki: string) => Promise.resolve(`01FULL-${ki}`));
 
             const res = await service.submitFbsMarkCodes(invoice);
@@ -941,7 +959,7 @@ describe('WbOrderService', () => {
             expect(res.ok).toBe(false);
             expect(res.skipRetry).toBe(true);
             expect(res.failed?.[0]?.reason).toContain('>100 КМ');
-            expect(method).toHaveBeenCalledTimes(1);
+            expect(method).not.toHaveBeenCalled();
         });
     });
 });
