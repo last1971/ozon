@@ -29,7 +29,6 @@ import { WbInvoiceQueryDto } from '../order/dto/wb-invoice-query.dto';
 import { WbInvoiceSridQueryDto } from '../order/dto/wb-invoice-srid-query.dto';
 import { RateLimit, setRateLimitBlocked } from '../helpers/decorators/rate-limit.decorator';
 import { IMarkSubmittable, SubmitFailureDto, SubmitResultDto } from '../interfaces/IMarkSubmittable';
-import { WbOrderMetaDto } from './dto/wb.order.meta.dto';
 import { WbOrderSetKizRequestDto } from './dto/wb.order.set-kiz.dto';
 import { FboMarkMigrationService } from '../posting.fbo/fbo-mark-migration.service';
 import { ProcessedCacheService } from '../processed-cache/processed-cache.service';
@@ -465,13 +464,9 @@ export class WbOrderService implements IOrderable, IMarkSubmittable {
         return context.invoice || null;
     }
 
-    async getOrderMeta(orderId: number): Promise<WbOrderMetaDto> {
-        return this.api.method(`/api/v3/orders/${orderId}/meta`, 'get', {});
-    }
-
-    async setOrderKiz(orderId: number, sgtins: string[]): Promise<void> {
+    async setOrderKiz(orderId: number, sgtins: string[]): Promise<any> {
         const body: WbOrderSetKizRequestDto = { sgtins };
-        await this.api.method(`/api/v3/orders/${orderId}/meta/sgtin`, 'put', body);
+        return this.api.method(`/api/v3/orders/${orderId}/meta/sgtin`, 'put', body);
     }
 
     async submitFbsMarkCodes(invoice: InvoiceDto): Promise<SubmitResultDto> {
@@ -487,13 +482,10 @@ export class WbOrderService implements IOrderable, IMarkSubmittable {
             };
         }
 
-        const meta = await this.getOrderMeta(orderId);
-        const needsSgtin =
-            meta?.requiredMeta?.includes('sgtin') || meta?.optionalMeta?.includes('sgtin');
-        if (!needsSgtin) {
-            return { ok: true, skipped: 'no sgtin required' };
-        }
-
+        // Per-order GET /orders/{id}/meta в API v3 нет (WB отвечает 405, Allow: DELETE):
+        // requiredMeta отдаётся только в списке /orders/new. Но сюда мы попадаем лишь при
+        // attached.length > 0 — на заказе есть привязанные КМ, значит товар маркируемый и
+        // sgtin требуется. Поэтому сразу привязываем КИЗ через PUT /orders/{id}/meta/sgtin.
         const sgtins: string[] = [];
         const failed: SubmitFailureDto[] = [];
         for (const a of attached) {
@@ -511,7 +503,23 @@ export class WbOrderService implements IOrderable, IMarkSubmittable {
             };
         }
 
-        await this.setOrderKiz(orderId, sgtins);
+        // WbApiService на ошибке не бросает, а возвращает { status:'NotOk', error }.
+        // Ловим это явно, иначе неотправленный КИЗ (405 и т.п.) уедет как ok:true,
+        // крон закэширует заказ отправленным и повтора не будет.
+        const resp = await this.setOrderKiz(orderId, sgtins);
+        if (resp?.status === 'NotOk' || resp?.error) {
+            const err = resp?.error ?? {};
+            return {
+                ok: false,
+                failed: [
+                    ...failed,
+                    {
+                        ki: '*',
+                        reason: `WB meta/sgtin: ${err.status ?? ''} ${err.message ?? err.service_message ?? ''}`.trim(),
+                    },
+                ],
+            };
+        }
 
         return failed.length === 0 ? { ok: true } : { ok: false, failed };
     }
