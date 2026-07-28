@@ -16,7 +16,8 @@ export interface TnvedFixItem {
     name?: string;
     ozon: string | null; // текущий ТНВЭД на Озоне
     base: string; // наш ТНВЭД из базы
-    dictValueId?: number; // dictionary_value_id варианта «МАРКИРОВКА РФ»
+    markRequired?: boolean; // маркируемый ли товар (определяет вариант ТНВЭД и состояние чекбокса)
+    dictValueId?: number; // dictionary_value_id целевого варианта ТНВЭД
     reason: string; // почему считается требующим правки
     action: string;
     taskId?: number; // после apply
@@ -36,9 +37,11 @@ export interface TnvedSyncReport {
 const MARK_LABEL = 'МАРКИРОВКА РФ';
 
 /**
- * Сверка ТНВЭД маркируемых товаров с Озоном и (опц.) автоправка.
- * Оркестрирует: база (источник истины) + ProductService (все операции с Озоном).
- * Собственных вызовов Ozon API не делает — только через ProductService.
+ * Сверка ТНВЭД всех товаров с Озоном и (опц.) автоправка. Ветвится по MARK_REQUIRED:
+ *   - маркируемый (MR=1)   → вариант ТНВЭД «МАРКИРОВКА РФ» + чекбокс «Нужен код маркировки» ON;
+ *   - немаркируемый (MR=0) → плоский вариант ТНВЭД (без «МАРКИРОВКА РФ») + чекбокс OFF.
+ * Обе ветки — один поток, разница только во флаге markRequired (предикат выбора значения
+ * и целевое состояние чекбокса). Оркестрирует: база (истина) + ProductService (весь Ozon).
  */
 @Injectable()
 export class TnvedSyncService {
@@ -71,7 +74,7 @@ export class TnvedSyncService {
         // dictionary_value_id варианта «МАРКИРОВКА РФ», ключ (cat:type:tnved) — резолвим один раз
         const dictCache = new Map<string, number | null>();
 
-        for (const { offer: goodscode, tnved } of base) {
+        for (const { offer: goodscode, tnved, markRequired } of base) {
             // все карточки Озона этого товара: точный goodscode + суффиксные варианты (531557, 531557-10, …)
             const offers = offerMap.get(goodscode) ?? [];
             if (offers.length === 0) {
@@ -80,7 +83,7 @@ export class TnvedSyncService {
             }
             for (const offerId of offers) {
                 report.checkedOffers++;
-                await this.processOffer(offerId, goodscode, tnved, dictCache, report, !!opts.apply);
+                await this.processOffer(offerId, goodscode, tnved, markRequired, dictCache, report, !!opts.apply);
             }
         }
 
@@ -97,6 +100,7 @@ export class TnvedSyncService {
         offerId: string,
         goodscode: string,
         tnved: string,
+        markRequired: boolean,
         dictCache: Map<string, number | null>,
         report: TnvedSyncReport,
         apply: boolean,
@@ -123,32 +127,34 @@ export class TnvedSyncService {
         const markAttr = attrs.find((a) => a.id === this.markAttrId);
         const markOn = String(markAttr?.values?.[0]?.value ?? '').toLowerCase() === 'true';
 
-        // Целевой вариант «МАРКИРОВКА РФ» нашего ТНВЭД в категории карточки
-        const key = `${cat}:${type}:${tnved}`;
+        // Целевой вариант ТНВЭД в категории карточки: с «МАРКИРОВКА РФ» для маркируемых,
+        // плоский — для немаркируемых. Ключ кэша включает markRequired: варианты разные.
+        const variantLabel = markRequired ? MARK_LABEL : 'без маркировки';
+        const key = `${cat}:${type}:${tnved}:${markRequired}`;
         let targetDictId = dictCache.get(key);
         if (targetDictId === undefined) {
-            targetDictId = await this.resolveMarkDictValue(cat, type, tnved);
+            targetDictId = await this.resolveTnvedDictValue(cat, type, tnved, markRequired);
             dictCache.set(key, targetDictId);
         }
         if (!targetDictId) {
             report.ambiguous.push({
                 offer: offerId,
-                reason: `нет варианта «${MARK_LABEL}» для ТНВЭД ${tnved} (cat ${cat}/${type})`,
+                reason: `нет варианта «${variantLabel}» для ТНВЭД ${tnved} (cat ${cat}/${type})`,
             });
             return;
         }
 
-        // ОК = ровно нужный dictionary_value_id (вариант с маркировкой) И включённый чекбокс маркировки.
-        // Совпадения одних лишь цифр ТНВЭД мало: плоский вариант без «МАРКИРОВКА РФ» / выключенный чекбокс — это НЕ ок.
-        if (currentDictId === targetDictId && markOn) {
+        // ОК = нужный dictionary_value_id И чекбокс маркировки в целевом состоянии (ON для MR=1, OFF для MR=0).
+        // Совпадения одних лишь цифр ТНВЭД мало: не тот вариант / не то состояние чекбокса — НЕ ок.
+        if (currentDictId === targetDictId && markOn === markRequired) {
             report.alreadyOk++;
             return;
         }
 
         const reasons: string[] = [];
         if (currentCode !== tnved) reasons.push(`ТНВЭД ${currentCode ?? '—'}→${tnved}`);
-        else if (currentDictId !== targetDictId) reasons.push(`вариант без «${MARK_LABEL}»`);
-        if (!markOn) reasons.push('чекбокс маркировки выкл');
+        else if (currentDictId !== targetDictId) reasons.push(`вариант «${variantLabel}»`);
+        if (markOn !== markRequired) reasons.push(markRequired ? 'включить код маркировки' : 'выключить код маркировки');
 
         const fix: TnvedFixItem = {
             offer: offerId,
@@ -156,14 +162,15 @@ export class TnvedSyncService {
             name: prod.name,
             ozon: currentCode,
             base: tnved,
+            markRequired,
             dictValueId: targetDictId,
             reason: reasons.join('; '),
-            action: `set ${tnved} (${MARK_LABEL}) + Нужен код маркировки`,
+            action: `set ${tnved} (${variantLabel}) + код маркировки ${markRequired ? 'ON' : 'OFF'}`,
         };
 
         if (apply) {
             try {
-                fix.taskId = await this.applyFix(offerId, targetDictId);
+                fix.taskId = await this.applyFix(offerId, targetDictId, markRequired);
             } catch (e) {
                 fix.error = e?.message ?? String(e);
             }
@@ -171,20 +178,27 @@ export class TnvedSyncService {
         report.toFix.push(fix);
     }
 
-    /** Источник истины — наша база: маркируемые товары с заполненным ТНВЭД. */
-    private async loadBaseTnved(offer?: string, limit?: number): Promise<{ offer: string; tnved: string }[]> {
+    /** Источник истины — наша база: все товары с заполненным ТНВЭД + флаг маркируемости. */
+    private async loadBaseTnved(
+        offer?: string,
+        limit?: number,
+    ): Promise<{ offer: string; tnved: string; markRequired: boolean }[]> {
         const t = await this.pool.getTransaction();
         try {
+            // MAX(MARK_REQUIRED): если хоть один вариант товара маркируемый — считаем товар маркируемым.
             const sql =
-                `SELECT g.GOODSCODE, MIN(TRIM(c.TNVED)) AS TNVED ` +
-                `FROM (SELECT DISTINCT GOODSCODE FROM GOODS_CLASSIF WHERE MARK_REQUIRED = 1) g ` +
-                `JOIN GOODS_CLASSIF c ON c.GOODSCODE = g.GOODSCODE ` +
-                `AND c.TNVED IS NOT NULL AND TRIM(c.TNVED) <> '' ` +
-                (offer ? `WHERE g.GOODSCODE = ? ` : ``) +
-                `GROUP BY g.GOODSCODE`;
+                `SELECT c.GOODSCODE, MIN(TRIM(c.TNVED)) AS TNVED, MAX(c.MARK_REQUIRED) AS MARK_REQUIRED ` +
+                `FROM GOODS_CLASSIF c ` +
+                `WHERE c.TNVED IS NOT NULL AND TRIM(c.TNVED) <> '' ` +
+                (offer ? `AND c.GOODSCODE = ? ` : ``) +
+                `GROUP BY c.GOODSCODE`;
             const rows = await t.query(sql, offer ? [Number(offer)] : [], false);
             await t.commit(true);
-            let list = rows.map((r: any) => ({ offer: String(r.GOODSCODE), tnved: String(r.TNVED).trim() }));
+            let list = rows.map((r: any) => ({
+                offer: String(r.GOODSCODE),
+                tnved: String(r.TNVED).trim(),
+                markRequired: Number(r.MARK_REQUIRED) === 1,
+            }));
             if (limit && limit > 0) list = list.slice(0, limit);
             return list;
         } catch (e) {
@@ -214,22 +228,35 @@ export class TnvedSyncService {
         return map;
     }
 
-    /** dictionary_value_id варианта «МАРКИРОВКА РФ» для данного ТНВЭД в категории товара. */
-    private async resolveMarkDictValue(cat: number, type: number, tnved: string): Promise<number | null> {
+    /**
+     * dictionary_value_id варианта ТНВЭД в категории товара.
+     * markRequired=true  → вариант, содержащий «МАРКИРОВКА РФ»;
+     * markRequired=false → плоский вариант (без «МАРКИРОВКА РФ»).
+     */
+    private async resolveTnvedDictValue(
+        cat: number,
+        type: number,
+        tnved: string,
+        markRequired: boolean,
+    ): Promise<number | null> {
         const vals = await this.productService.searchCategoryAttributeValues(this.tnvedAttrId, cat, type, tnved);
-        const marked = vals.find(
-            (v) => (v.value ?? '').includes(MARK_LABEL) && (v.value ?? '').trim().startsWith(tnved),
-        );
-        return marked?.id ?? null;
+        const match = vals.find((v) => {
+            const val = (v.value ?? '').trim();
+            return val.startsWith(tnved) && (v.value ?? '').includes(MARK_LABEL) === markRequired;
+        });
+        return match?.id ?? null;
     }
 
-    /** Записать ТНВЭД (вариант с маркировкой) + включить «Нужен код маркировки». Возвращает task_id. */
-    private async applyFix(offer: string, dictValueId: number): Promise<number | undefined> {
+    /**
+     * Записать ТНВЭД (нужный вариант) + выставить «Нужен код маркировки» в целевое состояние.
+     * markValue=true для маркируемых, false — для немаркируемых (крыжик активно снимается). task_id.
+     */
+    private async applyFix(offer: string, dictValueId: number, markValue: boolean): Promise<number | undefined> {
         const res = await this.productService.updateAttributes({
             offer_ids: [offer],
             attributes: [
                 { complex_id: 0, id: this.tnvedAttrId, values: [{ dictionary_value_id: dictValueId }] },
-                { complex_id: 0, id: this.markAttrId, values: [{ value: 'true' }] },
+                { complex_id: 0, id: this.markAttrId, values: [{ value: String(markValue) }] },
             ],
         });
         return res?.[0]?.task_id;
