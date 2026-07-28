@@ -33,6 +33,19 @@ export class ProcessedCacheService {
     }
 
     /**
+     * Дописать один ключ в существующий набор (load→add→save, мердж).
+     * Читает актуальное множество перед записью, поэтому не затирает ключи,
+     * добавленные другими путями (в т.ч. кроном) — только добавляет свой.
+     * Нужен для внекроновых точек (пикап), чтобы крон потом не слал КМ повторно.
+     */
+    async markProcessed(cacheName: string, scope: string, key: string): Promise<void> {
+        const processed = await this.load(cacheName, scope);
+        if (processed.has(key)) return;
+        processed.add(key);
+        await this.save(cacheName, scope, processed);
+    }
+
+    /**
      * Обобщённый вариант processWithCache: ключ извлекается через keyOf,
      * запись в кеш откладывается флашером до успешного commit транзакции.
      */

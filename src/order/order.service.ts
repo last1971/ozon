@@ -167,7 +167,18 @@ export class OrderService {
         const service = this.getServiceByBuyerId(invoice.buyerId, true);
         if (!isMarkSubmittable(service)) return undefined;
         try {
-            return await service.submitFbsMarkCodes(invoice);
+            const res = await service.submitFbsMarkCodes(invoice);
+            if (res?.ok) {
+                // Пикап отправил КМ сам — помечаем posting как обработанный в том же
+                // кэше и с тем же scope, что использует крон (listFbsAwaitingShip),
+                // чтобы крон через 5 мин не слал те же марки повторно.
+                await this.processedCache.markProcessed(
+                    'fbs-marks-sent',
+                    service.constructor.name,
+                    invoice.remark,
+                );
+            }
+            return res;
         } catch (e) {
             const message = e?.message ?? String(e);
             this.logger.warn(`submitFbsMarkCodes failed for ${invoice.remark}: ${message}, cron retry`);
