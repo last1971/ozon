@@ -25,6 +25,13 @@ describe('TnvedSyncService', () => {
         { id: PLAIN_ID, value: '8504409100 - Преобразователи' },
     ];
 
+    // строка выборки базы: GOODSCODE + ТНВЭД + флаг маркируемости (MR=1 по умолчанию)
+    const baseRow = (gc: number, tnved: string, markRequired = 1) => ({
+        GOODSCODE: gc,
+        TNVED: tnved,
+        MARK_REQUIRED: markRequired,
+    });
+
     beforeEach(async () => {
         [query, commit, rollback, list, getProductAttributes, searchCategoryAttributeValues, updateAttributes].forEach(
             (m) => m.mockReset(),
@@ -59,97 +66,143 @@ describe('TnvedSyncService', () => {
         getProductAttributes.mockImplementation((o: string) => Promise.resolve(o in cards ? card(o, cards[o]) : null));
     };
 
-    it('правильный код, но ПЛОСКИЙ вариант + чекбокс выкл → toFix (кейс со скрина HDR-100-24)', async () => {
-        query.mockResolvedValueOnce([{ GOODSCODE: 568615, TNVED: '8504409100' }]);
-        ozonCatalog(['568615'], { '568615': { code: '8504409100', dictId: PLAIN_ID, markOn: false } });
+    describe('маркируемый (MARK_REQUIRED=1)', () => {
+        it('правильный код, но ПЛОСКИЙ вариант + чекбокс выкл → toFix (кейс со скрина HDR-100-24)', async () => {
+            query.mockResolvedValueOnce([baseRow(568615, '8504409100')]);
+            ozonCatalog(['568615'], { '568615': { code: '8504409100', dictId: PLAIN_ID, markOn: false } });
 
-        const rep = await service.sync({ apply: false });
+            const rep = await service.sync({ apply: false });
 
-        expect(rep.alreadyOk).toBe(0);
-        expect(rep.toFix).toHaveLength(1);
-        expect(rep.toFix[0]).toMatchObject({ offer: '568615', dictValueId: MARK_ID });
-        expect(rep.toFix[0].reason).toContain('МАРКИРОВКА РФ');
-        expect(rep.toFix[0].reason).toContain('чекбокс');
-    });
-
-    it('нужный вариант «МАРКИРОВКА РФ» + чекбокс вкл → alreadyOk', async () => {
-        query.mockResolvedValueOnce([{ GOODSCODE: 111, TNVED: '8504409100' }]);
-        ozonCatalog(['111'], { '111': { code: '8504409100', dictId: MARK_ID, markOn: true } });
-
-        const rep = await service.sync({ apply: false });
-
-        expect(rep.alreadyOk).toBe(1);
-        expect(rep.toFix).toHaveLength(0);
-    });
-
-    it('нужный вариант, но чекбокс ВЫКЛ → toFix', async () => {
-        query.mockResolvedValueOnce([{ GOODSCODE: 112, TNVED: '8504409100' }]);
-        ozonCatalog(['112'], { '112': { code: '8504409100', dictId: MARK_ID, markOn: false } });
-
-        const rep = await service.sync({ apply: false });
-
-        expect(rep.toFix).toHaveLength(1);
-        expect(rep.toFix[0].reason).toContain('чекбокс');
-    });
-
-    it('другой ТНВЭД → toFix', async () => {
-        query.mockResolvedValueOnce([{ GOODSCODE: 568651, TNVED: '8504409100' }]);
-        ozonCatalog(['568651'], { '568651': { code: '8504408500', dictId: 971399914, markOn: false } });
-
-        const rep = await service.sync({ apply: false });
-
-        expect(rep.toFix[0]).toMatchObject({ offer: '568651', ozon: '8504408500', base: '8504409100', dictValueId: MARK_ID });
-        expect(updateAttributes).not.toHaveBeenCalled();
-    });
-
-    it('суффиксные варианты (531557 и 531557-10) — оба в toFix', async () => {
-        query.mockResolvedValueOnce([{ GOODSCODE: 531557, TNVED: '8504409100' }]);
-        ozonCatalog(['531557', '531557-10', '999999'], {
-            '531557': { code: '8504408500', dictId: 971399914, markOn: false },
-            '531557-10': { code: null, dictId: null, markOn: false },
+            expect(rep.alreadyOk).toBe(0);
+            expect(rep.toFix).toHaveLength(1);
+            expect(rep.toFix[0]).toMatchObject({ offer: '568615', dictValueId: MARK_ID, markRequired: true });
+            expect(rep.toFix[0].reason).toContain('МАРКИРОВКА РФ');
+            expect(rep.toFix[0].reason).toContain('включить код маркировки');
         });
 
-        const rep = await service.sync({ apply: false });
+        it('нужный вариант «МАРКИРОВКА РФ» + чекбокс вкл → alreadyOk', async () => {
+            query.mockResolvedValueOnce([baseRow(111, '8504409100')]);
+            ozonCatalog(['111'], { '111': { code: '8504409100', dictId: MARK_ID, markOn: true } });
 
-        expect(rep.checkedOffers).toBe(2);
-        expect(rep.toFix.map((f) => f.offer).sort()).toEqual(['531557', '531557-10']);
+            const rep = await service.sync({ apply: false });
+
+            expect(rep.alreadyOk).toBe(1);
+            expect(rep.toFix).toHaveLength(0);
+        });
+
+        it('нужный вариант, но чекбокс ВЫКЛ → toFix', async () => {
+            query.mockResolvedValueOnce([baseRow(112, '8504409100')]);
+            ozonCatalog(['112'], { '112': { code: '8504409100', dictId: MARK_ID, markOn: false } });
+
+            const rep = await service.sync({ apply: false });
+
+            expect(rep.toFix).toHaveLength(1);
+            expect(rep.toFix[0].reason).toContain('включить код маркировки');
+        });
+
+        it('другой ТНВЭД → toFix', async () => {
+            query.mockResolvedValueOnce([baseRow(568651, '8504409100')]);
+            ozonCatalog(['568651'], { '568651': { code: '8504408500', dictId: 971399914, markOn: false } });
+
+            const rep = await service.sync({ apply: false });
+
+            expect(rep.toFix[0]).toMatchObject({ offer: '568651', ozon: '8504408500', base: '8504409100', dictValueId: MARK_ID });
+            expect(updateAttributes).not.toHaveBeenCalled();
+        });
+
+        it('нет варианта «МАРКИРОВКА РФ» → ambiguous', async () => {
+            query.mockResolvedValueOnce([baseRow(333, '8541410008')]);
+            ozonCatalog(['333'], { '333': { code: '8504408500', dictId: 1, markOn: false } });
+            searchCategoryAttributeValues.mockResolvedValue([{ id: 1, value: '8541410008 - Светодиоды (без маркировки)' }]);
+
+            const rep = await service.sync({ apply: false });
+
+            expect(rep.toFix).toHaveLength(0);
+            expect(rep.ambiguous[0].offer).toBe('333');
+            expect(rep.ambiguous[0].reason).toContain('МАРКИРОВКА РФ');
+        });
+
+        it('apply=true → updateAttributes с вариантом МАРКИРОВКА РФ + чекбокс true, возвращает task_id', async () => {
+            query.mockResolvedValueOnce([baseRow(568615, '8504409100')]);
+            ozonCatalog(['568615'], { '568615': { code: '8504409100', dictId: PLAIN_ID, markOn: false } });
+            updateAttributes.mockResolvedValue([{ task_id: 5221013431 }]);
+
+            const rep = await service.sync({ apply: true });
+
+            expect(rep.toFix[0].taskId).toBe(5221013431);
+            expect(updateAttributes).toHaveBeenCalledWith({
+                offer_ids: ['568615'],
+                attributes: [
+                    { complex_id: 0, id: 22232, values: [{ dictionary_value_id: MARK_ID }] },
+                    { complex_id: 0, id: 23536, values: [{ value: 'true' }] },
+                ],
+            });
+        });
     });
 
-    it('на Озоне нет ни одной карточки товара → notFoundOnOzon', async () => {
-        query.mockResolvedValueOnce([{ GOODSCODE: 222, TNVED: '8504409100' }]);
-        ozonCatalog(['777', '888'], {});
+    describe('немаркируемый (MARK_REQUIRED=0)', () => {
+        it('плоский вариант + чекбокс ВЫКЛ → alreadyOk', async () => {
+            query.mockResolvedValueOnce([baseRow(558060, '8504409100', 0)]);
+            ozonCatalog(['558060'], { '558060': { code: '8504409100', dictId: PLAIN_ID, markOn: false } });
 
-        const rep = await service.sync({ apply: false });
+            const rep = await service.sync({ apply: false });
 
-        expect(rep.notFoundOnOzon).toEqual(['222']);
-        expect(rep.checkedOffers).toBe(0);
+            expect(rep.alreadyOk).toBe(1);
+            expect(rep.toFix).toHaveLength(0);
+        });
+
+        it('стоит вариант МАРКИРОВКА РФ + чекбокс ВКЛ → toFix (плоский + снять крыжик)', async () => {
+            query.mockResolvedValueOnce([baseRow(558060, '8504409100', 0)]);
+            ozonCatalog(['558060'], { '558060': { code: '8504409100', dictId: MARK_ID, markOn: true } });
+
+            const rep = await service.sync({ apply: false });
+
+            expect(rep.toFix).toHaveLength(1);
+            expect(rep.toFix[0]).toMatchObject({ offer: '558060', dictValueId: PLAIN_ID, markRequired: false });
+            expect(rep.toFix[0].reason).toContain('без маркировки');
+            expect(rep.toFix[0].reason).toContain('выключить код маркировки');
+        });
+
+        it('apply=true → updateAttributes плоский вариант + чекбокс false', async () => {
+            query.mockResolvedValueOnce([baseRow(558060, '8504409100', 0)]);
+            ozonCatalog(['558060'], { '558060': { code: '8504409100', dictId: MARK_ID, markOn: true } });
+            updateAttributes.mockResolvedValue([{ task_id: 7777 }]);
+
+            const rep = await service.sync({ apply: true });
+
+            expect(rep.toFix[0].taskId).toBe(7777);
+            expect(updateAttributes).toHaveBeenCalledWith({
+                offer_ids: ['558060'],
+                attributes: [
+                    { complex_id: 0, id: 22232, values: [{ dictionary_value_id: PLAIN_ID }] },
+                    { complex_id: 0, id: 23536, values: [{ value: 'false' }] },
+                ],
+            });
+        });
     });
 
-    it('нет варианта «МАРКИРОВКА РФ» → ambiguous', async () => {
-        query.mockResolvedValueOnce([{ GOODSCODE: 333, TNVED: '8541410008' }]);
-        ozonCatalog(['333'], { '333': { code: '8504408500', dictId: 1, markOn: false } });
-        searchCategoryAttributeValues.mockResolvedValue([{ id: 1, value: '8541410008 - Светодиоды (без маркировки)' }]);
+    describe('общие', () => {
+        it('суффиксные варианты (531557 и 531557-10) — оба в toFix', async () => {
+            query.mockResolvedValueOnce([baseRow(531557, '8504409100')]);
+            ozonCatalog(['531557', '531557-10', '999999'], {
+                '531557': { code: '8504408500', dictId: 971399914, markOn: false },
+                '531557-10': { code: null, dictId: null, markOn: false },
+            });
 
-        const rep = await service.sync({ apply: false });
+            const rep = await service.sync({ apply: false });
 
-        expect(rep.toFix).toHaveLength(0);
-        expect(rep.ambiguous[0].offer).toBe('333');
-    });
+            expect(rep.checkedOffers).toBe(2);
+            expect(rep.toFix.map((f) => f.offer).sort()).toEqual(['531557', '531557-10']);
+        });
 
-    it('apply=true → updateAttributes с вариантом МАРКИРОВКА РФ + чекбокс, возвращает task_id', async () => {
-        query.mockResolvedValueOnce([{ GOODSCODE: 568615, TNVED: '8504409100' }]);
-        ozonCatalog(['568615'], { '568615': { code: '8504409100', dictId: PLAIN_ID, markOn: false } });
-        updateAttributes.mockResolvedValue([{ task_id: 5221013431 }]);
+        it('на Озоне нет ни одной карточки товара → notFoundOnOzon', async () => {
+            query.mockResolvedValueOnce([baseRow(222, '8504409100')]);
+            ozonCatalog(['777', '888'], {});
 
-        const rep = await service.sync({ apply: true });
+            const rep = await service.sync({ apply: false });
 
-        expect(rep.toFix[0].taskId).toBe(5221013431);
-        expect(updateAttributes).toHaveBeenCalledWith({
-            offer_ids: ['568615'],
-            attributes: [
-                { complex_id: 0, id: 22232, values: [{ dictionary_value_id: MARK_ID }] },
-                { complex_id: 0, id: 23536, values: [{ value: 'true' }] },
-            ],
+            expect(rep.notFoundOnOzon).toEqual(['222']);
+            expect(rep.checkedOffers).toBe(0);
         });
     });
 });
