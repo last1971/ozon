@@ -250,6 +250,17 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         }
         if (kmFullByKi.size === 0) return { ok: false, failed };
 
+        // ГТД берём из ПРИХОДА кода (PR_META → SKLADIN/SHOPIN). Нет прихода/ГТД → null.
+        const gtdByKi = new Map<string, string | null>();
+        for (const a of attached) {
+            try {
+                gtdByKi.set(a.ki, await this.invoiceService.getGtdByKi(a.ki, null));
+            } catch (e) {
+                this.logger.warn(`[km ${postingNumber}] GTD lookup fail ${a.ki}: ${e?.message ?? e}`);
+                gtdByKi.set(a.ki, null);
+            }
+        }
+
         if (isDryRun) {
             return {
                 ok: true,
@@ -294,7 +305,6 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         }
 
         const setProducts: ExemplarSetProductDto[] = [];
-        const shipProducts: ShipPostingPackageDto['products'] = [];
         for (const exProduct of exResp.products as ExemplarProductDto[]) {
             const group = attachedByProduct.get(exProduct.product_id) ?? [];
             if (group.length === 0) continue;
@@ -319,19 +329,17 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
             }
             const exemplars: ExemplarSetItemDto[] = exProduct.exemplars
                 .slice(0, group.length)
-                .map((ex: ExemplarItemDto, i: number) => ({
-                    exemplar_id: ex.exemplar_id,
-                    marks: [{ mark: group[i].mark, mark_type: 'mandatory_mark' as const }],
-                    gtd: '',
-                    is_gtd_absent: true as const,
-                    is_rnpt_absent: true as const,
-                }));
+                .map((ex: ExemplarItemDto, i: number) => {
+                    const gtd = gtdByKi.get(group[i].ki) ?? '';
+                    return {
+                        exemplar_id: ex.exemplar_id,
+                        marks: [{ mark: group[i].mark, mark_type: 'mandatory_mark' as const }],
+                        gtd,
+                        is_gtd_absent: !gtd,
+                        is_rnpt_absent: true as const,
+                    };
+                });
             setProducts.push({ product_id: exProduct.product_id, exemplars });
-            shipProducts.push({
-                product_id: exProduct.product_id,
-                quantity: group.length,
-                exemplar_ids: exemplars.map((e) => e.exemplar_id),
-            });
         }
 
         if (setProducts.length === 0) {
@@ -389,11 +397,7 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
             };
         }
 
-        await this.shipPosting({
-            posting_number: postingNumber,
-            packages: [{ products: shipProducts }],
-        });
-
+        // Только передача КМ (+ГТД). Сборку (ship) делает сборщик в ЛК Озона — из кода не шипим.
         return failed.length === 0 ? { ok: true } : { ok: false, failed };
     }
 }
