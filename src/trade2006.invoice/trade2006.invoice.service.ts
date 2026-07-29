@@ -682,6 +682,37 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         return res?.[0]?.KM_FULL != null ? String(res[0].KM_FULL) : null;
     }
 
+    /**
+     * ГТД кода из ПРИХОДА (не расхода — его для несобранного заказа ещё нет):
+     * MARKCODES.PR_META_IN_ID → PR_META.SKLADINCODE|SHOPINCODE → SKLADIN|SHOPIN.GTD.
+     * Нет ссылки на приход/пустой GTD → null (тогда is_gtd_absent=true, как раньше).
+     */
+    async getGtdByKi(ki: string, transaction: FirebirdTransaction = null): Promise<string | null> {
+        const own = !transaction;
+        const t = transaction ?? (await this.getTransaction());
+        try {
+            const meta = await t.query(
+                'SELECT FIRST 1 pm.SKLADINCODE, pm.SHOPINCODE FROM MARKCODES m ' +
+                    'JOIN PR_META pm ON pm.ID = m.PR_META_IN_ID WHERE m.KI = ?',
+                [ki],
+                false,
+            );
+            const row = meta?.[0];
+            let gtd: unknown = null;
+            if (row?.SKLADINCODE) {
+                const r = await t.query('SELECT GTD FROM SKLADIN WHERE SKLADINCODE = ?', [row.SKLADINCODE], false);
+                gtd = r?.[0]?.GTD;
+            } else if (row?.SHOPINCODE) {
+                const r = await t.query('SELECT GTD FROM SHOPIN WHERE SHOPINCODE = ?', [row.SHOPINCODE], false);
+                gtd = r?.[0]?.GTD;
+            }
+            const val = gtd == null ? '' : String(gtd).trim();
+            return val || null;
+        } finally {
+            if (own) await t.commit(true).catch(() => undefined);
+        }
+    }
+
     async listFbsAwaitingShip(
         buyerId: number,
         transaction: FirebirdTransaction = null,

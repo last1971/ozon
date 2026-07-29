@@ -1,5 +1,5 @@
-import { BadRequestException, Body, Controller, Inject, Param, Put } from "@nestjs/common";
-import { ApiBody, ApiOkResponse, ApiParam, ApiTags } from "@nestjs/swagger";
+import { BadRequestException, Body, Controller, Inject, Param, Post, Put } from "@nestjs/common";
+import { ApiBody, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
 import { IInvoice, INVOICE_SERVICE } from "../interfaces/IInvoice";
 import { RemarkDto } from "../invoice/dto/remark.dto";
 import { InvoiceUpdateDto } from "../invoice/dto/invoice.update.dto";
@@ -15,6 +15,20 @@ export class PickupController {
         private orderService: OrderService,
     ) {}
 
+    @Post(':remark/marks')
+    @ApiOperation({ summary: 'Передать КМ (+ГТД) маркетплейсу. Без сборки/ship.' })
+    @ApiParam({ name: 'remark', description: 'Примечание = номер заказа', type: 'string' })
+    @ApiOkResponse({ description: 'Результат передачи КМ: { submit }' })
+    async submitMarks(@Param() remarkDto: RemarkDto): Promise<any> {
+        const { invoice } = remarkDto;
+        const ready = await this.markScanService.isReadyToFinish(invoice);
+        if (!ready) {
+            throw new BadRequestException('Не все КМ отсканированы');
+        }
+        const submit = await this.orderService.submitFbsMarkCodesForInvoice(invoice);
+        return { submit };
+    }
+
     @Put(':remark')
     @ApiParam({
         name: 'remark',
@@ -26,7 +40,7 @@ export class PickupController {
         type: InvoiceUpdateDto,
     })
     @ApiOkResponse({
-        description: 'Результат обновления и (опционально) передачи КМ',
+        description: 'Результат обновления счёта',
     })
     async update(@Param() remarkDto: RemarkDto, @Body() invoiceUpdateDto: InvoiceUpdateDto): Promise<any> {
         const { invoice } = remarkDto;
@@ -36,10 +50,8 @@ export class PickupController {
                 throw new BadRequestException('Не все КМ отсканированы');
             }
         }
+        // FINISH_PICKUP только фиксирует IGK и время. Передача КМ — отдельный POST /marks.
         const isSuccess = await this.invoiceService.update(invoice, invoiceUpdateDto);
-        const submit = invoiceUpdateDto.FINISH_PICKUP
-            ? await this.orderService.submitFbsMarkCodesForInvoice(invoice)
-            : undefined;
-        return { isSuccess, invoice, submit };
+        return { isSuccess, invoice };
     }
 }

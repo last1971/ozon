@@ -56,6 +56,7 @@ describe('PostingService', () => {
                         updatePrim,
                         getAttachedMarkCodesByScode,
                         getKmFullByKi,
+                        getGtdByKi: async () => null,
                         getTransaction: () => ({ commit }),
                     },
                 },
@@ -300,8 +301,7 @@ describe('PostingService', () => {
                     result: { products: [{ offer_id: '531557', sku: 999 }] },
                 })
                 .mockResolvedValueOnce({ result: true })
-                .mockResolvedValueOnce({ posting_number: 'P-1', status: 'ship_available', products: [] })
-                .mockResolvedValueOnce({});
+                .mockResolvedValueOnce({ posting_number: 'P-1', status: 'ship_available', products: [] });
 
             const res = await service.submitFbsMarkCodes(invoice);
 
@@ -333,10 +333,8 @@ describe('PostingService', () => {
                     ],
                 }),
             );
-            expect(ozonApiMethod).toHaveBeenNthCalledWith(5, '/v4/posting/fbs/ship', {
-                posting_number: 'P-1',
-                packages: [{ products: [{ product_id: 999, quantity: 1, exemplar_ids: [111] }] }],
-            });
+            // ship больше не вызываем — только передача КМ (create-or-get/get/set/status)
+            expect(ozonApiMethod).not.toHaveBeenCalledWith('/v4/posting/fbs/ship', expect.anything());
         });
 
         it('количественный КМ (quantity>1) → failed с подсказкой про деление', async () => {

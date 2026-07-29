@@ -72,6 +72,7 @@ export interface IInvoice {
         transaction: FirebirdTransaction,
     ): Promise<{ goodscode: string; quantity: number } | null>;
     getKmFullByKi(ki: string, transaction: FirebirdTransaction): Promise<string | null>;
+    getGtdByKi(ki: string, transaction: FirebirdTransaction): Promise<string | null>;
     listFbsAwaitingShip(buyerId: number, transaction: FirebirdTransaction): Promise<InvoiceDto[]>;
     getAttachedMarkCodesByScode(
         scode: number,

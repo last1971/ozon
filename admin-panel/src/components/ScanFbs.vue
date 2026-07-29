@@ -86,6 +86,7 @@ const snackbarTimeout =  ref<number>(5000);
 const firstDisabled = ref<boolean>(false);
 const secondDisabled = ref<boolean>(true);
 const markScanDisabled = ref<boolean>(true);
+const submitInProgress = ref<boolean>(false);
 
 // Переменные для времени
 const firstTime = ref<string>('');
@@ -99,6 +100,10 @@ const markScanInputRef = ref<any>(null);
 const isReadyToFinish = computed(() => markProgress.value?.isReadyToFinish ?? true);
 const requiresMarkScan = computed(() =>
     !!markProgress.value && markProgress.value.lines.some((l) => l.requiresScan),
+);
+// «Передать коды» доступно, когда сборка начата и все КМ отсканированы (или их нет).
+const canSubmitMarks = computed(
+    () => firstDisabled.value && isReadyToFinish.value && !submitInProgress.value,
 );
 const lastAttachedKi = computed(() => {
     const kis = markProgress.value?.attachedKis ?? [];
@@ -252,7 +257,32 @@ async function onUnscanLast() {
     }
 }
 
-// Функция для обработки ввода во второе поле
+// Кнопка «Передать коды»: отдельная задача — передать КМ (+ГТД) маркетплейсу. Без сборки.
+async function onSubmitMarks() {
+    if (!canSubmitMarks.value) return;
+    submitInProgress.value = true;
+    try {
+        const res = await axios.post(`/api/pickup/${firstInput.value}/marks`);
+        const submit: SubmitResultDto | undefined = res.data?.submit;
+        if (submit?.ok === true) {
+            showSnackbar('КМ переданы маркетплейсу', 'success');
+        } else if (submit?.ok === false) {
+            const reason = (submit.failed ?? []).map((f) => f.reason).join('; ');
+            showSnackbar(`КМ не переданы: ${reason || 'ошибка'}`, 'error', 60000);
+        } else {
+            // undefined → маркировка выключена / товар немаркируемый — передавать нечего
+            showSnackbar('Передача КМ не требуется', 'success');
+        }
+    } catch (e: any) {
+        const message = e?.response?.data?.message ?? e.message;
+        showSnackbar(`Ошибка передачи КМ: ${message}`, 'error', 60000);
+    } finally {
+        submitInProgress.value = false;
+    }
+}
+
+// Скан ШК посылки — отдельная задача: только фиксируем IGK и переходим к новой сборке.
+// Марки здесь НЕ передаём (это делает кнопка «Передать коды»).
 async function onSecondInput() {
     if (secondInput.value) {
         secondDisabled.value = true;
@@ -263,18 +293,9 @@ async function onSecondInput() {
             'Сборка завершена'
         );
         if (res.ok) {
-            const submit = res.submit;
-            if (submit?.ok === true) {
-                const msg = submit.skipped
-                    ? `Сборка завершена (${submit.skipped})`
-                    : 'Сборка завершена, КМ переданы маркетплейсу';
-                showSnackbar(msg, 'success');
-            } else if (submit?.ok === false) {
-                showSnackbar('Сборка завершена, КМ не переданы — повторим автоматически', 'warning', 8000);
-            }
-            // submit === undefined → флаг выключен или сервис без IMarkSubmittable —
-            // оставляем "Сборка завершена" из update()
             await resetFields();
+        } else {
+            secondDisabled.value = false;
         }
     }
 }
@@ -307,6 +328,7 @@ async function resetFields() {
     firstDisabled.value = false;
     secondDisabled.value = true;
     markScanDisabled.value = true;
+    submitInProgress.value = false;
     firstTime.value = '';
     secondTime.value = '';
     products.value = [];
@@ -384,6 +406,20 @@ async function setFocus(ref: any) {
                     size="small"
                 >
                     Отвязать последний
+                </v-btn>
+            </v-col>
+
+            <!-- Кнопка передачи КМ (+ГТД) маркетплейсу -->
+            <v-col cols="2">
+                <v-btn
+                    block
+                    color="primary"
+                    class="mb-4"
+                    :disabled="!canSubmitMarks"
+                    :loading="submitInProgress"
+                    @click="onSubmitMarks"
+                >
+                    Передать коды
                 </v-btn>
             </v-col>
 

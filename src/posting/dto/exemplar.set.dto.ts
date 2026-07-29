@@ -7,7 +7,7 @@ export interface ExemplarSetItemDto {
     exemplar_id: number;
     marks: ExemplarSetMarkDto[];
     gtd: string;
-    is_gtd_absent: true;
+    is_gtd_absent: boolean;
     is_rnpt_absent: true;
 }
 

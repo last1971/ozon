@@ -19,7 +19,7 @@ import { ProcessedCacheService } from '../processed-cache/processed-cache.servic
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { OZON_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { IMarkSubmittable, isMarkSubmittable, SubmitResultDto } from '../interfaces/IMarkSubmittable';
+import { isMarkSubmittable, SubmitResultDto } from '../interfaces/IMarkSubmittable';
 import { isMarkCodesEnabled } from '../helpers';
 
 @Injectable()
@@ -123,9 +123,8 @@ export class OrderService {
             try {
                 await this.cancelOrders(service, transaction, flushers);
                 await this.processReturns(service, transaction, flushers);
-                if (this.isMarkCodesEnabled() && isMarkSubmittable(service)) {
-                    await this.submitFbsMarkCodes(service, transaction, flushers);
-                }
+                // Передача КМ вынесена в ручной POST /pickup/:remark/marks. Крон-ретрая нет:
+                // марки уже привязаны в БД на скане, результат сборщик видит сразу при нажатии.
                 await this.packageOrders(service, transaction, flushers);
                 await this.deliveryOrders(service, transaction, flushers);
                 await transaction.commit(true);
@@ -143,45 +142,15 @@ export class OrderService {
         }
     }
 
-    async submitFbsMarkCodes(
-        service: IOrderable & IMarkSubmittable,
-        transaction: FirebirdTransaction,
-        flushers: (() => Promise<void>)[],
-    ): Promise<void> {
-        const buyerId = service.getBuyerId();
-        const invoices = await this.invoiceService.listFbsAwaitingShip(buyerId, transaction);
-        if (invoices.length === 0) return;
-        const items = invoices.map((inv) => ({ ...inv, posting_number: inv.remark }));
-        await this.processWithCache('fbs-marks-sent', service, items, async (item) => {
-            const res = await service.submitFbsMarkCodes(item);
-            if (!res.ok && !res.skipRetry) {
-                throw new Error(
-                    `submitFbsMarkCodes failed for ${item.posting_number}: ${JSON.stringify(res.failed)}`,
-                );
-            }
-        }, flushers);
-    }
-
     async submitFbsMarkCodesForInvoice(invoice: InvoiceDto): Promise<SubmitResultDto | undefined> {
         if (!this.isMarkCodesEnabled()) return undefined;
         const service = this.getServiceByBuyerId(invoice.buyerId, true);
         if (!isMarkSubmittable(service)) return undefined;
         try {
-            const res = await service.submitFbsMarkCodes(invoice);
-            if (res?.ok) {
-                // Пикап отправил КМ сам — помечаем posting как обработанный в том же
-                // кэше и с тем же scope, что использует крон (listFbsAwaitingShip),
-                // чтобы крон через 5 мин не слал те же марки повторно.
-                await this.processedCache.markProcessed(
-                    'fbs-marks-sent',
-                    service.constructor.name,
-                    invoice.remark,
-                );
-            }
-            return res;
+            return await service.submitFbsMarkCodes(invoice);
         } catch (e) {
             const message = e?.message ?? String(e);
-            this.logger.warn(`submitFbsMarkCodes failed for ${invoice.remark}: ${message}, cron retry`);
+            this.logger.warn(`submitFbsMarkCodes failed for ${invoice.remark}: ${message}`);
             return { ok: false, failed: [{ ki: '*', reason: message }] };
         }
     }
