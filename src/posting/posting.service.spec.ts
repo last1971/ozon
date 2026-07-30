@@ -23,6 +23,8 @@ describe('PostingService', () => {
     const ozonApiMethod = jest.fn();
     const getAttachedMarkCodesByScode = jest.fn();
     const getKmFullByKi = jest.fn();
+    const getGtdByKi = jest.fn();
+    const getPickedPartiesGtdByScode = jest.fn();
     let markMigrationEnabled = false;
     let nodeEnv: string | undefined;
     const date = new Date();
@@ -61,7 +63,8 @@ describe('PostingService', () => {
                         updatePrim,
                         getAttachedMarkCodesByScode,
                         getKmFullByKi,
-                        getGtdByKi: async () => null,
+                        getGtdByKi,
+                        getPickedPartiesGtdByScode,
                         getTransaction: () => ({ commit }),
                     },
                 },
@@ -100,6 +103,10 @@ describe('PostingService', () => {
         getInvoiceLines.mockReset();
         getAttachedMarkCodesByScode.mockReset();
         getKmFullByKi.mockReset();
+        getGtdByKi.mockReset();
+        getGtdByKi.mockResolvedValue(null);
+        getPickedPartiesGtdByScode.mockReset();
+        getPickedPartiesGtdByScode.mockResolvedValue([]);
         markMigrationEnabled = false;
         nodeEnv = undefined;
         service = module.get<PostingService>(PostingService);
@@ -275,11 +282,90 @@ describe('PostingService', () => {
             products: [{ product_id: 999, valid: true, exemplars: [{ valid: true, marks: [{ valid: true }] }] }],
         };
 
-        it('возвращает ok=true если нет привязанных КМ', async () => {
+        it('немаркированный (нет КМ): ГТД поштучно из подбора, марку не шлём, ship', async () => {
             getAttachedMarkCodesByScode.mockResolvedValueOnce([]);
+            getPickedPartiesGtdByScode.mockResolvedValueOnce([
+                { realpricecode: 1, goodscode: '531557', quantity: 2, gtd: '10228010/260326/5094327' },
+            ]);
+            ozonApiMethod
+                .mockResolvedValueOnce({
+                    posting_number: 'P-1',
+                    multi_box_qty: 1,
+                    products: [
+                        {
+                            product_id: 999,
+                            quantity: 2,
+                            is_mandatory_mark_needed: false,
+                            is_gtd_needed: true,
+                            exemplars: [{ exemplar_id: 111, marks: [] }, { exemplar_id: 112, marks: [] }],
+                        },
+                    ],
+                })
+                .mockResolvedValueOnce({ result: { products: [{ offer_id: '531557', sku: 999 }] } })
+                .mockResolvedValueOnce(VALIDATE_OK)
+                .mockResolvedValueOnce({ result: true })
+                .mockResolvedValueOnce({ posting_number: 'P-1', status: 'ship_available', products: [] })
+                .mockResolvedValueOnce({ result: ['P-1'] });
             const res = await service.submitFbsMarkCodes(invoice);
-            expect(res).toEqual({ ok: true });
-            expect(ozonApiMethod).not.toHaveBeenCalled();
+            expect(res).toEqual({ ok: true, shipped: true });
+            expect(ozonApiMethod).toHaveBeenNthCalledWith(
+                4,
+                '/v6/fbs/posting/product/exemplar/set',
+                expect.objectContaining({
+                    products: [
+                        {
+                            product_id: 999,
+                            exemplars: [
+                                { exemplar_id: 111, marks: [], gtd: '10228010/260326/5094327', is_gtd_absent: false, is_rnpt_absent: true },
+                                { exemplar_id: 112, marks: [], gtd: '10228010/260326/5094327', is_gtd_absent: false, is_rnpt_absent: true },
+                            ],
+                        },
+                    ],
+                }),
+            );
+        });
+
+        it('is_mandatory_mark_needed=false (есть коды): марку не шлём, ГТД по КМ', async () => {
+            getAttachedMarkCodesByScode.mockResolvedValueOnce([
+                { ki: 'KI-1', goodscode: '531557', realpricecode: 1, quantity: 1 },
+            ]);
+            getKmFullByKi.mockResolvedValueOnce('01FULL');
+            getGtdByKi.mockResolvedValueOnce('10228010/260326/5094327');
+            ozonApiMethod
+                .mockResolvedValueOnce({
+                    posting_number: 'P-1',
+                    multi_box_qty: 1,
+                    products: [
+                        {
+                            product_id: 999,
+                            quantity: 1,
+                            is_mandatory_mark_needed: false,
+                            is_gtd_needed: true,
+                            exemplars: [{ exemplar_id: 111, marks: [] }],
+                        },
+                    ],
+                })
+                .mockResolvedValueOnce({ result: { products: [{ offer_id: '531557', sku: 999 }] } })
+                .mockResolvedValueOnce(VALIDATE_OK)
+                .mockResolvedValueOnce({ result: true })
+                .mockResolvedValueOnce({ posting_number: 'P-1', status: 'ship_available', products: [] })
+                .mockResolvedValueOnce({ result: ['P-1'] });
+            const res = await service.submitFbsMarkCodes(invoice);
+            expect(res).toEqual({ ok: true, shipped: true });
+            expect(ozonApiMethod).toHaveBeenNthCalledWith(
+                4,
+                '/v6/fbs/posting/product/exemplar/set',
+                expect.objectContaining({
+                    products: [
+                        {
+                            product_id: 999,
+                            exemplars: [
+                                { exemplar_id: 111, marks: [], gtd: '10228010/260326/5094327', is_gtd_absent: false, is_rnpt_absent: true },
+                            ],
+                        },
+                    ],
+                }),
+            );
         });
 
         it('возвращает failed если все KM_FULL пусты', async () => {

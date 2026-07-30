@@ -248,8 +248,8 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
             postingNumber?.startsWith('FBS-MIG-') &&
             this.configService.get<string>('NODE_ENV') === 'development';
 
+        // attached пуст — НЕ выходим: немаркированный заказ тоже идёт в цепочку (ГТД из подбора + ship).
         const attached = await this.invoiceService.getAttachedMarkCodesByScode(invoice.id, null);
-        if (attached.length === 0) return { ok: true };
 
         const failed: SubmitFailureDto[] = [];
         const kmFullByKi = new Map<string, string>();
@@ -258,7 +258,8 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
             if (!full) failed.push({ ki: a.ki, reason: 'KM_FULL пуст' });
             else kmFullByKi.set(a.ki, full);
         }
-        if (kmFullByKi.size === 0) return { ok: false, failed };
+        // Маркированный заказ с привязками, но все KM_FULL пусты → ошибка данных, в Озон не идём.
+        if (attached.length > 0 && kmFullByKi.size === 0) return { ok: false, failed };
 
         // ГТД берём из ПРИХОДА кода (PR_META → SKLADIN/SHOPIN). Нет прихода/ГТД → null.
         const gtdByKi = new Map<string, string | null>();
