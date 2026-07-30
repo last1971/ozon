@@ -86,6 +86,8 @@ export interface IInvoice {
         scode: number,
         transaction: FirebirdTransaction,
     ): Promise<{ realpricecode: number; goodscode: string; quantity: number }[]>;
+    /** Счёт подобран (PODBPOS.QUAN{attr} >= QUAN{attr}NEED по всем строкам) — после подбора отвязка КМ запрещена. */
+    isPickedUp(invoice: InvoiceDto, transaction: FirebirdTransaction): Promise<boolean>;
     getStorageSS(): 0 | 1;
     findRealpriceCodes(scode: number, transaction: FirebirdTransaction): Promise<number[]>;
     getByDto(invoiceGetDto: InvoiceGetDto): Promise<InvoiceDto[]>;

@@ -11,6 +11,8 @@ export interface MarkScanProgressDto {
     lines: MarkScanProgressLineDto[];
     isReadyToFinish: boolean;
     attachedKis: string[];
+    // Счёт подобран (STATUS=4) — отвязка КМ запрещена.
+    isPickedUp: boolean;
 }
 
 export interface MarkScanResultDto {

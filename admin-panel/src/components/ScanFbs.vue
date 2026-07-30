@@ -129,6 +129,8 @@ const lastAttachedKi = computed(() => {
     const kis = markProgress.value?.attachedKis ?? [];
     return kis.length ? kis[kis.length - 1] : '';
 });
+// Счёт подобран (STATUS=4) → отвязка КМ запрещена (бэк тоже отклонит).
+const isPickedUp = computed(() => markProgress.value?.isPickedUp ?? false);
 
 function showSnackbar(message: string, color: string, timeout = 5000) {
     snackbarMessage.value = message;
@@ -514,7 +516,7 @@ async function setFocus(ref: any) {
             <v-col cols="auto">
                 <v-btn
                     @click="onUnscanLast"
-                    :disabled="!lastAttachedKi"
+                    :disabled="!lastAttachedKi || isPickedUp"
                     class="mb-4"
                     color="warning"
                     variant="outlined"

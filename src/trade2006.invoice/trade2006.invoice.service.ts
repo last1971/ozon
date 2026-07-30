@@ -389,6 +389,16 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         }
     }
 
+    /**
+     * Признак «счёт подобран» — на уровне СЧЁТА, а не строк подбора.
+     * Статусы: 3 = в подборке (идут скан/отвязка КМ), 4 = подобран. Подбор (процедура/триггер
+     * внутри ФБ) переводит счёт 3 → 4. При STATUS = 4 отвязка КМ запрещена.
+     * invoice.status приходит свежим из getByPosting (валидатор remark), доп. запрос не нужен.
+     */
+    async isPickedUp(invoice: InvoiceDto, _t: FirebirdTransaction = null): Promise<boolean> {
+        return invoice.status === 4;
+    }
+
     async createInvoiceFromPostingDto(
         buyerId: number,
         posting: PostingDto,

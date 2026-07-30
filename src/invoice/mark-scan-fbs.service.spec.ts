@@ -18,6 +18,7 @@ describe('MarkScanFbsService', () => {
         getRealpriceLinesByScode: jest.fn(),
         getAttachedMarkCodesByScode: jest.fn(),
         countFreeMarkCodesForGood: jest.fn(),
+        isPickedUp: jest.fn(),
     };
     const tx = {
         commit: jest.fn().mockResolvedValue(undefined),
@@ -32,6 +33,7 @@ describe('MarkScanFbsService', () => {
         tx.rollback.mockReset().mockResolvedValue(undefined);
         invoiceService.getTransaction.mockResolvedValue(tx);
         invoiceService.getStorageSS.mockReturnValue(0);
+        invoiceService.isPickedUp.mockResolvedValue(false);
         migrationEnabled = true;
 
         const module: TestingModule = await Test.createTestingModule({
@@ -219,6 +221,19 @@ describe('MarkScanFbsService', () => {
         });
     });
 
+    describe('getProgress isPickedUp', () => {
+        it('isPickedUp пробрасывается из invoiceService', async () => {
+            invoiceService.getRealpriceLinesByScode.mockResolvedValue([
+                { realpricecode: 500, goodscode: '444', quantity: 1 },
+            ]);
+            invoiceService.getAttachedMarkCodesByScode.mockResolvedValue([]);
+            invoiceService.countFreeMarkCodesForGood.mockResolvedValue(0);
+            invoiceService.isPickedUp.mockResolvedValueOnce(true);
+            const progress = await service.getProgress(invoice);
+            expect(progress.isPickedUp).toBe(true);
+        });
+    });
+
     describe('unscan', () => {
         it('attached найден → detach с правильным rpc', async () => {
             invoiceService.getAttachedMarkCodesByScode
@@ -237,6 +252,13 @@ describe('MarkScanFbsService', () => {
             await expect(service.unscan(invoice, 'X')).rejects.toThrow(NotFoundException);
             expect(invoiceService.detachMarkCodeForFbs).not.toHaveBeenCalled();
         });
+
+        it('счёт подобран (STATUS=4) → 409, detach не вызывается', async () => {
+            invoiceService.isPickedUp.mockResolvedValueOnce(true);
+            await expect(service.unscan(invoice, 'A')).rejects.toThrow(ConflictException);
+            expect(invoiceService.getAttachedMarkCodesByScode).not.toHaveBeenCalled();
+            expect(invoiceService.detachMarkCodeForFbs).not.toHaveBeenCalled();
+        });
     });
 
     describe('флаг MARK_CODES_ENABLED выключен', () => {
@@ -246,7 +268,7 @@ describe('MarkScanFbsService', () => {
 
         it('getProgress → пустой прогресс, isReadyToFinish=true, БД не дёргается', async () => {
             const progress = await service.getProgress(invoice);
-            expect(progress).toEqual({ lines: [], isReadyToFinish: true, attachedKis: [] });
+            expect(progress).toEqual({ lines: [], isReadyToFinish: true, attachedKis: [], isPickedUp: false });
             expect(invoiceService.getTransaction).not.toHaveBeenCalled();
             expect(invoiceService.getRealpriceLinesByScode).not.toHaveBeenCalled();
             expect(invoiceService.getAttachedMarkCodesByScode).not.toHaveBeenCalled();

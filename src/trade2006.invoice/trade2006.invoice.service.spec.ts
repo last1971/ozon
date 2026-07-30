@@ -633,6 +633,18 @@ describe('Trade2006InvoiceService', () => {
 
     });
 
+    describe('isPickedUp — подобран = STATUS 4', () => {
+        it('STATUS 4 → true (подобран)', async () => {
+            expect(await service.isPickedUp({ status: 4 } as any)).toBe(true);
+        });
+        it('STATUS 3 → false (в подборке)', async () => {
+            expect(await service.isPickedUp({ status: 3 } as any)).toBe(false);
+        });
+        it('STATUS 5 → false (другой статус, не подобран)', async () => {
+            expect(await service.isPickedUp({ status: 5 } as any)).toBe(false);
+        });
+    });
+
     describe('FBS mark scan helpers', () => {
         it('attachMarkCodeForFbs — EXECUTE PROCEDURE MARKCODE_ATTACH_FOR_FBS с km_full', async () => {
             const t = { execute: jest.fn(), commit: jest.fn() };
