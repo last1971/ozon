@@ -17,7 +17,7 @@ import { SupplyPositionDto } from 'src/supply/dto/supply.position.dto';
 import { OzonApiService } from "../ozon.api/ozon.api.service";
 import { ReturnsListDto } from './dto/returns.list.dto';
 import { ReturnDto } from './dto/return.dto';
-import { IMarkSubmittable, SubmitFailureDto, SubmitResultDto } from '../interfaces/IMarkSubmittable';
+import { FbsPrepareDto, IMarkSubmittable, SubmitFailureDto, SubmitResultDto } from '../interfaces/IMarkSubmittable';
 import { ExemplarCreateOrGetResponseDto } from './dto/exemplar.create-or-get.dto';
 import { ExemplarSetProductDto, ExemplarSetRequestDto, ExemplarSetResponseDto } from './dto/exemplar.set.dto';
 import { ExemplarValidateResponseDto } from './dto/exemplar.validate.dto';
@@ -257,6 +257,24 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
             if (goodscode && productId) map.set(goodscode, productId);
         }
         return map;
+    }
+
+    /** Фаза 1: create-or-get → флаги марка/ГТД по строкам (для скан-гейта и диалога на фронте). */
+    async prepareFbsMarks(invoice: InvoiceDto): Promise<FbsPrepareDto> {
+        const exResp = await this.createOrGetExemplars(invoice.remark);
+        if (!exResp || !exResp.products) {
+            return { ok: false, error: 'createOrGet вернул пустой ответ' };
+        }
+        return {
+            ok: true,
+            multiBoxQty: exResp.multi_box_qty || 1,
+            lines: exResp.products.map((p) => ({
+                productId: p.product_id,
+                quantity: p.quantity,
+                markNeeded: !!p.is_mandatory_mark_needed,
+                gtdNeeded: p.is_gtd_needed !== false,
+            })),
+        };
     }
 
     async submitFbsMarkCodes(invoice: InvoiceDto): Promise<SubmitResultDto> {

@@ -1,5 +1,6 @@
 import { ProductPostingDto } from '../../product/dto/product.posting.dto';
 import { ApiProperty } from "@nestjs/swagger";
+import { GoodServiceEnum } from "../../good/good.service.enum";
 
 export class PostingDto {
     @ApiProperty({ description: 'Номер отправления' })
@@ -27,4 +28,7 @@ export class PostingDto {
 
     @ApiProperty({ description: 'Флаг FBO', required: false })
     isFbo?: boolean;
+
+    @ApiProperty({ description: 'Маркетплейс (WB/OZON/YANDEX) — фронт ветвит флоу по нему', required: false, enum: GoodServiceEnum })
+    service?: GoodServiceEnum;
 }

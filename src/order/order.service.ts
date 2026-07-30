@@ -19,7 +19,7 @@ import { ProcessedCacheService } from '../processed-cache/processed-cache.servic
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { OZON_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { isMarkSubmittable, SubmitResultDto } from '../interfaces/IMarkSubmittable';
+import { FbsPrepareDto, isMarkSubmittable, SubmitResultDto } from '../interfaces/IMarkSubmittable';
 import { isShipmentLabelProvider, IShipmentLabelProvider } from '../interfaces/IShipmentLabelProvider';
 import { isMarkCodesEnabled } from '../helpers';
 
@@ -153,6 +153,20 @@ export class OrderService {
             const message = e?.message ?? String(e);
             this.logger.warn(`submitFbsMarkCodes failed for ${invoice.remark}: ${message}`);
             return { ok: false, failed: [{ ki: '*', reason: message }] };
+        }
+    }
+
+    /** Фаза 1: предпроверка перед передачей КМ (Озон create-or-get). Нет метода (ВБ) → undefined. */
+    async prepareFbsMarksForInvoice(invoice: InvoiceDto): Promise<FbsPrepareDto | undefined> {
+        if (!this.isMarkCodesEnabled()) return undefined;
+        const service = this.getServiceByBuyerId(invoice.buyerId, true);
+        if (!isMarkSubmittable(service) || !service.prepareFbsMarks) return undefined;
+        try {
+            return await service.prepareFbsMarks(invoice);
+        } catch (e) {
+            const message = e?.message ?? String(e);
+            this.logger.warn(`prepareFbsMarks failed for ${invoice.remark}: ${message}`);
+            return { ok: false, error: message };
         }
     }
 
@@ -309,8 +323,18 @@ export class OrderService {
         }
     }
 
+    /** Маркетплейс (enum) по buyerId счёта — фронт ветвит флоу по нему, а не по хардкод-id. */
+    getServiceEnumByBuyerId(buyerId: number, isFbs = true): GoodServiceEnum | null {
+        const service = this.getServiceByBuyerId(buyerId, isFbs);
+        if (!service) return null;
+        const entry = Object.entries(this.serviceNames).find(([, name]) => name === service.constructor.name);
+        return entry ? (entry[0] as GoodServiceEnum) : null;
+    }
+
     async getByPostingNumber(postingNumber: string, buyerId: number): Promise<PostingDto | null> {
-        return this.getServiceByBuyerId(buyerId)?.getByPostingNumber(postingNumber);
+        const posting = await this.getServiceByBuyerId(buyerId)?.getByPostingNumber(postingNumber);
+        if (posting) posting.service = this.getServiceEnumByBuyerId(buyerId) ?? undefined;
+        return posting;
     }
 
     async getByFboNumber(fboNumber: string): Promise<PostingDto | null> {

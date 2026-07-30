@@ -30,6 +30,16 @@ export class PickupController {
         return { isSuccess: true };
     }
 
+    @Post(':remark/marks/prepare')
+    @ApiOperation({ summary: 'Фаза 1: предпроверка перед передачей (Озон create-or-get). Ошибка → стоп до диалога.' })
+    @ApiParam({ name: 'remark', description: 'Примечание = номер заказа', type: 'string' })
+    @ApiOkResponse({ description: 'Результат предпроверки: { prepare }' })
+    async prepareMarks(@Param() remarkDto: RemarkDto): Promise<any> {
+        const { invoice } = remarkDto;
+        const prepare = await this.orderService.prepareFbsMarksForInvoice(invoice);
+        return { prepare };
+    }
+
     @Post(':remark/marks')
     @ApiOperation({ summary: 'Передать КМ (+ГТД) маркетплейсу. Без сборки/ship.' })
     @ApiParam({ name: 'remark', description: 'Примечание = номер заказа', type: 'string' })

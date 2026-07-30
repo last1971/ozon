@@ -634,6 +634,89 @@ describe('OrderService', () => {
         });
     });
 
+    describe('prepareFbsMarksForInvoice (фаза 1)', () => {
+        const invoice = { id: 1, remark: 'P-1', buyerId: 11 } as any;
+        const prepareFbsMarks = jest.fn();
+        const submitFbsMarkCodes = jest.fn();
+
+        beforeEach(() => {
+            prepareFbsMarks.mockReset();
+            submitFbsMarkCodes.mockReset();
+            markCodesEnabled = true;
+            (service as any).orderServices = [
+                {
+                    constructor: { name: 'PostingService' },
+                    getBuyerId: () => 11,
+                    isFbo: () => false,
+                    submitFbsMarkCodes,
+                    prepareFbsMarks,
+                },
+            ];
+        });
+
+        it('MARK_CODES_ENABLED=false → undefined', async () => {
+            markCodesEnabled = false;
+            const r = await service.prepareFbsMarksForInvoice(invoice);
+            expect(r).toBeUndefined();
+            expect(prepareFbsMarks).not.toHaveBeenCalled();
+        });
+
+        it('happy path → результат prepareFbsMarks', async () => {
+            prepareFbsMarks.mockResolvedValueOnce({ ok: true, lines: [] });
+            const r = await service.prepareFbsMarksForInvoice(invoice);
+            expect(r).toEqual({ ok: true, lines: [] });
+            expect(prepareFbsMarks).toHaveBeenCalledWith(invoice);
+        });
+
+        it('сервис без prepareFbsMarks (ВБ) → undefined', async () => {
+            (service as any).orderServices = [
+                {
+                    constructor: { name: 'WbOrderService' },
+                    getBuyerId: () => 11,
+                    isFbo: () => false,
+                    submitFbsMarkCodes,
+                },
+            ];
+            const r = await service.prepareFbsMarksForInvoice(invoice);
+            expect(r).toBeUndefined();
+        });
+
+        it('throw → завёрнутый { ok: false, error }', async () => {
+            prepareFbsMarks.mockRejectedValueOnce(new Error('Ozon 500'));
+            const r = await service.prepareFbsMarksForInvoice(invoice);
+            expect(r).toEqual({ ok: false, error: 'Ozon 500' });
+        });
+    });
+
+    describe('getServiceEnumByBuyerId / getByPostingNumber service', () => {
+        beforeEach(() => {
+            (service as any).orderServices = [
+                { constructor: { name: 'PostingService' }, getBuyerId: () => 11, isFbo: () => false },
+                { constructor: { name: 'WbOrderService' }, getBuyerId: () => 22, isFbo: () => false },
+            ];
+        });
+
+        it('buyerId → enum маркетплейса', () => {
+            expect(service.getServiceEnumByBuyerId(11)).toBe(GoodServiceEnum.OZON);
+            expect(service.getServiceEnumByBuyerId(22)).toBe(GoodServiceEnum.WB);
+            expect(service.getServiceEnumByBuyerId(99)).toBeNull();
+        });
+
+        it('getByPostingNumber проставляет service в PostingDto', async () => {
+            const getByPostingNumber = jest.fn().mockResolvedValue({ posting_number: 'P-1', products: [] });
+            (service as any).orderServices = [
+                {
+                    constructor: { name: 'PostingService' },
+                    getBuyerId: () => 11,
+                    isFbo: () => false,
+                    getByPostingNumber,
+                },
+            ];
+            const r = await service.getByPostingNumber('P-1', 11);
+            expect(r.service).toBe(GoodServiceEnum.OZON);
+        });
+    });
+
     describe('getShipmentBarcodeForInvoice (сверка IGK==ШК)', () => {
         const invoice = { id: 1, remark: 'P-1', buyerId: 11 } as any;
         const getShipmentBarcode = jest.fn();

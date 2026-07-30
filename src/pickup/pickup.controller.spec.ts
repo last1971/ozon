@@ -12,6 +12,7 @@ describe('PickupController', () => {
     const markScan = { isReadyToFinish: jest.fn() };
     const orderService = {
         submitFbsMarkCodesForInvoice: jest.fn(),
+        prepareFbsMarksForInvoice: jest.fn(),
         getShipmentLabelForInvoice: jest.fn(),
         getShipmentBarcodeForInvoice: jest.fn(),
     };
@@ -23,6 +24,7 @@ describe('PickupController', () => {
         invoiceService.pickupInvoice.mockReset();
         markScan.isReadyToFinish.mockReset();
         orderService.submitFbsMarkCodesForInvoice.mockReset();
+        orderService.prepareFbsMarksForInvoice.mockReset();
         orderService.getShipmentLabelForInvoice.mockReset();
         orderService.getShipmentBarcodeForInvoice.mockReset();
         const module: TestingModule = await Test.createTestingModule({
@@ -134,6 +136,24 @@ describe('PickupController', () => {
                 `inline; filename=${invoice.remark}.pdf`,
             );
             expect(res.send).toHaveBeenCalledWith(pdf);
+        });
+    });
+
+    describe('prepareMarks (POST /marks/prepare) — предпроверка', () => {
+        it('пробрасывает результат prepareFbsMarksForInvoice как { prepare }', async () => {
+            const prepare = { ok: true, multiBoxQty: 1, lines: [] };
+            orderService.prepareFbsMarksForInvoice.mockResolvedValueOnce(prepare);
+
+            const r = await controller.prepareMarks(remarkDto as any);
+
+            expect(orderService.prepareFbsMarksForInvoice).toHaveBeenCalledWith(invoice);
+            expect(r).toEqual({ prepare });
+        });
+
+        it('prepare undefined (ВБ / флаг выкл) → { prepare: undefined }', async () => {
+            orderService.prepareFbsMarksForInvoice.mockResolvedValueOnce(undefined);
+            const r = await controller.prepareMarks(remarkDto as any);
+            expect(r).toEqual({ prepare: undefined });
         });
     });
 

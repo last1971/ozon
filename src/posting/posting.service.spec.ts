@@ -723,6 +723,39 @@ describe('PostingService', () => {
         });
     });
 
+    describe('prepareFbsMarks', () => {
+        it('create-or-get → строки с флагами марка/ГТД', async () => {
+            ozonApiMethod.mockResolvedValueOnce({
+                posting_number: 'P-9',
+                multi_box_qty: 2,
+                products: [
+                    { product_id: 10, quantity: 1, is_mandatory_mark_needed: true, is_gtd_needed: true },
+                    { product_id: 20, quantity: 3, is_mandatory_mark_needed: false },
+                ],
+            });
+
+            const r = await service.prepareFbsMarks({ remark: 'P-9' } as any);
+
+            expect(ozonApiMethod).toHaveBeenCalledWith('/v6/fbs/posting/product/exemplar/create-or-get', {
+                posting_number: 'P-9',
+            });
+            expect(r).toEqual({
+                ok: true,
+                multiBoxQty: 2,
+                lines: [
+                    { productId: 10, quantity: 1, markNeeded: true, gtdNeeded: true },
+                    { productId: 20, quantity: 3, markNeeded: false, gtdNeeded: true },
+                ],
+            });
+        });
+
+        it('пустой ответ → { ok: false, error }', async () => {
+            ozonApiMethod.mockResolvedValueOnce({ result: null });
+            const r = await service.prepareFbsMarks({ remark: 'P-9' } as any);
+            expect(r).toEqual({ ok: false, error: 'createOrGet вернул пустой ответ' });
+        });
+    });
+
     describe('getShipmentLabel', () => {
         it('package-label → firstPageOnly (двухстраничный режется до одной)', async () => {
             const { PDFDocument } = await import('pdf-lib');
