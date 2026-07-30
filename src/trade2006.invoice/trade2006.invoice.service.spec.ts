@@ -55,6 +55,7 @@ describe('Trade2006InvoiceService', () => {
         execute.mockClear();
         query.mockClear();
         commit.mockClear();
+        commit.mockResolvedValue(undefined); // own-транзакция getGtdByKi делает await t.commit().catch()
         rollback.mockClear();
         get.mockClear();
         emit.mockClear();
@@ -702,6 +703,42 @@ describe('Trade2006InvoiceService', () => {
             expect(await service.getKmFullByKi('KI-1', null)).toBeNull();
             query.mockResolvedValueOnce([]);
             expect(await service.getKmFullByKi('KI-X', null)).toBeNull();
+        });
+
+        it('getGtdByKi — склад: обрезает хвост ГТД до 3 частей', async () => {
+            query.mockResolvedValueOnce([{ SKLADINCODE: 285013, SHOPINCODE: null }]);
+            query.mockResolvedValueOnce([{ GTD: '10228010/260326/5094327/2' }]);
+            expect(await service.getGtdByKi('KI-1', null)).toBe('10228010/260326/5094327');
+        });
+
+        it('getGtdByKi — магазин: цепочка SHOPIN→SHOPINPR (не SHOPIN.GTD)', async () => {
+            query.mockResolvedValueOnce([{ SKLADINCODE: null, SHOPINCODE: 777 }]);
+            query.mockResolvedValueOnce([{ GTD: '10005030/260623/3170340/1' }]);
+            expect(await service.getGtdByKi('KI-2', null)).toBe('10005030/260623/3170340');
+            expect(query.mock.calls[1][0]).toContain('JOIN SHOPINPR sp ON sp.SHOPINPRCODE = si.SHOPINPRCODE');
+            expect(query.mock.calls[1][1]).toEqual([777]);
+        });
+
+        it('getGtdByKi — нет прихода/пусто → null', async () => {
+            query.mockResolvedValueOnce([{ SKLADINCODE: null, SHOPINCODE: null }]);
+            expect(await service.getGtdByKi('KI-3', null)).toBeNull();
+        });
+
+        it('getPickedPartiesGtdByScode — партии из FIFO_T + обрезка ГТД, магазинный источник', async () => {
+            query.mockResolvedValueOnce([
+                { REALPRICECODE: 601391, GOODSCODE: 376743, PARTY_QUAN: 1, GTD: '10005030/260623/3170340/1' },
+                { REALPRICECODE: 601392, GOODSCODE: 376743, PARTY_QUAN: 10, GTD: null },
+            ]);
+            const res = await service.getPickedPartiesGtdByScode(91786, null);
+            expect(res).toEqual([
+                { realpricecode: 601391, goodscode: '376743', quantity: 1, gtd: '10005030/260623/3170340' },
+                { realpricecode: 601392, goodscode: '376743', quantity: 10, gtd: null },
+            ]);
+            const sql = query.mock.calls[0][0];
+            expect(sql).toContain('FROM PODBPOS pp');
+            expect(sql).toContain('JOIN FIFO_T f ON f.PR_META_OUT_ID = pout.ID');
+            expect(sql).toContain('JOIN SHOPINPR sp'); // STORAGE_TYPE=SHOPSKLAD → магазинная ветка
+            expect(query.mock.calls[0][1]).toEqual([91786]);
         });
 
         it('listFbsAwaitingShip — JOIN MARKCODES TT=3 + FINISH_PICKUP + IGK + buyerId', async () => {

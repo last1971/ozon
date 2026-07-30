@@ -683,9 +683,21 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
     }
 
     /**
-     * ГТД кода из ПРИХОДА (не расхода — его для несобранного заказа ещё нет):
-     * MARKCODES.PR_META_IN_ID → PR_META.SKLADINCODE|SHOPINCODE → SKLADIN|SHOPIN.GTD.
-     * Нет ссылки на приход/пустой GTD → null (тогда is_gtd_absent=true, как раньше).
+     * Озон принимает ГТД строго 3 частями (8/6/7 цифр, regex ^[0-9]{8}/[0-9]{6}/[0-9]{7}$).
+     * В БД ГТД бывает с хвостом (номер позиции), напр. 10228010/260326/5094327/2 — обрезаем до 3 частей.
+     * Пусто → null (тогда is_gtd_absent=true).
+     */
+    private normalizeGtd(raw: unknown): string | null {
+        if (raw == null) return null;
+        const s = String(raw).trim();
+        if (!s) return null;
+        return s.split('/').slice(0, 3).join('/') || null;
+    }
+
+    /**
+     * ГТД МАРКИРОВАННОГО кода из ПРИХОДА (не расхода — его для несобранного заказа ещё нет):
+     * MARKCODES.PR_META_IN_ID → PR_META.SKLADINCODE|SHOPINCODE → SKLADIN.GTD | SHOPIN→SHOPINPR.GTD.
+     * Нет ссылки на приход/пустой GTD → null. Для НЕмаркированного — getPickedPartiesGtdByScode.
      */
     async getGtdByKi(ki: string, transaction: FirebirdTransaction = null): Promise<string | null> {
         const own = !transaction;
@@ -703,14 +715,57 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
                 const r = await t.query('SELECT GTD FROM SKLADIN WHERE SKLADINCODE = ?', [row.SKLADINCODE], false);
                 gtd = r?.[0]?.GTD;
             } else if (row?.SHOPINCODE) {
-                const r = await t.query('SELECT GTD FROM SHOPIN WHERE SHOPINCODE = ?', [row.SHOPINCODE], false);
+                // магазин: у SHOPIN своей GTD нет — цепочка SHOPIN.SHOPINPRCODE → SHOPINPR.GTD
+                const r = await t.query(
+                    'SELECT sp.GTD FROM SHOPIN si JOIN SHOPINPR sp ON sp.SHOPINPRCODE = si.SHOPINPRCODE ' +
+                        'WHERE si.SHOPINCODE = ?',
+                    [row.SHOPINCODE],
+                    false,
+                );
                 gtd = r?.[0]?.GTD;
             }
-            const val = gtd == null ? '' : String(gtd).trim();
-            return val || null;
+            return this.normalizeGtd(gtd);
         } finally {
             if (own) await t.commit(true).catch(() => undefined);
         }
+    }
+
+    /**
+     * ГТД НЕмаркированных позиций счёта — по ФАКТИЧЕСКОЙ FIFO-раскладке уже подобранного счёта
+     * (не пересчёт остатка: подбор пишет FIFO_T до УПД, поэтому «QUAN − Σ FIFO_T» вернул бы чужие партии).
+     * Цепочка: PODBPOS(SCODE) → PR_META(расход, по PODBPOSCODE) → FIFO_T → PR_META(приход) → ГТД.
+     * Источник ГТД по инстансу (getStorageSS): склад → SKLADIN.GTD; магазин → SHOPIN→SHOPINPR.GTD.
+     * Возврат: партии по строкам счёта (realpricecode + кол-во из партии + ГТД партии). ГТД пусто → null.
+     */
+    async getPickedPartiesGtdByScode(
+        scode: number,
+        transaction: FirebirdTransaction = null,
+    ): Promise<{ realpricecode: number; goodscode: string; quantity: number; gtd: string | null }[]> {
+        const t = transaction ?? (await this.getTransaction());
+        const gtdExpr =
+            this.getStorageSS() === 1
+                ? '(SELECT sp.GTD FROM SHOPIN si JOIN SHOPINPR sp ON sp.SHOPINPRCODE = si.SHOPINPRCODE ' +
+                  'WHERE si.SHOPINCODE = pin.SHOPINCODE)'
+                : '(SELECT s.GTD FROM SKLADIN s WHERE s.SKLADINCODE = pin.SKLADINCODE)';
+        const rows = await t.query(
+            'SELECT pp.REALPRICECODE, pp.GOODSCODE, f.QUAN AS PARTY_QUAN, ' +
+                gtdExpr +
+                ' AS GTD ' +
+                'FROM PODBPOS pp ' +
+                'JOIN PR_META pout ON pout.PODBPOSCODE = pp.PODBPOSCODE AND pout.P_R = 1 ' +
+                'JOIN FIFO_T f ON f.PR_META_OUT_ID = pout.ID ' +
+                'JOIN PR_META pin ON pin.ID = f.PR_META_IN_ID ' +
+                'WHERE pp.SCODE = ? ' +
+                'ORDER BY pp.REALPRICECODE, f.ID',
+            [scode],
+            !transaction,
+        );
+        return (rows ?? []).map((r) => ({
+            realpricecode: Number(r.REALPRICECODE),
+            goodscode: String(r.GOODSCODE),
+            quantity: Number(r.PARTY_QUAN) || 0,
+            gtd: this.normalizeGtd(r.GTD),
+        }));
     }
 
     async listFbsAwaitingShip(
