@@ -12,6 +12,9 @@ import { GoodServiceEnum } from "@/stores/goods";
 const store = labelStore();
 const posting = postingStore();
 
+// Клик по номеру заказа → открыть сборку в «Скан FBS» (грузит существующий onFirstInput там).
+const emit = defineEmits<{ (e: 'pick-order', order: string): void }>();
+
 const url = import.meta.env.VITE_URL;
 
 const headers = ref([
@@ -140,6 +143,11 @@ watch(service, async () => {
         <!-- Слот для отображения изображения штрихкода -->
         <template #item.barcode="{ item }">
            <barcode-image :barcode-type="barcodeType" :url="url" :barcode="item.barcode" />
+        </template>
+
+        <!-- Кликабельный номер заказа → открыть сборку в «Скан FBS» -->
+        <template #item.order="{ item }">
+            <a href="#" @click.prevent="emit('pick-order', item.order)">{{ item.order }}</a>
         </template>
     </v-data-table>
 </template>

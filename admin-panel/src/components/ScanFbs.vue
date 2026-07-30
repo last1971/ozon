@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, nextTick, ref } from "vue";
+import { computed, nextTick, ref, watch } from "vue";
 import axios from "../axios.config";
 import ProductImage from "@/components/ProductImage.vue";
 import BarcodeImage from "@/components/BarcodeImage.vue";
@@ -461,6 +461,15 @@ async function setFocus(ref: any) {
         if (inputElement) inputElement.focus();
     }
 }
+
+// Приход номера заказа из грида «OZON FBS этикетки» — грузим тем же onFirstInput (без дублей).
+const props = defineProps<{ prefill?: string }>();
+watch(() => props.prefill, async (order) => {
+    if (!order) return;
+    await resetFields();
+    firstInput.value = order;
+    await onFirstInput();
+});
 </script>
 
 <template>
