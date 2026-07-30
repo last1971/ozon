@@ -634,6 +634,38 @@ describe('OrderService', () => {
         });
     });
 
+    describe('getShipmentBarcodeForInvoice (сверка IGK==ШК)', () => {
+        const invoice = { id: 1, remark: 'P-1', buyerId: 11 } as any;
+        const getShipmentBarcode = jest.fn();
+
+        beforeEach(() => {
+            getShipmentBarcode.mockReset();
+        });
+
+        it('провайдер есть → ШК пробрасывается', async () => {
+            getShipmentBarcode.mockResolvedValueOnce('SHK-1');
+            (service as any).orderServices = [
+                {
+                    constructor: { name: 'PostingService' },
+                    getBuyerId: () => 11,
+                    isFbo: () => false,
+                    getShipmentBarcode,
+                },
+            ];
+            const r = await service.getShipmentBarcodeForInvoice(invoice);
+            expect(r).toBe('SHK-1');
+            expect(getShipmentBarcode).toHaveBeenCalledWith(invoice);
+        });
+
+        it('провайдер без метода (ВБ) → undefined, сверка пропускается', async () => {
+            (service as any).orderServices = [
+                { constructor: { name: 'WbOrderService' }, getBuyerId: () => 11, isFbo: () => false },
+            ];
+            const r = await service.getShipmentBarcodeForInvoice(invoice);
+            expect(r).toBeUndefined();
+        });
+    });
+
     describe('checkNewOrders + MARK_CODES_ENABLED', () => {
         beforeEach(() => {
             cacheGet.mockReset().mockResolvedValue('');

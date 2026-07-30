@@ -20,7 +20,7 @@ import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { OZON_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { isMarkSubmittable, SubmitResultDto } from '../interfaces/IMarkSubmittable';
-import { isShipmentLabelProvider } from '../interfaces/IShipmentLabelProvider';
+import { isShipmentLabelProvider, IShipmentLabelProvider } from '../interfaces/IShipmentLabelProvider';
 import { isMarkCodesEnabled } from '../helpers';
 
 @Injectable()
@@ -163,6 +163,18 @@ export class OrderService {
             throw new BadRequestException('Этикетка отправления недоступна для этого маркетплейса');
         }
         return service.getShipmentLabel(invoice);
+    }
+
+    /**
+     * Эталонный ШК отправления для сверки IGK==ШК. У маркетплейса без метода
+     * (ВБ) — undefined → сверка пропускается.
+     */
+    async getShipmentBarcodeForInvoice(invoice: InvoiceDto): Promise<string | undefined> {
+        const service = this.getServiceByBuyerId(invoice.buyerId, true) as
+            | (IOrderable & Partial<IShipmentLabelProvider>)
+            | null;
+        if (!service?.getShipmentBarcode) return undefined;
+        return service.getShipmentBarcode(invoice);
     }
 
     private async processWithCache<T extends { posting_number: string }>(

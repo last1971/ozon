@@ -80,6 +80,14 @@ export class PickupController {
             if (!ready) {
                 throw new BadRequestException('Не все КМ отсканированы');
             }
+            // Сверка IGK==ШК: отсканированный ШК посылки должен совпасть с эталоном маркетплейса.
+            // У ВБ метода нет → expected undefined → сверка пропускается.
+            const expected = await this.orderService.getShipmentBarcodeForInvoice(invoice);
+            if (expected && invoiceUpdateDto.IGK && invoiceUpdateDto.IGK !== expected) {
+                throw new BadRequestException(
+                    `Отсканирован не тот ШК: ожидался ${expected}, получен ${invoiceUpdateDto.IGK}`,
+                );
+            }
         }
         // FINISH_PICKUP только фиксирует IGK и время. Передача КМ — отдельный POST /marks.
         const isSuccess = await this.invoiceService.update(invoice, invoiceUpdateDto);

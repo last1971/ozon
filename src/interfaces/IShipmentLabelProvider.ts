@@ -8,6 +8,11 @@ import { InvoiceDto } from '../invoice/dto/invoice.dto';
 export interface IShipmentLabelProvider {
     /** PDF этикетки отправления (стр.1 — ШК отправления, товарный ярлык уже отрезан). */
     getShipmentLabel(invoice: InvoiceDto): Promise<Buffer>;
+    /**
+     * ШК отправления с этикетки — эталон для сверки IGK==ШК на FINISH_PICKUP.
+     * Опционально: у ВБ метода нет → сверка тихо пропускается.
+     */
+    getShipmentBarcode?(invoice: InvoiceDto): Promise<string>;
 }
 
 export function isShipmentLabelProvider(service: unknown): service is IShipmentLabelProvider {

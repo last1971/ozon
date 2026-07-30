@@ -237,6 +237,14 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         return firstPageOnly(pdf);
     }
 
+    /** ШК отправления (upper_barcode) — эталон для сверки IGK==ШК. */
+    async getShipmentBarcode(invoice: InvoiceDto): Promise<string> {
+        const res = await this.ozonApiService.method('/v3/posting/fbs/get', {
+            posting_number: invoice.remark,
+        });
+        return res?.result?.barcodes?.upper_barcode ?? '';
+    }
+
     async getPostingProductMap(postingNumber: string): Promise<Map<string, number>> {
         const res = await this.ozonApiService.method('/v3/posting/fbs/get', {
             posting_number: postingNumber,

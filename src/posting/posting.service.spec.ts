@@ -21,6 +21,7 @@ describe('PostingService', () => {
     const bulkSetStatus = jest.fn();
     const updatePrim = jest.fn();
     const ozonApiMethod = jest.fn();
+    const ozonApiMethodBinary = jest.fn();
     const getAttachedMarkCodesByScode = jest.fn();
     const getKmFullByKi = jest.fn();
     const getGtdByKi = jest.fn();
@@ -87,6 +88,7 @@ describe('PostingService', () => {
                     provide: OzonApiService,
                     useValue: {
                         method: ozonApiMethod,
+                        methodBinary: ozonApiMethodBinary,
                     },
                 },
                 CreateOrGetExemplarsCommand,
@@ -99,6 +101,7 @@ describe('PostingService', () => {
 
         orderList.mockClear();
         ozonApiMethod.mockClear();
+        ozonApiMethodBinary.mockReset();
         getByPosting.mockReset();
         getInvoiceLines.mockReset();
         getAttachedMarkCodesByScode.mockReset();
@@ -717,6 +720,39 @@ describe('PostingService', () => {
                 },
             });
             expect(ozonApiMethod).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('getShipmentLabel', () => {
+        it('package-label → firstPageOnly (двухстраничный режется до одной)', async () => {
+            const { PDFDocument } = await import('pdf-lib');
+            const doc = await PDFDocument.create();
+            doc.addPage([200, 200]);
+            doc.addPage([200, 200]);
+            ozonApiMethodBinary.mockResolvedValueOnce(Buffer.from(await doc.save()));
+
+            const out = await service.getShipmentLabel({ remark: 'P-9' } as any);
+
+            expect(ozonApiMethodBinary).toHaveBeenCalledWith('/v2/posting/fbs/package-label', {
+                posting_number: ['P-9'],
+            });
+            const parsed = await PDFDocument.load(out);
+            expect(parsed.getPageCount()).toBe(1);
+        });
+    });
+
+    describe('getShipmentBarcode', () => {
+        it('/v3 get → barcodes.upper_barcode', async () => {
+            ozonApiMethod.mockResolvedValueOnce({ result: { barcodes: { upper_barcode: 'SHK-42' } } });
+            const r = await service.getShipmentBarcode({ remark: 'P-9' } as any);
+            expect(ozonApiMethod).toHaveBeenCalledWith('/v3/posting/fbs/get', { posting_number: 'P-9' });
+            expect(r).toBe('SHK-42');
+        });
+
+        it('нет barcodes → пустая строка', async () => {
+            ozonApiMethod.mockResolvedValueOnce({ result: {} });
+            const r = await service.getShipmentBarcode({ remark: 'P-9' } as any);
+            expect(r).toBe('');
         });
     });
 });

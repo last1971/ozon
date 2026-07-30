@@ -10,7 +10,11 @@ describe('PickupController', () => {
     let controller: PickupController;
     const invoiceService = { update: jest.fn(), pickupInvoice: jest.fn() };
     const markScan = { isReadyToFinish: jest.fn() };
-    const orderService = { submitFbsMarkCodesForInvoice: jest.fn(), getShipmentLabelForInvoice: jest.fn() };
+    const orderService = {
+        submitFbsMarkCodesForInvoice: jest.fn(),
+        getShipmentLabelForInvoice: jest.fn(),
+        getShipmentBarcodeForInvoice: jest.fn(),
+    };
     const invoice = { id: 100, remark: 'TEST', buyerId: 7 } as InvoiceDto;
     const remarkDto = { remark: 'TEST', invoice };
 
@@ -20,6 +24,7 @@ describe('PickupController', () => {
         markScan.isReadyToFinish.mockReset();
         orderService.submitFbsMarkCodesForInvoice.mockReset();
         orderService.getShipmentLabelForInvoice.mockReset();
+        orderService.getShipmentBarcodeForInvoice.mockReset();
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 { provide: INVOICE_SERVICE, useValue: invoiceService },
@@ -61,6 +66,39 @@ describe('PickupController', () => {
 
             expect(invoiceService.update).toHaveBeenCalledWith(invoice, dto);
             expect(orderService.submitFbsMarkCodesForInvoice).not.toHaveBeenCalled();
+            expect(r).toEqual({ isSuccess: true, invoice });
+        });
+
+        it('FINISH_PICKUP: IGK != эталонный ШК → BadRequest, update не вызывается', async () => {
+            markScan.isReadyToFinish.mockResolvedValueOnce(true);
+            orderService.getShipmentBarcodeForInvoice.mockResolvedValueOnce('SHK-999');
+            const dto = { FINISH_PICKUP: '2026-05-10 13:00:00', IGK: 'SHK-000' } as any;
+
+            await expect(controller.update(remarkDto as any, dto)).rejects.toThrow(BadRequestException);
+            expect(invoiceService.update).not.toHaveBeenCalled();
+        });
+
+        it('FINISH_PICKUP: IGK == эталонный ШК → update проходит', async () => {
+            markScan.isReadyToFinish.mockResolvedValueOnce(true);
+            orderService.getShipmentBarcodeForInvoice.mockResolvedValueOnce('SHK-777');
+            invoiceService.update.mockResolvedValueOnce(true);
+            const dto = { FINISH_PICKUP: '2026-05-10 13:00:00', IGK: 'SHK-777' } as any;
+
+            const r = await controller.update(remarkDto as any, dto);
+
+            expect(invoiceService.update).toHaveBeenCalledWith(invoice, dto);
+            expect(r).toEqual({ isSuccess: true, invoice });
+        });
+
+        it('FINISH_PICKUP: эталон отсутствует (ВБ) → сверка пропускается, update проходит', async () => {
+            markScan.isReadyToFinish.mockResolvedValueOnce(true);
+            orderService.getShipmentBarcodeForInvoice.mockResolvedValueOnce(undefined);
+            invoiceService.update.mockResolvedValueOnce(true);
+            const dto = { FINISH_PICKUP: '2026-05-10 13:00:00', IGK: 'anything' } as any;
+
+            const r = await controller.update(remarkDto as any, dto);
+
+            expect(invoiceService.update).toHaveBeenCalledWith(invoice, dto);
             expect(r).toEqual({ isSuccess: true, invoice });
         });
     });
