@@ -7,7 +7,9 @@ import { DateTime } from 'luxon';
 import { OzonApiService } from "../ozon.api/ozon.api.service";
 import { CreateOrGetExemplarsCommand } from './commands/create-or-get-exemplars.command';
 import { BuildExemplarsPayloadCommand } from './commands/build-exemplars-payload.command';
+import { ValidateExemplarsCommand } from './commands/validate-exemplars.command';
 import { SetAndConfirmExemplarsCommand } from './commands/set-and-confirm-exemplars.command';
+import { ShipExemplarsCommand } from './commands/ship-exemplars.command';
 
 describe('PostingService', () => {
     let service: PostingService;
@@ -86,7 +88,9 @@ describe('PostingService', () => {
                 },
                 CreateOrGetExemplarsCommand,
                 BuildExemplarsPayloadCommand,
+                ValidateExemplarsCommand,
                 SetAndConfirmExemplarsCommand,
+                ShipExemplarsCommand,
             ],
         }).compile();
 
@@ -266,6 +270,10 @@ describe('PostingService', () => {
 
     describe('submitFbsMarkCodes', () => {
         const invoice = { id: 8341, remark: 'P-1', buyerId: 24416 } as any;
+        // Ответ validate «всё валидно» — вставляется в моки между /v3 get и set.
+        const VALIDATE_OK = {
+            products: [{ product_id: 999, valid: true, exemplars: [{ valid: true, marks: [{ valid: true }] }] }],
+        };
 
         it('возвращает ok=true если нет привязанных КМ', async () => {
             getAttachedMarkCodesByScode.mockResolvedValueOnce([]);
@@ -306,12 +314,14 @@ describe('PostingService', () => {
                 .mockResolvedValueOnce({
                     result: { products: [{ offer_id: '531557', sku: 999 }] },
                 })
+                .mockResolvedValueOnce(VALIDATE_OK)
                 .mockResolvedValueOnce({ result: true })
-                .mockResolvedValueOnce({ posting_number: 'P-1', status: 'ship_available', products: [] });
+                .mockResolvedValueOnce({ posting_number: 'P-1', status: 'ship_available', products: [] })
+                .mockResolvedValueOnce({ result: ['P-1'] });
 
             const res = await service.submitFbsMarkCodes(invoice);
 
-            expect(res).toEqual({ ok: true });
+            expect(res).toEqual({ ok: true, shipped: true });
             expect(ozonApiMethod).toHaveBeenNthCalledWith(
                 1,
                 '/v6/fbs/posting/product/exemplar/create-or-get',
@@ -319,6 +329,11 @@ describe('PostingService', () => {
             );
             expect(ozonApiMethod).toHaveBeenNthCalledWith(
                 3,
+                '/v5/fbs/posting/product/exemplar/validate',
+                expect.objectContaining({ posting_number: 'P-1' }),
+            );
+            expect(ozonApiMethod).toHaveBeenNthCalledWith(
+                4,
                 '/v6/fbs/posting/product/exemplar/set',
                 expect.objectContaining({
                     posting_number: 'P-1',
@@ -339,8 +354,82 @@ describe('PostingService', () => {
                     ],
                 }),
             );
-            // ship больше не вызываем — только передача КМ (create-or-get/get/set/status)
+            // теперь флоу шипит после ship_available
+            expect(ozonApiMethod).toHaveBeenCalledWith(
+                '/v4/posting/fbs/ship',
+                expect.objectContaining({
+                    posting_number: 'P-1',
+                    packages: [{ products: [{ product_id: 999, quantity: 1, exemplar_ids: [111] }] }],
+                }),
+            );
+        });
+
+        it('validate вернул ошибку → стоп до set (failedStep=validate, set/ship не зовём)', async () => {
+            getAttachedMarkCodesByScode.mockResolvedValueOnce([
+                { ki: 'KI-1', goodscode: '531557', realpricecode: 1, quantity: 1 },
+            ]);
+            getKmFullByKi.mockResolvedValueOnce('01FULL');
+            ozonApiMethod
+                .mockResolvedValueOnce({
+                    posting_number: 'P-1',
+                    multi_box_qty: 1,
+                    products: [
+                        {
+                            product_id: 999,
+                            quantity: 1,
+                            is_mandatory_mark_needed: true,
+                            exemplars: [{ exemplar_id: 111, marks: [] }],
+                        },
+                    ],
+                })
+                .mockResolvedValueOnce({ result: { products: [{ offer_id: '531557', sku: 999 }] } })
+                .mockResolvedValueOnce({
+                    products: [
+                        {
+                            product_id: 999,
+                            valid: false,
+                            exemplars: [{ valid: false, errors: ['GTD_MUST_BE_SPECIFIED_FOR_PRODUCT_COUNTRY'] }],
+                        },
+                    ],
+                });
+            const res = await service.submitFbsMarkCodes(invoice);
+            expect(res.ok).toBe(false);
+            expect(res.failedStep).toBe('validate');
+            expect(res.failed).toContainEqual({
+                ki: '*',
+                reason: 'product 999: GTD_MUST_BE_SPECIFIED_FOR_PRODUCT_COUNTRY',
+            });
+            expect(ozonApiMethod).not.toHaveBeenCalledWith('/v6/fbs/posting/product/exemplar/set', expect.anything());
             expect(ozonApiMethod).not.toHaveBeenCalledWith('/v4/posting/fbs/ship', expect.anything());
+        });
+
+        it('ship упал → failedStep=ship, goToOzon=true', async () => {
+            getAttachedMarkCodesByScode.mockResolvedValueOnce([
+                { ki: 'KI-1', goodscode: '531557', realpricecode: 1, quantity: 1 },
+            ]);
+            getKmFullByKi.mockResolvedValueOnce('01FULL');
+            ozonApiMethod
+                .mockResolvedValueOnce({
+                    posting_number: 'P-1',
+                    multi_box_qty: 1,
+                    products: [
+                        {
+                            product_id: 999,
+                            quantity: 1,
+                            is_mandatory_mark_needed: true,
+                            exemplars: [{ exemplar_id: 111, marks: [] }],
+                        },
+                    ],
+                })
+                .mockResolvedValueOnce({ result: { products: [{ offer_id: '531557', sku: 999 }] } })
+                .mockResolvedValueOnce(VALIDATE_OK)
+                .mockResolvedValueOnce({ result: true })
+                .mockResolvedValueOnce({ posting_number: 'P-1', status: 'ship_available', products: [] })
+                .mockRejectedValueOnce(new Error('ship boom'));
+            const res = await service.submitFbsMarkCodes(invoice);
+            expect(res.ok).toBe(false);
+            expect(res.failedStep).toBe('ship');
+            expect(res.goToOzon).toBe(true);
         });
 
         it('количественный КМ (quantity>1) → failed с подсказкой про деление', async () => {
@@ -428,6 +517,7 @@ describe('PostingService', () => {
                 .mockResolvedValueOnce({
                     result: { products: [{ offer_id: '531557', sku: 999 }] },
                 })
+                .mockResolvedValueOnce(VALIDATE_OK)
                 .mockResolvedValueOnce({ result: true })
                 .mockResolvedValueOnce({ posting_number: 'P-1', status: 'ship_not_available', products: [] });
             const res = await service.submitFbsMarkCodes(invoice);
@@ -459,6 +549,7 @@ describe('PostingService', () => {
                 .mockResolvedValueOnce({
                     result: { products: [{ offer_id: '531557', sku: 999 }] },
                 })
+                .mockResolvedValueOnce(VALIDATE_OK)
                 .mockResolvedValueOnce({ result: false })
                 .mockResolvedValueOnce({
                     posting_number: 'P-1',
@@ -473,7 +564,7 @@ describe('PostingService', () => {
             const res = await service.submitFbsMarkCodes(invoice);
             expect(res).toEqual({ ok: true });
             expect(ozonApiMethod).toHaveBeenNthCalledWith(
-                4,
+                5,
                 '/v5/fbs/posting/product/exemplar/status',
                 { posting_number: 'P-1' },
             );
@@ -500,6 +591,7 @@ describe('PostingService', () => {
                 .mockResolvedValueOnce({
                     result: { products: [{ offer_id: '531557', sku: 999 }] },
                 })
+                .mockResolvedValueOnce(VALIDATE_OK)
                 .mockResolvedValueOnce({ result: false })
                 .mockResolvedValueOnce({
                     posting_number: 'P-1',

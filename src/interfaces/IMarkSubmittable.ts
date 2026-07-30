@@ -12,6 +12,12 @@ export interface SubmitResultDto {
     skipRetry?: boolean;
     dryRun?: boolean;
     payload?: unknown;
+    /** Шаг, на котором оборвались: 'validate' | 'set' | 'status' | 'ship'. */
+    failedStep?: string;
+    /** true → ошибка на/после set: данные могли уйти, разбираться в ЛК Озона. */
+    goToOzon?: boolean;
+    /** true → отправление отгружено (ship прошёл или уже было отгружено). */
+    shipped?: boolean;
 }
 
 export interface IMarkSubmittable {

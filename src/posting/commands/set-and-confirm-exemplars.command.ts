@@ -41,6 +41,8 @@ export class SetAndConfirmExemplarsCommand implements ICommandAsync<IFbsSubmitCo
                 ? { ok: true }
                 : {
                       ok: false,
+                      failedStep: 'set',
+                      goToOzon: true,
                       failed: [
                           ...ctx.failed,
                           { ki: '*', reason: `setExemplars result=false; status=${status?.status}` },
@@ -61,6 +63,8 @@ export class SetAndConfirmExemplarsCommand implements ICommandAsync<IFbsSubmitCo
             ctx.stopChain = true;
             ctx.result = {
                 ok: false,
+                failedStep: 'status',
+                goToOzon: true,
                 failed: [
                     ...ctx.failed,
                     { ki: '*', reason: `polling ${pollRes.status} (last=${pollRes.value?.status})` },
@@ -69,7 +73,13 @@ export class SetAndConfirmExemplarsCommand implements ICommandAsync<IFbsSubmitCo
             return ctx;
         }
 
-        ctx.result = ctx.failed.length === 0 ? { ok: true } : { ok: false, failed: ctx.failed };
+        // Частичный провал по строкам — не шипим, отдаём как есть.
+        if (ctx.failed.length > 0) {
+            ctx.stopChain = true;
+            ctx.result = { ok: false, failed: ctx.failed };
+            return ctx;
+        }
+        // Полный успех set+status — марки/ГТД на месте, идём к ship (следующая команда).
         return ctx;
     }
 }

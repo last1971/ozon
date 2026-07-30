@@ -19,14 +19,17 @@ import { ReturnsListDto } from './dto/returns.list.dto';
 import { ReturnDto } from './dto/return.dto';
 import { IMarkSubmittable, SubmitFailureDto, SubmitResultDto } from '../interfaces/IMarkSubmittable';
 import { ExemplarCreateOrGetResponseDto } from './dto/exemplar.create-or-get.dto';
-import { ExemplarSetRequestDto, ExemplarSetResponseDto } from './dto/exemplar.set.dto';
+import { ExemplarSetProductDto, ExemplarSetRequestDto, ExemplarSetResponseDto } from './dto/exemplar.set.dto';
+import { ExemplarValidateResponseDto } from './dto/exemplar.validate.dto';
 import { ExemplarStatusResponseDto } from './dto/exemplar.status.dto';
 import { ShipPostingRequestDto, ShipPostingResponseDto } from './dto/ship.posting.dto';
 import { CommandChainAsync } from '../helpers/command/command.chain.async';
 import { IFbsSubmitContext } from './interfaces/fbs-submit.context';
 import { CreateOrGetExemplarsCommand } from './commands/create-or-get-exemplars.command';
 import { BuildExemplarsPayloadCommand } from './commands/build-exemplars-payload.command';
+import { ValidateExemplarsCommand } from './commands/validate-exemplars.command';
 import { SetAndConfirmExemplarsCommand } from './commands/set-and-confirm-exemplars.command';
+import { ShipExemplarsCommand } from './commands/ship-exemplars.command';
 
 @Injectable()
 export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable {
@@ -38,7 +41,9 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         private ozonApiService: OzonApiService,
         private createOrGetExemplarsCommand: CreateOrGetExemplarsCommand,
         private buildExemplarsPayloadCommand: BuildExemplarsPayloadCommand,
+        private validateExemplarsCommand: ValidateExemplarsCommand,
         private setAndConfirmExemplarsCommand: SetAndConfirmExemplarsCommand,
+        private shipExemplarsCommand: ShipExemplarsCommand,
     ) {}
 
     isFbo(): boolean {
@@ -202,6 +207,17 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         return this.ozonApiService.method('/v6/fbs/posting/product/exemplar/set', req);
     }
 
+    /** Сухая проверка марок+ГТД перед set (ничего не сохраняет). */
+    async validateExemplars(
+        postingNumber: string,
+        products: ExemplarSetProductDto[],
+    ): Promise<ExemplarValidateResponseDto> {
+        return this.ozonApiService.method('/v5/fbs/posting/product/exemplar/validate', {
+            posting_number: postingNumber,
+            products,
+        });
+    }
+
     async getExemplarStatus(postingNumber: string): Promise<ExemplarStatusResponseDto> {
         return this.ozonApiService.method('/v5/fbs/posting/product/exemplar/status', {
             posting_number: postingNumber,
@@ -279,7 +295,9 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         const chain = new CommandChainAsync<IFbsSubmitContext>([
             this.createOrGetExemplarsCommand,
             this.buildExemplarsPayloadCommand,
+            this.validateExemplarsCommand,
             this.setAndConfirmExemplarsCommand,
+            this.shipExemplarsCommand,
         ]);
         const done = await chain.execute(ctx);
         return done.result ?? (failed.length === 0 ? { ok: true } : { ok: false, failed });
