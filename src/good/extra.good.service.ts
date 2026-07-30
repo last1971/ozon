@@ -71,7 +71,7 @@ export class ExtraGoodService implements OnApplicationBootstrap {
                 message: `Service ${serviceEnum} not configured`,
             };
         }
-        const processor = new GoodsCountProcessor(this.services, this.logger);
+        const processor = new GoodsCountProcessor(this.services, this.logger, this.goodService);
         return {
             isSuccess: service.isSwitchedOn,
             message: service.isSwitchedOn
@@ -93,7 +93,7 @@ export class ExtraGoodService implements OnApplicationBootstrap {
             };
         }
         service.isSwitchedOn = isSwitchedDto.isSwitchedOn;
-        const processor = new GoodsCountProcessor(this.services, this.logger);
+        const processor = new GoodsCountProcessor(this.services, this.logger, this.goodService);
         let count: number;
         if (isSwitchedDto.isSwitchedOn) {
             count = await processor.processGoodsCountForService(isSwitchedDto.service, this.goodService, '');
@@ -201,7 +201,7 @@ export class ExtraGoodService implements OnApplicationBootstrap {
 
     @Cron('0 0 9-19 * * 1-6', { name: 'controlCheckGoodCount' })
     async checkGoodCount(): Promise<void> {
-        const processor = new GoodsCountProcessor(this.services, this.logger);
+        const processor = new GoodsCountProcessor(this.services, this.logger, this.goodService);
         for (const service of this.services.keys()) {
             this.logger.log(
                 `Update quantity for ${await processor.processGoodsCountForService(
@@ -235,7 +235,7 @@ export class ExtraGoodService implements OnApplicationBootstrap {
     async countsChanged(goods: GoodDto[]): Promise<void> {
         this.logger.log(`SKUs changed: ${goods.map((good) => good.code).join(', ')}`);
 
-        const processor = new GoodsCountProcessor(this.services, this.logger);
+        const processor = new GoodsCountProcessor(this.services, this.logger, this.goodService);
 
         await processor.processGoodsCountChanges(goods);
     }
