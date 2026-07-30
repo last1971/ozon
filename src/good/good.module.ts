@@ -15,6 +15,11 @@ import { PriceCalculationHelper } from "../helpers/price/price.calculation.helpe
 import { HelpersModule } from "../helpers/helpers.module";
 import { AvitoCardModule } from '../avito.card/avito.card.module';
 import { SyliusModule } from '../sylius/sylius.module';
+import { ResolveDisableTokensCommand } from './commands/resolve-disable-tokens.command';
+import { WriteDisabledFlagCommand } from './commands/write-disabled-flag.command';
+import { ClearDisabledFlagCommand } from './commands/clear-disabled-flag.command';
+import { PushZeroCountsCommand } from './commands/push-zero-counts.command';
+import { RestoreCountsCommand } from './commands/restore-counts.command';
 
 @Module({
     imports: [FirebirdModule, ProductModule, YandexOfferModule, WbCardModule, HelpersModule, forwardRef(() => AvitoCardModule), SyliusModule],
@@ -31,6 +36,11 @@ import { SyliusModule } from '../sylius/sylius.module';
             inject: [FIREBIRD, ConfigService, EventEmitter2, CACHE_MANAGER, PriceCalculationHelper],
         },
         ExtraGoodService,
+        ResolveDisableTokensCommand,
+        WriteDisabledFlagCommand,
+        ClearDisabledFlagCommand,
+        PushZeroCountsCommand,
+        RestoreCountsCommand,
     ],
     exports: [GOOD_SERVICE, ExtraGoodService],
     controllers: [GoodController],

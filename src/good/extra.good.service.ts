@@ -120,9 +120,9 @@ export class ExtraGoodService implements OnApplicationBootstrap {
 
     /**
      * Ядро обнуления остатков: пушит 0 для переданных SKU чанками по 100.
-     * Переиспользуется resetBalances (весь сервис) и disableByCodes (подмножество).
+     * Переиспользуется resetBalances (весь сервис) и PushZeroCountsCommand (подмножество).
      */
-    private async zeroBalances(serviceEnum: GoodServiceEnum, skuList: string[]): Promise<number> {
+    async zeroBalances(serviceEnum: GoodServiceEnum, skuList: string[]): Promise<number> {
         const service = this.services.get(serviceEnum);
         let count = 0;
         for (const skus of chunk(skuList, 100)) {
