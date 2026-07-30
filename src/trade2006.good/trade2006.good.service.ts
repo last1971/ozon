@@ -20,6 +20,7 @@ import { UpdatePriceDto } from '../price/dto/update.price.dto';
 import { ConfigService } from '@nestjs/config';
 import { GoodWbDto } from '../good/dto/good.wb.dto';
 import { GoodAvitoDto } from '../good/dto/good.avito.dto';
+import { GoodServiceEnum } from '../good/good.service.enum';
 import { chunk, find, flatten, snakeCase, toUpper } from 'lodash';
 import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
@@ -292,6 +293,44 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                 commission: data.COMMISSION,
             }),
         );
+    }
+
+    /** Коды (GOODSCODE или SKU), отключённые на данном сервисе. */
+    async getDisabledCodes(service: GoodServiceEnum, t: FirebirdTransaction = null): Promise<string[]> {
+        return this.withTransaction(async (transaction) => {
+            const rows: any[] = await transaction.query(
+                'SELECT CODE FROM GOODS_DISABLED WHERE SERVICE = ?',
+                [service],
+                false,
+            );
+            return rows.map((r) => r.CODE);
+        }, t);
+    }
+
+    /** Отметить коды отключёнными на сервисе (идемпотентно). */
+    async setGoodsDisabled(codes: string[], service: GoodServiceEnum, t: FirebirdTransaction = null): Promise<void> {
+        if (codes.length === 0) return;
+        return this.withTransaction(async (transaction) => {
+            for (const code of codes) {
+                await transaction.execute(
+                    'UPDATE OR INSERT INTO GOODS_DISABLED (CODE, SERVICE) VALUES (?, ?) MATCHING (CODE, SERVICE)',
+                    [code, service],
+                    false,
+                );
+            }
+        }, t);
+    }
+
+    /** Снять отключение с кодов на сервисе. */
+    async clearGoodsDisabled(codes: string[], service: GoodServiceEnum, t: FirebirdTransaction = null): Promise<void> {
+        if (codes.length === 0) return;
+        return this.withTransaction(async (transaction) => {
+            await transaction.execute(
+                `DELETE FROM GOODS_DISABLED WHERE SERVICE = ? AND CODE IN (${codes.map(() => '?').join(',')})`,
+                [service, ...codes],
+                false,
+            );
+        }, t);
     }
 
     async getAllAvitoGoods(): Promise<GoodAvitoDto[]> {

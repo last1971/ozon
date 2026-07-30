@@ -9,6 +9,7 @@ import { WbCardDto } from '../wb.card/dto/wb.card.dto';
 import { WbCommissionDto } from '../wb.card/dto/wb.commission.dto';
 import { UpdatePriceDto } from "../price/dto/update.price.dto";
 import { GoodAvitoDto } from '../good/dto/good.avito.dto';
+import { GoodServiceEnum } from '../good/good.service.enum';
 
 export interface IGood {
     in(codes: string[], t: FirebirdTransaction): Promise<GoodDto[]>;
@@ -29,5 +30,8 @@ export interface IGood {
     updateWbCategory(wbCard: WbCardDto): Promise<void>;
     getWbCategoryByName(name: string): Promise<WbCommissionDto>;
     resetAvailablePrice(goodCodes?: string[], t?: FirebirdTransaction): Promise<void>
+    getDisabledCodes(service: GoodServiceEnum, t?: FirebirdTransaction): Promise<string[]>;
+    setGoodsDisabled(codes: string[], service: GoodServiceEnum, t?: FirebirdTransaction): Promise<void>;
+    clearGoodsDisabled(codes: string[], service: GoodServiceEnum, t?: FirebirdTransaction): Promise<void>;
 }
 export const GOOD_SERVICE = 'GOOD_SERVICE';
