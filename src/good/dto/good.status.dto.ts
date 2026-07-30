@@ -30,6 +30,6 @@ export class GoodsServiceStatusDto {
     @ApiProperty({ description: 'Активных SKU (не замороженных).' })
     active: number;
 
-    @ApiProperty({ description: 'Замороженные коды (GOODSCODE/SKU).', type: [String] })
-    disabled: string[];
+    @ApiProperty({ description: 'Замороженные коды с уровнем.', type: [DisabledCodeDto] })
+    disabled: DisabledCodeDto[];
 }

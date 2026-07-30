@@ -9,7 +9,7 @@ describe('PushZeroCountsCommand', () => {
         const result = await command.execute({
             service: GoodServiceEnum.WB,
             inputSkus: ['1000-10'],
-            exact: false,
+            level: 'sku',
             tokens: ['1000'],
             affectedSkus: ['1000', '1000-10', '1000-20'],
         });

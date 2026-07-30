@@ -9,7 +9,7 @@ describe('ClearDisabledFlagCommand', () => {
         await command.execute({
             service: GoodServiceEnum.OZON,
             inputSkus: ['1000-10'],
-            exact: true,
+            level: 'sku',
             tokens: ['1000-10'],
         });
 

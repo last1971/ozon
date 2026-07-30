@@ -121,7 +121,7 @@ export class GoodController {
         @UploadedFile('file') file?: Express.Multer.File,
     ): Promise<ResultDto> {
         const skus = file ? await this.extraService.skusFromFile(file.buffer) : (dto.skus ?? []);
-        return this.extraService.disable(dto.service, skus, dto.exact ?? false);
+        return this.extraService.disable(dto.service, skus, dto.level);
     }
 
     @Post('enable')
@@ -145,7 +145,7 @@ export class GoodController {
         @UploadedFile('file') file?: Express.Multer.File,
     ): Promise<ResultDto> {
         const skus = file ? await this.extraService.skusFromFile(file.buffer) : (dto.skus ?? []);
-        return this.extraService.enable(dto.service, skus, dto.exact ?? false);
+        return this.extraService.enable(dto.service, skus, dto.level);
     }
 
     @Get('services')

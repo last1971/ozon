@@ -8,23 +8,15 @@ describe('ResolveDisableTokensCommand', () => {
 
     beforeEach(() => jest.clearAllMocks());
 
-    it('весь товар (exact=false): tokens=goodCode, affectedSkus=все фасовки', async () => {
-        const result = await command.execute({
-            service: GoodServiceEnum.WB,
-            inputSkus: ['1000-10'],
-            exact: false,
-        });
-        expect(result.tokens).toEqual(['1000']);
+    it('level=good: token с префиксом, affectedSkus=все фасовки товара', async () => {
+        const result = await command.execute({ service: GoodServiceEnum.WB, inputSkus: ['1000'], level: 'good' });
+        expect(result.tokens).toEqual(['good:1000']);
         expect(result.affectedSkus).toEqual(['1000', '1000-10', '1000-20']);
         expect(result.stopChain).toBeUndefined();
     });
 
-    it('точная фасовка (exact=true): tokens=affectedSkus=сам SKU', async () => {
-        const result = await command.execute({
-            service: GoodServiceEnum.WB,
-            inputSkus: ['1000-10'],
-            exact: true,
-        });
+    it('level=sku: token без префикса, affectedSkus=сам код, getSkuList не зовётся', async () => {
+        const result = await command.execute({ service: GoodServiceEnum.WB, inputSkus: ['1000-10'], level: 'sku' });
         expect(result.tokens).toEqual(['1000-10']);
         expect(result.affectedSkus).toEqual(['1000-10']);
         expect(extraGoodService.getSkuList).not.toHaveBeenCalled();
@@ -33,18 +25,14 @@ describe('ResolveDisableTokensCommand', () => {
     it('чистит и дедуплицирует вход', async () => {
         const result = await command.execute({
             service: GoodServiceEnum.WB,
-            inputSkus: [' 1000-10 ', '1000-20', '', '1000-10'],
-            exact: false,
+            inputSkus: [' 1000-10 ', '1000-10', '', '1000-20'],
+            level: 'sku',
         });
-        expect(result.tokens).toEqual(['1000']);
+        expect(result.tokens).toEqual(['1000-10', '1000-20']);
     });
 
     it('пустой ввод → stopChain + error', async () => {
-        const result = await command.execute({
-            service: GoodServiceEnum.WB,
-            inputSkus: ['', '  '],
-            exact: false,
-        });
+        const result = await command.execute({ service: GoodServiceEnum.WB, inputSkus: ['', '  '], level: 'good' });
         expect(result.stopChain).toBe(true);
         expect(result.tokens).toEqual([]);
         expect(result.errors[0]).toContain('Не передано ни одного SKU');

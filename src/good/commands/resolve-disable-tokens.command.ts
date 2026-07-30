@@ -2,12 +2,12 @@ import { Inject, Injectable, forwardRef } from '@nestjs/common';
 import { ICommandAsync } from '../../interfaces/i.command.acync';
 import { IDisableGoodsContext } from './i.disable.goods.context';
 import { ExtraGoodService } from '../extra.good.service';
-import { goodCode } from '../../helpers';
+import { encodeDisabled, goodCode } from '../../helpers';
 
 /**
- * Чистит вход и раскладывает его на:
- *  - tokens — что писать в GOODS_DISABLED (сам SKU при exact, иначе goodCode);
- *  - affectedSkus — какие SKU пушить в маркет.
+ * Чистит вход (trim, дедуп) и раскладывает по режиму level:
+ *  - tokens — что писать в GOODS_DISABLED (закодировано: good-блок с префиксом, sku-блок как есть);
+ *  - affectedSkus — какие SKU сразу обнулить (для good — все текущие фасовки товара).
  * Пустой ввод → stopChain.
  */
 @Injectable()
@@ -29,15 +29,14 @@ export class ResolveDisableTokensCommand implements ICommandAsync<IDisableGoodsC
             };
         }
 
-        const tokens = context.exact
-            ? clean
-            : [...new Set(clean.map((sku) => goodCode({ offer_id: sku })))];
+        const tokens = clean.map((code) => encodeDisabled(code, context.level));
 
-        const affectedSkus = context.exact
-            ? clean
-            : this.extraGoodService
-                  .getSkuList(context.service)
-                  .filter((sku) => tokens.includes(goodCode({ offer_id: sku })));
+        const affectedSkus =
+            context.level === 'sku'
+                ? clean
+                : this.extraGoodService
+                      .getSkuList(context.service)
+                      .filter((sku) => clean.includes(goodCode({ offer_id: sku })));
 
         return { ...context, tokens, affectedSkus };
     }

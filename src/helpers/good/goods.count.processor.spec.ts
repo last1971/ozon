@@ -350,8 +350,8 @@ describe("GoodsCountProcessor", () => {
                 [GoodServiceEnum.OZON, { service: mockServiceOne, isSwitchedOn: true }],
             ]);
 
-        it("целый товар (GOODSCODE) → все его SKU = 0, несмотря на склад", async () => {
-            const goodService = { getDisabledCodes: jest.fn().mockResolvedValue(["sku"]) } as unknown as IGood;
+        it("good-блок (good:sku) → все его SKU = 0, несмотря на склад", async () => {
+            const goodService = { getDisabledCodes: jest.fn().mockResolvedValue(["good:sku"]) } as unknown as IGood;
             const proc = new GoodsCountProcessor(onlyOzon(), logger, goodService);
 
             await proc.processGoodsCountChanges([{ code: "sku", quantity: 100, reserve: 0, name: "x" }] as GoodDto[]);
@@ -362,7 +362,7 @@ describe("GoodsCountProcessor", () => {
             );
         });
 
-        it("точная фасовка (SKU) → 0 только у неё, соседи тянут склад", async () => {
+        it("sku-блок (sku-2) → 0 только у неё, соседи тянут склад", async () => {
             const goodService = { getDisabledCodes: jest.fn().mockResolvedValue(["sku-2"]) } as unknown as IGood;
             const proc = new GoodsCountProcessor(onlyOzon(), logger, goodService);
 
@@ -373,21 +373,21 @@ describe("GoodsCountProcessor", () => {
             );
         });
 
-        it("крон-путь (processGoodsCountForService) тоже уважает отключение", async () => {
+        it("крон-путь (processGoodsCountForService) тоже уважает sku-блок", async () => {
             (mockServiceOne.getGoodIds as jest.Mock).mockResolvedValueOnce({
                 goods: new Map([["sku-1", 5], ["sku-2", 5], ["sku-3", 5]]),
                 nextArgs: null,
             });
             const goodService = {
                 in: jest.fn().mockResolvedValue([{ code: "sku", quantity: 100, reserve: 0 }]),
-                getDisabledCodes: jest.fn().mockResolvedValue(["sku"]),
+                getDisabledCodes: jest.fn().mockResolvedValue(["sku-1"]),
             } as unknown as IGood;
             const proc = new GoodsCountProcessor(onlyOzon(), logger, goodService);
 
             await proc.processGoodsCountForService(GoodServiceEnum.OZON, goodService, {});
 
             expect(mockServiceOne.updateGoodCounts).toHaveBeenCalledWith(
-                new Map([["sku-1", 0], ["sku-2", 0], ["sku-3", 0]]),
+                new Map([["sku-1", 0], ["sku-2", 16], ["sku-3", 17]]),
             );
         });
 

@@ -11,7 +11,7 @@ describe('RestoreCountsCommand', () => {
         const result = await command.execute({
             service: GoodServiceEnum.WB,
             inputSkus: ['1000-10'],
-            exact: true,
+            level: 'sku',
             tokens: ['1000-10'],
         });
 
@@ -28,7 +28,7 @@ describe('RestoreCountsCommand', () => {
         await command.execute({
             service: GoodServiceEnum.WB,
             inputSkus: ['1000-10', '1000-20'],
-            exact: true,
+            level: 'sku',
             tokens: ['1000-10', '1000-20'],
         });
 
@@ -40,7 +40,7 @@ describe('RestoreCountsCommand', () => {
         const extraGoodService = { countsChanged: jest.fn() };
         const command = new RestoreCountsCommand(extraGoodService as any, goodService as any);
 
-        await command.execute({ service: GoodServiceEnum.WB, inputSkus: [], exact: false, tokens: [] });
+        await command.execute({ service: GoodServiceEnum.WB, inputSkus: [], level: 'sku', tokens: [] });
 
         expect(goodService.in).not.toHaveBeenCalled();
         expect(extraGoodService.countsChanged).not.toHaveBeenCalled();

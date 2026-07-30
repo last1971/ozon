@@ -1,4 +1,5 @@
 import { GoodServiceEnum } from '../good.service.enum';
+import { DisabledLevel } from '../../helpers';
 
 /**
  * Контекст цепочки отключения/включения товаров на маркете.
@@ -7,11 +8,11 @@ import { GoodServiceEnum } from '../good.service.enum';
 export interface IDisableGoodsContext {
     /** Маркетплейс. */
     service: GoodServiceEnum;
-    /** Входные SKU (из тела или xlsx). */
+    /** Входные коды (из тела или xlsx). */
     inputSkus: string[];
-    /** true → точная фасовка (SKU), false → весь товар (GOODSCODE). */
-    exact: boolean;
-    /** Что писать/удалять в GOODS_DISABLED (goodCode или sku). */
+    /** good → весь товar (GOODSCODE), sku → точная фасовка. */
+    level: DisabledLevel;
+    /** Что писать/удалять в GOODS_DISABLED (уже закодировано через encodeDisabled). */
     tokens?: string[];
     /** Какие SKU реально пушить в маркет (0 при disable, реальный склад при enable). */
     affectedSkus?: string[];

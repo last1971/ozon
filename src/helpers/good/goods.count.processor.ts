@@ -2,7 +2,7 @@ import { Logger } from "@nestjs/common";
 import { GoodCountsDto, ICountUpdateable } from "../../interfaces/ICountUpdatebale";
 import { GoodDto } from "../../good/dto/good.dto";
 import { GoodServiceEnum } from "../../good/good.service.enum";
-import { goodQuantityCoeff, skusToGoodIds } from "../index";
+import { goodQuantityCoeff, isDisabled, skusToGoodIds } from "../index";
 import { IGood } from "../../interfaces/IGood";
 
 export class GoodsCountProcessor {
@@ -105,10 +105,9 @@ export class GoodsCountProcessor {
                 });
             }
 
-            // Отключённый товар (по GOODSCODE) или отдельная фасовка (по SKU) → форсим 0.
+            // Блок по точному SKU или по гудскоде — решает isDisabled (единый формат из хелпера).
             filteredSkus.forEach((sku) => {
-                const off = disabled.has(good.code) || disabled.has(sku);
-                skusToUpdate.set(sku, off ? 0 : this.quantityCache.get(sku));
+                skusToUpdate.set(sku, isDisabled(sku, disabled) ? 0 : this.quantityCache.get(sku));
             });
         }
 

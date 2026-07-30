@@ -36,17 +36,17 @@ describe('GoodController', () => {
     });
 
     describe('disable', () => {
-        it('передаёт SKU из тела и exact, когда файла нет', async () => {
+        it('передаёт SKU из тела и level, когда файла нет', async () => {
             const expected = { isSuccess: true, message: 'ok' };
             extraGoodService.disable.mockResolvedValue(expected);
 
             const result = await controller.disable(
-                { service: GoodServiceEnum.WB, skus: ['A1', 'A2'], exact: true },
+                { service: GoodServiceEnum.WB, skus: ['A1', 'A2'], level: 'sku' },
                 undefined,
             );
 
             expect(extraGoodService.skusFromFile).not.toHaveBeenCalled();
-            expect(extraGoodService.disable).toHaveBeenCalledWith(GoodServiceEnum.WB, ['A1', 'A2'], true);
+            expect(extraGoodService.disable).toHaveBeenCalledWith(GoodServiceEnum.WB, ['A1', 'A2'], 'sku');
             expect(result).toBe(expected);
         });
 
@@ -55,28 +55,28 @@ describe('GoodController', () => {
             extraGoodService.disable.mockResolvedValue({ isSuccess: true, message: 'ok' });
             const file = { buffer: Buffer.from('xlsx') } as Express.Multer.File;
 
-            await controller.disable({ service: GoodServiceEnum.OZON, skus: ['ignored'] }, file);
+            await controller.disable({ service: GoodServiceEnum.OZON, skus: ['ignored'], level: 'good' }, file);
 
             expect(extraGoodService.skusFromFile).toHaveBeenCalledWith(file.buffer);
-            expect(extraGoodService.disable).toHaveBeenCalledWith(GoodServiceEnum.OZON, ['F1', 'F2'], false);
+            expect(extraGoodService.disable).toHaveBeenCalledWith(GoodServiceEnum.OZON, ['F1', 'F2'], 'good');
         });
 
-        it('пустое тело без файла — передаёт [] и exact=false', async () => {
+        it('пустое тело без файла — передаёт [] и level', async () => {
             extraGoodService.disable.mockResolvedValue({ isSuccess: false, message: 'x' });
 
-            await controller.disable({ service: GoodServiceEnum.WB }, undefined);
+            await controller.disable({ service: GoodServiceEnum.WB, level: 'sku' }, undefined);
 
-            expect(extraGoodService.disable).toHaveBeenCalledWith(GoodServiceEnum.WB, [], false);
+            expect(extraGoodService.disable).toHaveBeenCalledWith(GoodServiceEnum.WB, [], 'sku');
         });
     });
 
     describe('enable', () => {
-        it('передаёт SKU и exact в enable', async () => {
+        it('передаёт SKU и level в enable', async () => {
             extraGoodService.enable.mockResolvedValue({ isSuccess: true, message: 'ok' });
 
-            await controller.enable({ service: GoodServiceEnum.OZON, skus: ['222-10'], exact: true }, undefined);
+            await controller.enable({ service: GoodServiceEnum.OZON, skus: ['222-10'], level: 'sku' }, undefined);
 
-            expect(extraGoodService.enable).toHaveBeenCalledWith(GoodServiceEnum.OZON, ['222-10'], true);
+            expect(extraGoodService.enable).toHaveBeenCalledWith(GoodServiceEnum.OZON, ['222-10'], 'sku');
         });
 
         it('парсит файл, если передан', async () => {
@@ -84,10 +84,10 @@ describe('GoodController', () => {
             extraGoodService.enable.mockResolvedValue({ isSuccess: true, message: 'ok' });
             const file = { buffer: Buffer.from('xlsx') } as Express.Multer.File;
 
-            await controller.enable({ service: GoodServiceEnum.WB }, file);
+            await controller.enable({ service: GoodServiceEnum.WB, level: 'good' }, file);
 
             expect(extraGoodService.skusFromFile).toHaveBeenCalledWith(file.buffer);
-            expect(extraGoodService.enable).toHaveBeenCalledWith(GoodServiceEnum.WB, ['F1'], false);
+            expect(extraGoodService.enable).toHaveBeenCalledWith(GoodServiceEnum.WB, ['F1'], 'good');
         });
     });
 
@@ -107,7 +107,7 @@ describe('GoodController', () => {
         });
 
         it('getStatus', async () => {
-            const data = { isSwitchedOn: true, total: 3, active: 1, disabled: ['1000'] };
+            const data = { isSwitchedOn: true, total: 3, active: 1, disabled: [{ code: '1000', level: 'sku' as const }] };
             extraGoodService.getStatus.mockResolvedValue(data);
             const res = await controller.getStatus(GoodServiceEnum.WB);
             expect(extraGoodService.getStatus).toHaveBeenCalledWith(GoodServiceEnum.WB);
