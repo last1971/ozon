@@ -91,6 +91,9 @@ const secondDisabled = ref<boolean>(true);
 const markScanDisabled = ref<boolean>(true);
 const submitInProgress = ref<boolean>(false);
 
+// OZON хочет коды (is_mandatory_mark_needed из create-or-get, на уровне заказа).
+const ozonWantsMarks = ref<boolean>(false);
+
 // OZON: последовательные шаги «Подобрано» → «Передать/Проверить» → скан ШК.
 const pickInProgress = ref<boolean>(false);
 const pickDone = ref<boolean>(false);
@@ -110,6 +113,11 @@ const markScanInputRef = ref<any>(null);
 const isReadyToFinish = computed(() => markProgress.value?.isReadyToFinish ?? true);
 const requiresMarkScan = computed(() =>
     !!markProgress.value && markProgress.value.lines.some((l) => l.requiresScan),
+);
+// Скан-гейт: сканим если коды есть у нас (requiresMarkScan) ИЛИ Озон хочет коды.
+// ВБ коды не запрашивает → для него остаётся только «есть у нас».
+const needMarkScan = computed(
+    () => (requiresMarkScan.value || (isOzon.value && ozonWantsMarks.value)) && !isReadyToFinish.value,
 );
 // «Передать коды» (ВБ) доступно, когда сборка начата и все КМ отсканированы (или их нет).
 const canSubmitMarks = computed(
@@ -194,6 +202,18 @@ async function loadMarkProgress(remark: string): Promise<boolean> {
     }
 }
 
+// OZON: узнаём, хочет ли маркетплейс коды (create-or-get is_mandatory_mark_needed по заказу).
+// Ошибка не блокирует загрузку — считаем, что не хочет.
+async function loadOzonWantsMarks(remark: string): Promise<boolean> {
+    try {
+        const res = await axios.post(`/api/pickup/${remark}/marks/prepare`);
+        const prepare: FbsPrepareDto | undefined = res.data?.prepare;
+        return !!prepare?.lines?.some((l) => l.markNeeded);
+    } catch {
+        return false;
+    }
+}
+
 // Функция для получения текущего времени
 function getCurrentTime(): string {
     const date = new Date();
@@ -221,12 +241,14 @@ async function onFirstInput() {
         );
         if (res.ok) {
             const progressOk = await loadMarkProgress(firstInput.value);
-            if (progressOk && requiresMarkScan.value && !isReadyToFinish.value) {
+            // OZON: спрашиваем create-or-get — хочет ли Озон коды (влияет на скан-гейт).
+            ozonWantsMarks.value = isOzon.value ? await loadOzonWantsMarks(firstInput.value) : false;
+            if (progressOk && needMarkScan.value) {
                 markScanDisabled.value = false;
                 secondDisabled.value = true;
                 await setFocus(markScanInputRef);
             } else {
-                // КМ не нужны / уже готово. ВБ → сразу поле ШК. OZON → ждём «Подобрано».
+                // Сканить нечего/уже готово. ВБ → сразу поле ШК. OZON → ждём «Подобрано».
                 markScanDisabled.value = true;
                 secondDisabled.value = isOzon.value;
                 if (!isOzon.value) await setFocus(secondInputRef);
@@ -407,6 +429,7 @@ async function unlockFirstInput() {
         firstInput.value = '';
         firstTime.value = '';
         // Сбрасываем OZON-шаги — начинаем заказ заново.
+        ozonWantsMarks.value = false;
         pickDone.value = false;
         pickInProgress.value = false;
         transferDone.value = false;
@@ -440,6 +463,7 @@ async function resetFields() {
     secondDisabled.value = true;
     markScanDisabled.value = true;
     submitInProgress.value = false;
+    ozonWantsMarks.value = false;
     pickInProgress.value = false;
     pickDone.value = false;
     transferInProgress.value = false;
