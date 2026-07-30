@@ -10,4 +10,6 @@ export interface PostingDto {
         warehouse_name: string;
     };
     isFbo?: boolean;
+    // Маркетплейс с бэка (WB/OZON/YANDEX) — фронт ветвит флоу по нему, а не по buyerId.
+    service?: string;
 }

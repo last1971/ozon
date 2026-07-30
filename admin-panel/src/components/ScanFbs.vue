@@ -7,6 +7,7 @@ import { GoodServiceEnum, goodStore } from "@/stores/goods";
 import { find } from "lodash";
 import type { GoodInfoDto } from "@/contracts/good.info.dto";
 import type {
+    FbsPrepareDto,
     MarkScanProgressDto,
     MarkScanProgressLineDto,
     MarkScanResultDto,
@@ -59,9 +60,11 @@ const lines = computed(
     }),
 );
 
-const service = computed(
-    () => invoice.value.buyerId === 24532 ? GoodServiceEnum.WB : GoodServiceEnum.OZON
-);
+// Маркетплейс берём из ответа бэка (order.service), а не по хардкод-buyerId.
+// Разные инстансы = разные id, поэтому источник истины — бэк.
+const orderService = ref<GoodServiceEnum | null>(null);
+const service = computed<GoodServiceEnum>(() => orderService.value ?? GoodServiceEnum.OZON);
+const isOzon = computed(() => service.value === GoodServiceEnum.OZON);
 
 const headers = ref([
     { title: 'Картинка', key: 'image', sortable: false },     // Колонка с картинкой товара
@@ -88,6 +91,13 @@ const secondDisabled = ref<boolean>(true);
 const markScanDisabled = ref<boolean>(true);
 const submitInProgress = ref<boolean>(false);
 
+// OZON: последовательные шаги «Подобрано» → «Передать/Проверить» → скан ШК.
+const pickInProgress = ref<boolean>(false);
+const pickDone = ref<boolean>(false);
+const transferInProgress = ref<boolean>(false);
+const transferDone = ref<boolean>(false);
+const confirmTransfer = ref<boolean>(false); // диалог «точно передать?»
+
 // Переменные для времени
 const firstTime = ref<string>('');
 const secondTime = ref<string>('');
@@ -101,9 +111,19 @@ const isReadyToFinish = computed(() => markProgress.value?.isReadyToFinish ?? tr
 const requiresMarkScan = computed(() =>
     !!markProgress.value && markProgress.value.lines.some((l) => l.requiresScan),
 );
-// «Передать коды» доступно, когда сборка начата и все КМ отсканированы (или их нет).
+// «Передать коды» (ВБ) доступно, когда сборка начата и все КМ отсканированы (или их нет).
 const canSubmitMarks = computed(
     () => firstDisabled.value && isReadyToFinish.value && !submitInProgress.value,
+);
+// КМ-шаг закрыт: заказ загружен и все КМ отсканированы (или не требуются).
+const kmReady = computed(() => firstDisabled.value && isReadyToFinish.value);
+// OZON «Подобрано» — после закрытия КМ-шага, до подбора.
+const canPick = computed(
+    () => isOzon.value && kmReady.value && !pickDone.value && !pickInProgress.value,
+);
+// OZON «Передать/Проверить» — после подбора, до успешной передачи.
+const canTransfer = computed(
+    () => isOzon.value && pickDone.value && !transferDone.value && !transferInProgress.value,
 );
 const lastAttachedKi = computed(() => {
     const kis = markProgress.value?.attachedKis ?? [];
@@ -133,19 +153,25 @@ async function update(remark: string, data: any, text: string): Promise<{ ok: bo
             // noinspection ExceptionCaughtLocallyJS
             throw error;
         }
+        // Маркетплейс — из бэка (ветка ВБ/OZON), а не по buyerId.
+        orderService.value = (order.data.service as GoodServiceEnum) ?? null;
         snackbarMessage.value = text;
         snackbarColor.value = 'success';
         products.value = order.data.products;
         await goods.getGoodInfoBySkus(products.value.map((v) => v.offer_id ), service.value)
     } catch (e: any) {
         products.value = [];
-        if (e.status === 400) {
-            snackbarMessage.value = 'Такого заказа нет в базе данных';
+        const status = e.status ?? e.response?.status;
+        if (status === 400) {
+            // Может быть «нет заказа» ИЛИ сверка IGK≠ШК (OZON) — показываем сообщение сервера.
+            const msg = e.response?.data?.message;
+            snackbarMessage.value = (Array.isArray(msg) ? msg.join(', ') : msg) || 'Такого заказа нет в базе данных';
             snackbarColor.value = 'warning';
         } else {
             snackbarTimeout.value = 60000;
+            const msg = e.response?.data?.message;
             snackbarMessage.value =
-               `Система не работает, сообщить ВВ, код: ${e.status}, ошибка: ${e.response.data.message.join(', ')}`;
+               `Система не работает, сообщить ВВ, код: ${status}, ошибка: ${Array.isArray(msg) ? msg.join(', ') : (msg ?? e.message)}`;
             snackbarColor.value = 'error';
         }
         ok = false;
@@ -198,9 +224,10 @@ async function onFirstInput() {
                 secondDisabled.value = true;
                 await setFocus(markScanInputRef);
             } else {
+                // КМ не нужны / уже готово. ВБ → сразу поле ШК. OZON → ждём «Подобрано».
                 markScanDisabled.value = true;
-                secondDisabled.value = false;
-                await setFocus(secondInputRef);
+                secondDisabled.value = isOzon.value;
+                if (!isOzon.value) await setFocus(secondInputRef);
             }
         } else {
             firstDisabled.value = false;
@@ -221,9 +248,10 @@ async function onMarkScanInput() {
         markScanInput.value = '';
         showSnackbar(`КМ привязан (${res.data.attached.ki.slice(0, 18)}…)`, 'success');
         if (markProgress.value.isReadyToFinish) {
+            // Все КМ отсканированы. ВБ → поле ШК. OZON → ждём «Подобрано».
             markScanDisabled.value = true;
-            secondDisabled.value = false;
-            await setFocus(secondInputRef);
+            secondDisabled.value = isOzon.value;
+            if (!isOzon.value) await setFocus(secondInputRef);
         } else {
             await setFocus(markScanInputRef);
         }
@@ -281,8 +309,78 @@ async function onSubmitMarks() {
     }
 }
 
-// Скан ШК посылки — отдельная задача: только фиксируем IGK и переходим к новой сборке.
-// Марки здесь НЕ передаём (это делает кнопка «Передать коды»).
+// OZON «Подобрано» — подбор счёта (как крон, идемпотентно). Ошибка → стоп.
+async function onPick() {
+    if (!canPick.value) return;
+    pickInProgress.value = true;
+    try {
+        await axios.post(`/api/pickup/${firstInput.value}/pick`);
+        pickDone.value = true;
+        showSnackbar('Счёт подобран — можно передавать', 'success');
+    } catch (e: any) {
+        const message = e?.response?.data?.message ?? e.message;
+        showSnackbar(`Подбор не выполнен: ${message}`, 'error', 60000);
+    } finally {
+        pickInProgress.value = false;
+    }
+}
+
+// OZON «Передать/Проверить» — фаза 1: create-or-get (предпроверка) → диалог «точно передать?».
+async function onTransferClick() {
+    if (!canTransfer.value) return;
+    transferInProgress.value = true;
+    let prepare: FbsPrepareDto | undefined;
+    try {
+        const res = await axios.post(`/api/pickup/${firstInput.value}/marks/prepare`);
+        prepare = res.data?.prepare;
+    } catch (e: any) {
+        const message = e?.response?.data?.message ?? e.message;
+        showSnackbar(`Предпроверка не прошла: ${message}`, 'error', 60000);
+        transferInProgress.value = false;
+        return;
+    }
+    transferInProgress.value = false;
+    if (prepare && prepare.ok === false) {
+        showSnackbar(`Предпроверка: ${prepare.error ?? 'ошибка'}`, 'error', 60000);
+        return;
+    }
+    confirmTransfer.value = true;
+}
+
+// OZON подтверждение передачи: фаза 2 — цепочка (validate→set→status→ship→label).
+// Окно этикетки открываем СИНХРОННО в обработчике клика (обход попап-блока), URL ставим после успеха.
+async function onTransferConfirm() {
+    confirmTransfer.value = false;
+    const labelWindow = window.open('', '_blank');
+    transferInProgress.value = true;
+    try {
+        const res = await axios.post(`/api/pickup/${firstInput.value}/marks`);
+        const submit: SubmitResultDto | undefined = res.data?.submit;
+        if (submit?.ok === true) {
+            if (labelWindow) labelWindow.location.href = `${url}/api/pickup/${firstInput.value}/label`;
+            transferDone.value = true;
+            secondDisabled.value = false;
+            showSnackbar('Передано. Печатайте этикетку и сканируйте ШК посылки', 'success');
+            await setFocus(secondInputRef);
+        } else {
+            if (labelWindow) labelWindow.close();
+            const reason = (submit?.failed ?? []).map((f) => f.reason).join('; ');
+            const prefix = submit?.goToOzon
+                ? 'Ошибка после отправки — разберитесь в ЛК Озона: '
+                : 'Не передано: ';
+            showSnackbar(prefix + (reason || submit?.failedStep || 'ошибка'), 'error', 60000);
+        }
+    } catch (e: any) {
+        if (labelWindow) labelWindow.close();
+        const message = e?.response?.data?.message ?? e.message;
+        showSnackbar(`Ошибка передачи: ${message}`, 'error', 60000);
+    } finally {
+        transferInProgress.value = false;
+    }
+}
+
+// Скан ШК посылки — фиксируем IGK и переходим к новой сборке.
+// OZON: бэк сверяет IGK==ШК (несовпадение → 400). ВБ: сверки нет, просто фиксация.
 async function onSecondInput() {
     if (secondInput.value) {
         secondDisabled.value = true;
@@ -306,6 +404,17 @@ async function unlockFirstInput() {
         firstDisabled.value = false;
         firstInput.value = '';
         firstTime.value = '';
+        // Сбрасываем OZON-шаги — начинаем заказ заново.
+        pickDone.value = false;
+        pickInProgress.value = false;
+        transferDone.value = false;
+        transferInProgress.value = false;
+        confirmTransfer.value = false;
+        markScanDisabled.value = true;
+        secondDisabled.value = true;
+        orderService.value = null;
+        markProgress.value = null;
+        products.value = [];
         await setFocus(firstInputRef);
     }
 }
@@ -329,6 +438,12 @@ async function resetFields() {
     secondDisabled.value = true;
     markScanDisabled.value = true;
     submitInProgress.value = false;
+    pickInProgress.value = false;
+    pickDone.value = false;
+    transferInProgress.value = false;
+    transferDone.value = false;
+    confirmTransfer.value = false;
+    orderService.value = null;
     firstTime.value = '';
     secondTime.value = '';
     products.value = [];
@@ -409,8 +524,8 @@ async function setFocus(ref: any) {
                 </v-btn>
             </v-col>
 
-            <!-- Кнопка передачи КМ (+ГТД) маркетплейсу -->
-            <v-col cols="2">
+            <!-- ВБ: передача КМ (+ГТД) маркетплейсу -->
+            <v-col cols="2" v-if="!isOzon">
                 <v-btn
                     block
                     color="primary"
@@ -420,6 +535,34 @@ async function setFocus(ref: any) {
                     @click="onSubmitMarks"
                 >
                     Передать коды
+                </v-btn>
+            </v-col>
+
+            <!-- OZON: подбор счёта -->
+            <v-col cols="2" v-if="isOzon">
+                <v-btn
+                    block
+                    color="secondary"
+                    class="mb-4"
+                    :disabled="!canPick"
+                    :loading="pickInProgress"
+                    @click="onPick"
+                >
+                    Подобрано
+                </v-btn>
+            </v-col>
+
+            <!-- OZON: передача + этикетка -->
+            <v-col cols="2" v-if="isOzon">
+                <v-btn
+                    block
+                    color="primary"
+                    class="mb-4"
+                    :disabled="!canTransfer"
+                    :loading="transferInProgress"
+                    @click="onTransferClick"
+                >
+                    Передать / Проверить
                 </v-btn>
             </v-col>
 
@@ -527,6 +670,22 @@ async function setFocus(ref: any) {
             </template>
 
         </v-data-table>
+
+        <!-- OZON: подтверждение передачи перед set -->
+        <v-dialog v-model="confirmTransfer" max-width="420" persistent>
+            <v-card>
+                <v-card-title>Передать в Озон?</v-card-title>
+                <v-card-text>
+                    Коды и ГТД будут отправлены, отправление отгружено. После этого откроется этикетка —
+                    распечатайте и отсканируйте ШК посылки.
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer />
+                    <v-btn variant="text" @click="confirmTransfer = false">Отмена</v-btn>
+                    <v-btn color="primary" variant="flat" @click="onTransferConfirm">Передать</v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
 
         <v-snackbar
             v-model="snackbar"
