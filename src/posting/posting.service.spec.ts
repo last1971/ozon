@@ -5,6 +5,9 @@ import { ConfigService } from '@nestjs/config';
 import { ProductService } from '../product/product.service';
 import { DateTime } from 'luxon';
 import { OzonApiService } from "../ozon.api/ozon.api.service";
+import { CreateOrGetExemplarsCommand } from './commands/create-or-get-exemplars.command';
+import { BuildExemplarsPayloadCommand } from './commands/build-exemplars-payload.command';
+import { SetAndConfirmExemplarsCommand } from './commands/set-and-confirm-exemplars.command';
 
 describe('PostingService', () => {
     let service: PostingService;
@@ -80,7 +83,10 @@ describe('PostingService', () => {
                     useValue: {
                         method: ozonApiMethod,
                     },
-                }
+                },
+                CreateOrGetExemplarsCommand,
+                BuildExemplarsPayloadCommand,
+                SetAndConfirmExemplarsCommand,
             ],
         }).compile();
 

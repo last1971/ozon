@@ -18,24 +18,15 @@ import { OzonApiService } from "../ozon.api/ozon.api.service";
 import { ReturnsListDto } from './dto/returns.list.dto';
 import { ReturnDto } from './dto/return.dto';
 import { IMarkSubmittable, SubmitFailureDto, SubmitResultDto } from '../interfaces/IMarkSubmittable';
-import {
-    ExemplarCreateOrGetResponseDto,
-    ExemplarItemDto,
-    ExemplarProductDto,
-} from './dto/exemplar.create-or-get.dto';
-import {
-    ExemplarSetItemDto,
-    ExemplarSetProductDto,
-    ExemplarSetRequestDto,
-    ExemplarSetResponseDto,
-} from './dto/exemplar.set.dto';
+import { ExemplarCreateOrGetResponseDto } from './dto/exemplar.create-or-get.dto';
+import { ExemplarSetRequestDto, ExemplarSetResponseDto } from './dto/exemplar.set.dto';
 import { ExemplarStatusResponseDto } from './dto/exemplar.status.dto';
-import {
-    ShipPostingPackageDto,
-    ShipPostingRequestDto,
-    ShipPostingResponseDto,
-} from './dto/ship.posting.dto';
-import { pollUntil, PollDecision } from '../helpers/poll.util';
+import { ShipPostingRequestDto, ShipPostingResponseDto } from './dto/ship.posting.dto';
+import { CommandChainAsync } from '../helpers/command/command.chain.async';
+import { IFbsSubmitContext } from './interfaces/fbs-submit.context';
+import { CreateOrGetExemplarsCommand } from './commands/create-or-get-exemplars.command';
+import { BuildExemplarsPayloadCommand } from './commands/build-exemplars-payload.command';
+import { SetAndConfirmExemplarsCommand } from './commands/set-and-confirm-exemplars.command';
 
 @Injectable()
 export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable {
@@ -45,6 +36,9 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         @Inject(INVOICE_SERVICE) private invoiceService: IInvoice,
         private configService: ConfigService,
         private ozonApiService: OzonApiService,
+        private createOrGetExemplarsCommand: CreateOrGetExemplarsCommand,
+        private buildExemplarsPayloadCommand: BuildExemplarsPayloadCommand,
+        private setAndConfirmExemplarsCommand: SetAndConfirmExemplarsCommand,
     ) {}
 
     isFbo(): boolean {
@@ -218,7 +212,7 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         return this.ozonApiService.method('/v4/posting/fbs/ship', req);
     }
 
-    private async getPostingProductMap(postingNumber: string): Promise<Map<string, number>> {
+    async getPostingProductMap(postingNumber: string): Promise<Map<string, number>> {
         const res = await this.ozonApiService.method('/v3/posting/fbs/get', {
             posting_number: postingNumber,
         });
@@ -273,131 +267,21 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
             };
         }
 
-        const exResp = await this.createOrGetExemplars(postingNumber);
-        if (!exResp || !exResp.products) {
-            return {
-                ok: false,
-                failed: [{ ki: '*', reason: 'createOrGet вернул пустой ответ' }],
-                skipRetry: true,
-            };
-        }
-
-        const productMap = await this.getPostingProductMap(postingNumber);
-        if (productMap.size === 0) {
-            return {
-                ok: false,
-                failed: [{ ki: '*', reason: 'posting/fbs/get не вернул products' }],
-                skipRetry: true,
-            };
-        }
-
-        const attachedByProduct = new Map<number, { ki: string; mark: string; quantity: number }[]>();
-        for (const a of attached) {
-            const mark = kmFullByKi.get(a.ki);
-            if (!mark) continue;
-            const productId = productMap.get(a.goodscode);
-            if (!productId) {
-                failed.push({ ki: a.ki, reason: `goodscode ${a.goodscode} не найден в posting` });
-                continue;
-            }
-            if (!attachedByProduct.has(productId)) attachedByProduct.set(productId, []);
-            attachedByProduct.get(productId).push({ ki: a.ki, mark, quantity: a.quantity });
-        }
-
-        const setProducts: ExemplarSetProductDto[] = [];
-        for (const exProduct of exResp.products as ExemplarProductDto[]) {
-            const group = attachedByProduct.get(exProduct.product_id) ?? [];
-            if (group.length === 0) continue;
-            // экземпляры Ozon штучные: количественный КМ (QUANTITY>1) сюда не ложится
-            const multi = group.find((g) => g.quantity > 1);
-            if (multi) {
-                failed.push({
-                    ki: multi.ki,
-                    reason:
-                        `количественный КМ (x${multi.quantity}): Ozon FBS требует штучные экземпляры — ` +
-                        'поделите код (MARKCODE_SPLIT / деление в ЛК ЧЗ)',
-                });
-                continue;
-            }
-            const qtySum = group.reduce((s, g) => s + g.quantity, 0);
-            if (qtySum !== exProduct.quantity) {
-                failed.push({
-                    ki: '*',
-                    reason: `product_id ${exProduct.product_id}: КМ на ${qtySum} шт, ожидается ${exProduct.quantity}`,
-                });
-                continue;
-            }
-            const exemplars: ExemplarSetItemDto[] = exProduct.exemplars
-                .slice(0, group.length)
-                .map((ex: ExemplarItemDto, i: number) => {
-                    const gtd = gtdByKi.get(group[i].ki) ?? '';
-                    return {
-                        exemplar_id: ex.exemplar_id,
-                        marks: [{ mark: group[i].mark, mark_type: 'mandatory_mark' as const }],
-                        gtd,
-                        is_gtd_absent: !gtd,
-                        is_rnpt_absent: true as const,
-                    };
-                });
-            setProducts.push({ product_id: exProduct.product_id, exemplars });
-        }
-
-        if (setProducts.length === 0) {
-            return { ok: false, failed };
-        }
-
-        const setReq = {
-            posting_number: postingNumber,
-            multi_box_qty: exResp.multi_box_qty || 1,
-            products: setProducts,
+        // Передача в Озон — цепочка команд (create-or-get → build payload → set+confirm).
+        const ctx: IFbsSubmitContext = {
+            invoice,
+            postingNumber,
+            attached,
+            kmFullByKi,
+            gtdByKi,
+            failed,
         };
-        this.logger.log(`[km ${postingNumber}] set req=${JSON.stringify(setReq)}`);
-        const setResp = await this.setExemplars(setReq);
-        this.logger.log(`[km ${postingNumber}] set resp=${JSON.stringify(setResp)}`);
-        if (!setResp?.result) {
-            // Озон вернул false — не верим на слово, спрашиваем фактическое состояние.
-            const status = await this.getExemplarStatus(postingNumber);
-            const allPassed =
-                (status?.products?.length ?? 0) > 0 &&
-                status.products.every((p) =>
-                    p.exemplars?.every((e) => e.marks?.every((m) => m.check_status === 'passed')),
-                );
-            this.logger.warn(
-                `[km ${postingNumber}] set=false; overall=${status?.status}; allPassed=${allPassed}`,
-            );
-            if (allPassed) {
-                // Экземпляры уже стоят и прошли проверку — коды фактически на месте.
-                // Считаем успехом, чтобы крон перестал ретраить.
-                return { ok: true };
-            }
-            return {
-                ok: false,
-                failed: [
-                    ...failed,
-                    { ki: '*', reason: `setExemplars result=false; status=${status?.status}` },
-                ],
-            };
-        }
-
-        const pollRes = await pollUntil<ExemplarStatusResponseDto>(
-            () => this.getExemplarStatus(postingNumber),
-            (v): PollDecision => {
-                if (v?.status === 'ship_available') return 'done';
-                if (v?.status === 'ship_not_available') return 'fail';
-                return 'continue';
-            },
-        );
-        if (pollRes.status !== 'done') {
-            return {
-                ok: false,
-                failed: [
-                    ...failed,
-                    { ki: '*', reason: `polling ${pollRes.status} (last=${pollRes.value?.status})` },
-                ],
-            };
-        }
-
-        // Только передача КМ (+ГТД). Сборку (ship) делает сборщик в ЛК Озона — из кода не шипим.
-        return failed.length === 0 ? { ok: true } : { ok: false, failed };
+        const chain = new CommandChainAsync<IFbsSubmitContext>([
+            this.createOrGetExemplarsCommand,
+            this.buildExemplarsPayloadCommand,
+            this.setAndConfirmExemplarsCommand,
+        ]);
+        const done = await chain.execute(ctx);
+        return done.result ?? (failed.length === 0 ? { ok: true } : { ok: false, failed });
     }
 }
