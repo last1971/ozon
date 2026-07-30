@@ -1,12 +1,7 @@
 import { ApiProperty } from '@nestjs/swagger';
 import { IsInt, IsNotEmpty, IsOptional, Max, Min } from 'class-validator';
 import { Transform, Type } from 'class-transformer';
-
-/** Приводит вход к чистому списку строк: массив как есть, одиночную строку в [строку], пусто в []. */
-const toArticleList = ({ value }: { value: unknown }): string[] =>
-    (Array.isArray(value) ? value : value != null && value !== '' ? [value] : [])
-        .map((v) => String(v).trim())
-        .filter(Boolean);
+import { toStringList } from '../../helpers';
 
 /** Вход ручки min-price: список артикулов ИЛИ файл. */
 export class WbBulkPriceDto {
@@ -16,7 +11,7 @@ export class WbBulkPriceDto {
         required: false,
     })
     @IsOptional()
-    @Transform(toArticleList)
+    @Transform(toStringList)
     articles?: string[];
 }
 

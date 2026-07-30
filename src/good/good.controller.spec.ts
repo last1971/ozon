@@ -11,6 +11,8 @@ describe('GoodController', () => {
     beforeEach(async () => {
         const mockExtraGoodService = {
             getSkuList: jest.fn(),
+            disableByCodes: jest.fn(),
+            skusFromFile: jest.fn(),
         };
 
         const module: TestingModule = await Test.createTestingModule({
@@ -27,6 +29,41 @@ describe('GoodController', () => {
 
     it('should be defined', () => {
         expect(controller).toBeDefined();
+    });
+
+    describe('disable', () => {
+        it('передаёт SKU из тела, когда файла нет', async () => {
+            const expected = { isSuccess: true, message: 'ok' };
+            extraGoodService.disableByCodes.mockResolvedValue(expected);
+
+            const result = await controller.disable(
+                { service: GoodServiceEnum.WB, skus: ['A1', 'A2'] },
+                undefined,
+            );
+
+            expect(extraGoodService.skusFromFile).not.toHaveBeenCalled();
+            expect(extraGoodService.disableByCodes).toHaveBeenCalledWith(GoodServiceEnum.WB, ['A1', 'A2']);
+            expect(result).toBe(expected);
+        });
+
+        it('парсит SKU из файла, когда он передан', async () => {
+            extraGoodService.skusFromFile.mockResolvedValue(['F1', 'F2']);
+            extraGoodService.disableByCodes.mockResolvedValue({ isSuccess: true, message: 'ok' });
+            const file = { buffer: Buffer.from('xlsx') } as Express.Multer.File;
+
+            await controller.disable({ service: GoodServiceEnum.OZON, skus: ['ignored'] }, file);
+
+            expect(extraGoodService.skusFromFile).toHaveBeenCalledWith(file.buffer);
+            expect(extraGoodService.disableByCodes).toHaveBeenCalledWith(GoodServiceEnum.OZON, ['F1', 'F2']);
+        });
+
+        it('пустое тело без файла — передаёт []', async () => {
+            extraGoodService.disableByCodes.mockResolvedValue({ isSuccess: false, message: 'x' });
+
+            await controller.disable({ service: GoodServiceEnum.WB }, undefined);
+
+            expect(extraGoodService.disableByCodes).toHaveBeenCalledWith(GoodServiceEnum.WB, []);
+        });
     });
 
     describe('getSkuList', () => {

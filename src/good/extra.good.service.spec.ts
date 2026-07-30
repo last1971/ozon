@@ -189,6 +189,61 @@ describe('ExtraGoodService', () => {
         });
     });
 
+    describe('disableByCodes', () => {
+        it('обнуляет остаток по переданным SKU и возвращает count', async () => {
+            updateGoodCounts.mockResolvedValueOnce(2);
+            const res = await service.disableByCodes(GoodServiceEnum.WB, ['A1', 'A2']);
+            expect(res).toEqual({ isSuccess: true, message: 'Service wb disabled 2 skus' });
+            expect(updateGoodCounts.mock.calls[0]).toEqual([
+                new Map<string, number>([['A1', 0], ['A2', 0]]),
+            ]);
+        });
+
+        it('чистит и дедуплицирует SKU перед отключением', async () => {
+            updateGoodCounts.mockResolvedValueOnce(1);
+            await service.disableByCodes(GoodServiceEnum.WB, [' A1 ', 'A1', '', 'A2']);
+            expect(updateGoodCounts.mock.calls[0]).toEqual([
+                new Map<string, number>([['A1', 0], ['A2', 0]]),
+            ]);
+        });
+
+        it('чанкует по 100 SKU', async () => {
+            updateGoodCounts.mockResolvedValue(0);
+            const skus = Array.from({ length: 150 }, (_, i) => `S${i}`);
+            await service.disableByCodes(GoodServiceEnum.WB, skus);
+            expect(updateGoodCounts.mock.calls).toHaveLength(2);
+            expect(updateGoodCounts.mock.calls[0][0].size).toBe(100);
+            expect(updateGoodCounts.mock.calls[1][0].size).toBe(50);
+        });
+
+        it('пустой список — ничего не пушит', async () => {
+            const res = await service.disableByCodes(GoodServiceEnum.WB, ['', '  ']);
+            expect(res.isSuccess).toBe(false);
+            expect(res.message).toContain('Не передано ни одного SKU');
+            expect(updateGoodCounts).not.toHaveBeenCalled();
+        });
+
+        it('несконфигурированный сервис — not configured', async () => {
+            const res = await service.disableByCodes(null, ['A1']);
+            expect(res).toEqual({ isSuccess: false, message: 'Service null not configured' });
+            expect(updateGoodCounts).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('resetBalances (после рефактора на zeroBalances)', () => {
+        it('включённый сервис не обнуляет остатки', async () => {
+            const count = await service.resetBalances(GoodServiceEnum.WB);
+            expect(count).toBe(0);
+            expect(updateGoodCounts).not.toHaveBeenCalled();
+        });
+
+        it('выключенный сервис обнуляет весь skuList', async () => {
+            updateGoodCounts.mockResolvedValueOnce(1);
+            await service.serviceIsSwitchedOn({ service: GoodServiceEnum.WB, isSwitchedOn: false });
+            expect(updateGoodCounts.mock.calls[0]).toEqual([new Map<string, number>([['111', 0]])]);
+        });
+    });
+
     describe('xlsx imports', () => {
         function createXlsxBuffer(rows: any[][]): Promise<Excel.Buffer> {
             const wb = new Excel.Workbook();
@@ -196,6 +251,16 @@ describe('ExtraGoodService', () => {
             rows.forEach(r => ws.addRow(r));
             return wb.xlsx.writeBuffer();
         }
+
+        it('skusFromFile читает столбец «SKU» из xlsx', async () => {
+            const buffer = await createXlsxBuffer([
+                ['SKU', 'name'],
+                ['A1', 'foo'],
+                ['A2', 'bar'],
+            ]);
+            const skus = await service.skusFromFile(buffer as unknown as Buffer);
+            expect(skus).toEqual(['A1', 'A2']);
+        });
 
         it('importWbFromXlsx should parse rows and call setWbData', async () => {
             const buffer = await createXlsxBuffer([

@@ -18,7 +18,7 @@ import { ConfigService } from "@nestjs/config";
 import { Environment } from "../env.validation";
 import { ProductInfoDto } from "../product/dto/product.info.dto";
 import { GoodsCountProcessor } from "../helpers/good/goods.count.processor";
-import { loadRows } from '../helpers';
+import { loadRows, readColumnByHeader } from '../helpers';
 import { GoodWbDto } from "./dto/good.wb.dto";
 import { GoodAvitoDto } from "./dto/good.avito.dto";
 import { GoodPercentDto } from "./dto/good.percent.dto";
@@ -112,15 +112,47 @@ export class ExtraGoodService implements OnApplicationBootstrap {
 
     async resetBalances(serviceEnum: GoodServiceEnum): Promise<number> {
         const service = this.services.get(serviceEnum);
-        let count = 0;
         if (!service.isSwitchedOn) {
-            const chunkSkuList = chunk(service.service.skuList, 100);
-            for (const skuList of chunkSkuList) {
-                const updateSkus = new Map<string, number>(skuList.map((sku) => [sku, 0]));
-                count += await service.service.updateGoodCounts(updateSkus);
-            }
+            return this.zeroBalances(serviceEnum, service.service.skuList);
+        }
+        return 0;
+    }
+
+    /**
+     * Ядро обнуления остатков: пушит 0 для переданных SKU чанками по 100.
+     * Переиспользуется resetBalances (весь сервис) и disableByCodes (подмножество).
+     */
+    private async zeroBalances(serviceEnum: GoodServiceEnum, skuList: string[]): Promise<number> {
+        const service = this.services.get(serviceEnum);
+        let count = 0;
+        for (const skus of chunk(skuList, 100)) {
+            const updateSkus = new Map<string, number>(skus.map((sku) => [sku, 0]));
+            count += await service.service.updateGoodCounts(updateSkus);
         }
         return count;
+    }
+
+    /**
+     * Отключить конкретные товары (обнулить остаток) по списку SKU маркетплейса.
+     * @param serviceEnum - Тип сервиса (маркетплейса)
+     * @param skus - SKU маркетплейса для отключения
+     */
+    async disableByCodes(serviceEnum: GoodServiceEnum, skus: string[]): Promise<ResultDto> {
+        const service = this.services.get(serviceEnum);
+        if (!service) {
+            return { isSuccess: false, message: `Service ${serviceEnum} not configured` };
+        }
+        const skuList = [...new Set(skus.map((sku) => sku.trim()).filter(Boolean))];
+        if (!skuList.length) {
+            return { isSuccess: false, message: `Не передано ни одного SKU для ${serviceEnum}` };
+        }
+        const count = await this.zeroBalances(serviceEnum, skuList);
+        return { isSuccess: true, message: `Service ${serviceEnum} disabled ${count} skus` };
+    }
+
+    /** Столбец SKU из xlsx (заголовок «SKU»/«Артикул»/«Артикул продавца»). */
+    async skusFromFile(buffer: Buffer): Promise<string[]> {
+        return readColumnByHeader(buffer, ['SKU', 'sku', 'Артикул продавца', 'Артикул']);
     }
 
     async onApplicationBootstrap(): Promise<void> {
