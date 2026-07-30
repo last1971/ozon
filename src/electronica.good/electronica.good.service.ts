@@ -10,6 +10,7 @@ import { GoodWbDto } from '../good/dto/good.wb.dto';
 import { GoodAvitoDto } from '../good/dto/good.avito.dto';
 import { WbCommissionDto } from '../wb.card/dto/wb.commission.dto';
 import { FirebirdTransaction } from "ts-firebird";
+import { GoodServiceEnum } from '../good/good.service.enum';
 
 @Injectable()
 export class ElectronicaGoodService implements IGood {
@@ -92,6 +93,16 @@ export class ElectronicaGoodService implements IGood {
         return Promise.resolve(undefined);
     }
     async resetAvailablePrice(goodCodes?: string[], t?: FirebirdTransaction): Promise<void> {
+        return Promise.resolve(undefined);
+    }
+    // Отключение товаров не поддерживается для Electronica (нет своей таблицы GOODS_DISABLED).
+    async getDisabledCodes(service: GoodServiceEnum, t?: FirebirdTransaction): Promise<string[]> {
+        return [];
+    }
+    async setGoodsDisabled(codes: string[], service: GoodServiceEnum, t?: FirebirdTransaction): Promise<void> {
+        return Promise.resolve(undefined);
+    }
+    async clearGoodsDisabled(codes: string[], service: GoodServiceEnum, t?: FirebirdTransaction): Promise<void> {
         return Promise.resolve(undefined);
     }
 }

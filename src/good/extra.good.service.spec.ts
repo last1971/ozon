@@ -256,6 +256,43 @@ describe('ExtraGoodService', () => {
         });
     });
 
+    describe('read-геттеры статуса', () => {
+        it('listServices — все сервисы с isSwitchedOn', () => {
+            const list = service.listServices();
+            expect(list).toEqual(expect.arrayContaining([
+                { service: GoodServiceEnum.WB, isSwitchedOn: true },
+                { service: GoodServiceEnum.OZON, isSwitchedOn: true },
+            ]));
+        });
+
+        it('getDisabled — размечает уровень good/sku', async () => {
+            getDisabledCodes.mockResolvedValueOnce(['222', '222-10']);
+            const res = await service.getDisabled(GoodServiceEnum.OZON);
+            expect(res).toEqual([
+                { code: '222', level: 'good' },
+                { code: '222-10', level: 'sku' },
+            ]);
+        });
+
+        it('getStatus — total/active/disabled по OZON (весь товар 222)', async () => {
+            // OZON skuList = ["222","222-10"]; заморожен GOODSCODE 222 → обе фасовки off
+            getDisabledCodes.mockResolvedValueOnce(['222']);
+            const res = await service.getStatus(GoodServiceEnum.OZON);
+            expect(res).toEqual({ isSwitchedOn: true, total: 2, active: 0, disabled: ['222'] });
+        });
+
+        it('getStatus — заморожена одна фасовка → active уменьшается на 1', async () => {
+            getDisabledCodes.mockResolvedValueOnce(['222-10']);
+            const res = await service.getStatus(GoodServiceEnum.OZON);
+            expect(res).toEqual({ isSwitchedOn: true, total: 2, active: 1, disabled: ['222-10'] });
+        });
+
+        it('getStatus — несконфигурированный сервис', async () => {
+            const res = await service.getStatus(null);
+            expect(res).toEqual({ isSwitchedOn: false, total: 0, active: 0, disabled: [] });
+        });
+    });
+
     describe('resetBalances (после рефактора на zeroBalances)', () => {
         it('включённый сервис не обнуляет остатки', async () => {
             const count = await service.resetBalances(GoodServiceEnum.WB);

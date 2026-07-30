@@ -10,6 +10,7 @@ import { ExtraGoodService } from './extra.good.service';
 import { GoodServiceEnum } from './good.service.enum';
 import { IsSwitchedDto } from './dto/is.switched.dto';
 import { DisableGoodsDto } from './dto/disable.goods.dto';
+import { DisabledCodeDto, GoodsServiceStatusDto, ServiceStatusDto } from './dto/good.status.dto';
 import { IsEnum } from 'class-validator';
 import { ProductInfoDto } from "../product/dto/product.info.dto";
 
@@ -121,6 +122,57 @@ export class GoodController {
     ): Promise<ResultDto> {
         const skus = file ? await this.extraService.skusFromFile(file.buffer) : (dto.skus ?? []);
         return this.extraService.disable(dto.service, skus, dto.exact ?? false);
+    }
+
+    @Post('enable')
+    @ApiOperation({ summary: 'Включить товары (снять заморозку, вернуть склад) по списку SKU или xlsx' })
+    @ApiConsumes('multipart/form-data', 'application/json')
+    @ApiBody({
+        schema: {
+            type: 'object',
+            required: ['service'],
+            properties: {
+                service: { type: 'string', enum: Object.values(GoodServiceEnum) },
+                skus: { type: 'array', items: { type: 'string' }, description: 'Список SKU (если без файла)' },
+                exact: { type: 'boolean', description: 'true → фасовка (SKU); false → весь товар (GOODSCODE)' },
+                file: { type: 'string', format: 'binary', description: 'xlsx со столбцом «SKU»' },
+            },
+        },
+    })
+    @UseInterceptors(FileInterceptor('file'))
+    async enable(
+        @Body() dto: DisableGoodsDto,
+        @UploadedFile('file') file?: Express.Multer.File,
+    ): Promise<ResultDto> {
+        const skus = file ? await this.extraService.skusFromFile(file.buffer) : (dto.skus ?? []);
+        return this.extraService.enable(dto.service, skus, dto.exact ?? false);
+    }
+
+    @Get('services')
+    @ApiOperation({ summary: 'Список сервисов и их состояние вкл/выкл' })
+    @ApiResponse({ status: 200, type: [ServiceStatusDto] })
+    listServices(): ServiceStatusDto[] {
+        return this.extraService.listServices();
+    }
+
+    @Get('disabled/:service')
+    @ApiOperation({ summary: 'Замороженные коды сервиса (весь товар / фасовка)' })
+    @ApiParam({ name: 'service', enum: GoodServiceEnum })
+    @ApiResponse({ status: 200, type: [DisabledCodeDto] })
+    getDisabled(
+        @Param('service', new ParseEnumPipe(GoodServiceEnum)) service: GoodServiceEnum,
+    ): Promise<DisabledCodeDto[]> {
+        return this.extraService.getDisabled(service);
+    }
+
+    @Get('status/:service')
+    @ApiOperation({ summary: 'Сводка по сервису: вкл/выкл + активные/замороженные SKU' })
+    @ApiParam({ name: 'service', enum: GoodServiceEnum })
+    @ApiResponse({ status: 200, type: GoodsServiceStatusDto })
+    getStatus(
+        @Param('service', new ParseEnumPipe(GoodServiceEnum)) service: GoodServiceEnum,
+    ): Promise<GoodsServiceStatusDto> {
+        return this.extraService.getStatus(service);
     }
 
     @Post('load-sku-list/:service')

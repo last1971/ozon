@@ -18,7 +18,7 @@ import { ConfigService } from "@nestjs/config";
 import { Environment } from "../env.validation";
 import { ProductInfoDto } from "../product/dto/product.info.dto";
 import { GoodsCountProcessor } from "../helpers/good/goods.count.processor";
-import { loadRows, readColumnByHeader } from '../helpers';
+import { goodCode, loadRows, readColumnByHeader } from '../helpers';
 import { GoodWbDto } from "./dto/good.wb.dto";
 import { GoodAvitoDto } from "./dto/good.avito.dto";
 import { GoodPercentDto } from "./dto/good.percent.dto";
@@ -187,6 +187,35 @@ export class ExtraGoodService implements OnApplicationBootstrap {
     /** Столбец SKU из xlsx (заголовок «SKU»/«Артикул»/«Артикул продавца»). */
     async skusFromFile(buffer: Buffer): Promise<string[]> {
         return readColumnByHeader(buffer, ['SKU', 'sku', 'Артикул продавца', 'Артикул']);
+    }
+
+    /** Список сконфигурированных сервисов с их состоянием вкл/выкл. */
+    listServices(): { service: GoodServiceEnum; isSwitchedOn: boolean }[] {
+        return Array.from(this.services.entries()).map(([service, v]) => ({
+            service,
+            isSwitchedOn: v.isSwitchedOn,
+        }));
+    }
+
+    /** Замороженные коды сервиса с пометкой уровня (весь товар / фасовка). */
+    async getDisabled(serviceEnum: GoodServiceEnum): Promise<{ code: string; level: 'good' | 'sku' }[]> {
+        const codes = await this.goodService.getDisabledCodes(serviceEnum);
+        return codes.map((code) => ({ code, level: code.includes('-') ? 'sku' : 'good' }));
+    }
+
+    /** Сводка по сервису: вкл/выкл + активные/замороженные SKU. */
+    async getStatus(
+        serviceEnum: GoodServiceEnum,
+    ): Promise<{ isSwitchedOn: boolean; total: number; active: number; disabled: string[] }> {
+        const entry = this.services.get(serviceEnum);
+        if (!entry) return { isSwitchedOn: false, total: 0, active: 0, disabled: [] };
+        const skuList = entry.service.skuList ?? [];
+        const disabled = await this.goodService.getDisabledCodes(serviceEnum);
+        const disabledSet = new Set(disabled);
+        const offCount = skuList.filter(
+            (sku) => disabledSet.has(sku) || disabledSet.has(goodCode({ offer_id: sku })),
+        ).length;
+        return { isSwitchedOn: entry.isSwitchedOn, total: skuList.length, active: skuList.length - offCount, disabled };
     }
 
     async onApplicationBootstrap(): Promise<void> {

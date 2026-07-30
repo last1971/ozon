@@ -12,7 +12,11 @@ describe('GoodController', () => {
         const mockExtraGoodService = {
             getSkuList: jest.fn(),
             disable: jest.fn(),
+            enable: jest.fn(),
             skusFromFile: jest.fn(),
+            listServices: jest.fn(),
+            getDisabled: jest.fn(),
+            getStatus: jest.fn(),
         };
 
         const module: TestingModule = await Test.createTestingModule({
@@ -63,6 +67,51 @@ describe('GoodController', () => {
             await controller.disable({ service: GoodServiceEnum.WB }, undefined);
 
             expect(extraGoodService.disable).toHaveBeenCalledWith(GoodServiceEnum.WB, [], false);
+        });
+    });
+
+    describe('enable', () => {
+        it('передаёт SKU и exact в enable', async () => {
+            extraGoodService.enable.mockResolvedValue({ isSuccess: true, message: 'ok' });
+
+            await controller.enable({ service: GoodServiceEnum.OZON, skus: ['222-10'], exact: true }, undefined);
+
+            expect(extraGoodService.enable).toHaveBeenCalledWith(GoodServiceEnum.OZON, ['222-10'], true);
+        });
+
+        it('парсит файл, если передан', async () => {
+            extraGoodService.skusFromFile.mockResolvedValue(['F1']);
+            extraGoodService.enable.mockResolvedValue({ isSuccess: true, message: 'ok' });
+            const file = { buffer: Buffer.from('xlsx') } as Express.Multer.File;
+
+            await controller.enable({ service: GoodServiceEnum.WB }, file);
+
+            expect(extraGoodService.skusFromFile).toHaveBeenCalledWith(file.buffer);
+            expect(extraGoodService.enable).toHaveBeenCalledWith(GoodServiceEnum.WB, ['F1'], false);
+        });
+    });
+
+    describe('read-ручки', () => {
+        it('listServices', () => {
+            const data = [{ service: GoodServiceEnum.WB, isSwitchedOn: true }];
+            extraGoodService.listServices.mockReturnValue(data);
+            expect(controller.listServices()).toBe(data);
+        });
+
+        it('getDisabled', async () => {
+            const data = [{ code: '1000', level: 'good' as const }];
+            extraGoodService.getDisabled.mockResolvedValue(data);
+            const res = await controller.getDisabled(GoodServiceEnum.WB);
+            expect(extraGoodService.getDisabled).toHaveBeenCalledWith(GoodServiceEnum.WB);
+            expect(res).toBe(data);
+        });
+
+        it('getStatus', async () => {
+            const data = { isSwitchedOn: true, total: 3, active: 1, disabled: ['1000'] };
+            extraGoodService.getStatus.mockResolvedValue(data);
+            const res = await controller.getStatus(GoodServiceEnum.WB);
+            expect(extraGoodService.getStatus).toHaveBeenCalledWith(GoodServiceEnum.WB);
+            expect(res).toBe(data);
         });
     });
 

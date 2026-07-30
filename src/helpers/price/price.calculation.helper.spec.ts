@@ -93,6 +93,9 @@ describe("PriceCalculationHelper", () => {
                 getWbCategoryByName: jest.fn(),
                 updateWbCategory: jest.fn(),
                 resetAvailablePrice: jest.fn(),
+                getDisabledCodes: jest.fn().mockResolvedValue([]),
+                setGoodsDisabled: jest.fn().mockResolvedValue(undefined),
+                clearGoodsDisabled: jest.fn().mockResolvedValue(undefined),
                 updatePercentsForService:  jest.fn().mockResolvedValue(undefined),
                 generatePercentsForService:  jest.fn().mockResolvedValue(undefined),
             };
@@ -141,6 +144,9 @@ describe("PriceCalculationHelper", () => {
                 getWbCategoryByName: jest.fn(),
                 updateWbCategory: jest.fn(),
                 resetAvailablePrice: jest.fn(),
+                getDisabledCodes: jest.fn().mockResolvedValue([]),
+                setGoodsDisabled: jest.fn().mockResolvedValue(undefined),
+                clearGoodsDisabled: jest.fn().mockResolvedValue(undefined),
                 updatePercentsForService: jest.fn().mockResolvedValue(undefined),
                 generatePercentsForService: jest.fn().mockResolvedValue(undefined),
             };
