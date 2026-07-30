@@ -31,6 +31,21 @@ describe('extractKi', () => {
         expect(extractKi(long)).toBe(KI);
     });
 
+    it('обрезает плоский крипто-хвост 93(ключ4) без разделителя', () => {
+        expect(extractKi(KI + '93dGVz')).toBe(KI);
+    });
+
+    it('не режет "93" внутри серийника, если это не конец строки', () => {
+        // "93" стоит в серийнике, но после него ещё есть данные -> не хвост
+        const withMid93 = KI.slice(0, -2) + '93' + '91EE0692crypto';
+        expect(extractKi(withMid93)).toBe(KI.slice(0, -2) + '93');
+    });
+
+    it('реальный код 569740 с хвостом 93 режется до чистого KI(38)', () => {
+        const raw = '0104711287492735215)M/1CtML//vOkRKWW(l935hXm';
+        expect(extractKi(raw)).toBe('0104711287492735215)M/1CtML//vOkRKWW(l');
+    });
+
     it('обрезает trim пробелы', () => {
         expect(extractKi('  ' + KI + '  ')).toBe(KI);
     });
