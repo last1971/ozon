@@ -487,13 +487,18 @@ async function setFocus(ref: any) {
 }
 
 // Приход номера заказа из грида «OZON FBS этикетки» — грузим тем же onFirstInput (без дублей).
+// immediate: вкладка монтируется при клике, начальное значение prefill надо поймать сразу.
 const props = defineProps<{ prefill?: string }>();
-watch(() => props.prefill, async (order) => {
-    if (!order) return;
-    await resetFields();
-    firstInput.value = order;
-    await onFirstInput();
-});
+watch(
+    () => props.prefill,
+    async (order) => {
+        if (!order || order === firstInput.value) return;
+        await resetFields();
+        firstInput.value = order;
+        await onFirstInput();
+    },
+    { immediate: true },
+);
 </script>
 
 <template>
