@@ -22,6 +22,13 @@ import { loadRows, readColumnByHeader } from '../helpers';
 import { GoodWbDto } from "./dto/good.wb.dto";
 import { GoodAvitoDto } from "./dto/good.avito.dto";
 import { GoodPercentDto } from "./dto/good.percent.dto";
+import { CommandChainAsync } from "../helpers/command/command.chain.async";
+import { IDisableGoodsContext } from "./commands/i.disable.goods.context";
+import { ResolveDisableTokensCommand } from "./commands/resolve-disable-tokens.command";
+import { WriteDisabledFlagCommand } from "./commands/write-disabled-flag.command";
+import { ClearDisabledFlagCommand } from "./commands/clear-disabled-flag.command";
+import { PushZeroCountsCommand } from "./commands/push-zero-counts.command";
+import { RestoreCountsCommand } from "./commands/restore-counts.command";
 
 @Injectable()
 export class ExtraGoodService implements OnApplicationBootstrap {
@@ -37,6 +44,11 @@ export class ExtraGoodService implements OnApplicationBootstrap {
         @Inject(GOOD_SERVICE) private goodService: IGood,
         private configService: ConfigService,
         private eventEmitter: EventEmitter2,
+        private resolveDisableTokensCommand: ResolveDisableTokensCommand,
+        private writeDisabledFlagCommand: WriteDisabledFlagCommand,
+        private clearDisabledFlagCommand: ClearDisabledFlagCommand,
+        private pushZeroCountsCommand: PushZeroCountsCommand,
+        private restoreCountsCommand: RestoreCountsCommand,
     ) {
         this.services = new Map<GoodServiceEnum, { service: ICountUpdateable; isSwitchedOn: boolean }>();
         const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
@@ -133,21 +145,43 @@ export class ExtraGoodService implements OnApplicationBootstrap {
     }
 
     /**
-     * Отключить конкретные товары (обнулить остаток) по списку SKU маркетплейса.
-     * @param serviceEnum - Тип сервиса (маркетплейса)
-     * @param skus - SKU маркетплейса для отключения
+     * Отключить товары/фасовки на маркете (durable): пишет GOODS_DISABLED и пушит 0.
+     * exact=false → весь товар (GOODSCODE), exact=true → точная фасовка (SKU).
      */
-    async disableByCodes(serviceEnum: GoodServiceEnum, skus: string[]): Promise<ResultDto> {
-        const service = this.services.get(serviceEnum);
-        if (!service) {
+    async disable(serviceEnum: GoodServiceEnum, skus: string[], exact = false): Promise<ResultDto> {
+        if (!this.services.get(serviceEnum)) {
             return { isSuccess: false, message: `Service ${serviceEnum} not configured` };
         }
-        const skuList = [...new Set(skus.map((sku) => sku.trim()).filter(Boolean))];
-        if (!skuList.length) {
-            return { isSuccess: false, message: `Не передано ни одного SKU для ${serviceEnum}` };
+        const chain = new CommandChainAsync<IDisableGoodsContext>([
+            this.resolveDisableTokensCommand,
+            this.writeDisabledFlagCommand,
+            this.pushZeroCountsCommand,
+        ]);
+        const ctx = await chain.execute({ service: serviceEnum, inputSkus: skus, exact, errors: [] });
+        return this.toResult(ctx, 'disabled');
+    }
+
+    /**
+     * Включить товары/фасовки на маркете: снимает GOODS_DISABLED и возвращает реальный склад.
+     */
+    async enable(serviceEnum: GoodServiceEnum, skus: string[], exact = false): Promise<ResultDto> {
+        if (!this.services.get(serviceEnum)) {
+            return { isSuccess: false, message: `Service ${serviceEnum} not configured` };
         }
-        const count = await this.zeroBalances(serviceEnum, skuList);
-        return { isSuccess: true, message: `Service ${serviceEnum} disabled ${count} skus` };
+        const chain = new CommandChainAsync<IDisableGoodsContext>([
+            this.resolveDisableTokensCommand,
+            this.clearDisabledFlagCommand,
+            this.restoreCountsCommand,
+        ]);
+        const ctx = await chain.execute({ service: serviceEnum, inputSkus: skus, exact, errors: [] });
+        return this.toResult(ctx, 'enabled');
+    }
+
+    private toResult(ctx: IDisableGoodsContext, verb: 'disabled' | 'enabled'): ResultDto {
+        if (ctx.stopChain) {
+            return { isSuccess: false, message: (ctx.errors ?? []).join('; ') || 'stopped' };
+        }
+        return { isSuccess: true, message: `Service ${ctx.service} ${verb} ${ctx.count ?? 0} skus` };
     }
 
     /** Столбец SKU из xlsx (заголовок «SKU»/«Артикул»/«Артикул продавца»). */

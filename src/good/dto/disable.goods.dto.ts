@@ -21,4 +21,13 @@ export class DisableGoodsDto {
     @IsOptional()
     @Transform(toStringList)
     skus?: string[];
+
+    @ApiProperty({
+        description: 'true → отключить точную фасовку (SKU); false/пусто → весь товар (GOODSCODE).',
+        type: Boolean,
+        required: false,
+    })
+    @IsOptional()
+    @Transform(({ value }) => value === true || value === 'true')
+    exact?: boolean;
 }
