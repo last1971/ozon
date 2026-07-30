@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { BadRequestException } from '@nestjs/common';
 import { OrderService } from './order.service';
 import { ProductService } from '../product/product.service';
 import { INVOICE_SERVICE } from '../interfaces/IInvoice';
@@ -598,6 +599,38 @@ describe('OrderService', () => {
             expect(r).toEqual({ ok: true, skipped: 'no sgtin required' });
             expect(wbSubmitFbsMarkCodes).toHaveBeenCalledTimes(1);
             expect(ozonSubmitFbsMarkCodes).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('getShipmentLabelForInvoice (single-invoice public API)', () => {
+        const invoice = { id: 1, remark: 'P-1', buyerId: 11 } as any;
+        const getShipmentLabel = jest.fn();
+
+        beforeEach(() => {
+            getShipmentLabel.mockReset();
+            (service as any).orderServices = [
+                {
+                    constructor: { name: 'PostingService' },
+                    getBuyerId: () => 11,
+                    isFbo: () => false,
+                    getShipmentLabel,
+                },
+            ];
+        });
+
+        it('happy path → PDF провайдера пробрасывается', async () => {
+            const pdf = Buffer.from('%PDF');
+            getShipmentLabel.mockResolvedValueOnce(pdf);
+            const r = await service.getShipmentLabelForInvoice(invoice);
+            expect(r).toBe(pdf);
+            expect(getShipmentLabel).toHaveBeenCalledWith(invoice);
+        });
+
+        it('сервис не IShipmentLabelProvider → BadRequest', async () => {
+            (service as any).orderServices = [
+                { constructor: { name: 'WbOrderService' }, getBuyerId: () => 11, isFbo: () => false },
+            ];
+            await expect(service.getShipmentLabelForInvoice(invoice)).rejects.toThrow(BadRequestException);
         });
     });
 

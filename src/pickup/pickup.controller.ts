@@ -1,5 +1,6 @@
-import { BadRequestException, Body, Controller, Inject, Param, Post, Put } from "@nestjs/common";
-import { ApiBody, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
+import { BadRequestException, Body, Controller, Get, Inject, Param, Post, Put, Res } from "@nestjs/common";
+import { Response } from "express";
+import { ApiBody, ApiOkResponse, ApiOperation, ApiParam, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { IInvoice, INVOICE_SERVICE } from "../interfaces/IInvoice";
 import { RemarkDto } from "../invoice/dto/remark.dto";
 import { InvoiceUpdateDto } from "../invoice/dto/invoice.update.dto";
@@ -41,6 +42,22 @@ export class PickupController {
         }
         const submit = await this.orderService.submitFbsMarkCodesForInvoice(invoice);
         return { submit };
+    }
+
+    @Get(':remark/label')
+    @ApiOperation({ summary: 'Этикетка отправления (стр.1 — ШК). Открывается в новой вкладке для печати.' })
+    @ApiParam({ name: 'remark', description: 'Примечание = номер заказа', type: 'string' })
+    @ApiResponse({
+        status: 200,
+        description: 'PDF этикетки отправления',
+        content: { 'application/pdf': { schema: { type: 'string', format: 'binary' } } },
+    })
+    async label(@Param() remarkDto: RemarkDto, @Res() res: Response): Promise<void> {
+        const { invoice } = remarkDto;
+        const pdf = await this.orderService.getShipmentLabelForInvoice(invoice);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=${invoice.remark}.pdf`);
+        res.send(pdf);
     }
 
     @Put(':remark')

@@ -10,7 +10,7 @@ describe('PickupController', () => {
     let controller: PickupController;
     const invoiceService = { update: jest.fn(), pickupInvoice: jest.fn() };
     const markScan = { isReadyToFinish: jest.fn() };
-    const orderService = { submitFbsMarkCodesForInvoice: jest.fn() };
+    const orderService = { submitFbsMarkCodesForInvoice: jest.fn(), getShipmentLabelForInvoice: jest.fn() };
     const invoice = { id: 100, remark: 'TEST', buyerId: 7 } as InvoiceDto;
     const remarkDto = { remark: 'TEST', invoice };
 
@@ -19,6 +19,7 @@ describe('PickupController', () => {
         invoiceService.pickupInvoice.mockReset();
         markScan.isReadyToFinish.mockReset();
         orderService.submitFbsMarkCodesForInvoice.mockReset();
+        orderService.getShipmentLabelForInvoice.mockReset();
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 { provide: INVOICE_SERVICE, useValue: invoiceService },
@@ -77,6 +78,24 @@ describe('PickupController', () => {
             const r = await controller.pick(remarkDto as any);
             expect(invoiceService.pickupInvoice).toHaveBeenCalledWith(invoice, null);
             expect(r).toEqual({ isSuccess: true });
+        });
+    });
+
+    describe('label (GET /label) — этикетка отправления стр.1', () => {
+        it('отдаёт PDF inline через res', async () => {
+            const pdf = Buffer.from('%PDF-fake');
+            orderService.getShipmentLabelForInvoice.mockResolvedValueOnce(pdf);
+            const res = { setHeader: jest.fn(), send: jest.fn() } as any;
+
+            await controller.label(remarkDto as any, res);
+
+            expect(orderService.getShipmentLabelForInvoice).toHaveBeenCalledWith(invoice);
+            expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'application/pdf');
+            expect(res.setHeader).toHaveBeenCalledWith(
+                'Content-Disposition',
+                `inline; filename=${invoice.remark}.pdf`,
+            );
+            expect(res.send).toHaveBeenCalledWith(pdf);
         });
     });
 

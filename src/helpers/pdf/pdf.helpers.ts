@@ -1,5 +1,20 @@
 import PDFKit from 'pdfkit';
+import { PDFDocument } from 'pdf-lib';
 import TextOptions = PDFKit.Mixins.TextOptions;
+
+/**
+ * Оставляет в PDF только первую страницу. Озон в package-label всегда подкладывает
+ * товарный ярлык вторым листом — печатаем только ШК отправления (стр.1).
+ * Если страница одна — возвращает исходный буфер как есть.
+ */
+export const firstPageOnly = async (pdf: Buffer): Promise<Buffer> => {
+    const src = await PDFDocument.load(pdf);
+    if (src.getPageCount() <= 1) return pdf;
+    const out = await PDFDocument.create();
+    const [page] = await out.copyPages(src, [0]);
+    out.addPage(page);
+    return Buffer.from(await out.save());
+};
 
 export type CalculateFontSizeParams = {
     doc: PDFKit.PDFDocument; // Экземпляр PDFKit документа

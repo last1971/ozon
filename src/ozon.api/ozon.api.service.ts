@@ -62,6 +62,21 @@ export class OzonApiService {
               );
     }
 
+    /** POST, возвращающий бинарь (PDF/PNG) как Buffer — для package-label и т.п. */
+    async methodBinary(name: string, options: any): Promise<Buffer> {
+        const ozon = await this.vaultService.get('ozon');
+        const headers = {
+            'Client-Id': ozon.CLIENT_ID as string,
+            'Api-Key': ozon.API_KEY as string,
+            'Content-Type': 'application/json',
+        };
+        return firstValueFrom(
+            this.httpService
+                .post(ozon.URL + name, options, { headers, responseType: 'arraybuffer' })
+                .pipe(map((res) => Buffer.from(res.data))),
+        );
+    }
+
     private handleApiError(error: AxiosError, url: string, method: string, body: any, headers: any) {
         const responseData = error?.response?.data;
         const errorDetails = {

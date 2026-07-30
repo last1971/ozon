@@ -30,6 +30,7 @@ import { BuildExemplarsPayloadCommand } from './commands/build-exemplars-payload
 import { ValidateExemplarsCommand } from './commands/validate-exemplars.command';
 import { SetAndConfirmExemplarsCommand } from './commands/set-and-confirm-exemplars.command';
 import { ShipExemplarsCommand } from './commands/ship-exemplars.command';
+import { firstPageOnly } from '../helpers/pdf/pdf.helpers';
 
 @Injectable()
 export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable {
@@ -226,6 +227,14 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
 
     async shipPosting(req: ShipPostingRequestDto): Promise<ShipPostingResponseDto> {
         return this.ozonApiService.method('/v4/posting/fbs/ship', req);
+    }
+
+    /** Этикетка отправления, стр.1 (ШК). Товарный ярлык (стр.2) Озон подкладывает всегда — режем. */
+    async getShipmentLabel(invoice: InvoiceDto): Promise<Buffer> {
+        const pdf = await this.ozonApiService.methodBinary('/v2/posting/fbs/package-label', {
+            posting_number: [invoice.remark],
+        });
+        return firstPageOnly(pdf);
     }
 
     async getPostingProductMap(postingNumber: string): Promise<Map<string, number>> {

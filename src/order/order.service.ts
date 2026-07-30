@@ -1,4 +1,4 @@
-import { ForbiddenException, Inject, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, Logger } from '@nestjs/common';
 import { ProductService } from '../product/product.service';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { ResultDto } from '../helpers/dto/result.dto';
@@ -20,6 +20,7 @@ import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { OZON_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { isMarkSubmittable, SubmitResultDto } from '../interfaces/IMarkSubmittable';
+import { isShipmentLabelProvider } from '../interfaces/IShipmentLabelProvider';
 import { isMarkCodesEnabled } from '../helpers';
 
 @Injectable()
@@ -153,6 +154,15 @@ export class OrderService {
             this.logger.warn(`submitFbsMarkCodes failed for ${invoice.remark}: ${message}`);
             return { ok: false, failed: [{ ki: '*', reason: message }] };
         }
+    }
+
+    /** Этикетка отправления (стр.1) через IShipmentLabelProvider. Ветка WB/Ozon — по buyerId счёта. */
+    async getShipmentLabelForInvoice(invoice: InvoiceDto): Promise<Buffer> {
+        const service = this.getServiceByBuyerId(invoice.buyerId, true);
+        if (!isShipmentLabelProvider(service)) {
+            throw new BadRequestException('Этикетка отправления недоступна для этого маркетплейса');
+        }
+        return service.getShipmentLabel(invoice);
     }
 
     private async processWithCache<T extends { posting_number: string }>(

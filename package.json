@@ -49,6 +49,7 @@
     "nestjs-cacheable": "^1.0.0",
     "node-firebird": "^1.1.9",
     "nodemailer": "^6.9.15",
+    "pdf-lib": "^1.17.1",
     "pdfkit": "^0.15.0",
     "reflect-metadata": "^0.2.2",
     "rxjs": "^7.8.1",
