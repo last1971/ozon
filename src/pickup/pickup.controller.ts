@@ -15,6 +15,20 @@ export class PickupController {
         private orderService: OrderService,
     ) {}
 
+    @Post(':remark/pick')
+    @ApiOperation({ summary: 'Подобрать счёт (pickupInvoice). Без передачи в Озон.' })
+    @ApiParam({ name: 'remark', description: 'Примечание = номер заказа', type: 'string' })
+    @ApiOkResponse({ description: 'Результат подбора: { isSuccess }' })
+    async pick(@Param() remarkDto: RemarkDto): Promise<any> {
+        const { invoice } = remarkDto;
+        const ready = await this.markScanService.isReadyToFinish(invoice);
+        if (!ready) {
+            throw new BadRequestException('Не все КМ отсканированы');
+        }
+        await this.invoiceService.pickupInvoice(invoice, null);
+        return { isSuccess: true };
+    }
+
     @Post(':remark/marks')
     @ApiOperation({ summary: 'Передать КМ (+ГТД) маркетплейсу. Без сборки/ship.' })
     @ApiParam({ name: 'remark', description: 'Примечание = номер заказа', type: 'string' })

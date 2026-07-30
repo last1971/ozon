@@ -8,7 +8,7 @@ import { InvoiceDto } from '../invoice/dto/invoice.dto';
 
 describe('PickupController', () => {
     let controller: PickupController;
-    const invoiceService = { update: jest.fn() };
+    const invoiceService = { update: jest.fn(), pickupInvoice: jest.fn() };
     const markScan = { isReadyToFinish: jest.fn() };
     const orderService = { submitFbsMarkCodesForInvoice: jest.fn() };
     const invoice = { id: 100, remark: 'TEST', buyerId: 7 } as InvoiceDto;
@@ -16,6 +16,7 @@ describe('PickupController', () => {
 
     beforeEach(async () => {
         invoiceService.update.mockReset();
+        invoiceService.pickupInvoice.mockReset();
         markScan.isReadyToFinish.mockReset();
         orderService.submitFbsMarkCodesForInvoice.mockReset();
         const module: TestingModule = await Test.createTestingModule({
@@ -60,6 +61,22 @@ describe('PickupController', () => {
             expect(invoiceService.update).toHaveBeenCalledWith(invoice, dto);
             expect(orderService.submitFbsMarkCodesForInvoice).not.toHaveBeenCalled();
             expect(r).toEqual({ isSuccess: true, invoice });
+        });
+    });
+
+    describe('pick (POST /pick) — подбор счёта', () => {
+        it('ready=false → BadRequest, pickupInvoice не вызывается', async () => {
+            markScan.isReadyToFinish.mockResolvedValueOnce(false);
+            await expect(controller.pick(remarkDto as any)).rejects.toThrow(BadRequestException);
+            expect(invoiceService.pickupInvoice).not.toHaveBeenCalled();
+        });
+
+        it('ready=true → pickupInvoice, { isSuccess: true }', async () => {
+            markScan.isReadyToFinish.mockResolvedValueOnce(true);
+            invoiceService.pickupInvoice.mockResolvedValueOnce(undefined);
+            const r = await controller.pick(remarkDto as any);
+            expect(invoiceService.pickupInvoice).toHaveBeenCalledWith(invoice, null);
+            expect(r).toEqual({ isSuccess: true });
         });
     });
 
