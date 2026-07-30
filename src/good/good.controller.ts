@@ -9,6 +9,7 @@ import { GoodAvitoDto } from './dto/good.avito.dto';
 import { ExtraGoodService } from './extra.good.service';
 import { GoodServiceEnum } from './good.service.enum';
 import { IsSwitchedDto } from './dto/is.switched.dto';
+import { DisableGoodsDto } from './dto/disable.goods.dto';
 import { IsEnum } from 'class-validator';
 import { ProductInfoDto } from "../product/dto/product.info.dto";
 
@@ -97,6 +98,29 @@ export class GoodController {
     @Post('is-switched')
     async isSwitched(@Query() isSwitchedDto: IsSwitchedDto): Promise<ResultDto> {
         return this.extraService.serviceIsSwitchedOn(isSwitchedDto);
+    }
+
+    @Post('disable')
+    @ApiOperation({ summary: 'Отключить товары (обнулить остаток) по списку SKU или xlsx' })
+    @ApiConsumes('multipart/form-data', 'application/json')
+    @ApiBody({
+        schema: {
+            type: 'object',
+            required: ['service'],
+            properties: {
+                service: { type: 'string', enum: Object.values(GoodServiceEnum) },
+                skus: { type: 'array', items: { type: 'string' }, description: 'Список SKU (если без файла)' },
+                file: { type: 'string', format: 'binary', description: 'xlsx со столбцом «SKU»' },
+            },
+        },
+    })
+    @UseInterceptors(FileInterceptor('file'))
+    async disable(
+        @Body() dto: DisableGoodsDto,
+        @UploadedFile('file') file?: Express.Multer.File,
+    ): Promise<ResultDto> {
+        const skus = file ? await this.extraService.skusFromFile(file.buffer) : (dto.skus ?? []);
+        return this.extraService.disableByCodes(dto.service, skus);
     }
 
     @Post('load-sku-list/:service')
