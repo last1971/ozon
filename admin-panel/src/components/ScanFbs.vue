@@ -425,6 +425,8 @@ async function onSecondInput() {
             'Сборка завершена'
         );
         if (res.ok) {
+            // Реальный успех сборки → сообщаем наверх (грид уберёт заказ). Не на «Новый ввод».
+            emit('success', firstInput.value);
             await resetFields();
         } else {
             secondDisabled.value = false;
@@ -500,6 +502,8 @@ async function setFocus(ref: any) {
 // Реагируем на nonce (растёт при КАЖДОМ клике), чтобы повторный клик тем же заказом тоже грузил.
 // immediate: вкладка монтируется при клике, первый клик надо поймать сразу.
 const props = defineProps<{ prefill?: string; prefillNonce?: number }>();
+// success — заказ успешно завершён (FINISH_PICKUP сохранён); наверх, чтобы грид убрал позицию.
+const emit = defineEmits<{ (e: 'success', remark: string): void }>();
 watch(
     () => props.prefillNonce,
     async () => {
