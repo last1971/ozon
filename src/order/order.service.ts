@@ -21,7 +21,6 @@ import { OZON_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.co
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FbsPrepareDto, isMarkSubmittable, SubmitResultDto } from '../interfaces/IMarkSubmittable';
 import { isShipmentLabelProvider, IShipmentLabelProvider } from '../interfaces/IShipmentLabelProvider';
-import { isMarkCodesEnabled } from '../helpers';
 
 @Injectable()
 export class OrderService {
@@ -112,10 +111,6 @@ export class OrderService {
         }
     }
 
-    private isMarkCodesEnabled(): boolean {
-        return isMarkCodesEnabled(this.configService);
-    }
-
     @Cron('0 */5 * * * *', { name: 'checkNewOrders' })
     async checkNewOrders(): Promise<void> {
         for (const service of this.orderServices) {
@@ -144,7 +139,8 @@ export class OrderService {
     }
 
     async submitFbsMarkCodesForInvoice(invoice: InvoiceDto): Promise<SubmitResultDto | undefined> {
-        if (!this.isMarkCodesEnabled()) return undefined;
+        // Флаг MARK_CODES_ENABLED больше не запирает отгрузку: цепочка Озона нужна и без марок
+        // (магазин, немаркированный товар). Проверку наших кодов в БД глушит getAttachedMarkCodesByScode.
         const service = this.getServiceByBuyerId(invoice.buyerId, true);
         if (!isMarkSubmittable(service)) return undefined;
         try {
@@ -158,7 +154,7 @@ export class OrderService {
 
     /** Фаза 1: предпроверка перед передачей КМ (Озон create-or-get). Нет метода (ВБ) → undefined. */
     async prepareFbsMarksForInvoice(invoice: InvoiceDto): Promise<FbsPrepareDto | undefined> {
-        if (!this.isMarkCodesEnabled()) return undefined;
+        // Create-or-get (Озон API) не трогает нашу БД — нужен и на магазине для отгрузки без марок.
         const service = this.getServiceByBuyerId(invoice.buyerId, true);
         if (!isMarkSubmittable(service) || !service.prepareFbsMarks) return undefined;
         try {

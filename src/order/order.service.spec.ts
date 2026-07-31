@@ -557,11 +557,12 @@ describe('OrderService', () => {
             (service as any).orderServices = [ozonOrderable, wbOrderable];
         });
 
-        it('MARK_CODES_ENABLED=false → undefined, никаких вызовов', async () => {
+        it('MARK_CODES_ENABLED=false → цепочка всё равно вызывается (магазин, отгрузка без марок)', async () => {
             markCodesEnabled = false;
+            ozonSubmitFbsMarkCodes.mockResolvedValueOnce({ ok: true, shipped: true });
             const r = await service.submitFbsMarkCodesForInvoice(invoice);
-            expect(r).toBeUndefined();
-            expect(ozonSubmitFbsMarkCodes).not.toHaveBeenCalled();
+            expect(r).toEqual({ ok: true, shipped: true });
+            expect(ozonSubmitFbsMarkCodes).toHaveBeenCalledWith(invoice);
         });
 
         it('сервис не isMarkSubmittable → undefined', async () => {
@@ -654,11 +655,12 @@ describe('OrderService', () => {
             ];
         });
 
-        it('MARK_CODES_ENABLED=false → undefined', async () => {
+        it('MARK_CODES_ENABLED=false → prepare всё равно зовётся (create-or-get не трогает нашу БД)', async () => {
             markCodesEnabled = false;
+            prepareFbsMarks.mockResolvedValueOnce({ ok: true, lines: [] });
             const r = await service.prepareFbsMarksForInvoice(invoice);
-            expect(r).toBeUndefined();
-            expect(prepareFbsMarks).not.toHaveBeenCalled();
+            expect(r).toEqual({ ok: true, lines: [] });
+            expect(prepareFbsMarks).toHaveBeenCalledWith(invoice);
         });
 
         it('happy path → результат prepareFbsMarks', async () => {

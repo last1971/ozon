@@ -401,8 +401,15 @@ async function onTransferConfirm() {
             const reason = (submit?.failed ?? []).map((f) => f.reason).join('; ');
             const prefix = submit?.goToOzon
                 ? 'Ошибка после отправки — разберитесь в ЛК Озона: '
-                : 'Не передано: ';
-            showSnackbar(prefix + (reason || submit?.failedStep || 'ошибка'), 'error', 60000);
+                : 'Не передано (напр. нет ГТД): ';
+            showSnackbar(
+                prefix + (reason || submit?.failedStep || 'ошибка') + '. Оформите в Озоне и отсканируйте ШК.',
+                'error',
+                60000,
+            );
+            // Фолбэк: открываем поле ШК — кладовщик оформит/распечатает в окне Озона и отсканирует посылку.
+            secondDisabled.value = false;
+            await setFocus(secondInputRef);
         }
     } catch (e: any) {
         if (labelWindow) labelWindow.close();

@@ -9,7 +9,7 @@ import { PostingDto } from '../posting/dto/posting.dto';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { TransactionDto } from '../posting/dto/transaction.dto';
 import { ResultDto } from '../helpers/dto/result.dto';
-import { goodCode, goodQuantityCoeff } from '../helpers';
+import { goodCode, goodQuantityCoeff, isMarkCodesEnabled } from '../helpers';
 import { chunk, flatten, toNumber } from 'lodash';
 import { ProductPostingDto } from '../product/dto/product.posting.dto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -805,6 +805,8 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         scode: number,
         transaction: FirebirdTransaction = null,
     ): Promise<{ ki: string; goodscode: string; realpricecode: number; quantity: number }[]> {
+        // Маркировка выключена (магазин) → таблицы MARKCODES нет. Кодов нет по определению.
+        if (!isMarkCodesEnabled(this.configService)) return [];
         const t = transaction ?? (await this.getTransaction());
         const rows = await t.query(
             'SELECT m.KI, m.GOODSCODE, m.REALPRICECODE, COALESCE(m.QUANTITY, 1) AS QUANTITY FROM MARKCODES m ' +

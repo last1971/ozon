@@ -796,6 +796,7 @@ describe('Trade2006InvoiceService', () => {
         });
 
         it('getAttachedMarkCodesByScode — JOIN с REALPRICE, фильтр TT=3, QUANTITY в штуках', async () => {
+            get.mockImplementation((key: string, def?: any) => (key === 'MARK_CODES_ENABLED' ? true : def));
             query.mockResolvedValueOnce([
                 { KI: 'A', GOODSCODE: 444, REALPRICECODE: 100, QUANTITY: 1 },
                 { KI: 'B', GOODSCODE: 444, REALPRICECODE: 100, QUANTITY: 50 },
@@ -810,6 +811,13 @@ describe('Trade2006InvoiceService', () => {
             expect(sql).toContain('m.TRANSFER_TYPE = 3');
             expect(sql).toContain('COALESCE(m.QUANTITY, 1)');
             expect(query.mock.calls[0][1]).toEqual([50]);
+        });
+
+        it('getAttachedMarkCodesByScode — MARK_CODES_ENABLED=false → [] без запроса (магазин, нет MARKCODES)', async () => {
+            get.mockImplementation((key: string, def?: any) => (key === 'MARK_CODES_ENABLED' ? false : def));
+            const res = await service.getAttachedMarkCodesByScode(50, null);
+            expect(res).toEqual([]);
+            expect(query).not.toHaveBeenCalled();
         });
 
         it('getRealpriceLinesByScode — все строки счёта', async () => {
