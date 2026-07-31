@@ -248,6 +248,14 @@ async function onFirstInput() {
                 secondDisabled.value = true;
                 await setFocus(markScanInputRef);
             } else {
+                // Озон требует КМ, но свободных кодов в базе нет — сразу говорим кладовщику (п9).
+                if (isOzon.value && ozonWantsMarks.value && !requiresMarkScan.value) {
+                    showSnackbar(
+                        'Озон требует КМ, но свободных кодов в базе нет — собери без КМ, в Озон коды не уйдут',
+                        'warning',
+                        60000,
+                    );
+                }
                 // Сканить нечего/уже готово. ВБ → сразу поле ШК. OZON → ждём «Подобрано».
                 markScanDisabled.value = true;
                 secondDisabled.value = isOzon.value;
