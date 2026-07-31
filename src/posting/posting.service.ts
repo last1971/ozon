@@ -229,10 +229,13 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         return this.ozonApiService.method('/v4/posting/fbs/ship', req);
     }
 
+    // Ждём ПЕРЕД каждой попыткой package-label по 15 c → попытки на 15/30/45/60 c (Озон формирует этикетку не сразу).
+    private readonly labelRetryDelaysMs = [15000, 15000, 15000, 15000];
+
     /** Этикетка отправления, стр.1 (ШК). Товарный ярлык (стр.2) Озон подкладывает всегда — режем. */
     async getShipmentLabel(invoice: InvoiceDto): Promise<Buffer> {
         // После ship этикетка готовится не мгновенно — Озон отдаёт 400, пока не сгенерирована. Ретраим.
-        const delaysMs = [0, 2000, 4000, 8000];
+        const delaysMs = this.labelRetryDelaysMs;
         let lastErr: any;
         for (let i = 0; i < delaysMs.length; i++) {
             if (delaysMs[i]) await new Promise((r) => setTimeout(r, delaysMs[i]));

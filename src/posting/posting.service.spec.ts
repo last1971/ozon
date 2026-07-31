@@ -747,6 +747,7 @@ describe('PostingService', () => {
             doc.addPage([200, 200]);
             doc.addPage([200, 200]);
             ozonApiMethodBinary.mockResolvedValueOnce(Buffer.from(await doc.save()));
+            (service as any).labelRetryDelaysMs = [0]; // без реальных пауз в тесте
 
             const out = await service.getShipmentLabel({ remark: 'P-9' } as any);
 
