@@ -10,10 +10,13 @@ import OzonProductCreate from "@/components/OzonProductCreate.vue";
 import WbCopyProduct from "@/components/WbCopyProduct.vue";
 const tab = ref('prices');
 const scanOrder = ref('');
+// Счётчик кликов — растёт при каждом клике, чтобы повторный клик ТЕМ ЖЕ заказом тоже сработал.
+const scanNonce = ref(0);
 
 // Клик по номеру заказа в гриде OZON FBS этикетки → перейти на «Скан FBS» и загрузить заказ.
 function openScan(order: string) {
     scanOrder.value = order;
+    scanNonce.value++;
     tab.value = 'scan-fbs';
 }
 </script>
@@ -43,7 +46,7 @@ function openScan(order: string) {
                 </v-tabs-window-item>
 
                 <v-tabs-window-item value="scan-fbs">
-                    <scan-fbs class="pa-2" :prefill="scanOrder"/>
+                    <scan-fbs class="pa-2" :prefill="scanOrder" :prefill-nonce="scanNonce"/>
                 </v-tabs-window-item>
 
                 <v-tabs-window-item value="ozon-fbs-labels">
