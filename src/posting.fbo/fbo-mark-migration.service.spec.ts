@@ -14,9 +14,11 @@ describe('FboMarkMigrationService', () => {
     const migratePodbpos = jest.fn();
     const clearInvoiceReserve = jest.fn();
     const getStorageSS = jest.fn();
+    const logMigrationLink = jest.fn();
     const emit = jest.fn();
 
     const SCODE_B = 500;
+    const POSTING = 'P-1';
     const line = (realpricecode: number, goodCode = '444', quantity = 15) => ({
         goodCode,
         quantity,
@@ -32,6 +34,7 @@ describe('FboMarkMigrationService', () => {
             migratePodbpos,
             clearInvoiceReserve,
             getStorageSS,
+            logMigrationLink,
             emit,
         ].forEach((m) => m.mockReset());
         getStorageSS.mockReturnValue(1);
@@ -52,6 +55,7 @@ describe('FboMarkMigrationService', () => {
                         migratePodbpos,
                         clearInvoiceReserve,
                         getStorageSS,
+                        logMigrationLink,
                     },
                 },
                 { provide: EventEmitter2, useValue: { emit } },
@@ -77,6 +81,7 @@ describe('FboMarkMigrationService', () => {
             [line(900)],
             SCODE_B,
             null,
+            POSTING,
         );
 
         expect(shortages).toEqual([]);
@@ -89,6 +94,19 @@ describe('FboMarkMigrationService', () => {
             ['KI-2', 100, 900, '444', 1, null],
         ]);
         expect(migratePodbpos).toHaveBeenCalledWith(1001, SCODE_B, 900, '444', 15, null);
+        // цепочка донор→приёмник записана
+        expect(logMigrationLink).toHaveBeenCalledWith(
+            {
+                posting: POSTING,
+                goodscode: '444',
+                quantity: 15,
+                donorScode: 100,
+                donorRpc: 100,
+                targetScode: SCODE_B,
+                targetRpc: 900,
+            },
+            null,
+        );
         // порядок: все коды до подборки
         const podbOrder = migratePodbpos.mock.invocationCallOrder[0];
         migrateMarkCode.mock.invocationCallOrder.forEach((o) => expect(o).toBeLessThan(podbOrder));
@@ -107,6 +125,7 @@ describe('FboMarkMigrationService', () => {
             [line(900)],
             SCODE_B,
             null,
+            POSTING,
         );
 
         expect(shortages).toEqual([]);
@@ -131,6 +150,7 @@ describe('FboMarkMigrationService', () => {
             [line(901, '777', 2)],
             SCODE_B,
             null,
+            POSTING,
         );
 
         expect(shortages).toEqual([]);
@@ -148,6 +168,7 @@ describe('FboMarkMigrationService', () => {
             [line(901, '777', 5)],
             SCODE_B,
             null,
+            POSTING,
         );
 
         expect(shortages).toEqual([{ goodscode: '777', quantity: 5 }]);
@@ -167,6 +188,7 @@ describe('FboMarkMigrationService', () => {
             [line(902, '444', 1)],
             SCODE_B,
             null,
+            POSTING,
         );
 
         expect(shortages).toEqual([{ goodscode: '444', quantity: 1 }]);
@@ -191,6 +213,7 @@ describe('FboMarkMigrationService', () => {
             [line(900, '444', 10)],
             SCODE_B,
             null,
+            POSTING,
         );
 
         expect(shortages).toEqual([]);
@@ -225,6 +248,7 @@ describe('FboMarkMigrationService', () => {
             [line(900)],
             SCODE_B,
             null,
+            POSTING,
         );
 
         // 2 кода уехали (10 шт), штуки застрявшего кода (5) остались на А
@@ -240,6 +264,7 @@ describe('FboMarkMigrationService', () => {
                 [{ goodCode: '444', quantity: 1, price: '1' }],
                 SCODE_B,
                 null,
+                POSTING,
             ),
         ).rejects.toThrow('нет realpricecode');
         expect(findFboPodbposCandidates).not.toHaveBeenCalled();
@@ -263,6 +288,7 @@ describe('FboMarkMigrationService', () => {
             [line(901, '111', 1), line(902, '222', 1)],
             SCODE_B,
             null,
+            POSTING,
         );
 
         expect(shortages).toEqual([]);
@@ -283,6 +309,7 @@ describe('FboMarkMigrationService', () => {
             [line(903, '999', 2)],
             SCODE_B,
             null,
+            POSTING,
         );
 
         expect(shortages).toEqual([]);

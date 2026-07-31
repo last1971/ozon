@@ -5,7 +5,11 @@ import { FirebirdTransaction } from 'ts-firebird';
 export interface IOrderable {
     listAwaitingPackaging(): Promise<PostingDto[]>;
     listAwaitingDelivering(): Promise<PostingDto[]>;
-    createInvoice(posting: PostingDto, transaction: FirebirdTransaction): Promise<InvoiceDto>;
+    createInvoice(
+        posting: PostingDto,
+        transaction: FirebirdTransaction,
+        flushers?: (() => Promise<void>)[],
+    ): Promise<InvoiceDto | null>;
     listCanceled(): Promise<PostingDto[]>;
     getByPostingNumber(postingNumber: string): Promise<PostingDto>;
     getBuyerId(): number;

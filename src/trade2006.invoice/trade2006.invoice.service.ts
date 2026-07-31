@@ -28,6 +28,7 @@ import { TransferOutDTO } from "./dto/transfer.out.dto";
 import { TransferOutLineDTO } from "./dto/transfer.out.line.dto";
 import { plainToClass } from "class-transformer";
 import { WithTransactions } from "../helpers/mixin/transaction.mixin";
+import { FboMigrationLinkDto } from "../posting.fbo/dto/fbo-migration-link.dto";
 
 @Injectable()
 export class Trade2006InvoiceService extends WithTransactions(class {}) implements IInvoice, ISuppliable {
@@ -420,35 +421,6 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             t,
         );
     }
-    async unPickupOzonFbo(
-        product: ProductPostingDto,
-        prim: string,
-        transaction: FirebirdTransaction = null,
-    ): Promise<boolean> {
-        const workingTransaction = transaction || (await this.getTransaction());
-        const code = goodCode(product);
-        const quantity = product.quantity * goodQuantityCoeff(product);
-        const attribute = this.configService.get<string>('STORAGE_TYPE', 'SHOPSKLAD').toUpperCase() === 'SHOPSKLAD'
-            ? 'SHOP'
-            : 'SKLAD';
-        const pickups = await workingTransaction.query(
-            `SELECT PODBPOSCODE, QUAN${attribute} FROM PODBPOS WHERE GOODSCODE = ? AND QUAN${attribute} >= ? AND SCODE IN (SELECT SCODE` +
-                ' FROM S WHERE S.STATUS = 1 AND S.PRIM CONTAINING ?)',
-            [code, quantity, prim],
-        );
-        if (pickups.length === 0) {
-            if (!transaction) await workingTransaction.rollback(true);
-            return false;
-        }
-        // remove(this.fboErrors, { prim, code });
-        await workingTransaction.execute(`UPDATE PODBPOS SET QUAN${attribute} = ? WHERE PODBPOSCODE = ?`, [
-            pickups[0][`QUAN${attribute}`] - quantity,
-            pickups[0].PODBPOSCODE,
-        ]);
-        if (!transaction) await workingTransaction.commit(true);
-        return true;
-    }
-
     async getLastIncomingPrice(id: string, transaction: FirebirdTransaction = null): Promise<number> {
         const workingTransaction = transaction || (await this.getTransaction());
         const forPrih = this.configService.get<string>('STORAGE_TYPE', 'SHOPSKLAD').toUpperCase() === 'SHOPSKLAD' ? 1 : 0;
@@ -460,20 +432,37 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         return res ? res[0]?.PRICE : 0.01;
     }
 
-    async deltaGood(
-        id: string,
+    // Журнал недобора по FBO-счёту (нет резерва на складе — товар не списываем, спишут вручную).
+    // DDL (создаётся на боевом Firebird вручную):
+    //   CREATE TABLE FBO_SHORTAGE (SERVICE VARCHAR(20), POSTING VARCHAR(100), GOODSCODE INTEGER,
+    //       QUANTITY INTEGER, PRIM VARCHAR(200), DATA TIMESTAMP);
+    async logShortage(
+        service: GoodServiceEnum,
+        posting: string,
+        goodscode: string,
         quantity: number,
         prim: string,
         transaction: FirebirdTransaction = null,
     ): Promise<void> {
-        const workingTransaction = transaction || (await this.getTransaction());
-        const price = await this.getLastIncomingPrice(id, workingTransaction);
-        const procedure = this.configService.get<string>('STORAGE_TYPE', 'SHOPSKLAD').toUpperCase() === 'SHOPSKLAD'
-            ? 'deltaquanshopsklad4'
-            : 'deltaquansklad4';
-        await workingTransaction.execute(
-            `execute procedure ${procedure} ?, ?, ?, ?, ?, null, 1`,
-            [id, Trade2006InvoiceService.name, -quantity, prim, price],
+        const t = transaction ?? (await this.getTransaction());
+        await t.execute(
+            'UPDATE OR INSERT INTO FBO_SHORTAGE (SERVICE, POSTING, GOODSCODE, QUANTITY, PRIM, DATA) ' +
+                'VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP) MATCHING (SERVICE, POSTING, GOODSCODE)',
+            [service, posting, goodscode, quantity, prim ?? null],
+            !transaction,
+        );
+    }
+
+    // Аудит цепочек FBO-миграции (донор → приёмник), append-only.
+    // DDL:
+    //   CREATE TABLE FBO_MIGRATION_LINK (POSTING VARCHAR(100), GOODSCODE INTEGER, QUANTITY INTEGER,
+    //       DONOR_SCODE INTEGER, DONOR_RPC INTEGER, TARGET_SCODE INTEGER, TARGET_RPC INTEGER, DATA TIMESTAMP);
+    async logMigrationLink(link: FboMigrationLinkDto, transaction: FirebirdTransaction = null): Promise<void> {
+        const t = transaction ?? (await this.getTransaction());
+        await t.execute(
+            'INSERT INTO FBO_MIGRATION_LINK (POSTING, GOODSCODE, QUANTITY, DONOR_SCODE, DONOR_RPC, ' +
+                'TARGET_SCODE, TARGET_RPC, DATA) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)',
+            [link.posting, link.goodscode, link.quantity, link.donorScode, link.donorRpc, link.targetScode, link.targetRpc],
             !transaction,
         );
     }
@@ -543,6 +532,35 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             (a, b) => a.lvl - b.lvl || tierOf(a) - tierOf(b) || b.cntTt3 - a.cntTt3,
         );
         return candidates;
+    }
+
+    // Legacy-донор (MARK_CODES_ENABLED=false): подборка из PODBPOS без кодов, одна строка с QUAN>=нужного,
+    // с приоритетом по порядку prim. Возвращает донора для decrement + лога цепочки.
+    async findFboPodbposDonor(
+        goodscode: string,
+        prims: string[],
+        quantity: number,
+        transaction: FirebirdTransaction = null,
+    ): Promise<{ podbposcode: number; scode: number; realpricecode: number; quanAvail: number } | null> {
+        if (prims.length === 0) return null;
+        const t = transaction ?? (await this.getTransaction());
+        const attribute = this.getStorageSS() === 1 ? 'SHOP' : 'SKLAD';
+        const lvlCase =
+            'CASE ' + prims.map((_, i) => `WHEN s.PRIM CONTAINING ? THEN ${i} `).join('') + 'ELSE 99 END AS LVL';
+        const containing = prims.map(() => 's.PRIM CONTAINING ?').join(' OR ');
+        const sql =
+            `SELECT FIRST 1 pp.PODBPOSCODE, pp.SCODE, pp.REALPRICECODE, pp.QUAN${attribute} AS QUANAVAIL, ${lvlCase} ` +
+            'FROM PODBPOS pp JOIN S s ON s.SCODE = pp.SCODE ' +
+            `WHERE pp.GOODSCODE = ? AND pp.QUAN${attribute} >= ? AND s.STATUS = 1 AND (${containing}) ORDER BY LVL`;
+        const rows = await t.query(sql, [...prims, goodscode, quantity, ...prims], !transaction);
+        if (rows.length === 0) return null;
+        const r = rows[0];
+        return {
+            podbposcode: r.PODBPOSCODE,
+            scode: r.SCODE,
+            realpricecode: r.REALPRICECODE,
+            quanAvail: r.QUANAVAIL,
+        };
     }
 
     async findLiveMigratableCodes(
@@ -855,19 +873,6 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             }),
         );
     }
-    async unPickupAndDeltaInvoice(invoice: InvoiceDto, transaction: FirebirdTransaction): Promise<void> {
-        await this.bulkSetStatus([invoice], 1, transaction);
-        const lines = await this.getInvoiceLines(invoice, transaction);
-        const product: ProductPostingDto = {
-            price: lines[0].price,
-            offer_id: lines[0].goodCode.toString(),
-            quantity: lines[0].quantity,
-        };
-        const res = await this.unPickupOzonFbo(product, invoice.remark, transaction);
-        if (!res) throw new Error('Not find lines for ' + invoice.remark);
-        await this.deltaGood(product.offer_id, -product.quantity, 'WBFBO Correction', transaction);
-    }
-
     async getPrimContaining(search: string, transaction: FirebirdTransaction = null): Promise<InvoiceDto[]> {
         const t = transaction || (await this.getTransaction());
         const invoices = await t.query('SELECT * FROM S WHERE PRIM CONTAINING ?', [search], !transaction);

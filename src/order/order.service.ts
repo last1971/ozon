@@ -214,7 +214,7 @@ export class OrderService {
         await this.processWithCache('delivery', service, deliveringPostings, async (posting) => {
             let invoice = await this.invoiceService.getByPosting(posting, transaction);
             if (!invoice) {
-                invoice = await service.createInvoice(posting, transaction);
+                invoice = await service.createInvoice(posting, transaction, flushers);
             }
             if (invoice) {
                 await this.invoiceService.pickupInvoice(invoice, transaction);
@@ -231,7 +231,7 @@ export class OrderService {
 
         await this.processWithCache('packaging', service, packagingPostings, async (posting) => {
             if (!(await this.invoiceService.isExists(posting.posting_number, transaction))) {
-                await service.createInvoice(posting, transaction);
+                await service.createInvoice(posting, transaction, flushers);
             }
         }, flushers);
     }
