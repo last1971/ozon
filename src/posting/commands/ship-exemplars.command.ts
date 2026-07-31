@@ -28,12 +28,13 @@ export class ShipExemplarsCommand implements ICommandAsync<IFbsSubmitContext> {
             if (shipped) {
                 ctx.result = { ok: true, shipped: true };
             } else {
+                const reason = (resp as any)?.error?.message ?? 'ship вернул пустой result';
                 ctx.stopChain = true;
                 ctx.result = {
                     ok: false,
                     failedStep: 'ship',
                     goToOzon: true,
-                    failed: [...ctx.failed, { ki: '*', reason: 'ship вернул пустой result' }],
+                    failed: [...ctx.failed, { ki: '*', reason: `ship: ${reason}` }],
                 };
             }
         } catch (e) {

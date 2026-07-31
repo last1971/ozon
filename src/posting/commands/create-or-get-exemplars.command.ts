@@ -11,10 +11,11 @@ export class CreateOrGetExemplarsCommand implements ICommandAsync<IFbsSubmitCont
     async execute(ctx: IFbsSubmitContext): Promise<IFbsSubmitContext> {
         const exResp = await this.postingService.createOrGetExemplars(ctx.postingNumber);
         if (!exResp || !exResp.products) {
+            const reason = (exResp as any)?.error?.message ?? 'createOrGet вернул пустой ответ';
             ctx.stopChain = true;
             ctx.result = {
                 ok: false,
-                failed: [{ ki: '*', reason: 'createOrGet вернул пустой ответ' }],
+                failed: [{ ki: '*', reason }],
                 skipRetry: true,
             };
             return ctx;

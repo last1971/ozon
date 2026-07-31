@@ -23,7 +23,10 @@ export class ValidateExemplarsCommand implements ICommandAsync<IFbsSubmitContext
             ctx.result = {
                 ok: false,
                 failedStep: 'validate',
-                failed: [...ctx.failed, { ki: '*', reason: `validate: ${resp?.message ?? 'пустой ответ'}` }],
+                failed: [
+                    ...ctx.failed,
+                    { ki: '*', reason: `validate: ${(resp as any)?.error?.message ?? resp?.message ?? 'пустой ответ'}` },
+                ],
             };
             return ctx;
         }
