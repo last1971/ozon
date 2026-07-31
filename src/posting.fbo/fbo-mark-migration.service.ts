@@ -26,6 +26,7 @@ export class FboMarkMigrationService {
         invoiceLines: InvoiceLineDto[],
         scode: number,
         transaction: FirebirdTransaction,
+        posting: string,
     ): Promise<FboShortageDto[]> {
         const shortages: FboShortageDto[] = [];
         const s_s = this.invoiceService.getStorageSS();
@@ -119,6 +120,20 @@ export class FboMarkMigrationService {
                     continue;
                 }
                 need -= take;
+
+                // Цепочка донор→приёмник (аудит): счёт/строка донора и счёт/строка продажи.
+                await this.invoiceService.logMigrationLink(
+                    {
+                        posting,
+                        goodscode: gc,
+                        quantity: take,
+                        donorScode: cand.scode,
+                        donorRpc: cand.realpricecode,
+                        targetScode: scode,
+                        targetRpc: newRpc,
+                    },
+                    transaction,
+                );
 
                 // Кодов уехало меньше, чем штук, при том что живые коды на кандидате были:
                 // сигнал (кодов не хватает на товар), но НЕ недостача — штуки переехали.

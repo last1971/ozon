@@ -11,7 +11,7 @@ import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { FirebirdTransaction } from 'ts-firebird';
 import { TransactionFilterDate } from '../posting/dto/transaction.filter.dto';
 import { ResultDto } from '../helpers/dto/result.dto';
-import { first, min, chunk, find, filter } from 'lodash';
+import { first, min, chunk, find } from 'lodash';
 import { WbTransactionDto } from './dto/wb.transaction.dto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Cron, Timeout } from "@nestjs/schedule";
@@ -30,9 +30,10 @@ import { WbInvoiceSridQueryDto } from '../order/dto/wb-invoice-srid-query.dto';
 import { RateLimit, setRateLimitBlocked } from '../helpers/decorators/rate-limit.decorator';
 import { IMarkSubmittable, SubmitFailureDto, SubmitResultDto } from '../interfaces/IMarkSubmittable';
 import { WbOrderSetKizRequestDto } from './dto/wb.order.set-kiz.dto';
-import { FboMarkMigrationService } from '../posting.fbo/fbo-mark-migration.service';
+import { FboInvoiceCreatorService } from '../posting.fbo/fbo-invoice-creator.service';
 import { ProcessedCacheService } from '../processed-cache/processed-cache.service';
-import { goodCode, goodQuantityCoeff, isMarkCodesEnabled } from '../helpers';
+import { isMarkCodesEnabled } from '../helpers';
+import { GoodServiceEnum } from '../good/good.service.enum';
 
 @Injectable()
 export class WbOrderService implements IOrderable, IMarkSubmittable {
@@ -48,7 +49,7 @@ export class WbOrderService implements IOrderable, IMarkSubmittable {
         private readonly fetchTransactionsCommand: FetchTransactionsCommand,
         private readonly selectBestIdCommand: SelectBestIdCommand,
         private readonly fetchInvoiceByRemarkCommand: FetchInvoiceByRemarkCommand,
-        private readonly migrationService: FboMarkMigrationService,
+        private readonly fboInvoiceCreator: FboInvoiceCreatorService,
         private readonly processedCache: ProcessedCacheService,
     ) {
         this.postingDtos = new Map<string, PostingDto>();
@@ -114,6 +115,8 @@ export class WbOrderService implements IOrderable, IMarkSubmittable {
         const buyerId = this.getBuyerId();
         const addFboOrders: WbFboOrder[] = [];
         const useMigration = this.isMarkCodesEnabled();
+        // Письма о недоборе шлём после commit (не уведомляем при откате батча).
+        const flushers: (() => Promise<void>)[] = [];
         try {
             for (const order of newFboOrders) {
                 if (order.supplierArticle === 'wh-service-podmena') continue;
@@ -128,44 +131,36 @@ export class WbOrderService implements IOrderable, IMarkSubmittable {
                     in_process_at: order.date,
                     products: [product],
                 };
-                if (useMigration) {
-                    // Pre-check: «левые» заказы без подбора — пропуск без создания invoice (legacy WB-spec)
-                    const candidates = await this.invoiceService.findFboPodbposCandidates(
-                        goodCode(product), ['WBFBO'], goodQuantityCoeff(product), transaction,
-                    );
-                    if (candidates.length === 0) continue;
-                    const invoice = await this.invoiceService.createInvoiceFromPostingDto(
-                        buyerId, posting, transaction,
-                    );
-                    if (!invoice) {
-                        throw new Error(`WB FBO migration: счёт для ${order.srid} не создан`);
-                    }
-                    const shortages = await this.migrationService.migrate(
-                        [product], ['WBFBO'], invoice.invoiceLines, invoice.id, transaction,
-                    );
-                    for (const s of shortages) {
-                        await this.invoiceService.deltaGood(s.goodscode, s.quantity, 'WBFBO', transaction);
-                        this.eventEmitter.emit(
-                            'error.message',
-                            'WB FBO: нет позиции — создана недостача',
-                            `Заказ ${order.srid}, GOODSCODE ${s.goodscode}, qty ${s.quantity}`,
-                        );
-                    }
-                    await this.invoiceService.pickupInvoice(invoice, transaction);
-                } else {
-                    const res = await this.invoiceService.unPickupOzonFbo(product, 'WBFBO', transaction);
-                    if (!res) continue;
-                    const invoice = await this.invoiceService.createInvoiceFromPostingDto(
-                        buyerId, posting, transaction,
-                    );
-                    await this.invoiceService.pickupInvoice(invoice, transaction);
+                const invoice = await this.fboInvoiceCreator.create({
+                    service: GoodServiceEnum.WB,
+                    posting,
+                    prims: ['WBFBO'],
+                    primLabel: 'WBFBO',
+                    buyerId,
+                    useMigration,
+                    setIgkNot1c: false,
+                    pickupAfterCreate: true,
+                    skipIfNoPodbor: true,
+                    transaction,
+                    flushers,
+                });
+                // Счёт создан только при наличии подбора; недостача/«левый» заказ → null (журнал/пропуск).
+                if (invoice) {
+                    addFboOrders.push(order);
+                    processed.add(order.srid);
                 }
-                addFboOrders.push(order);
-                processed.add(order.srid);
             }
             await transaction.commit(true);
             // Запись в Redis только после успешного commit
             await this.processedCache.save('fbo-orders', WbOrderService.name, processed);
+            // Письма о недоборе — после commit
+            for (const flush of flushers) {
+                try {
+                    await flush();
+                } catch (e) {
+                    this.logger.error(`WB FBO shortage notify failed: ${e.message}`);
+                }
+            }
             if (addFboOrders.length > 0) {
                 this.eventEmitter.emit(
                     'wb.order.content',
@@ -356,56 +351,6 @@ export class WbOrderService implements IOrderable, IMarkSubmittable {
     async getOrders(dateFrom: string, flag: number = 0): Promise<any> {
         return this.api.method('/api/v1/supplier/orders', 'statistics', { dateFrom, flag });
     }
-    // @Timeout(0)
-    // Not test
-    async closeSales(dateFrom: string = '2024-08-01', dateTo: string = '2024-09-01'): Promise<any> {
-        const transaction = await this.invoiceService.getTransaction();
-        try {
-            console.log('Started...');
-            const buyerId: number = this.getBuyerId();
-            const invoices = await this.invoiceService.getByDto({ buyerId, dateFrom, dateTo, status: 4 });
-            const saleIds = invoices.map((invoice) => invoice.remark);
-            const sales = await this.getSales(dateFrom);
-            const transactions = await this.getTransactions({ from: new Date(dateFrom), to: new Date(dateTo) });
-            const orders = await this.list(DateTime.fromISO(dateFrom).toUnixInteger());
-            const commissions = new Map<string, number>();
-            for (const sale of saleIds) {
-                const invoice: InvoiceDto = find(invoices, { remark: sale });
-                let ret = find(sales, { srid: sale });
-                const order = find(orders, { id: parseInt(sale) });
-                if (!ret) {
-                    ret = find(sales, { srid: order?.rid });
-                }
-                if (!ret) {
-                    await this.invoiceService.unPickupAndDeltaInvoice(invoice, transaction);
-                } else {
-                    const { srid } = ret;
-                    const t = filter(transactions, { srid });
-                    const amount = t.reduce(
-                        (amount, t: any) =>
-                            amount +
-                            (t.ppvz_for_pay ?? 0) -
-                            (t.delivery_rub ?? 0) +
-                            (t.additional_payment ?? 0) -
-                            (t.penalty ?? 0),
-                        0,
-                    );
-                    if (amount) {
-                        commissions.set(sale, amount);
-                    } else {
-                        await this.invoiceService.unPickupAndDeltaInvoice(invoice, transaction);
-                    }
-                }
-            }
-            if (commissions.size > 0) await this.invoiceService.updateByCommissions(commissions, transaction);
-            await transaction.commit(true);
-            console.log('Finished...');
-        } catch (e) {
-            await transaction.rollback(true);
-            console.log(e);
-        }
-    }
-
     async listCanceled(): Promise<PostingDto[]> {
         return [];
     }

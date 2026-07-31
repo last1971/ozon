@@ -4,10 +4,11 @@ import { PostingDto } from '../posting/dto/posting.dto';
 import { TransactionDto } from '../posting/dto/transaction.dto';
 import { ResultDto } from '../helpers/dto/result.dto';
 import { FirebirdTransaction } from 'ts-firebird';
-import { ProductPostingDto } from '../product/dto/product.posting.dto';
 import { InvoiceGetDto } from '../invoice/dto/invoice.get.dto';
 import { InvoiceLineDto } from '../invoice/dto/invoice.line.dto';
 import { InvoiceUpdateDto } from "../invoice/dto/invoice.update.dto";
+import { GoodServiceEnum } from '../good/good.service.enum';
+import { FboMigrationLinkDto } from '../posting.fbo/dto/fbo-migration-link.dto';
 
 export interface IInvoice {
     getTransaction(): Promise<FirebirdTransaction>;
@@ -21,14 +22,27 @@ export interface IInvoice {
     updateByTransactions(transactions: TransactionDto[], t: FirebirdTransaction): Promise<ResultDto>;
     pickupInvoice(invoice: InvoiceDto, t: FirebirdTransaction): Promise<void>;
     createInvoiceFromPostingDto(buyerId: number, posting: PostingDto, t: FirebirdTransaction): Promise<InvoiceDto>;
-    unPickupOzonFbo(product: ProductPostingDto, prim: string, transaction: FirebirdTransaction): Promise<boolean>;
-    deltaGood(id: string, quantity: number, prim: string, transaction: FirebirdTransaction): Promise<void>;
+    logShortage(
+        service: GoodServiceEnum,
+        posting: string,
+        goodscode: string,
+        quantity: number,
+        prim: string,
+        transaction: FirebirdTransaction,
+    ): Promise<void>;
+    logMigrationLink(link: FboMigrationLinkDto, transaction: FirebirdTransaction): Promise<void>;
     findFboPodbposCandidates(
         goodscode: string,
         prims: string[],
         nominal: number,
         transaction: FirebirdTransaction,
     ): Promise<{ podbposcode: number; scode: number; realpricecode: number; quanAvail: number; prim: string; cntNom: number; cntLive: number; cntTt3: number }[]>;
+    findFboPodbposDonor(
+        goodscode: string,
+        prims: string[],
+        quantity: number,
+        transaction: FirebirdTransaction,
+    ): Promise<{ podbposcode: number; scode: number; realpricecode: number; quanAvail: number } | null>;
     decrementPodbpos(podbposcode: number, take: number, transaction: FirebirdTransaction): Promise<void>;
     findLiveMigratableCodes(
         realpricecode: number,
@@ -92,7 +106,6 @@ export interface IInvoice {
     findRealpriceCodes(scode: number, transaction: FirebirdTransaction): Promise<number[]>;
     getByDto(invoiceGetDto: InvoiceGetDto): Promise<InvoiceDto[]>;
     getInvoiceLines(invoice: InvoiceDto, transaction: FirebirdTransaction): Promise<InvoiceLineDto[]>;
-    unPickupAndDeltaInvoice(invoice: InvoiceDto, transaction: FirebirdTransaction): Promise<void>;
     bulkSetStatus(invoices: InvoiceDto[], status: number, transaction: FirebirdTransaction): Promise<void>;
     update(invoice: InvoiceDto, invoiceUpdateDto: InvoiceUpdateDto, t?: FirebirdTransaction): Promise<boolean>;
     distributePaymentByUPD(updNumber: number, updDate: string, amount: number): Promise<ResultDto>;

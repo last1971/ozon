@@ -9,9 +9,10 @@ import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { FirebirdTransaction } from 'ts-firebird';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 // import { Cron } from '@nestjs/schedule';
-import { goodCode, goodQuantityCoeff, isMarkCodesEnabled } from '../helpers';
+import { isMarkCodesEnabled } from '../helpers';
 import { OZON_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
-import { FboMarkMigrationService } from './fbo-mark-migration.service';
+import { GoodServiceEnum } from '../good/good.service.enum';
+import { FboInvoiceCreatorService } from './fbo-invoice-creator.service';
 
 @Injectable()
 export class PostingFboService implements IOrderable {
@@ -20,95 +21,36 @@ export class PostingFboService implements IOrderable {
         private configService: ConfigService,
         @Inject(INVOICE_SERVICE) private invoiceService: IInvoice,
         private eventEmitter: EventEmitter2,
-        private migrationService: FboMarkMigrationService,
+        private fboInvoiceCreator: FboInvoiceCreatorService,
     ) {}
 
     isFbo(): boolean {
         return true;
     }
 
-    async createInvoice(posting: PostingDto, transaction: FirebirdTransaction): Promise<InvoiceDto> {
-        if (isMarkCodesEnabled(this.configService)) {
-            return this.createInvoiceWithMarkMigration(posting, transaction);
-        }
-        return this.createInvoiceLegacy(posting, transaction);
-    }
-
-    private async createInvoiceLegacy(posting: PostingDto, transaction: FirebirdTransaction): Promise<InvoiceDto> {
-        const buyerId = this.getBuyerId();
-        const warehouseName = posting.analytics_data?.warehouse_name;
-        const clusterFrom = posting.financial_data?.cluster_from;
-        for (const product of posting.products) {
-            let res = await this.invoiceService.unPickupOzonFbo(product, warehouseName, transaction);
-            if (!res && clusterFrom) {
-                res = await this.invoiceService.unPickupOzonFbo(product, clusterFrom, transaction);
-            }
-            if (!res) {
-                res = await this.invoiceService.unPickupOzonFbo(product, OZON_ORDER_CANCELLATION_SUFFIX.FBO.trim(), transaction);
-            }
-            if (!res) {
-                const id = goodCode(product);
-                const quantity = product.quantity * goodQuantityCoeff(product);
-                await this.invoiceService.deltaGood(id, quantity, clusterFrom || warehouseName, transaction);
-                this.emitFboShortage(posting, id, quantity, warehouseName, clusterFrom);
-            }
-        }
-        const invoice = await this.invoiceService.createInvoiceFromPostingDto(buyerId, posting, transaction);
-        await this.invoiceService.update(invoice, { IGK: 'NOT1C' }, transaction);
-        return invoice;
-    }
-
-    private emitFboShortage(
-        posting: PostingDto,
-        gc: string,
-        qty: number,
-        warehouseName: string | undefined,
-        clusterFrom: string | undefined,
-    ): void {
-        const message = [
-            'Сервис: Ozon FBO',
-            `Posting: ${posting.posting_number}`,
-            `GOODSCODE: ${gc}, qty: ${qty}`,
-            `warehouse_name: ${warehouseName || '-'}`,
-            `cluster_from:   ${clusterFrom || '-'}`,
-        ].join('\n');
-        this.eventEmitter.emit('error.message', 'Ozon FBO: нет позиции — создана недостача', message);
-    }
-
-    private async createInvoiceWithMarkMigration(
+    async createInvoice(
         posting: PostingDto,
         transaction: FirebirdTransaction,
-    ): Promise<InvoiceDto> {
-        const buyerId = this.getBuyerId();
+        flushers?: (() => Promise<void>)[],
+    ): Promise<InvoiceDto | null> {
         const warehouseName = posting.analytics_data?.warehouse_name;
         const clusterFrom = posting.financial_data?.cluster_from;
         const suffix = OZON_ORDER_CANCELLATION_SUFFIX.FBO.trim();
         const prims = [warehouseName, clusterFrom, suffix].filter((p): p is string => Boolean(p));
 
-        const invoice = await this.invoiceService.createInvoiceFromPostingDto(buyerId, posting, transaction);
-        if (!invoice) {
-            throw new Error(`FBO migration: счёт для ${posting.posting_number} не создан`);
-        }
-
-        const shortages = await this.migrationService.migrate(
-            posting.products,
+        return this.fboInvoiceCreator.create({
+            service: GoodServiceEnum.OZON,
+            posting,
             prims,
-            invoice.invoiceLines,
-            invoice.id,
+            primLabel: clusterFrom || warehouseName,
+            buyerId: this.getBuyerId(),
+            useMigration: isMarkCodesEnabled(this.configService),
+            setIgkNot1c: true,
+            pickupAfterCreate: false,
+            skipIfNoPodbor: false,
             transaction,
-        );
-        for (const s of shortages) {
-            await this.invoiceService.deltaGood(
-                s.goodscode,
-                s.quantity,
-                clusterFrom || warehouseName,
-                transaction,
-            );
-            this.emitFboShortage(posting, s.goodscode, s.quantity, warehouseName, clusterFrom);
-        }
-
-        await this.invoiceService.update(invoice, { IGK: 'NOT1C' }, transaction);
-        return invoice;
+            flushers,
+        });
     }
 
     async list(status: string, day = 2): Promise<PostingDto[]> {

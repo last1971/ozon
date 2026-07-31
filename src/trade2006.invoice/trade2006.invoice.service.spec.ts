@@ -7,6 +7,7 @@ import { DateTime } from 'luxon';
 import { Cache } from '@nestjs/cache-manager';
 import { InvoiceUpdateDto } from "../invoice/dto/invoice.update.dto";
 import { InvoiceDto } from "../invoice/dto/invoice.dto";
+import { GoodServiceEnum } from "../good/good.service.enum";
 
 describe('Trade2006InvoiceService', () => {
     let service: Trade2006InvoiceService;
@@ -492,19 +493,6 @@ describe('Trade2006InvoiceService', () => {
         ]);
         expect(execute.mock.calls[8]).toEqual(['UPDATE S SET STATUS = ? WHERE SCODE IN (?,?)', [5, 1, 2], false]);
     });
-    it('unPickupOzonFbo', async () => {
-        query.mockResolvedValueOnce([{ PODBPOSCODE: '789', QUANSHOP: 5 }]);
-        const res = await service.unPickupOzonFbo({ offer_id: '123', price: '456', quantity: 2 }, '12345');
-        expect(res).toEqual(true);
-        expect(query.mock.calls[0]).toEqual([
-            'SELECT PODBPOSCODE, QUANSHOP FROM PODBPOS WHERE GOODSCODE = ? AND QUANSHOP >= ? AND SCODE IN (SELECT' +
-                ' SCODE FROM S WHERE S.STATUS = 1 AND S.PRIM CONTAINING ?)',
-            ['123', 2, '12345'],
-        ]);
-        expect(execute.mock.calls[0]).toEqual(['UPDATE PODBPOS SET QUANSHOP = ? WHERE PODBPOSCODE = ?', [3, '789']]);
-        expect(commit.mock.calls).toHaveLength(1);
-        expect(rollback.mock.calls).toHaveLength(0);
-    });
     it('updatePrim', async () => {
         await service.updatePrim('1', '2');
         expect(execute.mock.calls[0]).toEqual(['UPDATE S SET PRIM = ?, STATUS = 1 WHERE PRIM = ?', ['2', '1'], true]);
@@ -838,15 +826,6 @@ describe('Trade2006InvoiceService', () => {
         });
     });
 
-    it('deltaGood', async () => {
-        query.mockResolvedValueOnce([{ PRICE: 10.01 }]);
-        await service.deltaGood('111', 10, 'TEST', null);
-        expect(execute.mock.calls[0]).toEqual([
-            'execute procedure deltaquanshopsklad4 ?, ?, ?, ?, ?, null, 1',
-            ['111', 'Trade2006InvoiceService', -10, 'TEST', 10.01],
-            true,
-        ]);
-    });
     it('getByDto', async () => {
         query.mockResolvedValueOnce([]);
         await service.getByDto({
@@ -1327,6 +1306,43 @@ describe('Trade2006InvoiceService', () => {
                 'UPDATE REALPRICEF SET SUMMAP = ? WHERE REALPRICEFCODE = ?',
                 [200, 3]
             );
+        });
+    });
+
+    describe('FBO журнал недостач и цепочки', () => {
+        const t = { query, execute } as any;
+
+        it('logShortage → UPDATE OR INSERT в FBO_SHORTAGE', async () => {
+            await service.logShortage(GoodServiceEnum.OZON, '321', '444', 2, 'CLUSTER', t);
+            expect(execute.mock.calls[0][0]).toContain('UPDATE OR INSERT INTO FBO_SHORTAGE');
+            expect(execute.mock.calls[0][1]).toEqual(['ozon', '321', '444', 2, 'CLUSTER']);
+            expect(execute.mock.calls[0][2]).toBe(false);
+        });
+
+        it('logMigrationLink → INSERT в FBO_MIGRATION_LINK', async () => {
+            await service.logMigrationLink(
+                { posting: '321', goodscode: '444', quantity: 2, donorScode: 10, donorRpc: 100, targetScode: 999, targetRpc: 300 },
+                t,
+            );
+            expect(execute.mock.calls[0][0]).toContain('INSERT INTO FBO_MIGRATION_LINK');
+            expect(execute.mock.calls[0][1]).toEqual(['321', '444', 2, 10, 100, 999, 300]);
+        });
+
+        it('findFboPodbposDonor → маппит строку донора', async () => {
+            query.mockResolvedValueOnce([{ PODBPOSCODE: 1, SCODE: 10, REALPRICECODE: 100, QUANAVAIL: 5 }]);
+            const donor = await service.findFboPodbposDonor('444', ['W'], 2, t);
+            expect(donor).toEqual({ podbposcode: 1, scode: 10, realpricecode: 100, quanAvail: 5 });
+            expect(query.mock.calls[0][1]).toEqual(['W', '444', 2, 'W']);
+        });
+
+        it('findFboPodbposDonor → null при пустом результате', async () => {
+            query.mockResolvedValueOnce([]);
+            expect(await service.findFboPodbposDonor('444', ['W'], 2, t)).toBeNull();
+        });
+
+        it('findFboPodbposDonor → null при пустом prims (без запроса)', async () => {
+            expect(await service.findFboPodbposDonor('444', [], 2, t)).toBeNull();
+            expect(query).not.toHaveBeenCalled();
         });
     });
 });
