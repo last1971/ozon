@@ -40,9 +40,9 @@ const linesByGoodscode = computed<Map<string, MarkScanProgressLineDto[]>>(() => 
 const lines = computed(
     () => products.value.map((a) => {
         const good: GoodInfoDto | undefined = find(goods.goodInfos.get(service.value), { sku: a.offer_id });
-        // goodscode прогресса — строка ("568735"), а good.id с бэка приходит числом → приводим к строке,
-        // иначе Map.get(число) по ключу-строке не находит и КМ показывает «—».
-        const goodscode = good?.id != null ? String(good.id) : '';
+        // goodscode строки прогресса = артикул (REALPRICE.GOODSCODE), это база offer_id до дефиса
+        // ("568735" из "568735-6"). good.id — это Ozon SKU (напр. 2597731118), НЕ goodscode → по нему не матчить.
+        const goodscode = String(a.offer_id ?? '').split('-')[0];
         const progressLines = linesByGoodscode.value.get(goodscode) ?? [];
         const requiresScan = progressLines.some((l) => l.requiresScan);
         const quantityScanned = progressLines.reduce((s, l) => s + l.quantityScanned, 0);
