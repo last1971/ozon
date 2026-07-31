@@ -127,10 +127,12 @@ export class BuildExemplarsPayloadCommand implements ICommandAsync<IFbsSubmitCon
             const parties = (await getParties()).filter((p) => p.goodscode === gc);
             const gtdUnits: (string | null)[] = [];
             for (const p of parties) for (let k = 0; k < p.quantity; k++) gtdUnits.push(p.gtd);
-            if (gtdUnits.length !== exProduct.quantity) {
+            // Подбор в штуках склада (invoice QUAN = ozon_qty * коэффициент), exProduct.quantity — единицы Озона.
+            // Нужно ГТД по экземпляру (единице Озона): достаточно, чтобы штук подбора хватило; берём поштучно.
+            if (gtdUnits.length < exProduct.quantity) {
                 ctx.failed.push({
                     ki: '*',
-                    reason: `product_id ${exProduct.product_id}: подбор дал ${gtdUnits.length} ГТД-ед., ожидается ${exProduct.quantity}`,
+                    reason: `product_id ${exProduct.product_id}: подбор дал ${gtdUnits.length} ГТД-ед., нужно ${exProduct.quantity}`,
                 });
                 continue;
             }

@@ -26,29 +26,10 @@ export class SetAndConfirmExemplarsCommand implements ICommandAsync<IFbsSubmitCo
         const setResp = await this.postingService.setExemplars(setReq);
         this.logger.log(`[km ${ctx.postingNumber}] set resp=${JSON.stringify(setResp)}`);
 
+        // set=false часто ложный (или заказ немаркированный — марок нет вовсе).
+        // Единый признак готовности и для марок, и без — статус ship_available (проверяется ниже poll'ом).
         if (!setResp?.result) {
-            const status = await this.postingService.getExemplarStatus(ctx.postingNumber);
-            const allPassed =
-                (status?.products?.length ?? 0) > 0 &&
-                status.products.every((p) =>
-                    p.exemplars?.every((e) => e.marks?.every((m) => m.check_status === 'passed')),
-                );
-            this.logger.warn(
-                `[km ${ctx.postingNumber}] set=false; overall=${status?.status}; allPassed=${allPassed}`,
-            );
-            ctx.stopChain = true;
-            ctx.result = allPassed
-                ? { ok: true }
-                : {
-                      ok: false,
-                      failedStep: 'set',
-                      goToOzon: true,
-                      failed: [
-                          ...ctx.failed,
-                          { ki: '*', reason: `setExemplars result=false; status=${status?.status}` },
-                      ],
-                  };
-            return ctx;
+            this.logger.warn(`[km ${ctx.postingNumber}] set result=false — решаем по статусу (poll ship_available)`);
         }
 
         const pollRes = await pollUntil<ExemplarStatusResponseDto>(

@@ -1,4 +1,4 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import { ProductService } from '../product/product.service';
 import { PostingsRequestDto } from './dto/postings.request.dto';
 import { PostingDto } from './dto/posting.dto';
@@ -231,10 +231,23 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
 
     /** Этикетка отправления, стр.1 (ШК). Товарный ярлык (стр.2) Озон подкладывает всегда — режем. */
     async getShipmentLabel(invoice: InvoiceDto): Promise<Buffer> {
-        const pdf = await this.ozonApiService.methodBinary('/v2/posting/fbs/package-label', {
-            posting_number: [invoice.remark],
-        });
-        return firstPageOnly(pdf);
+        // После ship этикетка готовится не мгновенно — Озон отдаёт 400, пока не сгенерирована. Ретраим.
+        const delaysMs = [0, 2000, 4000, 8000];
+        let lastErr: any;
+        for (let i = 0; i < delaysMs.length; i++) {
+            if (delaysMs[i]) await new Promise((r) => setTimeout(r, delaysMs[i]));
+            try {
+                const pdf = await this.ozonApiService.methodBinary('/v2/posting/fbs/package-label', {
+                    posting_number: [invoice.remark],
+                });
+                return firstPageOnly(pdf);
+            } catch (e) {
+                lastErr = e;
+            }
+        }
+        throw new BadRequestException(
+            `Этикетка ещё не готова, повторите через несколько секунд: ${lastErr?.message ?? 'package-label недоступен'}`,
+        );
     }
 
     /** ШК отправления (upper_barcode) — эталон для сверки IGK==ШК. */
