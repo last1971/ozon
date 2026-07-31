@@ -18,10 +18,17 @@ import { ConfigService } from "@nestjs/config";
 import { Environment } from "../env.validation";
 import { ProductInfoDto } from "../product/dto/product.info.dto";
 import { GoodsCountProcessor } from "../helpers/good/goods.count.processor";
-import { loadRows, readColumnByHeader } from '../helpers';
+import { DisabledLevel, isDisabled, loadRows, parseDisabled, readColumnByHeader } from '../helpers';
 import { GoodWbDto } from "./dto/good.wb.dto";
 import { GoodAvitoDto } from "./dto/good.avito.dto";
 import { GoodPercentDto } from "./dto/good.percent.dto";
+import { CommandChainAsync } from "../helpers/command/command.chain.async";
+import { IDisableGoodsContext } from "./commands/i.disable.goods.context";
+import { ResolveDisableTokensCommand } from "./commands/resolve-disable-tokens.command";
+import { WriteDisabledFlagCommand } from "./commands/write-disabled-flag.command";
+import { ClearDisabledFlagCommand } from "./commands/clear-disabled-flag.command";
+import { PushZeroCountsCommand } from "./commands/push-zero-counts.command";
+import { RestoreCountsCommand } from "./commands/restore-counts.command";
 
 @Injectable()
 export class ExtraGoodService implements OnApplicationBootstrap {
@@ -37,6 +44,11 @@ export class ExtraGoodService implements OnApplicationBootstrap {
         @Inject(GOOD_SERVICE) private goodService: IGood,
         private configService: ConfigService,
         private eventEmitter: EventEmitter2,
+        private resolveDisableTokensCommand: ResolveDisableTokensCommand,
+        private writeDisabledFlagCommand: WriteDisabledFlagCommand,
+        private clearDisabledFlagCommand: ClearDisabledFlagCommand,
+        private pushZeroCountsCommand: PushZeroCountsCommand,
+        private restoreCountsCommand: RestoreCountsCommand,
     ) {
         this.services = new Map<GoodServiceEnum, { service: ICountUpdateable; isSwitchedOn: boolean }>();
         const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
@@ -71,7 +83,7 @@ export class ExtraGoodService implements OnApplicationBootstrap {
                 message: `Service ${serviceEnum} not configured`,
             };
         }
-        const processor = new GoodsCountProcessor(this.services, this.logger);
+        const processor = new GoodsCountProcessor(this.services, this.logger, this.goodService);
         return {
             isSuccess: service.isSwitchedOn,
             message: service.isSwitchedOn
@@ -93,7 +105,7 @@ export class ExtraGoodService implements OnApplicationBootstrap {
             };
         }
         service.isSwitchedOn = isSwitchedDto.isSwitchedOn;
-        const processor = new GoodsCountProcessor(this.services, this.logger);
+        const processor = new GoodsCountProcessor(this.services, this.logger, this.goodService);
         let count: number;
         if (isSwitchedDto.isSwitchedOn) {
             count = await processor.processGoodsCountForService(isSwitchedDto.service, this.goodService, '');
@@ -120,9 +132,9 @@ export class ExtraGoodService implements OnApplicationBootstrap {
 
     /**
      * Ядро обнуления остатков: пушит 0 для переданных SKU чанками по 100.
-     * Переиспользуется resetBalances (весь сервис) и disableByCodes (подмножество).
+     * Переиспользуется resetBalances (весь сервис) и PushZeroCountsCommand (подмножество).
      */
-    private async zeroBalances(serviceEnum: GoodServiceEnum, skuList: string[]): Promise<number> {
+    async zeroBalances(serviceEnum: GoodServiceEnum, skuList: string[]): Promise<number> {
         const service = this.services.get(serviceEnum);
         let count = 0;
         for (const skus of chunk(skuList, 100)) {
@@ -133,26 +145,80 @@ export class ExtraGoodService implements OnApplicationBootstrap {
     }
 
     /**
-     * Отключить конкретные товары (обнулить остаток) по списку SKU маркетплейса.
-     * @param serviceEnum - Тип сервиса (маркетплейса)
-     * @param skus - SKU маркетплейса для отключения
+     * Отключить товары/фасовки на маркете (durable): пишет GOODS_DISABLED и пушит 0.
+     * level='good' → весь товар (GOODSCODE), level='sku' → точная фасовка.
      */
-    async disableByCodes(serviceEnum: GoodServiceEnum, skus: string[]): Promise<ResultDto> {
-        const service = this.services.get(serviceEnum);
-        if (!service) {
+    async disable(serviceEnum: GoodServiceEnum, skus: string[], level: DisabledLevel): Promise<ResultDto> {
+        if (!this.services.get(serviceEnum)) {
             return { isSuccess: false, message: `Service ${serviceEnum} not configured` };
         }
-        const skuList = [...new Set(skus.map((sku) => sku.trim()).filter(Boolean))];
-        if (!skuList.length) {
-            return { isSuccess: false, message: `Не передано ни одного SKU для ${serviceEnum}` };
+        const chain = new CommandChainAsync<IDisableGoodsContext>([
+            this.resolveDisableTokensCommand,
+            this.writeDisabledFlagCommand,
+            this.pushZeroCountsCommand,
+        ]);
+        const ctx = await chain.execute({ service: serviceEnum, inputSkus: skus, level, errors: [] });
+        return this.toResult(ctx, 'disabled');
+    }
+
+    /**
+     * Включить товары/фасовки на маркете: снимает GOODS_DISABLED и возвращает реальный склад.
+     */
+    async enable(serviceEnum: GoodServiceEnum, skus: string[], level: DisabledLevel): Promise<ResultDto> {
+        if (!this.services.get(serviceEnum)) {
+            return { isSuccess: false, message: `Service ${serviceEnum} not configured` };
         }
-        const count = await this.zeroBalances(serviceEnum, skuList);
-        return { isSuccess: true, message: `Service ${serviceEnum} disabled ${count} skus` };
+        const chain = new CommandChainAsync<IDisableGoodsContext>([
+            this.resolveDisableTokensCommand,
+            this.clearDisabledFlagCommand,
+            this.restoreCountsCommand,
+        ]);
+        const ctx = await chain.execute({ service: serviceEnum, inputSkus: skus, level, errors: [] });
+        return this.toResult(ctx, 'enabled');
+    }
+
+    private toResult(ctx: IDisableGoodsContext, verb: 'disabled' | 'enabled'): ResultDto {
+        if (ctx.stopChain) {
+            return { isSuccess: false, message: (ctx.errors ?? []).join('; ') || 'stopped' };
+        }
+        return { isSuccess: true, message: `Service ${ctx.service} ${verb} ${ctx.count ?? 0} skus` };
     }
 
     /** Столбец SKU из xlsx (заголовок «SKU»/«Артикул»/«Артикул продавца»). */
     async skusFromFile(buffer: Buffer): Promise<string[]> {
         return readColumnByHeader(buffer, ['SKU', 'sku', 'Артикул продавца', 'Артикул']);
+    }
+
+    /** Список сконфигурированных сервисов с их состоянием вкл/выкл. */
+    listServices(): { service: GoodServiceEnum; isSwitchedOn: boolean }[] {
+        return Array.from(this.services.entries()).map(([service, v]) => ({
+            service,
+            isSwitchedOn: v.isSwitchedOn,
+        }));
+    }
+
+    /** Замороженные коды сервиса, раскодированные в { code, level }. */
+    async getDisabled(serviceEnum: GoodServiceEnum): Promise<{ code: string; level: DisabledLevel }[]> {
+        const codes = await this.goodService.getDisabledCodes(serviceEnum);
+        return codes.map(parseDisabled);
+    }
+
+    /** Сводка по сервису: вкл/выкл + активные/замороженные SKU. */
+    async getStatus(
+        serviceEnum: GoodServiceEnum,
+    ): Promise<{ isSwitchedOn: boolean; total: number; active: number; disabled: { code: string; level: DisabledLevel }[] }> {
+        const entry = this.services.get(serviceEnum);
+        if (!entry) return { isSwitchedOn: false, total: 0, active: 0, disabled: [] };
+        const skuList = entry.service.skuList ?? [];
+        const stored = await this.goodService.getDisabledCodes(serviceEnum);
+        const disabledSet = new Set(stored);
+        const offCount = skuList.filter((sku) => isDisabled(sku, disabledSet)).length;
+        return {
+            isSwitchedOn: entry.isSwitchedOn,
+            total: skuList.length,
+            active: skuList.length - offCount,
+            disabled: stored.map(parseDisabled),
+        };
     }
 
     async onApplicationBootstrap(): Promise<void> {
@@ -201,7 +267,7 @@ export class ExtraGoodService implements OnApplicationBootstrap {
 
     @Cron('0 0 9-19 * * 1-6', { name: 'controlCheckGoodCount' })
     async checkGoodCount(): Promise<void> {
-        const processor = new GoodsCountProcessor(this.services, this.logger);
+        const processor = new GoodsCountProcessor(this.services, this.logger, this.goodService);
         for (const service of this.services.keys()) {
             this.logger.log(
                 `Update quantity for ${await processor.processGoodsCountForService(
@@ -235,7 +301,7 @@ export class ExtraGoodService implements OnApplicationBootstrap {
     async countsChanged(goods: GoodDto[]): Promise<void> {
         this.logger.log(`SKUs changed: ${goods.map((good) => good.code).join(', ')}`);
 
-        const processor = new GoodsCountProcessor(this.services, this.logger);
+        const processor = new GoodsCountProcessor(this.services, this.logger, this.goodService);
 
         await processor.processGoodsCountChanges(goods);
     }

@@ -1,5 +1,6 @@
-import { BadRequestException, Body, Controller, Inject, Param, Post, Put } from "@nestjs/common";
-import { ApiBody, ApiOkResponse, ApiOperation, ApiParam, ApiTags } from "@nestjs/swagger";
+import { BadRequestException, Body, Controller, Get, Inject, Param, Post, Put, Res } from "@nestjs/common";
+import { Response } from "express";
+import { ApiBody, ApiOkResponse, ApiOperation, ApiParam, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { IInvoice, INVOICE_SERVICE } from "../interfaces/IInvoice";
 import { RemarkDto } from "../invoice/dto/remark.dto";
 import { InvoiceUpdateDto } from "../invoice/dto/invoice.update.dto";
@@ -15,6 +16,30 @@ export class PickupController {
         private orderService: OrderService,
     ) {}
 
+    @Post(':remark/pick')
+    @ApiOperation({ summary: 'Подобрать счёт (pickupInvoice). Без передачи в Озон.' })
+    @ApiParam({ name: 'remark', description: 'Примечание = номер заказа', type: 'string' })
+    @ApiOkResponse({ description: 'Результат подбора: { isSuccess }' })
+    async pick(@Param() remarkDto: RemarkDto): Promise<any> {
+        const { invoice } = remarkDto;
+        const ready = await this.markScanService.isReadyToFinish(invoice);
+        if (!ready) {
+            throw new BadRequestException('Не все КМ отсканированы');
+        }
+        await this.invoiceService.pickupInvoice(invoice, null);
+        return { isSuccess: true };
+    }
+
+    @Post(':remark/marks/prepare')
+    @ApiOperation({ summary: 'Фаза 1: предпроверка перед передачей (Озон create-or-get). Ошибка → стоп до диалога.' })
+    @ApiParam({ name: 'remark', description: 'Примечание = номер заказа', type: 'string' })
+    @ApiOkResponse({ description: 'Результат предпроверки: { prepare }' })
+    async prepareMarks(@Param() remarkDto: RemarkDto): Promise<any> {
+        const { invoice } = remarkDto;
+        const prepare = await this.orderService.prepareFbsMarksForInvoice(invoice);
+        return { prepare };
+    }
+
     @Post(':remark/marks')
     @ApiOperation({ summary: 'Передать КМ (+ГТД) маркетплейсу. Без сборки/ship.' })
     @ApiParam({ name: 'remark', description: 'Примечание = номер заказа', type: 'string' })
@@ -27,6 +52,22 @@ export class PickupController {
         }
         const submit = await this.orderService.submitFbsMarkCodesForInvoice(invoice);
         return { submit };
+    }
+
+    @Get(':remark/label')
+    @ApiOperation({ summary: 'Этикетка отправления (стр.1 — ШК). Открывается в новой вкладке для печати.' })
+    @ApiParam({ name: 'remark', description: 'Примечание = номер заказа', type: 'string' })
+    @ApiResponse({
+        status: 200,
+        description: 'PDF этикетки отправления',
+        content: { 'application/pdf': { schema: { type: 'string', format: 'binary' } } },
+    })
+    async label(@Param() remarkDto: RemarkDto, @Res() res: Response): Promise<void> {
+        const { invoice } = remarkDto;
+        const pdf = await this.orderService.getShipmentLabelForInvoice(invoice);
+        res.setHeader('Content-Type', 'application/pdf');
+        res.setHeader('Content-Disposition', `inline; filename=${invoice.remark}.pdf`);
+        res.send(pdf);
     }
 
     @Put(':remark')
@@ -48,6 +89,14 @@ export class PickupController {
             const ready = await this.markScanService.isReadyToFinish(invoice);
             if (!ready) {
                 throw new BadRequestException('Не все КМ отсканированы');
+            }
+            // Сверка IGK==ШК: отсканированный ШК посылки должен совпасть с эталоном маркетплейса.
+            // У ВБ метода нет → expected undefined → сверка пропускается.
+            const expected = await this.orderService.getShipmentBarcodeForInvoice(invoice);
+            if (expected && invoiceUpdateDto.IGK && invoiceUpdateDto.IGK !== expected) {
+                throw new BadRequestException(
+                    `Отсканирован не тот ШК: ожидался ${expected}, получен ${invoiceUpdateDto.IGK}`,
+                );
             }
         }
         // FINISH_PICKUP только фиксирует IGK и время. Передача КМ — отдельный POST /marks.

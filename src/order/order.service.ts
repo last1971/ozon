@@ -1,4 +1,4 @@
-import { ForbiddenException, Inject, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, ForbiddenException, Inject, Injectable, Logger } from '@nestjs/common';
 import { ProductService } from '../product/product.service';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { ResultDto } from '../helpers/dto/result.dto';
@@ -19,8 +19,8 @@ import { ProcessedCacheService } from '../processed-cache/processed-cache.servic
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { OZON_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { isMarkSubmittable, SubmitResultDto } from '../interfaces/IMarkSubmittable';
-import { isMarkCodesEnabled } from '../helpers';
+import { FbsPrepareDto, isMarkSubmittable, SubmitResultDto } from '../interfaces/IMarkSubmittable';
+import { isShipmentLabelProvider, IShipmentLabelProvider } from '../interfaces/IShipmentLabelProvider';
 
 @Injectable()
 export class OrderService {
@@ -111,10 +111,6 @@ export class OrderService {
         }
     }
 
-    private isMarkCodesEnabled(): boolean {
-        return isMarkCodesEnabled(this.configService);
-    }
-
     @Cron('0 */5 * * * *', { name: 'checkNewOrders' })
     async checkNewOrders(): Promise<void> {
         for (const service of this.orderServices) {
@@ -143,7 +139,8 @@ export class OrderService {
     }
 
     async submitFbsMarkCodesForInvoice(invoice: InvoiceDto): Promise<SubmitResultDto | undefined> {
-        if (!this.isMarkCodesEnabled()) return undefined;
+        // Флаг MARK_CODES_ENABLED больше не запирает отгрузку: цепочка Озона нужна и без марок
+        // (магазин, немаркированный товар). Проверку наших кодов в БД глушит getAttachedMarkCodesByScode.
         const service = this.getServiceByBuyerId(invoice.buyerId, true);
         if (!isMarkSubmittable(service)) return undefined;
         try {
@@ -153,6 +150,41 @@ export class OrderService {
             this.logger.warn(`submitFbsMarkCodes failed for ${invoice.remark}: ${message}`);
             return { ok: false, failed: [{ ki: '*', reason: message }] };
         }
+    }
+
+    /** Фаза 1: предпроверка перед передачей КМ (Озон create-or-get). Нет метода (ВБ) → undefined. */
+    async prepareFbsMarksForInvoice(invoice: InvoiceDto): Promise<FbsPrepareDto | undefined> {
+        // Create-or-get (Озон API) не трогает нашу БД — нужен и на магазине для отгрузки без марок.
+        const service = this.getServiceByBuyerId(invoice.buyerId, true);
+        if (!isMarkSubmittable(service) || !service.prepareFbsMarks) return undefined;
+        try {
+            return await service.prepareFbsMarks(invoice);
+        } catch (e) {
+            const message = e?.message ?? String(e);
+            this.logger.warn(`prepareFbsMarks failed for ${invoice.remark}: ${message}`);
+            return { ok: false, error: message };
+        }
+    }
+
+    /** Этикетка отправления (стр.1) через IShipmentLabelProvider. Ветка WB/Ozon — по buyerId счёта. */
+    async getShipmentLabelForInvoice(invoice: InvoiceDto): Promise<Buffer> {
+        const service = this.getServiceByBuyerId(invoice.buyerId, true);
+        if (!isShipmentLabelProvider(service)) {
+            throw new BadRequestException('Этикетка отправления недоступна для этого маркетплейса');
+        }
+        return service.getShipmentLabel(invoice);
+    }
+
+    /**
+     * Эталонный ШК отправления для сверки IGK==ШК. У маркетплейса без метода
+     * (ВБ) — undefined → сверка пропускается.
+     */
+    async getShipmentBarcodeForInvoice(invoice: InvoiceDto): Promise<string | undefined> {
+        const service = this.getServiceByBuyerId(invoice.buyerId, true) as
+            | (IOrderable & Partial<IShipmentLabelProvider>)
+            | null;
+        if (!service?.getShipmentBarcode) return undefined;
+        return service.getShipmentBarcode(invoice);
     }
 
     private async processWithCache<T extends { posting_number: string }>(
@@ -287,8 +319,18 @@ export class OrderService {
         }
     }
 
+    /** Маркетплейс (enum) по buyerId счёта — фронт ветвит флоу по нему, а не по хардкод-id. */
+    getServiceEnumByBuyerId(buyerId: number, isFbs = true): GoodServiceEnum | null {
+        const service = this.getServiceByBuyerId(buyerId, isFbs);
+        if (!service) return null;
+        const entry = Object.entries(this.serviceNames).find(([, name]) => name === service.constructor.name);
+        return entry ? (entry[0] as GoodServiceEnum) : null;
+    }
+
     async getByPostingNumber(postingNumber: string, buyerId: number): Promise<PostingDto | null> {
-        return this.getServiceByBuyerId(buyerId)?.getByPostingNumber(postingNumber);
+        const posting = await this.getServiceByBuyerId(buyerId)?.getByPostingNumber(postingNumber);
+        if (posting) posting.service = this.getServiceEnumByBuyerId(buyerId) ?? undefined;
+        return posting;
     }
 
     async getByFboNumber(fboNumber: string): Promise<PostingDto | null> {

@@ -8,7 +8,25 @@ import OzonFbsLabels from "@/components/OzonFbsLabels.vue";
 import SupplyWbFbs from "@/components/SupplyWbFbs.vue";
 import OzonProductCreate from "@/components/OzonProductCreate.vue";
 import WbCopyProduct from "@/components/WbCopyProduct.vue";
+import { postingStore } from "@/stores/postings";
+
+const posting = postingStore();
 const tab = ref('prices');
+const scanOrder = ref('');
+// Счётчик кликов — растёт при каждом клике, чтобы повторный клик ТЕМ ЖЕ заказом тоже сработал.
+const scanNonce = ref(0);
+
+// Клик по номеру заказа в гриде OZON FBS этикетки → перейти на «Скан FBS» и загрузить заказ.
+function openScan(order: string) {
+    scanOrder.value = order;
+    scanNonce.value++;
+    tab.value = 'scan-fbs';
+}
+
+// Заказ успешно завершён в «Скан FBS» → убираем его из списка «OZON FBS этикетки».
+function onScanSuccess(order: string) {
+    posting.removeByPostingNumber(order);
+}
 </script>
 
 <template>
@@ -36,11 +54,11 @@ const tab = ref('prices');
                 </v-tabs-window-item>
 
                 <v-tabs-window-item value="scan-fbs">
-                    <scan-fbs class="pa-2"/>
+                    <scan-fbs class="pa-2" :prefill="scanOrder" :prefill-nonce="scanNonce" @success="onScanSuccess"/>
                 </v-tabs-window-item>
 
                 <v-tabs-window-item value="ozon-fbs-labels">
-                    <ozon-fbs-labels class="pa-2"/>
+                    <ozon-fbs-labels class="pa-2" @pick-order="openScan"/>
                 </v-tabs-window-item>
 
                 <v-tabs-window-item value="supply-wb-fbs">

@@ -1,5 +1,26 @@
 import PDFDocument from 'pdfkit';
-import { calculateOptimalFontSize } from './pdf.helpers';
+import { PDFDocument as PdfLibDocument } from 'pdf-lib';
+import { calculateOptimalFontSize, firstPageOnly } from './pdf.helpers';
+
+async function makePdf(pages: number): Promise<Buffer> {
+    const doc = await PdfLibDocument.create();
+    for (let i = 0; i < pages; i++) doc.addPage([200, 200]);
+    return Buffer.from(await doc.save());
+}
+
+describe('firstPageOnly', () => {
+    it('режет двухстраничный PDF до одной страницы', async () => {
+        const out = await firstPageOnly(await makePdf(2));
+        const parsed = await PdfLibDocument.load(out);
+        expect(parsed.getPageCount()).toBe(1);
+    });
+
+    it('одностраничный PDF возвращает как есть (тот же буфер)', async () => {
+        const src = await makePdf(1);
+        const out = await firstPageOnly(src);
+        expect(out).toBe(src);
+    });
+});
 
 describe('calculateOptimalFontSize', () => {
     it('should return maxFontSize if text fits easily', () => {

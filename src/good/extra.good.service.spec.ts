@@ -11,6 +11,11 @@ import { GoodServiceEnum } from "./good.service.enum";
 import { ConfigService } from "@nestjs/config";
 import { EventEmitter2 } from "@nestjs/event-emitter";
 import { GoodsCountProcessor } from "../helpers/good/goods.count.processor";
+import { ResolveDisableTokensCommand } from "./commands/resolve-disable-tokens.command";
+import { WriteDisabledFlagCommand } from "./commands/write-disabled-flag.command";
+import { ClearDisabledFlagCommand } from "./commands/clear-disabled-flag.command";
+import { PushZeroCountsCommand } from "./commands/push-zero-counts.command";
+import { RestoreCountsCommand } from "./commands/restore-counts.command";
 import Excel from 'exceljs';
 
 describe('ExtraGoodService', () => {
@@ -23,6 +28,9 @@ describe('ExtraGoodService', () => {
     const setWbData = jest.fn().mockResolvedValue(undefined);
     const setAvitoData = jest.fn().mockResolvedValue(undefined);
     const setPercents = jest.fn().mockResolvedValue(undefined);
+    const setGoodsDisabled = jest.fn().mockResolvedValue(undefined);
+    const clearGoodsDisabled = jest.fn().mockResolvedValue(undefined);
+    const getDisabledCodes = jest.fn().mockResolvedValue([]);
     const getGoodIds = jest.fn().mockResolvedValue(
         { goods: new Map<string, number>(), nextArgs: '' },
     );
@@ -33,7 +41,7 @@ describe('ExtraGoodService', () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 ExtraGoodService,
-                { provide: GOOD_SERVICE, useValue: { updateCountForService, updateCountForSkus, in: mockIn, setWbData, setAvitoData, setPercents } },
+                { provide: GOOD_SERVICE, useValue: { updateCountForService, updateCountForSkus, in: mockIn, setWbData, setAvitoData, setPercents, setGoodsDisabled, clearGoodsDisabled, getDisabledCodes } },
                 { provide: YandexOfferService, useValue: { test: "Yandex", skuList: [], getGoodIds } },
                 { provide: ExpressOfferService, useValue: { skuList: [], getGoodIds } },
                 { provide: ProductService, useValue: { skuList: ["222", "222-10"], updateGoodCounts, getGoodIds } },
@@ -42,6 +50,11 @@ describe('ExtraGoodService', () => {
                 { provide: SyliusProductService, useValue: { skuList: [], updateGoodCounts, getGoodIds } },
                 { provide: ConfigService, useValue: { get: () => Object.values(GoodServiceEnum) } },
                 { provide: EventEmitter2, useValue: { emit } },
+                ResolveDisableTokensCommand,
+                WriteDisabledFlagCommand,
+                ClearDisabledFlagCommand,
+                PushZeroCountsCommand,
+                RestoreCountsCommand,
             ],
         }).compile();
 
@@ -189,44 +202,112 @@ describe('ExtraGoodService', () => {
         });
     });
 
-    describe('disableByCodes', () => {
-        it('обнуляет остаток по переданным SKU и возвращает count', async () => {
-            updateGoodCounts.mockResolvedValueOnce(2);
-            const res = await service.disableByCodes(GoodServiceEnum.WB, ['A1', 'A2']);
-            expect(res).toEqual({ isSuccess: true, message: 'Service wb disabled 2 skus' });
-            expect(updateGoodCounts.mock.calls[0]).toEqual([
-                new Map<string, number>([['A1', 0], ['A2', 0]]),
-            ]);
-        });
-
-        it('чистит и дедуплицирует SKU перед отключением', async () => {
+    describe('disable (цепочка resolve→write→pushZero)', () => {
+        it('level=sku — пишет sku-блок и пушит 0 только по нему', async () => {
             updateGoodCounts.mockResolvedValueOnce(1);
-            await service.disableByCodes(GoodServiceEnum.WB, [' A1 ', 'A1', '', 'A2']);
-            expect(updateGoodCounts.mock.calls[0]).toEqual([
-                new Map<string, number>([['A1', 0], ['A2', 0]]),
-            ]);
+            const res = await service.disable(GoodServiceEnum.WB, ['111'], 'sku');
+            expect(setGoodsDisabled).toHaveBeenCalledWith(['111'], GoodServiceEnum.WB);
+            expect(updateGoodCounts.mock.calls[0][0]).toEqual(new Map<string, number>([['111', 0]]));
+            expect(res).toEqual({ isSuccess: true, message: 'Service wb disabled 1 skus' });
         });
 
-        it('чанкует по 100 SKU', async () => {
-            updateGoodCounts.mockResolvedValue(0);
-            const skus = Array.from({ length: 150 }, (_, i) => `S${i}`);
-            await service.disableByCodes(GoodServiceEnum.WB, skus);
-            expect(updateGoodCounts.mock.calls).toHaveLength(2);
-            expect(updateGoodCounts.mock.calls[0][0].size).toBe(100);
-            expect(updateGoodCounts.mock.calls[1][0].size).toBe(50);
+        it('level=good — пишет good-блок (good:222) и обнуляет все фасовки', async () => {
+            updateGoodCounts.mockResolvedValueOnce(2);
+            const res = await service.disable(GoodServiceEnum.OZON, ['222'], 'good');
+            expect(setGoodsDisabled).toHaveBeenCalledWith(['good:222'], GoodServiceEnum.OZON);
+            expect(updateGoodCounts.mock.calls[0][0]).toEqual(new Map<string, number>([['222', 0], ['222-10', 0]]));
+            expect(res.message).toBe('Service ozon disabled 2 skus');
         });
 
-        it('пустой список — ничего не пушит', async () => {
-            const res = await service.disableByCodes(GoodServiceEnum.WB, ['', '  ']);
+        it('КЛЮЧЕВОЕ: level=sku на 222 не трогает фасовку 222-10', async () => {
+            updateGoodCounts.mockResolvedValueOnce(1);
+            await service.disable(GoodServiceEnum.OZON, ['222'], 'sku');
+            expect(setGoodsDisabled).toHaveBeenCalledWith(['222'], GoodServiceEnum.OZON);
+            expect(updateGoodCounts.mock.calls[0][0]).toEqual(new Map<string, number>([['222', 0]]));
+        });
+
+        it('пустой ввод → stopChain, флаг не пишется и 0 не пушится', async () => {
+            const res = await service.disable(GoodServiceEnum.WB, ['', '  '], 'sku');
             expect(res.isSuccess).toBe(false);
             expect(res.message).toContain('Не передано ни одного SKU');
+            expect(setGoodsDisabled).not.toHaveBeenCalled();
             expect(updateGoodCounts).not.toHaveBeenCalled();
         });
 
         it('несконфигурированный сервис — not configured', async () => {
-            const res = await service.disableByCodes(null, ['A1']);
+            const res = await service.disable(null, ['111'], 'sku');
             expect(res).toEqual({ isSuccess: false, message: 'Service null not configured' });
-            expect(updateGoodCounts).not.toHaveBeenCalled();
+            expect(setGoodsDisabled).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('enable (цепочка resolve→clear→restore)', () => {
+        it('level=sku — снимает sku-блок и пересчитывает товар', async () => {
+            const goods = [{ code: '222', quantity: 10, reserve: 0, name: 'x' }];
+            mockIn.mockResolvedValueOnce(goods);
+            const spy = jest.spyOn(service, 'countsChanged').mockResolvedValue();
+
+            const res = await service.enable(GoodServiceEnum.OZON, ['222-10'], 'sku');
+
+            expect(clearGoodsDisabled).toHaveBeenCalledWith(['222-10'], GoodServiceEnum.OZON);
+            expect(mockIn).toHaveBeenCalledWith(['222'], null); // goodCode('222-10')
+            expect(spy).toHaveBeenCalledWith(goods);
+            expect(res.message).toBe('Service ozon enabled 1 skus');
+            spy.mockRestore();
+        });
+
+        it('level=good — снимает good-блок (good:222)', async () => {
+            mockIn.mockResolvedValueOnce([]);
+            const spy = jest.spyOn(service, 'countsChanged').mockResolvedValue();
+
+            await service.enable(GoodServiceEnum.OZON, ['222'], 'good');
+
+            expect(clearGoodsDisabled).toHaveBeenCalledWith(['good:222'], GoodServiceEnum.OZON);
+            expect(mockIn).toHaveBeenCalledWith(['222'], null);
+            spy.mockRestore();
+        });
+
+        it('пустой ввод → stopChain, флаг не снимается', async () => {
+            const res = await service.enable(GoodServiceEnum.WB, [], 'sku');
+            expect(res.isSuccess).toBe(false);
+            expect(clearGoodsDisabled).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('read-геттеры статуса', () => {
+        it('listServices — все сервисы с isSwitchedOn', () => {
+            const list = service.listServices();
+            expect(list).toEqual(expect.arrayContaining([
+                { service: GoodServiceEnum.WB, isSwitchedOn: true },
+                { service: GoodServiceEnum.OZON, isSwitchedOn: true },
+            ]));
+        });
+
+        it('getDisabled — раскодирует уровень из хранимого кода', async () => {
+            getDisabledCodes.mockResolvedValueOnce(['222', 'good:333']);
+            const res = await service.getDisabled(GoodServiceEnum.OZON);
+            expect(res).toEqual([
+                { code: '222', level: 'sku' },
+                { code: '333', level: 'good' },
+            ]);
+        });
+
+        it('getStatus — good-блок 222 гасит весь товар (active 0)', async () => {
+            // OZON skuList = ["222","222-10"]; good:222 → обе фасовки off
+            getDisabledCodes.mockResolvedValueOnce(['good:222']);
+            const res = await service.getStatus(GoodServiceEnum.OZON);
+            expect(res).toEqual({ isSwitchedOn: true, total: 2, active: 0, disabled: [{ code: '222', level: 'good' }] });
+        });
+
+        it('getStatus — sku-блок 222 гасит только штучную, 222-10 активна (active 1)', async () => {
+            getDisabledCodes.mockResolvedValueOnce(['222']);
+            const res = await service.getStatus(GoodServiceEnum.OZON);
+            expect(res).toEqual({ isSwitchedOn: true, total: 2, active: 1, disabled: [{ code: '222', level: 'sku' }] });
+        });
+
+        it('getStatus — несконфигурированный сервис', async () => {
+            const res = await service.getStatus(null);
+            expect(res).toEqual({ isSwitchedOn: false, total: 0, active: 0, disabled: [] });
         });
     });
 

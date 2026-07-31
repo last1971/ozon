@@ -1,8 +1,8 @@
 import { ApiProperty } from '@nestjs/swagger';
-import { IsEnum, IsOptional } from 'class-validator';
+import { IsEnum, IsIn, IsOptional } from 'class-validator';
 import { Transform } from 'class-transformer';
 import { GoodServiceEnum } from '../good.service.enum';
-import { toStringList } from '../../helpers';
+import { DisabledLevel, toStringList } from '../../helpers';
 
 /** Вход ручки disable: сервис + список SKU ИЛИ файл. */
 export class DisableGoodsDto {
@@ -21,4 +21,11 @@ export class DisableGoodsDto {
     @IsOptional()
     @Transform(toStringList)
     skus?: string[];
+
+    @ApiProperty({
+        description: 'good → весь товар (GOODSCODE); sku → точная фасовка. Обязательно, без дефолта.',
+        enum: ['good', 'sku'],
+    })
+    @IsIn(['good', 'sku'])
+    level: DisabledLevel;
 }

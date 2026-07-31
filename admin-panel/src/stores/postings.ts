@@ -33,5 +33,10 @@ export const postingStore = defineStore("postingStore", {
         clearAwaitingDelivery(): void {
             this.awaitingDelivery = [];
         },
+
+        // Заказ успешно собран/отгружён → убираем из списка ожидающих (без перезагрузки всех).
+        removeByPostingNumber(postingNumber: string): void {
+            this.awaitingDelivery = this.awaitingDelivery.filter((o) => o.posting_number !== postingNumber);
+        },
     }
 });

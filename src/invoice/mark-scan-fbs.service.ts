@@ -46,6 +46,10 @@ export class MarkScanFbsService {
 
     async unscan(invoice: InvoiceDto, ki: string): Promise<MarkScanProgressDto> {
         if (!this.isEnabled()) throw new ConflictException('Сканирование КМ отключено');
+        // Счёт подобран → отвязка КМ запрещена (подбор увёл счёт со статуса сборки).
+        if (await this.invoiceService.isPickedUp(invoice, null)) {
+            throw new ConflictException('Счёт подобран — отвязка КМ запрещена');
+        }
         const attached = await this.invoiceService.getAttachedMarkCodesByScode(invoice.id, null);
         const row = attached.find((a) => a.ki === ki);
         if (!row) throw new NotFoundException('КМ не привязан к этому счёту');
@@ -63,8 +67,9 @@ export class MarkScanFbsService {
 
     async getProgress(invoice: InvoiceDto): Promise<MarkScanProgressDto> {
         if (!this.isEnabled()) {
-            return { lines: [], isReadyToFinish: true, attachedKis: [] };
+            return { lines: [], isReadyToFinish: true, attachedKis: [], isPickedUp: false };
         }
+        const pickedUp = await this.invoiceService.isPickedUp(invoice, null);
         const transaction = await this.invoiceService.getTransaction();
         try {
             const lines = await this.invoiceService.getRealpriceLinesByScode(invoice.id, transaction);
@@ -105,6 +110,7 @@ export class MarkScanFbsService {
                 lines: progressLines,
                 isReadyToFinish: progressLines.every((l) => l.isComplete),
                 attachedKis: attached.map((a) => a.ki),
+                isPickedUp: pickedUp,
             };
         } finally {
             await transaction.commit(true).catch(() => undefined);

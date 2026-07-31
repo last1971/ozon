@@ -10,4 +10,7 @@ export class MarkScanProgressDto {
 
     @ApiProperty({ type: [String], description: 'KI всех привязанных к счёту КМ (TT=3)' })
     attachedKis: string[];
+
+    @ApiProperty({ description: 'Счёт подобран (STATUS=4) — отвязка КМ запрещена, кнопка блокируется' })
+    isPickedUp: boolean;
 }

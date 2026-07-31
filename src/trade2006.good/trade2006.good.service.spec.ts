@@ -9,6 +9,7 @@ import { Cache } from "@nestjs/cache-manager";
 import { PriceCalculationHelper } from "../helpers/price/price.calculation.helper";
 import { UpdatePriceDto } from "../price/dto/update.price.dto";
 import { GoodPercentDto } from "../good/dto/good.percent.dto";
+import { GoodServiceEnum } from "../good/good.service.enum";
 import { Logger } from "@nestjs/common";
 
 describe('Trade2006GoodService', () => {
@@ -776,6 +777,56 @@ describe('Trade2006GoodService', () => {
             ['avito123', '456', 2, 15.5],
             false
         );
+    });
+
+    it('getDisabledCodes', async () => {
+        query.mockReturnValue([{ CODE: '1000' }, { CODE: '2500-10' }]);
+
+        const result = await service.getDisabledCodes(GoodServiceEnum.WB);
+
+        expect(query).toHaveBeenCalledWith(
+            'SELECT CODE FROM GOODS_DISABLED WHERE SERVICE = ?',
+            ['wb'],
+            false,
+        );
+        expect(result).toEqual(['1000', '2500-10']);
+    });
+
+    it('setGoodsDisabled — по строке на код', async () => {
+        await service.setGoodsDisabled(['1000', '2500-10'], GoodServiceEnum.WB);
+
+        expect(execute).toHaveBeenNthCalledWith(
+            1,
+            'UPDATE OR INSERT INTO GOODS_DISABLED (CODE, SERVICE) VALUES (?, ?) MATCHING (CODE, SERVICE)',
+            ['1000', 'wb'],
+            false,
+        );
+        expect(execute).toHaveBeenNthCalledWith(
+            2,
+            'UPDATE OR INSERT INTO GOODS_DISABLED (CODE, SERVICE) VALUES (?, ?) MATCHING (CODE, SERVICE)',
+            ['2500-10', 'wb'],
+            false,
+        );
+    });
+
+    it('setGoodsDisabled — пустой список ничего не пишет', async () => {
+        await service.setGoodsDisabled([], GoodServiceEnum.WB);
+        expect(execute).not.toHaveBeenCalled();
+    });
+
+    it('clearGoodsDisabled — один DELETE с IN(...)', async () => {
+        await service.clearGoodsDisabled(['1000', '2500-10'], GoodServiceEnum.OZON);
+
+        expect(execute).toHaveBeenCalledWith(
+            'DELETE FROM GOODS_DISABLED WHERE SERVICE = ? AND CODE IN (?,?)',
+            ['ozon', '1000', '2500-10'],
+            false,
+        );
+    });
+
+    it('clearGoodsDisabled — пустой список ничего не удаляет', async () => {
+        await service.clearGoodsDisabled([], GoodServiceEnum.OZON);
+        expect(execute).not.toHaveBeenCalled();
     });
 
     it('setAvitoData with transaction', async () => {

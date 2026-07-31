@@ -16,6 +16,7 @@ export interface ExemplarProductDto {
     product_id: number;
     quantity: number;
     is_mandatory_mark_needed: boolean;
+    is_gtd_needed?: boolean;
     exemplars: ExemplarItemDto[];
 }
 
