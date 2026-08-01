@@ -30,6 +30,8 @@ export interface IInvoice {
         prim: string,
         transaction: FirebirdTransaction,
     ): Promise<void>;
+    isInFboShortage(posting: string, transaction: FirebirdTransaction): Promise<boolean>;
+    pickupFboUnlessShortage(invoice: InvoiceDto, transaction: FirebirdTransaction): Promise<void>;
     logMigrationLink(link: FboMigrationLinkDto, transaction: FirebirdTransaction): Promise<void>;
     findFboPodbposCandidates(
         goodscode: string,

@@ -453,6 +453,27 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         );
     }
 
+    /** Заказ есть в журнале недобора → его FBO-счёт не подбираем (иначе pickup материализует фантом). */
+    async isInFboShortage(posting: string, transaction: FirebirdTransaction = null): Promise<boolean> {
+        const t = transaction ?? (await this.getTransaction());
+        const rows = await t.query(
+            'SELECT FIRST 1 1 AS X FROM FBO_SHORTAGE WHERE POSTING = ?',
+            [posting],
+            !transaction,
+        );
+        return rows.length > 0;
+    }
+
+    /**
+     * Подбор FBO-счёта, кроме счетов с недобором (они в FBO_SHORTAGE — ждут ручного разбора,
+     * иначе pickup проставит QUANSHOP=QUANSHOPNEED и «подберёт» недостающее из воздуха).
+     * Единая точка правила для Ozon (deliveryOrders) и WB (PickupFboCommand).
+     */
+    async pickupFboUnlessShortage(invoice: InvoiceDto, transaction: FirebirdTransaction = null): Promise<void> {
+        if (await this.isInFboShortage(invoice.remark, transaction)) return;
+        await this.pickupInvoice(invoice, transaction);
+    }
+
     // Аудит цепочек FBO-миграции (донор → приёмник), append-only.
     // DDL:
     //   CREATE TABLE FBO_MIGRATION_LINK (POSTING VARCHAR(100), GOODSCODE INTEGER, QUANTITY INTEGER,

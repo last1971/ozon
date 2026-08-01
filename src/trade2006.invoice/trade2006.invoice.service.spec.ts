@@ -1344,5 +1344,21 @@ describe('Trade2006InvoiceService', () => {
             expect(await service.findFboPodbposDonor('444', [], 2, t)).toBeNull();
             expect(query).not.toHaveBeenCalled();
         });
+
+        it('pickupFboUnlessShortage: счёт в недоборе → НЕ подбираем (без UPDATE)', async () => {
+            query.mockResolvedValueOnce([{ X: 1 }]); // isInFboShortage → true
+            await service.pickupFboUnlessShortage({ id: 1, remark: 'p1', status: 3 } as any, t);
+            expect(execute).not.toHaveBeenCalled();
+        });
+
+        it('pickupFboUnlessShortage: не в недоборе → подбираем (UPDATE PODBPOS)', async () => {
+            query.mockResolvedValueOnce([]); // isInFboShortage → false
+            await service.pickupFboUnlessShortage({ id: 1, remark: 'p1', status: 3 } as any, t);
+            expect(execute).toHaveBeenCalledWith(
+                'UPDATE PODBPOS SET QUANSHOP= QUANSHOPNEED WHERE SCODE = ?',
+                [1],
+                false,
+            );
+        });
     });
 });

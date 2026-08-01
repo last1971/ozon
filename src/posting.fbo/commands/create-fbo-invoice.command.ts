@@ -78,8 +78,7 @@ export class CreateFboInvoiceCommand implements ICommandAsync<IFboCreateContext>
         }
 
         if (context.setIgkNot1c) await this.invoiceService.update(invoice, { IGK: 'NOT1C' }, transaction);
-        if (context.pickupAfterCreate) await this.invoiceService.pickupInvoice(invoice, transaction);
-
+        // Подбор (для WB) вынесен в PickupFboCommand — после записи журнала недобора.
         return { ...context, invoice, shortages };
     }
 
