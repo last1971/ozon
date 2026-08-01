@@ -274,6 +274,39 @@ describe('ExtraGoodService', () => {
         });
     });
 
+    describe('enableAll (разморозить всё: clear→restore по хранимым кодам)', () => {
+        it('снимает ВСЕ блокировки сервиса и пересчитывает товары', async () => {
+            getDisabledCodes.mockResolvedValueOnce(['222-10', 'good:333']);
+            const goods = [
+                { code: '222', quantity: 10, reserve: 0, name: 'x' },
+                { code: '333', quantity: 5, reserve: 0, name: 'y' },
+            ];
+            mockIn.mockResolvedValueOnce(goods);
+            const spy = jest.spyOn(service, 'countsChanged').mockResolvedValue();
+
+            const res = await service.enableAll(GoodServiceEnum.OZON);
+
+            expect(clearGoodsDisabled).toHaveBeenCalledWith(['222-10', 'good:333'], GoodServiceEnum.OZON);
+            expect(mockIn).toHaveBeenCalledWith(['222', '333'], null); // goodCode из хранимых токенов
+            expect(spy).toHaveBeenCalledWith(goods);
+            expect(res).toEqual({ isSuccess: true, message: 'Service ozon enabled 2 skus' });
+            spy.mockRestore();
+        });
+
+        it('нечего размораживать → 0 skus, clear не вызывается', async () => {
+            getDisabledCodes.mockResolvedValueOnce([]);
+            const res = await service.enableAll(GoodServiceEnum.WB);
+            expect(res).toEqual({ isSuccess: true, message: 'Service wb enabled 0 skus' });
+            expect(clearGoodsDisabled).not.toHaveBeenCalled();
+        });
+
+        it('несконфигурированный сервис → ошибка', async () => {
+            const res = await service.enableAll(null);
+            expect(res.isSuccess).toBe(false);
+            expect(getDisabledCodes).not.toHaveBeenCalled();
+        });
+    });
+
     describe('read-геттеры статуса', () => {
         it('listServices — все сервисы с isSwitchedOn', () => {
             const list = service.listServices();

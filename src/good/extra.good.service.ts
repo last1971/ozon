@@ -177,6 +177,27 @@ export class ExtraGoodService implements OnApplicationBootstrap {
         return this.toResult(ctx, 'enabled');
     }
 
+    /**
+     * Снять заморозку со ВСЕГО сервиса: читает все коды из GOODS_DISABLED и
+     * возвращает реальный склад. Хранимые коды уже закодированы (tokens),
+     * поэтому resolve не нужен — enable-цепочка из clear + restore.
+     */
+    async enableAll(serviceEnum: GoodServiceEnum): Promise<ResultDto> {
+        if (!this.services.get(serviceEnum)) {
+            return { isSuccess: false, message: `Service ${serviceEnum} not configured` };
+        }
+        const tokens = await this.goodService.getDisabledCodes(serviceEnum);
+        if (tokens.length === 0) {
+            return { isSuccess: true, message: `Service ${serviceEnum} enabled 0 skus` };
+        }
+        const chain = new CommandChainAsync<IDisableGoodsContext>([
+            this.clearDisabledFlagCommand,
+            this.restoreCountsCommand,
+        ]);
+        const ctx = await chain.execute({ service: serviceEnum, inputSkus: [], level: 'sku', tokens, errors: [] });
+        return this.toResult(ctx, 'enabled');
+    }
+
     private toResult(ctx: IDisableGoodsContext, verb: 'disabled' | 'enabled'): ResultDto {
         if (ctx.stopChain) {
             return { isSuccess: false, message: (ctx.errors ?? []).join('; ') || 'stopped' };
