@@ -217,7 +217,13 @@ export class OrderService {
                 invoice = await service.createInvoice(posting, transaction, flushers);
             }
             if (invoice) {
-                await this.invoiceService.pickupInvoice(invoice, transaction);
+                // FBO подбираем через хелпер (пропускает счета-недоборы из FBO_SHORTAGE);
+                // не-FBO (FBS/Yandex/WB) — обычный pickup без лишнего запроса.
+                if (service.isFbo()) {
+                    await this.invoiceService.pickupFboUnlessShortage(invoice, transaction);
+                } else {
+                    await this.invoiceService.pickupInvoice(invoice, transaction);
+                }
             }
         }, flushers);
     }

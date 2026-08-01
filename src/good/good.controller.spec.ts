@@ -16,6 +16,7 @@ describe('GoodController', () => {
             skusFromFile: jest.fn(),
             listServices: jest.fn(),
             getDisabled: jest.fn(),
+            enableAll: jest.fn(),
             getStatus: jest.fn(),
         };
 
@@ -104,6 +105,14 @@ describe('GoodController', () => {
             const res = await controller.getDisabled(GoodServiceEnum.WB);
             expect(extraGoodService.getDisabled).toHaveBeenCalledWith(GoodServiceEnum.WB);
             expect(res).toBe(data);
+        });
+
+        it('enableAll — размораживает весь сервис', async () => {
+            const expected = { isSuccess: true, message: 'Service wb enabled 3 skus' };
+            extraGoodService.enableAll.mockResolvedValue(expected);
+            const res = await controller.enableAll(GoodServiceEnum.WB);
+            expect(extraGoodService.enableAll).toHaveBeenCalledWith(GoodServiceEnum.WB);
+            expect(res).toEqual(expected);
         });
 
         it('getStatus', async () => {

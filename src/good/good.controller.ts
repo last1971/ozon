@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Param, ParseEnumPipe, Post, Put, Query, UploadedFile, UseInterceptors } from "@nestjs/common";
+import { Body, Controller, Delete, Get, Inject, Param, ParseEnumPipe, Post, Put, Query, UploadedFile, UseInterceptors } from "@nestjs/common";
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ApiBody, ApiConsumes, ApiOperation, ApiParam, ApiProperty, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
@@ -107,9 +107,10 @@ export class GoodController {
     @ApiBody({
         schema: {
             type: 'object',
-            required: ['service'],
+            required: ['service', 'level'],
             properties: {
                 service: { type: 'string', enum: Object.values(GoodServiceEnum) },
+                level: { type: 'string', enum: ['good', 'sku'], description: 'good → весь товар (GOODSCODE); sku → точная фасовка' },
                 skus: { type: 'array', items: { type: 'string' }, description: 'Список SKU (если без файла)' },
                 file: { type: 'string', format: 'binary', description: 'xlsx со столбцом «SKU»' },
             },
@@ -130,11 +131,11 @@ export class GoodController {
     @ApiBody({
         schema: {
             type: 'object',
-            required: ['service'],
+            required: ['service', 'level'],
             properties: {
                 service: { type: 'string', enum: Object.values(GoodServiceEnum) },
+                level: { type: 'string', enum: ['good', 'sku'], description: 'good → весь товар (GOODSCODE); sku → точная фасовка' },
                 skus: { type: 'array', items: { type: 'string' }, description: 'Список SKU (если без файла)' },
-                exact: { type: 'boolean', description: 'true → фасовка (SKU); false → весь товар (GOODSCODE)' },
                 file: { type: 'string', format: 'binary', description: 'xlsx со столбцом «SKU»' },
             },
         },
@@ -163,6 +164,16 @@ export class GoodController {
         @Param('service', new ParseEnumPipe(GoodServiceEnum)) service: GoodServiceEnum,
     ): Promise<DisabledCodeDto[]> {
         return this.extraService.getDisabled(service);
+    }
+
+    @Delete('disabled/:service')
+    @ApiOperation({ summary: 'Разморозить ВСЁ: снять все блокировки сервиса и вернуть склад' })
+    @ApiParam({ name: 'service', enum: GoodServiceEnum })
+    @ApiResponse({ status: 200, type: ResultDto })
+    enableAll(
+        @Param('service', new ParseEnumPipe(GoodServiceEnum)) service: GoodServiceEnum,
+    ): Promise<ResultDto> {
+        return this.extraService.enableAll(service);
     }
 
     @Get('status/:service')

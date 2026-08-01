@@ -65,10 +65,10 @@ describe('CreateFboInvoiceCommand', () => {
             expect(res.shortages).toEqual([{ goodscode: '444', quantity: 1 }]);
         });
 
-        it('WB: pickup после создания, без IGK', async () => {
+        it('WB: без IGK; pickup здесь НЕ делается (вынесен в PickupFboCommand)', async () => {
             findFboPodbposCandidates.mockResolvedValueOnce([{ quanAvail: 1 }]);
             await command.execute(ctx({ service: GoodServiceEnum.WB, setIgkNot1c: false, pickupAfterCreate: true, skipIfNoPodbor: true }));
-            expect(pickupInvoice).toHaveBeenCalledWith(invoice, null);
+            expect(pickupInvoice).not.toHaveBeenCalled();
             expect(update).not.toHaveBeenCalled();
         });
     });

@@ -3,6 +3,7 @@ import { CommandChainAsync } from '../helpers/command/command.chain.async';
 import { IFboCreateContext } from './commands/i.fbo-create.context';
 import { CreateFboInvoiceCommand } from './commands/create-fbo-invoice.command';
 import { LogShortageNotifyCommand } from './commands/log-shortage-notify.command';
+import { PickupFboCommand } from './commands/pickup-fbo.command';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
 
 /**
@@ -14,8 +15,8 @@ import { InvoiceDto } from '../invoice/dto/invoice.dto';
 export class FboInvoiceCreatorService {
     private readonly chain: CommandChainAsync<IFboCreateContext>;
 
-    constructor(create: CreateFboInvoiceCommand, logNotify: LogShortageNotifyCommand) {
-        this.chain = new CommandChainAsync<IFboCreateContext>([create, logNotify]);
+    constructor(create: CreateFboInvoiceCommand, logNotify: LogShortageNotifyCommand, pickup: PickupFboCommand) {
+        this.chain = new CommandChainAsync<IFboCreateContext>([create, logNotify, pickup]);
     }
 
     /** Возвращает созданный счёт либо null («левый» WB-заказ без подбора). */
