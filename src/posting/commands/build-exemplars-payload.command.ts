@@ -63,21 +63,14 @@ export class BuildExemplarsPayloadCommand implements ICommandAsync<IFbsSubmitCon
 
             if (group.length > 0) {
                 // === СТРОКА СО ЗНАКОМ ===
-                const multi = group.find((g) => g.quantity > 1);
-                if (multi) {
-                    ctx.failed.push({
-                        ki: multi.ki,
-                        reason:
-                            `количественный КМ (x${multi.quantity}): Ozon FBS требует штучные экземпляры — ` +
-                            'поделите код (MARKCODE_SPLIT / деление в ЛК ЧЗ)',
-                    });
-                    continue;
-                }
-                const qtySum = group.reduce((s, g) => s + g.quantity, 0);
-                if (qtySum !== exProduct.quantity) {
+                // Один привязанный код = один экземпляр Ozon: штучный код (QUANTITY=1)
+                // ИЛИ код-упаковка (QUANTITY=N) — Ozon принимает «один код с упаковки».
+                // Сверяем ЧИСЛО КОДОВ с числом экземпляров, а НЕ сумму штук: у товара-упаковки
+                // 1 юнит Ozon = N наших штук = 1 код (напр. арт. …-3: 2 юнита = 6 шт = 2 кода).
+                if (group.length !== exProduct.quantity) {
                     ctx.failed.push({
                         ki: '*',
-                        reason: `product_id ${exProduct.product_id}: КМ на ${qtySum} шт, ожидается ${exProduct.quantity}`,
+                        reason: `product_id ${exProduct.product_id}: привязано кодов ${group.length}, Ozon ждёт экземпляров ${exProduct.quantity}`,
                     });
                     continue;
                 }
