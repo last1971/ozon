@@ -30,6 +30,8 @@ export interface IGoodsCountContext {
     markedGoods: Set<string>;
     /** Свободные коды маркируемых товаров: GOODSCODE → (номинал → сколько кодов). */
     freeByGood: Map<string, FreeCodesByNominal>;
+    /** Живой резерв по заказам: GOODSCODE → [количество в каждом заказе]. */
+    reservedByGood: Map<string, number[]>;
 
     /** SKU этого сервиса, относящиеся к товару: GOODSCODE → список SKU. */
     filteredSkuMap: Map<string, string[]>;

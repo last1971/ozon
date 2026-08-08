@@ -119,4 +119,7 @@ export class ElectronicaGoodService implements IGood {
     ): Promise<Map<string, Map<number, number>>> {
         return new Map<string, Map<number, number>>();
     }
+    async getReservedQuantities(goodCodes: string[], t?: FirebirdTransaction): Promise<Map<string, number[]>> {
+        return new Map<string, number[]>();
+    }
 }

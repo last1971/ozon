@@ -12,6 +12,7 @@ describe('LoadSnapshotCommand', () => {
         getMarkRequiredCodes: jest.fn().mockResolvedValue(new Set()),
         getGoodsWithMarkCodes: jest.fn().mockResolvedValue(new Set()),
         getFreeMarkCodesByNominal: jest.fn().mockResolvedValue(new Map()),
+        getReservedQuantities: jest.fn().mockResolvedValue(new Map()),
         ...over,
     });
 
@@ -63,6 +64,7 @@ describe('LoadSnapshotCommand', () => {
             getMarkRequiredCodes: jest.fn().mockResolvedValue(new Set(['498824', '548580'])),
             getGoodsWithMarkCodes: jest.fn().mockResolvedValue(new Set(['498824'])),
             getFreeMarkCodesByNominal: jest.fn().mockResolvedValue(new Map([['498824', new Map([[100, 1]])]])),
+            getReservedQuantities: jest.fn().mockResolvedValue(new Map([['498824', [1, 3, 3]]])),
         });
 
         const result = await new LoadSnapshotCommand(good as any).execute(context({ goodIds: ['498824', '548580', '111'] }));
@@ -72,6 +74,9 @@ describe('LoadSnapshotCommand', () => {
         // 548580 маркируемый, но кодов не заводилось → старая схема
         expect(result.markedGoods).toEqual(new Set(['498824']));
         expect(result.freeByGood).toEqual(new Map([['498824', new Map([[100, 1]])]]));
+        // резерв тянем построчно, заказами
+        expect(good.getReservedQuantities).toHaveBeenCalledWith(['498824'], transaction);
+        expect(result.reservedByGood).toEqual(new Map([['498824', [1, 3, 3]]]));
     });
 
     it('маркируемых нет — свободные коды не запрашиваем', async () => {

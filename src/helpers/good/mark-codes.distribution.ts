@@ -14,16 +14,6 @@ export const sumNominals = (codes: FreeCodesByNominal): number =>
     Array.from(codes.entries()).reduce((sum, [nominal, count]) => sum + nominal * count, 0);
 
 /**
- * Сколько штук нужно закрыть кодами:
- *   need = reserve + max(0, Σкодов − quantity)
- *
- * Первое слагаемое — резерв (заказы в сборке), второе — страховка на случай, когда кодов
- * больше учётного остатка: лишнее тоже отбрасываем, иначе продадим то, чего на складе нет.
- */
-export const computeNeedToDrop = (codes: FreeCodesByNominal, quantity: number, reserve: number): number =>
-    Math.max(0, (reserve ?? 0) + Math.max(0, sumNominals(codes) - (quantity ?? 0)));
-
-/**
  * Оставшиеся коды после закрытия `need` штук.
  *
  * Выбирается подмножество с суммой ≥ need и **минимальной** суммой; при равной сумме —
@@ -78,13 +68,25 @@ export const dropCodesForNeed = (codes: FreeCodesByNominal, need: number): FreeC
 };
 
 /**
- * Свободные коды товара после резерва — то, что реально можно выставить на маркет.
+ * Свободные коды после того, как под каждый заказ подобрали свои коды.
+ *
+ * Считаем ПО ЗАКАЗАМ, а не суммой резерва: склад закрывает каждый заказ отдельно, и коды
+ * ложатся ровно так. Пример 552601 — резерв 7 штук это три заказа (1, 3, 3): уходят один код
+ * номинала 1 и два номинала 3, коробки на 12 не трогаются. Если считать сумму 7 одной кучей,
+ * солвер списал бы код на 12 — итог в штуках сошёлся бы, а по фасовкам разъехался.
+ *
+ * Крупные заказы обрабатываются первыми: под них выбор кодов уже, мелкие подберутся из остатка.
  */
-export const freeCodesAfterReserve = (
-    codes: FreeCodesByNominal,
-    quantity: number,
-    reserve: number,
-): FreeCodesByNominal => dropCodesForNeed(codes, computeNeedToDrop(codes, quantity, reserve));
+export const codesAfterOrders = (codes: FreeCodesByNominal, orders: number[]): FreeCodesByNominal => {
+    let left = new Map(codes);
+
+    for (const quantity of [...orders].filter((order) => order > 0).sort((a, b) => b - a)) {
+        left = dropCodesForNeed(left, quantity);
+        if (left.size === 0) break;
+    }
+
+    return left;
+};
 
 /**
  * Раскладка уцелевших кодов по фасовкам маркета.

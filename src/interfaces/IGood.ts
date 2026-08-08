@@ -38,6 +38,8 @@ export interface IGood {
     getGoodsWithMarkCodes(goodCodes: string[], t?: FirebirdTransaction): Promise<Set<string>>;
     /** Свободные коды по номиналам: GOODSCODE → (номинал → сколько кодов). */
     getFreeMarkCodesByNominal(goodCodes: string[], t?: FirebirdTransaction): Promise<Map<string, Map<number, number>>>;
+    /** Живой резерв по заказам: GOODSCODE → [количество в каждом заказе]. */
+    getReservedQuantities(goodCodes: string[], t?: FirebirdTransaction): Promise<Map<string, number[]>>;
     setGoodsDisabled(codes: string[], service: GoodServiceEnum, t?: FirebirdTransaction): Promise<void>;
     clearGoodsDisabled(codes: string[], service: GoodServiceEnum, t?: FirebirdTransaction): Promise<void>;
 }

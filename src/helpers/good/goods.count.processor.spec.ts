@@ -26,6 +26,7 @@ describe("GoodsCountProcessor", () => {
             getMarkRequiredCodes: jest.fn().mockResolvedValue(new Set()),
             getGoodsWithMarkCodes: jest.fn().mockResolvedValue(new Set()),
             getFreeMarkCodesByNominal: jest.fn().mockResolvedValue(new Map()),
+            getReservedQuantities: jest.fn().mockResolvedValue(new Map()),
             ...goodService,
         } as unknown as IGood;
 
@@ -230,15 +231,36 @@ describe("GoodsCountProcessor", () => {
                 getFreeMarkCodesByNominal: jest.fn().mockResolvedValue(
                     new Map([["498824", new Map([[1, 16], [100, 12], [800, 9]])]]),
                 ),
+                getReservedQuantities: jest.fn().mockResolvedValue(new Map([["498824", [24]]])),
             });
 
             await proc.processGoodsCountChanges(onlyOzon(), [
                 { code: "498824", quantity: 8416, reserve: 24, name: "x" },
             ] as GoodDto[]);
 
-            // резерв 24 съедает код на 100 (единичных не хватает), остальное — по своим фасовкам
+            // заказ на 24 закрывается кодом на 100 (единичных не хватает), остальное — по своим фасовкам
             expect(mockServiceOne.updateGoodCounts).toHaveBeenCalledWith(
                 new Map([["498824", 16], ["498824-100", 11], ["498824-800", 9]]),
+            );
+        });
+
+        it("552601: резерв 7 — это заказы 1, 3, 3, коробки на 12 не трогаем", async () => {
+            mockServiceOne.skuList = ["552601", "552601-3", "552601-12"];
+            const proc = makeProcessor({
+                getMarkRequiredCodes: jest.fn().mockResolvedValue(new Set(["552601"])),
+                getGoodsWithMarkCodes: jest.fn().mockResolvedValue(new Set(["552601"])),
+                getFreeMarkCodesByNominal: jest.fn().mockResolvedValue(
+                    new Map([["552601", new Map([[1, 2], [3, 9], [6, 4], [12, 2], [40, 32]])]]),
+                ),
+                getReservedQuantities: jest.fn().mockResolvedValue(new Map([["552601", [1, 3, 3]]])),
+            });
+
+            await proc.processGoodsCountChanges(onlyOzon(), [
+                { code: "552601", quantity: 1352, reserve: 7, name: "x" },
+            ] as GoodDto[]);
+
+            expect(mockServiceOne.updateGoodCounts).toHaveBeenCalledWith(
+                new Map([["552601", 1305], ["552601-3", 7], ["552601-12", 2]]),
             );
         });
 

@@ -39,9 +39,22 @@ export class LoadSnapshotCommand implements ICommandAsync<IGoodsCountContext> {
                 ? await this.goodService.getFreeMarkCodesByNominal(Array.from(withCodes), transaction)
                 : new Map<string, Map<number, number>>();
 
+            // Резерв нужен построчно (заказами), а не суммой: под каждый заказ склад берёт свой код.
+            const reservedByGood = withCodes.size
+                ? await this.goodService.getReservedQuantities(Array.from(withCodes), transaction)
+                : new Map<string, number[]>();
+
             await transaction?.commit(true);
 
-            return { ...context, goods, disabled, markedGoods: withCodes, freeByGood, transaction: null };
+            return {
+                ...context,
+                goods,
+                disabled,
+                markedGoods: withCodes,
+                freeByGood,
+                reservedByGood,
+                transaction: null,
+            };
         } catch (e) {
             try {
                 await transaction?.rollback(true);

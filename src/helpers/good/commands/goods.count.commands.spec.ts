@@ -15,6 +15,7 @@ const context = (over: Partial<IGoodsCountContext> = {}): IGoodsCountContext =>
         disabled: new Set<string>(),
         markedGoods: new Set<string>(),
         freeByGood: new Map(),
+        reservedByGood: new Map(),
         filteredSkuMap: new Map(),
         counts: new Map<string, number>(),
         updated: 0,
@@ -71,19 +72,36 @@ describe('DistributePlainCountsCommand', () => {
 });
 
 describe('DistributeMarkedCountsCommand', () => {
-    it('коды по номиналам с учётом резерва', async () => {
+    it('заказ на 24 штуки закрывается кодом на 100 — единичных не хватает', async () => {
         const result = await new DistributeMarkedCountsCommand().execute(
             context({
                 goods: [{ code: '498824', quantity: 8416, reserve: 24, name: 'x' }] as any,
                 filteredSkuMap: new Map([['498824', ['498824', '498824-100', '498824-800']]]),
                 markedGoods: new Set(['498824']),
                 freeByGood: new Map([['498824', new Map([[1, 16], [100, 12], [800, 9]])]]),
+                reservedByGood: new Map([['498824', [24]]]),
             }),
         );
 
-        // резерв 24 закрывается кодом на 100: единичных 16 штук не хватает
         expect(result.counts).toEqual(
             new Map([['498824', 16], ['498824-100', 11], ['498824-800', 9]]),
+        );
+    });
+
+    it('552601: три заказа 1+3+3 не трогают коробки на 12', async () => {
+        const result = await new DistributeMarkedCountsCommand().execute(
+            context({
+                goods: [{ code: '552601', quantity: 1352, reserve: 7, name: 'x' }] as any,
+                filteredSkuMap: new Map([['552601', ['552601', '552601-3', '552601-12']]]),
+                markedGoods: new Set(['552601']),
+                freeByGood: new Map([['552601', new Map([[1, 2], [3, 9], [6, 4], [12, 2], [40, 32]]) ]]),
+                reservedByGood: new Map([['552601', [1, 3, 3]]]),
+            }),
+        );
+
+        // 1 штучный + 32×40 и 4×6 без своих фасовок = 1 + 1280 + 24 = 1305
+        expect(result.counts).toEqual(
+            new Map([['552601', 1305], ['552601-3', 7], ['552601-12', 2]]),
         );
     });
 
@@ -94,10 +112,29 @@ describe('DistributeMarkedCountsCommand', () => {
                 filteredSkuMap: new Map([['569126', ['569126', '569126-10']]]),
                 markedGoods: new Set(['569126']),
                 freeByGood: new Map(),
+                reservedByGood: new Map(),
             }),
         );
 
         expect(result.counts).toEqual(new Map([['569126', 0], ['569126-10', 0]]));
+    });
+
+    it('кодов больше, чем на складе — считаем по кодам и пишем предупреждение', async () => {
+        const command = new DistributeMarkedCountsCommand();
+        const warn = jest.spyOn(command['logger'], 'warn').mockImplementation(() => undefined);
+
+        const result = await command.execute(
+            context({
+                goods: [{ code: '552601', quantity: 1352, reserve: 0, name: 'x' }] as any,
+                filteredSkuMap: new Map([['552601', ['552601']]]),
+                markedGoods: new Set(['552601']),
+                freeByGood: new Map([['552601', new Map([[1, 1357]])]]),
+            }),
+        );
+
+        expect(warn).toHaveBeenCalledWith(expect.stringContaining('расхождение 5 шт'));
+        // учёт остаток не режет: продать можно ровно то, на что есть коды
+        expect(result.counts).toEqual(new Map([['552601', 1357]]));
     });
 
     it('немаркированный товар не трогает', async () => {

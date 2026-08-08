@@ -1,39 +1,13 @@
 import {
-    computeNeedToDrop,
+    codesAfterOrders,
     distributeCodesToSkus,
     dropCodesForNeed,
-    freeCodesAfterReserve,
     sumNominals,
 } from './mark-codes.distribution';
 
 const codes = (...pairs: [number, number][]) => new Map<number, number>(pairs);
 
 describe('mark-codes.distribution', () => {
-    describe('computeNeedToDrop', () => {
-        it('коды сходятся с остатком — закрываем ровно резерв', () => {
-            // Пример заказчика: остаток 100, резерв 24, коды 40/30/20/10
-            expect(computeNeedToDrop(codes([40, 1], [30, 1], [20, 1], [10, 1]), 100, 24)).toBe(24);
-        });
-
-        it('резерва нет — отбрасывать нечего', () => {
-            expect(computeNeedToDrop(codes([100, 12]), 1200, 0)).toBe(0);
-        });
-
-        it('кодов больше учётного остатка — добавляем разницу (552601 на проде)', () => {
-            // свободных кодов на 1357 шт при остатке 1352 и резерве 1
-            expect(computeNeedToDrop(codes([1, 2], [3, 9], [6, 4], [12, 2], [40, 32]), 1352, 1)).toBe(6);
-        });
-
-        it('кодов меньше остатка — резерв не гасится разницей', () => {
-            // 76 штук кодами при остатке 90 и резерве 10: закрыть надо именно резерв
-            expect(computeNeedToDrop(codes([76, 1]), 90, 10)).toBe(10);
-        });
-
-        it('reserve не задан — ноль', () => {
-            expect(computeNeedToDrop(codes([10, 1]), 10, undefined)).toBe(0);
-        });
-    });
-
     describe('dropCodesForNeed', () => {
         it('пример заказчика: 40/30/20/10 при need 24 → уходит 30', () => {
             const left = dropCodesForNeed(codes([40, 1], [30, 1], [20, 1], [10, 1]), 24);
@@ -89,34 +63,52 @@ describe('mark-codes.distribution', () => {
         });
     });
 
-    describe('freeCodesAfterReserve', () => {
-        it('498824: остаток 8416, резерв 24 → уходит один код на 100', () => {
-            const free = codes([1, 16], [100, 12], [800, 9]);
-
-            const left = freeCodesAfterReserve(free, 8416, 24);
-
-            // единичных 16 штук на 24 не хватает, минимальная сумма ≥ 24 — это 100
-            expect(left).toEqual(codes([1, 16], [100, 11], [800, 9]));
-            expect(sumNominals(left)).toBe(8316);
-        });
-
-        it('552601: кодов на 1357 при остатке 1352 и резерве 1 → закрываем 6 штук', () => {
+    describe('codesAfterOrders', () => {
+        it('552601 с прода: заказы 1, 3, 3 забирают код на 1 и два по 3, коробки на 12 целы', () => {
             const free = codes([1, 2], [3, 9], [6, 4], [12, 2], [40, 32]);
 
-            const left = freeCodesAfterReserve(free, 1352, 1);
+            const left = codesAfterOrders(free, [1, 3, 3]);
 
-            // минимальная сумма ≥ 6 — это код на 6
-            expect(left).toEqual(codes([1, 2], [3, 9], [6, 3], [12, 2], [40, 32]));
-            expect(sumNominals(left)).toBe(1351);
+            expect(left).toEqual(codes([1, 1], [3, 7], [6, 4], [12, 2], [40, 32]));
+            expect(sumNominals(left)).toBe(1350); // 1357 − 7, ровно по заказам
         });
 
-        it('резерва нет и коды сходятся — всё остаётся', () => {
+        it('тот же резерв одной суммой съел бы код на 12 — считаем именно по заказам', () => {
+            const free = codes([1, 2], [3, 9], [6, 4], [12, 2], [40, 32]);
+
+            // если бы закрывали 7 одной кучей: минимальная сумма ≥ 7 — это 1 + 6
+            expect(dropCodesForNeed(free, 7)).toEqual(codes([1, 1], [3, 9], [6, 3], [12, 2], [40, 32]));
+            // по заказам уходят другие коды — те же 7 штук, но из фасовки -3
+            expect(codesAfterOrders(free, [1, 3, 3])).toEqual(codes([1, 1], [3, 7], [6, 4], [12, 2], [40, 32]));
+        });
+
+        it('заказов нет — всё остаётся', () => {
             const free = codes([1, 16], [100, 12], [800, 9]);
-            expect(freeCodesAfterReserve(free, 8416, 0)).toEqual(free);
+            expect(codesAfterOrders(free, [])).toEqual(free);
         });
 
-        it('резерв больше всех кодов — товар уходит в 0', () => {
-            expect(freeCodesAfterReserve(codes([10, 2]), 20, 25)).toEqual(new Map());
+        it('498824: заказ на 24 штуки при 16 единичных — уходит код на 100', () => {
+            const free = codes([1, 16], [100, 12], [800, 9]);
+
+            const left = codesAfterOrders(free, [24]);
+
+            expect(left).toEqual(codes([1, 16], [100, 11], [800, 9]));
+        });
+
+        it('крупные заказы обрабатываются первыми', () => {
+            // заказы 5 и 1: пятёрка берёт код на 5, единица — штучный
+            const left = codesAfterOrders(codes([1, 1], [5, 1], [6, 1]), [1, 5]);
+
+            expect(left).toEqual(codes([6, 1]));
+        });
+
+        it('кодов не хватает на заказы — товар уходит в 0', () => {
+            expect(codesAfterOrders(codes([10, 2]), [25])).toEqual(new Map());
+        });
+
+        it('нулевые строки резерва игнорируются', () => {
+            const free = codes([3, 2]);
+            expect(codesAfterOrders(free, [0, 0])).toEqual(free);
         });
     });
 

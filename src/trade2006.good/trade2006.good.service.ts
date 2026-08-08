@@ -363,6 +363,33 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         }, t);
     }
 
+    /**
+     * Живой резерв ПО ЗАКАЗАМ: GOODSCODE → [количество в каждом заказе].
+     * Именно построчно, а не суммой: склад закрывает каждый заказ своим кодом, и от разбивки
+     * зависит, какие коды уйдут (552601: резерв 7 — это заказы 1, 3, 3).
+     */
+    async getReservedQuantities(
+        goodCodes: string[],
+        t: FirebirdTransaction = null,
+    ): Promise<Map<string, number[]>> {
+        const result = new Map<string, number[]>();
+        if (goodCodes.length === 0) return result;
+        return this.withTransaction(async (transaction) => {
+            const rows: any[] = await transaction.query(
+                'SELECT GOODSCODE, QUANSKLAD + QUANSHOP AS QUAN FROM RESERVEDPOS ' +
+                    `WHERE QUANSKLAD + QUANSHOP > 0 AND GOODSCODE IN (${goodCodes.map(() => '?').join(',')})`,
+                goodCodes,
+                false,
+            );
+            for (const row of rows) {
+                const code = String(row.GOODSCODE);
+                if (!result.has(code)) result.set(code, []);
+                result.get(code).push(Number(row.QUAN) || 0);
+            }
+            return result;
+        }, t);
+    }
+
     /** Коды (GOODSCODE или SKU), отключённые на данном сервисе. */
     async getDisabledCodes(service: GoodServiceEnum, t: FirebirdTransaction = null): Promise<string[]> {
         return this.withTransaction(async (transaction) => {

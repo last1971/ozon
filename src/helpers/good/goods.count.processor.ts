@@ -56,6 +56,7 @@ export class GoodsCountProcessor {
             disabled: new Set<string>(),
             markedGoods: new Set<string>(),
             freeByGood: new Map(),
+            reservedByGood: new Map(),
             filteredSkuMap: new Map(),
             counts: new Map<string, number>(),
             updated: 0,

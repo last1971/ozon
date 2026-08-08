@@ -7,7 +7,7 @@
  * Запуск:  npx ts-node tools/marked-counts-dryrun.ts [--host 192.168.22.10] [--db /var/db/firebird/opt.fdb]
  */
 import * as Firebird from 'node-firebird';
-import { freeCodesAfterReserve, distributeCodesToSkus, sumNominals } from '../src/helpers/good/mark-codes.distribution';
+import { codesAfterOrders, distributeCodesToSkus, sumNominals } from '../src/helpers/good/mark-codes.distribution';
 import { distributeGoodQuantities } from '../src/helpers/good/plain.distribution';
 import { GoodDto } from '../src/good/dto/good.dto';
 
@@ -94,8 +94,17 @@ const pad = (value: string | number, width: number): string => String(value).pad
             );
             const free = new Map<number, number>(codeRows.map((r) => [Number(r.NOMINAL), Number(r.CODES)]));
 
+            // Резерв — построчно, заказами: склад закрывает каждый заказ своим кодом.
+            const orders = (
+                await query(
+                    db,
+                    'SELECT QUANSKLAD + QUANSHOP AS QUAN FROM RESERVEDPOS WHERE QUANSKLAD + QUANSHOP > 0 AND GOODSCODE = ?',
+                    [good.code],
+                )
+            ).map((r) => Number(r.QUAN));
+
             const before = distributeGoodQuantities(skus, good as GoodDto);
-            const afterReserve = freeCodesAfterReserve(free, good.quantity, good.reserve);
+            const afterReserve = codesAfterOrders(free, orders);
             const after = distributeCodesToSkus(good.code, skus, afterReserve);
 
             const diff = skus.filter((sku) => (before.get(sku) ?? 0) !== (after.get(sku) ?? 0));
@@ -107,7 +116,9 @@ const pad = (value: string | number, width: number): string => String(value).pad
                 .join(', ');
             console.log(`${pad(good.code, 8)} ${good.name}`);
             console.log(
-                `  склад ${good.quantity}, резерв ${good.reserve}, свободные коды: ${codesText || 'нет'} (${sumNominals(free)} шт)`,
+                `  склад ${good.quantity}, резерв ${good.reserve}` +
+                    (orders.length ? ` (заказы: ${orders.join(' + ')})` : '') +
+                    `, свободные коды: ${codesText || 'нет'} (${sumNominals(free)} шт)`,
             );
             for (const sku of skus) {
                 const wasCount = before.get(sku) ?? 0;
@@ -118,12 +129,22 @@ const pad = (value: string | number, width: number): string => String(value).pad
                 console.log(`   ${mark} ${pad(sku, 16)} ${pad(wasCount, 8)} → ${nowCount}`);
             }
 
-            // Эффект резерва: сколько штук он снял с витрины сверх самого резерва.
-            if (good.reserve > 0) {
+            // Эффект резерва: сколько штук унесли подобранные коды сверх самих заказов.
+            if (orders.length > 0) {
+                const ordered = orders.reduce((sum, quantity) => sum + quantity, 0);
                 const droppedPieces = sumNominals(free) - sumNominals(afterReserve);
                 reserveEffect.push(
-                    `${pad(good.code, 8)} резерв ${pad(good.reserve, 6)} → снято с витрины ${droppedPieces} шт` +
-                        (droppedPieces > good.reserve ? `  (+${droppedPieces - good.reserve} из-за неделимости кода)` : ''),
+                    `${pad(good.code, 8)} заказы ${pad(orders.join('+'), 14)} → коды на ${droppedPieces} шт` +
+                        (droppedPieces > ordered ? `  (+${droppedPieces - ordered} из-за неделимости кода)` : '  (ровно)'),
+                );
+            }
+
+            // Расхождение кодов и учёта — данные, а не расчёт: считаем по кодам, но подсвечиваем.
+            if (sumNominals(free) > good.quantity) {
+                console.log(
+                    `   ! кодов на ${sumNominals(free)} шт, на складе ${good.quantity} — расхождение ${
+                        sumNominals(free) - good.quantity
+                    } шт`,
                 );
             }
             console.log('');
