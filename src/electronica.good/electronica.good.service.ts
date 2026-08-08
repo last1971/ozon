@@ -102,4 +102,17 @@ export class ElectronicaGoodService implements IGood {
     async clearGoodsDisabled(codes: string[], service: GoodServiceEnum, t?: FirebirdTransaction): Promise<void> {
         return Promise.resolve(undefined);
     }
+    // Маркировки у Electronica нет — товары всегда считаются по старой схеме.
+    async getMarkRequiredCodes(t?: FirebirdTransaction): Promise<Set<string>> {
+        return new Set<string>();
+    }
+    async getGoodsWithMarkCodes(goodCodes: string[], t?: FirebirdTransaction): Promise<Set<string>> {
+        return new Set<string>();
+    }
+    async getFreeMarkCodesByNominal(
+        goodCodes: string[],
+        t?: FirebirdTransaction,
+    ): Promise<Map<string, Map<number, number>>> {
+        return new Map<string, Map<number, number>>();
+    }
 }

@@ -95,6 +95,9 @@ describe("PriceCalculationHelper", () => {
                 getDisabledCodes: jest.fn().mockResolvedValue([]),
                 setGoodsDisabled: jest.fn().mockResolvedValue(undefined),
                 clearGoodsDisabled: jest.fn().mockResolvedValue(undefined),
+                getMarkRequiredCodes: jest.fn().mockResolvedValue(new Set()),
+                getGoodsWithMarkCodes: jest.fn().mockResolvedValue(new Set()),
+                getFreeMarkCodesByNominal: jest.fn().mockResolvedValue(new Map()),
                 updatePercentsForService:  jest.fn().mockResolvedValue(undefined),
                 generatePercentsForService:  jest.fn().mockResolvedValue(undefined),
             };
@@ -145,6 +148,9 @@ describe("PriceCalculationHelper", () => {
                 getDisabledCodes: jest.fn().mockResolvedValue([]),
                 setGoodsDisabled: jest.fn().mockResolvedValue(undefined),
                 clearGoodsDisabled: jest.fn().mockResolvedValue(undefined),
+                getMarkRequiredCodes: jest.fn().mockResolvedValue(new Set()),
+                getGoodsWithMarkCodes: jest.fn().mockResolvedValue(new Set()),
+                getFreeMarkCodesByNominal: jest.fn().mockResolvedValue(new Map()),
                 updatePercentsForService: jest.fn().mockResolvedValue(undefined),
                 generatePercentsForService: jest.fn().mockResolvedValue(undefined),
             };

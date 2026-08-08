@@ -10,6 +10,7 @@ import {
     getPieces,
     goodCode,
     goodQuantityCoeff,
+    isMarkCodesEnabled,
 } from '../helpers';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
 import { UpdatePriceDto } from '../price/dto/update.price.dto';
@@ -289,6 +290,73 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                 commission: data.COMMISSION,
             }),
         );
+    }
+
+    /**
+     * Свободный код маркировки: введён в оборот, никуда не привязан и не списан.
+     * Тот же фильтр, что в процедуре COUNT_FREE_MARKCODES_FOR_GOOD, плюс две колонки
+     * списания, которых в ней нет (STATUS=6 их и так отсекает, но фильтр самодостаточен).
+     */
+    private static readonly FREE_CODE_FILTER =
+        'm.STATUS = 5 AND m.TRANSFER_TYPE = 0 AND m.REALPRICECODE IS NULL AND m.REALPRICEFCODE IS NULL ' +
+        'AND m.SHOPLOGCODE IS NULL AND m.SPISID IS NULL AND m.SPISSKLADCODE IS NULL AND m.SPISSHOPCODE IS NULL';
+
+    /** Товары, подлежащие маркировке (GOODS_CLASSIF.MARK_REQUIRED = 1). Их сотни — тянем целиком. */
+    async getMarkRequiredCodes(t: FirebirdTransaction = null): Promise<Set<string>> {
+        if (!isMarkCodesEnabled(this.configService)) return new Set<string>();
+        return this.withTransaction(async (transaction) => {
+            const rows: any[] = await transaction.query(
+                'SELECT DISTINCT GOODSCODE FROM GOODS_CLASSIF WHERE MARK_REQUIRED = 1',
+                [],
+                false,
+            );
+            return new Set(rows.map((r) => String(r.GOODSCODE)));
+        }, t);
+    }
+
+    /**
+     * Из переданных товаров — те, у кого есть хоть одна строка в MARKCODES (любая, не только
+     * свободная). Товар маркируемый, но кодов не заводилось → считается по старой схеме.
+     */
+    async getGoodsWithMarkCodes(goodCodes: string[], t: FirebirdTransaction = null): Promise<Set<string>> {
+        if (goodCodes.length === 0 || !isMarkCodesEnabled(this.configService)) return new Set<string>();
+        return this.withTransaction(async (transaction) => {
+            const rows: any[] = await transaction.query(
+                `SELECT DISTINCT GOODSCODE FROM MARKCODES WHERE GOODSCODE IN (${goodCodes.map(() => '?').join(',')})`,
+                goodCodes,
+                false,
+            );
+            return new Set(rows.map((r) => String(r.GOODSCODE)));
+        }, t);
+    }
+
+    /**
+     * Свободные коды по номиналам: GOODSCODE → (номинал → сколько кодов).
+     * Один запрос на всю пачку товаров — крон ходит страницами по 100 SKU,
+     * запрос на каждый товар его положит.
+     */
+    async getFreeMarkCodesByNominal(
+        goodCodes: string[],
+        t: FirebirdTransaction = null,
+    ): Promise<Map<string, Map<number, number>>> {
+        const result = new Map<string, Map<number, number>>();
+        if (goodCodes.length === 0 || !isMarkCodesEnabled(this.configService)) return result;
+        return this.withTransaction(async (transaction) => {
+            const rows: any[] = await transaction.query(
+                'SELECT m.GOODSCODE, COALESCE(m.QUANTITY, 1) AS NOMINAL, COUNT(*) AS CODES FROM MARKCODES m ' +
+                    `WHERE ${Trade2006GoodService.FREE_CODE_FILTER} ` +
+                    `AND m.GOODSCODE IN (${goodCodes.map(() => '?').join(',')}) ` +
+                    'GROUP BY m.GOODSCODE, COALESCE(m.QUANTITY, 1)',
+                goodCodes,
+                false,
+            );
+            for (const row of rows) {
+                const code = String(row.GOODSCODE);
+                if (!result.has(code)) result.set(code, new Map<number, number>());
+                result.get(code).set(Number(row.NOMINAL) || 1, Number(row.CODES) || 0);
+            }
+            return result;
+        }, t);
     }
 
     /** Коды (GOODSCODE или SKU), отключённые на данном сервисе. */

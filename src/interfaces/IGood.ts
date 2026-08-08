@@ -30,6 +30,12 @@ export interface IGood {
     getWbCategoryByName(name: string): Promise<WbCommissionDto>;
     resetAvailablePrice(goodCodes?: string[], t?: FirebirdTransaction): Promise<void>
     getDisabledCodes(service: GoodServiceEnum, t?: FirebirdTransaction): Promise<string[]>;
+    /** Товары, подлежащие маркировке (GOODS_CLASSIF.MARK_REQUIRED = 1). */
+    getMarkRequiredCodes(t?: FirebirdTransaction): Promise<Set<string>>;
+    /** Из переданных — те, у кого есть хоть одна строка в MARKCODES (любая, не только свободная). */
+    getGoodsWithMarkCodes(goodCodes: string[], t?: FirebirdTransaction): Promise<Set<string>>;
+    /** Свободные коды по номиналам: GOODSCODE → (номинал → сколько кодов). */
+    getFreeMarkCodesByNominal(goodCodes: string[], t?: FirebirdTransaction): Promise<Map<string, Map<number, number>>>;
     setGoodsDisabled(codes: string[], service: GoodServiceEnum, t?: FirebirdTransaction): Promise<void>;
     clearGoodsDisabled(codes: string[], service: GoodServiceEnum, t?: FirebirdTransaction): Promise<void>;
 }
