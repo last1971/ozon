@@ -117,7 +117,6 @@ describe("ExtraPriceService", () => {
         getWbData: jest.fn(),
         getQuantities: jest.fn(),
         updateCountForService: jest.fn(),
-        updateCountForSkus: jest.fn(),
         updatePriceForService: jest.fn(),
         updateWbCategory: jest.fn(),
         getWbCategoryByName: jest.fn(),

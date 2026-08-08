@@ -49,6 +49,7 @@ export class ExtraGoodService implements OnApplicationBootstrap {
         private clearDisabledFlagCommand: ClearDisabledFlagCommand,
         private pushZeroCountsCommand: PushZeroCountsCommand,
         private restoreCountsCommand: RestoreCountsCommand,
+        private goodsCountProcessor: GoodsCountProcessor,
     ) {
         this.services = new Map<GoodServiceEnum, { service: ICountUpdateable; isSwitchedOn: boolean }>();
         const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
@@ -83,13 +84,12 @@ export class ExtraGoodService implements OnApplicationBootstrap {
                 message: `Service ${serviceEnum} not configured`,
             };
         }
-        const processor = new GoodsCountProcessor(this.services, this.logger, this.goodService);
         return {
             isSuccess: service.isSwitchedOn,
             message: service.isSwitchedOn
-                ? `Was updated ${await processor.processGoodsCountForService(
+                ? `Was updated ${await this.goodsCountProcessor.processGoodsCountForService(
+                    this.services,
                     serviceEnum,
-                    this.goodService,
                     ''
                   )} offers in ${serviceEnum}`
                 : `${serviceEnum} switched off`,
@@ -105,10 +105,13 @@ export class ExtraGoodService implements OnApplicationBootstrap {
             };
         }
         service.isSwitchedOn = isSwitchedDto.isSwitchedOn;
-        const processor = new GoodsCountProcessor(this.services, this.logger, this.goodService);
         let count: number;
         if (isSwitchedDto.isSwitchedOn) {
-            count = await processor.processGoodsCountForService(isSwitchedDto.service, this.goodService, '');
+            count = await this.goodsCountProcessor.processGoodsCountForService(
+                this.services,
+                isSwitchedDto.service,
+                '',
+            );
         } else {
             count = await this.resetBalances(isSwitchedDto.service);
         }
@@ -288,12 +291,11 @@ export class ExtraGoodService implements OnApplicationBootstrap {
 
     @Cron('0 0 9-19 * * 1-6', { name: 'controlCheckGoodCount' })
     async checkGoodCount(): Promise<void> {
-        const processor = new GoodsCountProcessor(this.services, this.logger, this.goodService);
         for (const service of this.services.keys()) {
             this.logger.log(
-                `Update quantity for ${await processor.processGoodsCountForService(
+                `Update quantity for ${await this.goodsCountProcessor.processGoodsCountForService(
+                    this.services,
                     service,
-                    this.goodService,
                     '',
                 )} goods in ${service}`,
             );
@@ -301,30 +303,11 @@ export class ExtraGoodService implements OnApplicationBootstrap {
         }
     }
 
-    // Logic was changed on countsChanged method
-    // @OnEvent('reserve.created', { async: true })
-    async reserveCreated(skus: string[]): Promise<void> {
-        this.logger.log('Sku - ' + skus.join() + ' was reserved');
-        let count: number = 0;
-        for (const service of this.services) {
-            if (service[1].isSwitchedOn)
-                try {
-                    count += await this.goodService.updateCountForSkus(service[1].service, skus);
-                } catch (e) {
-                    this.logger.error(e.message, e);
-                }
-            else this.logger.log(`Service ${service[0]} is switched off`);
-        }
-        this.logger.log(`Update quantity for ${count} goods`);
-    }
-
     @OnEvent('counts.changed', { async: true })
     async countsChanged(goods: GoodDto[]): Promise<void> {
         this.logger.log(`SKUs changed: ${goods.map((good) => good.code).join(', ')}`);
 
-        const processor = new GoodsCountProcessor(this.services, this.logger, this.goodService);
-
-        await processor.processGoodsCountChanges(goods);
+        await this.goodsCountProcessor.processGoodsCountChanges(this.services, goods);
     }
 
     async getProductInfo(offer_id: string[], service: GoodServiceEnum): Promise<ProductInfoDto[]> {

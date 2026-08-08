@@ -200,28 +200,6 @@ describe('Trade2006GoodService', () => {
         expect(getGoodIds.mock.calls[0]).toEqual(['4']);
     });
     */
-    it('updateCountForSkus', async () => {
-        const updateGoodCounts = jest.fn().mockResolvedValueOnce(2);
-        const getGoodIds = jest.fn().mockResolvedValueOnce({
-            goods: new Map([
-                ['1', 5],
-                ['2', 6],
-            ]),
-        });
-        const loadSkuList = async () => {};
-        const infoList = jest.fn();
-        const skuList = [];
-        const countUpdateable: ICountUpdateable = { updateGoodCounts, getGoodIds, loadSkuList, skuList, infoList };
-        const res = await service.updateCountForSkus(countUpdateable, ['1', '2']);
-        expect(res).toEqual(2);
-        expect(updateGoodCounts.mock.calls[0]).toEqual([
-            new Map([
-                ['1', 1],
-                ['2', 0],
-                ['1-1', 1],
-            ]),
-        ]);
-    });
     it('updatePriceForService', async () => {
         const prices = new Map<string, UpdatePriceDto>();
         prices.set('1', { incoming_price: 100 } as UpdatePriceDto);
@@ -865,5 +843,87 @@ describe('Trade2006GoodService', () => {
             { id: 'avito456', goodsCode: '789', coeff: 1, commission: 10.0 },
             { id: 'avito789', goodsCode: '101', coeff: 1, commission: 12.0 },
         ]);
+    });
+
+    describe('маркировка: выборки для пересчёта остатков', () => {
+        // Отдельный инстанс: в общем моке ConfigService маркировка выключена.
+        const withMarkCodes = (): Trade2006GoodService =>
+            new Trade2006GoodService(
+                { getTransaction: () => ({ query, execute, commit }) } as any,
+                {
+                    get: (key: string) => (key === 'STORAGE_TYPE' ? 'SHOPSKLAD' : key === 'MARK_CODES_ENABLED' ? 'true' : null),
+                } as any,
+                { emit } as any,
+                { get, set, del } as any,
+                mockPriceCalculationHelper as any,
+            );
+
+        it('getMarkRequiredCodes — GOODS_CLASSIF.MARK_REQUIRED = 1', async () => {
+            query.mockReturnValue([{ GOODSCODE: 498824 }, { GOODSCODE: 552601 }]);
+
+            const result = await withMarkCodes().getMarkRequiredCodes();
+
+            expect(query).toHaveBeenCalledWith(
+                'SELECT DISTINCT GOODSCODE FROM GOODS_CLASSIF WHERE MARK_REQUIRED = 1',
+                [],
+                false,
+            );
+            expect(result).toEqual(new Set(['498824', '552601']));
+        });
+
+        it('getGoodsWithMarkCodes — любые строки MARKCODES, без фильтра свободности', async () => {
+            query.mockReturnValue([{ GOODSCODE: 498824 }]);
+
+            const result = await withMarkCodes().getGoodsWithMarkCodes(['498824', '548580']);
+
+            expect(query).toHaveBeenCalledWith(
+                'SELECT DISTINCT GOODSCODE FROM MARKCODES WHERE GOODSCODE IN (?,?)',
+                ['498824', '548580'],
+                false,
+            );
+            // 548580 кодов не имеет — уйдёт на старую схему
+            expect(result).toEqual(new Set(['498824']));
+        });
+
+        it('getFreeMarkCodesByNominal — разбивка по номиналам одним запросом', async () => {
+            query.mockReturnValue([
+                { GOODSCODE: 498824, NOMINAL: 1, CODES: 16 },
+                { GOODSCODE: 498824, NOMINAL: 100, CODES: 12 },
+                { GOODSCODE: 498824, NOMINAL: 800, CODES: 9 },
+                { GOODSCODE: 552601, NOMINAL: 40, CODES: 32 },
+            ]);
+
+            const result = await withMarkCodes().getFreeMarkCodesByNominal(['498824', '552601']);
+
+            const [sql, params, autoCommit] = query.mock.calls[0];
+            expect(sql).toContain('m.STATUS = 5 AND m.TRANSFER_TYPE = 0');
+            expect(sql).toContain('m.SPISSKLADCODE IS NULL AND m.SPISSHOPCODE IS NULL');
+            expect(sql).toContain('GROUP BY m.GOODSCODE, COALESCE(m.QUANTITY, 1)');
+            expect(sql).toContain('m.GOODSCODE IN (?,?)');
+            expect(params).toEqual(['498824', '552601']);
+            expect(autoCommit).toBe(false);
+
+            expect(result).toEqual(
+                new Map([
+                    ['498824', new Map([[1, 16], [100, 12], [800, 9]])],
+                    ['552601', new Map([[40, 32]])],
+                ]),
+            );
+        });
+
+        it('пустой список товаров — запросов нет', async () => {
+            const svc = withMarkCodes();
+
+            expect(await svc.getGoodsWithMarkCodes([])).toEqual(new Set());
+            expect(await svc.getFreeMarkCodesByNominal([])).toEqual(new Map());
+            expect(query).not.toHaveBeenCalled();
+        });
+
+        it('MARK_CODES_ENABLED=false (магазин) — пусто без запросов, таблиц MARKCODES там нет', async () => {
+            expect(await service.getMarkRequiredCodes()).toEqual(new Set());
+            expect(await service.getGoodsWithMarkCodes(['498824'])).toEqual(new Set());
+            expect(await service.getFreeMarkCodesByNominal(['498824'])).toEqual(new Map());
+            expect(query).not.toHaveBeenCalled();
+        });
     });
 });

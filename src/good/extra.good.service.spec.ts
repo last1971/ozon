@@ -11,6 +11,13 @@ import { GoodServiceEnum } from "./good.service.enum";
 import { ConfigService } from "@nestjs/config";
 import { EventEmitter2 } from "@nestjs/event-emitter";
 import { GoodsCountProcessor } from "../helpers/good/goods.count.processor";
+import { LoadSnapshotCommand } from "../helpers/good/commands/load-snapshot.command";
+import { MapSkusToGoodsCommand } from "../helpers/good/commands/map-skus-to-goods.command";
+import { DistributePlainCountsCommand } from "../helpers/good/commands/distribute-plain-counts.command";
+import { DistributeMarkedCountsCommand } from "../helpers/good/commands/distribute-marked-counts.command";
+import { ApplyDisabledCommand } from "../helpers/good/commands/apply-disabled.command";
+import { KeepChangedOnlyCommand } from "../helpers/good/commands/keep-changed-only.command";
+import { PushCountsCommand } from "../helpers/good/commands/push-counts.command";
 import { ResolveDisableTokensCommand } from "./commands/resolve-disable-tokens.command";
 import { WriteDisabledFlagCommand } from "./commands/write-disabled-flag.command";
 import { ClearDisabledFlagCommand } from "./commands/clear-disabled-flag.command";
@@ -21,7 +28,6 @@ import Excel from 'exceljs';
 describe('ExtraGoodService', () => {
     let service: ExtraGoodService;
     const updateCountForService = jest.fn();
-    const updateCountForSkus = jest.fn();
     const loadSkuList = jest.fn();
     const updateGoodCounts = jest.fn();
     const mockIn = jest.fn();
@@ -41,7 +47,15 @@ describe('ExtraGoodService', () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 ExtraGoodService,
-                { provide: GOOD_SERVICE, useValue: { updateCountForService, updateCountForSkus, in: mockIn, setWbData, setAvitoData, setPercents, setGoodsDisabled, clearGoodsDisabled, getDisabledCodes } },
+                GoodsCountProcessor,
+                LoadSnapshotCommand,
+                MapSkusToGoodsCommand,
+                DistributePlainCountsCommand,
+                DistributeMarkedCountsCommand,
+                ApplyDisabledCommand,
+                KeepChangedOnlyCommand,
+                PushCountsCommand,
+                { provide: GOOD_SERVICE, useValue: { updateCountForService, in: mockIn, setWbData, setAvitoData, setPercents, setGoodsDisabled, clearGoodsDisabled, getDisabledCodes } },
                 { provide: YandexOfferService, useValue: { test: "Yandex", skuList: [], getGoodIds } },
                 { provide: ExpressOfferService, useValue: { skuList: [], getGoodIds } },
                 { provide: ProductService, useValue: { skuList: ["222", "222-10"], updateGoodCounts, getGoodIds } },
@@ -59,7 +73,6 @@ describe('ExtraGoodService', () => {
         }).compile();
 
         updateCountForService.mockClear();
-        updateCountForSkus.mockClear();
         updateGoodCounts.mockClear();
         service = module.get<ExtraGoodService>(ExtraGoodService);
     });
@@ -87,11 +100,6 @@ describe('ExtraGoodService', () => {
     it("test checkGoodCount", async () => {
         await service.checkGoodCount();
         expect(getGoodIds.mock.calls).toHaveLength(6);
-    });
-
-    it("reserveCreated", async () => {
-        await service.reserveCreated(["1", "2"]);
-        expect(updateCountForSkus.mock.calls).toHaveLength(6);
     });
 
     it("serviceIsSwitchedOn", async () => {
@@ -137,8 +145,8 @@ describe('ExtraGoodService', () => {
             { code: '222', quantity: 2, reserve: null, name: '222' },
         ]);
 
-        // Проверяем вызов processGoodsCountChanges
-        expect(mockProcessGoodsCountChanges).toHaveBeenCalledWith([
+        // Проверяем вызов processGoodsCountChanges: карта сервисов теперь приходит параметром
+        expect(mockProcessGoodsCountChanges).toHaveBeenCalledWith(expect.any(Map), [
             { code: '111', quantity: 10, reserve: 1, name: '111' },
             { code: '222', quantity: 2, reserve: null, name: '222' },
         ]);

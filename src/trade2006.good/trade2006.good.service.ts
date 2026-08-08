@@ -10,11 +10,8 @@ import {
     getPieces,
     goodCode,
     goodQuantityCoeff,
-    productQuantity,
-    skusToGoodIds,
-    StringToIOfferIdableAdapter,
+    isMarkCodesEnabled,
 } from '../helpers';
-import { ICountUpdateable } from '../interfaces/ICountUpdatebale';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
 import { UpdatePriceDto } from '../price/dto/update.price.dto';
 import { ConfigService } from '@nestjs/config';
@@ -45,6 +42,10 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
     ) {
         super();
         this.storageTable = configService.get<string>('STORAGE_TYPE', 'SHOPSKLAD').toUpperCase();
+    }
+
+    async getTransaction(): Promise<FirebirdTransaction> {
+        return this.pool.getTransaction();
     }
 
     async in(codes: string[], t: FirebirdTransaction = null): Promise<GoodDto[]> {
@@ -295,6 +296,100 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         );
     }
 
+    /**
+     * Свободный код маркировки: введён в оборот, никуда не привязан и не списан.
+     * Тот же фильтр, что в процедуре COUNT_FREE_MARKCODES_FOR_GOOD, плюс две колонки
+     * списания, которых в ней нет (STATUS=6 их и так отсекает, но фильтр самодостаточен).
+     */
+    private static readonly FREE_CODE_FILTER =
+        'm.STATUS = 5 AND m.TRANSFER_TYPE = 0 AND m.REALPRICECODE IS NULL AND m.REALPRICEFCODE IS NULL ' +
+        'AND m.SHOPLOGCODE IS NULL AND m.SPISID IS NULL AND m.SPISSKLADCODE IS NULL AND m.SPISSHOPCODE IS NULL';
+
+    /** Товары, подлежащие маркировке (GOODS_CLASSIF.MARK_REQUIRED = 1). Их сотни — тянем целиком. */
+    async getMarkRequiredCodes(t: FirebirdTransaction = null): Promise<Set<string>> {
+        if (!isMarkCodesEnabled(this.configService)) return new Set<string>();
+        return this.withTransaction(async (transaction) => {
+            const rows: any[] = await transaction.query(
+                'SELECT DISTINCT GOODSCODE FROM GOODS_CLASSIF WHERE MARK_REQUIRED = 1',
+                [],
+                false,
+            );
+            return new Set(rows.map((r) => String(r.GOODSCODE)));
+        }, t);
+    }
+
+    /**
+     * Из переданных товаров — те, у кого есть хоть одна строка в MARKCODES (любая, не только
+     * свободная). Товар маркируемый, но кодов не заводилось → считается по старой схеме.
+     */
+    async getGoodsWithMarkCodes(goodCodes: string[], t: FirebirdTransaction = null): Promise<Set<string>> {
+        if (goodCodes.length === 0 || !isMarkCodesEnabled(this.configService)) return new Set<string>();
+        return this.withTransaction(async (transaction) => {
+            const rows: any[] = await transaction.query(
+                `SELECT DISTINCT GOODSCODE FROM MARKCODES WHERE GOODSCODE IN (${goodCodes.map(() => '?').join(',')})`,
+                goodCodes,
+                false,
+            );
+            return new Set(rows.map((r) => String(r.GOODSCODE)));
+        }, t);
+    }
+
+    /**
+     * Свободные коды по номиналам: GOODSCODE → (номинал → сколько кодов).
+     * Один запрос на всю пачку товаров — крон ходит страницами по 100 SKU,
+     * запрос на каждый товар его положит.
+     */
+    async getFreeMarkCodesByNominal(
+        goodCodes: string[],
+        t: FirebirdTransaction = null,
+    ): Promise<Map<string, Map<number, number>>> {
+        const result = new Map<string, Map<number, number>>();
+        if (goodCodes.length === 0 || !isMarkCodesEnabled(this.configService)) return result;
+        return this.withTransaction(async (transaction) => {
+            const rows: any[] = await transaction.query(
+                'SELECT m.GOODSCODE, COALESCE(m.QUANTITY, 1) AS NOMINAL, COUNT(*) AS CODES FROM MARKCODES m ' +
+                    `WHERE ${Trade2006GoodService.FREE_CODE_FILTER} ` +
+                    `AND m.GOODSCODE IN (${goodCodes.map(() => '?').join(',')}) ` +
+                    'GROUP BY m.GOODSCODE, COALESCE(m.QUANTITY, 1)',
+                goodCodes,
+                false,
+            );
+            for (const row of rows) {
+                const code = String(row.GOODSCODE);
+                if (!result.has(code)) result.set(code, new Map<number, number>());
+                result.get(code).set(Number(row.NOMINAL) || 1, Number(row.CODES) || 0);
+            }
+            return result;
+        }, t);
+    }
+
+    /**
+     * Живой резерв ПО ЗАКАЗАМ: GOODSCODE → [количество в каждом заказе].
+     * Именно построчно, а не суммой: склад закрывает каждый заказ своим кодом, и от разбивки
+     * зависит, какие коды уйдут (552601: резерв 7 — это заказы 1, 3, 3).
+     */
+    async getReservedQuantities(
+        goodCodes: string[],
+        t: FirebirdTransaction = null,
+    ): Promise<Map<string, number[]>> {
+        const result = new Map<string, number[]>();
+        if (goodCodes.length === 0) return result;
+        return this.withTransaction(async (transaction) => {
+            const rows: any[] = await transaction.query(
+                'SELECT GOODSCODE, QUANSKLAD + QUANSHOP AS QUAN FROM RESERVEDPOS ' +
+                    `WHERE QUANSKLAD + QUANSHOP > 0 AND GOODSCODE IN (${goodCodes.map(() => '?').join(',')})`,
+                goodCodes,
+                false,
+            );
+            for (const row of rows) {
+                const code = String(row.GOODSCODE);
+                if (!result.has(code)) result.set(code, []);
+                result.get(code).push(Number(row.QUAN) || 0);
+            }
+            return result;
+        }, t);
+    }
+
     /** Коды (GOODSCODE или SKU), отключённые на данном сервисе. */
     async getDisabledCodes(service: GoodServiceEnum, t: FirebirdTransaction = null): Promise<string[]> {
         return this.withTransaction(async (transaction) => {
@@ -373,26 +468,6 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         return count;
     }
     */
-
-    async updateCountForSkus(service: ICountUpdateable, skus: string[]): Promise<number> {
-        const goodIds: string[] = skusToGoodIds(skus);
-        const goods = await this.getQuantities(goodIds);
-        const fullSkus = skus;
-        for (const percent of await this.getPerc(goodIds)) {
-            const sku = percent.offer_id.toString() + '-' + percent.pieces.toString();
-            if (!fullSkus.includes(sku)) {
-                fullSkus.push(sku);
-                if (percent.pieces === 1) fullSkus.push(percent.offer_id.toString());
-            }
-        }
-        const updateGoods: Map<string, number> = new Map();
-        fullSkus.forEach((sku) => {
-            const item = new StringToIOfferIdableAdapter(sku);
-            const goodCount = productQuantity(goods.get(goodCode(item)), goodQuantityCoeff(item));
-            updateGoods.set(sku, goodCount);
-        });
-        return service.updateGoodCounts(updateGoods);
-    }
 
     async generatePercentsForService(
         service: IPriceUpdateable | null,

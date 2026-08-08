@@ -58,9 +58,6 @@ export class ElectronicaGoodService implements IGood {
         return new Map<string, number>();
     }
 
-    async updateCountForSkus(service: ICountUpdateable, skus: string[]): Promise<number> {
-        return 0;
-    }
     async updateCountForService(service: ICountUpdateable, args: any): Promise<number> {
         return 0;
     }
@@ -104,5 +101,25 @@ export class ElectronicaGoodService implements IGood {
     }
     async clearGoodsDisabled(codes: string[], service: GoodServiceEnum, t?: FirebirdTransaction): Promise<void> {
         return Promise.resolve(undefined);
+    }
+    // Своей БД у Electronica нет — читаем без транзакции.
+    async getTransaction(): Promise<FirebirdTransaction> {
+        return null;
+    }
+    // Маркировки у Electronica нет — товары всегда считаются по старой схеме.
+    async getMarkRequiredCodes(t?: FirebirdTransaction): Promise<Set<string>> {
+        return new Set<string>();
+    }
+    async getGoodsWithMarkCodes(goodCodes: string[], t?: FirebirdTransaction): Promise<Set<string>> {
+        return new Set<string>();
+    }
+    async getFreeMarkCodesByNominal(
+        goodCodes: string[],
+        t?: FirebirdTransaction,
+    ): Promise<Map<string, Map<number, number>>> {
+        return new Map<string, Map<number, number>>();
+    }
+    async getReservedQuantities(goodCodes: string[], t?: FirebirdTransaction): Promise<Map<string, number[]>> {
+        return new Map<string, number[]>();
     }
 }

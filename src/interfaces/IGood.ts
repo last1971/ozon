@@ -12,6 +12,8 @@ import { GoodAvitoDto } from '../good/dto/good.avito.dto';
 import { GoodServiceEnum } from '../good/good.service.enum';
 
 export interface IGood {
+    /** Транзакция для чтения нескольких выборок из одного снимка (остаток и коды не должны разъезжаться). */
+    getTransaction(): Promise<FirebirdTransaction>;
     in(codes: string[], t: FirebirdTransaction): Promise<GoodDto[]>;
     prices(codes: string[], t: FirebirdTransaction): Promise<GoodPriceDto[]>;
     setPercents(perc: GoodPercentDto, t: FirebirdTransaction): Promise<void>;
@@ -23,7 +25,6 @@ export interface IGood {
     getAllAvitoGoods(): Promise<GoodAvitoDto[]>;
     getQuantities(goodCodes: string[], t: FirebirdTransaction): Promise<Map<string, number>>;
     //updateCountForService(service: ICountUpdateable, args: any): Promise<number>;
-    updateCountForSkus(service: ICountUpdateable, skus: string[]): Promise<number>;
     updatePriceForService(service: IPriceUpdateable, skus: string[], prices?: Map<string, UpdatePriceDto>): Promise<any>;
     generatePercentsForService(service: IPriceUpdateable | null, skus: string[], goodPercentsDto?: Map<string, Partial<GoodPercentDto>>): Promise<GoodPercentDto[]>;
     updatePercentsForService(service: IPriceUpdateable, skus: string[], goodPercentsDto?: Map<string, Partial<GoodPercentDto>>): Promise<void>;
@@ -31,6 +32,14 @@ export interface IGood {
     getWbCategoryByName(name: string): Promise<WbCommissionDto>;
     resetAvailablePrice(goodCodes?: string[], t?: FirebirdTransaction): Promise<void>
     getDisabledCodes(service: GoodServiceEnum, t?: FirebirdTransaction): Promise<string[]>;
+    /** Товары, подлежащие маркировке (GOODS_CLASSIF.MARK_REQUIRED = 1). */
+    getMarkRequiredCodes(t?: FirebirdTransaction): Promise<Set<string>>;
+    /** Из переданных — те, у кого есть хоть одна строка в MARKCODES (любая, не только свободная). */
+    getGoodsWithMarkCodes(goodCodes: string[], t?: FirebirdTransaction): Promise<Set<string>>;
+    /** Свободные коды по номиналам: GOODSCODE → (номинал → сколько кодов). */
+    getFreeMarkCodesByNominal(goodCodes: string[], t?: FirebirdTransaction): Promise<Map<string, Map<number, number>>>;
+    /** Живой резерв по заказам: GOODSCODE → [количество в каждом заказе]. */
+    getReservedQuantities(goodCodes: string[], t?: FirebirdTransaction): Promise<Map<string, number[]>>;
     setGoodsDisabled(codes: string[], service: GoodServiceEnum, t?: FirebirdTransaction): Promise<void>;
     clearGoodsDisabled(codes: string[], service: GoodServiceEnum, t?: FirebirdTransaction): Promise<void>;
 }
