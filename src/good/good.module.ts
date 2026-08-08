@@ -21,6 +21,13 @@ import { ClearDisabledFlagCommand } from './commands/clear-disabled-flag.command
 import { PushZeroCountsCommand } from './commands/push-zero-counts.command';
 import { RestoreCountsCommand } from './commands/restore-counts.command';
 import { GoodsCountProcessor } from '../helpers/good/goods.count.processor';
+import { LoadSnapshotCommand } from '../helpers/good/commands/load-snapshot.command';
+import { MapSkusToGoodsCommand } from '../helpers/good/commands/map-skus-to-goods.command';
+import { DistributePlainCountsCommand } from '../helpers/good/commands/distribute-plain-counts.command';
+import { DistributeMarkedCountsCommand } from '../helpers/good/commands/distribute-marked-counts.command';
+import { ApplyDisabledCommand } from '../helpers/good/commands/apply-disabled.command';
+import { KeepChangedOnlyCommand } from '../helpers/good/commands/keep-changed-only.command';
+import { PushCountsCommand } from '../helpers/good/commands/push-counts.command';
 
 @Module({
     imports: [FirebirdModule, ProductModule, YandexOfferModule, WbCardModule, HelpersModule, forwardRef(() => AvitoCardModule), SyliusModule],
@@ -38,6 +45,13 @@ import { GoodsCountProcessor } from '../helpers/good/goods.count.processor';
         },
         ExtraGoodService,
         GoodsCountProcessor,
+        LoadSnapshotCommand,
+        MapSkusToGoodsCommand,
+        DistributePlainCountsCommand,
+        DistributeMarkedCountsCommand,
+        ApplyDisabledCommand,
+        KeepChangedOnlyCommand,
+        PushCountsCommand,
         ResolveDisableTokensCommand,
         WriteDisabledFlagCommand,
         ClearDisabledFlagCommand,

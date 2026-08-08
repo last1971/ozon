@@ -12,6 +12,8 @@ import { GoodAvitoDto } from '../good/dto/good.avito.dto';
 import { GoodServiceEnum } from '../good/good.service.enum';
 
 export interface IGood {
+    /** Транзакция для чтения нескольких выборок из одного снимка (остаток и коды не должны разъезжаться). */
+    getTransaction(): Promise<FirebirdTransaction>;
     in(codes: string[], t: FirebirdTransaction): Promise<GoodDto[]>;
     prices(codes: string[], t: FirebirdTransaction): Promise<GoodPriceDto[]>;
     setPercents(perc: GoodPercentDto, t: FirebirdTransaction): Promise<void>;

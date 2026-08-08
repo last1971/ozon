@@ -44,6 +44,10 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         this.storageTable = configService.get<string>('STORAGE_TYPE', 'SHOPSKLAD').toUpperCase();
     }
 
+    async getTransaction(): Promise<FirebirdTransaction> {
+        return this.pool.getTransaction();
+    }
+
     async in(codes: string[], t: FirebirdTransaction = null): Promise<GoodDto[]> {
         if (codes.length === 0) return [];
         const transaction = t ?? (await this.pool.getTransaction());

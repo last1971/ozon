@@ -11,6 +11,13 @@ import { GoodServiceEnum } from "./good.service.enum";
 import { ConfigService } from "@nestjs/config";
 import { EventEmitter2 } from "@nestjs/event-emitter";
 import { GoodsCountProcessor } from "../helpers/good/goods.count.processor";
+import { LoadSnapshotCommand } from "../helpers/good/commands/load-snapshot.command";
+import { MapSkusToGoodsCommand } from "../helpers/good/commands/map-skus-to-goods.command";
+import { DistributePlainCountsCommand } from "../helpers/good/commands/distribute-plain-counts.command";
+import { DistributeMarkedCountsCommand } from "../helpers/good/commands/distribute-marked-counts.command";
+import { ApplyDisabledCommand } from "../helpers/good/commands/apply-disabled.command";
+import { KeepChangedOnlyCommand } from "../helpers/good/commands/keep-changed-only.command";
+import { PushCountsCommand } from "../helpers/good/commands/push-counts.command";
 import { ResolveDisableTokensCommand } from "./commands/resolve-disable-tokens.command";
 import { WriteDisabledFlagCommand } from "./commands/write-disabled-flag.command";
 import { ClearDisabledFlagCommand } from "./commands/clear-disabled-flag.command";
@@ -41,6 +48,13 @@ describe('ExtraGoodService', () => {
             providers: [
                 ExtraGoodService,
                 GoodsCountProcessor,
+                LoadSnapshotCommand,
+                MapSkusToGoodsCommand,
+                DistributePlainCountsCommand,
+                DistributeMarkedCountsCommand,
+                ApplyDisabledCommand,
+                KeepChangedOnlyCommand,
+                PushCountsCommand,
                 { provide: GOOD_SERVICE, useValue: { updateCountForService, in: mockIn, setWbData, setAvitoData, setPercents, setGoodsDisabled, clearGoodsDisabled, getDisabledCodes } },
                 { provide: YandexOfferService, useValue: { test: "Yandex", skuList: [], getGoodIds } },
                 { provide: ExpressOfferService, useValue: { skuList: [], getGoodIds } },
