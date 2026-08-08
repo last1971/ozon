@@ -1,5 +1,6 @@
 import {
     computeNeedToDrop,
+    distributeCodesToSkus,
     dropCodesForNeed,
     freeCodesAfterReserve,
     sumNominals,
@@ -116,6 +117,71 @@ describe('mark-codes.distribution', () => {
 
         it('резерв больше всех кодов — товар уходит в 0', () => {
             expect(freeCodesAfterReserve(codes([10, 2]), 20, 25)).toEqual(new Map());
+        });
+    });
+
+    describe('distributeCodesToSkus', () => {
+        it('номинал со своей фасовкой получает число кодов, а не штук', () => {
+            const result = distributeCodesToSkus('498824', ['498824', '498824-100'], codes([100, 12]));
+
+            expect(result).toEqual(new Map([['498824', 0], ['498824-100', 12]]));
+        });
+
+        it('единичные коды идут в базовую фасовку штуками', () => {
+            const result = distributeCodesToSkus('498824', ['498824', '498824-100'], codes([1, 16], [100, 12]));
+
+            expect(result).toEqual(new Map([['498824', 16], ['498824-100', 12]]));
+        });
+
+        it('498824: номинал 800 без своей фасовки → 7200 штук в базовую', () => {
+            const skus = ['498824', '498824-5', '498824-10', '498824-100', '498824-1000'];
+
+            const result = distributeCodesToSkus('498824', skus, codes([1, 16], [100, 11], [800, 9]));
+
+            expect(result).toEqual(
+                new Map([
+                    ['498824', 7216], // 16 единичных + 9 × 800
+                    ['498824-5', 0],
+                    ['498824-10', 0],
+                    ['498824-100', 11],
+                    ['498824-1000', 0],
+                ]),
+            );
+        });
+
+        it('заведена фасовка 800 — коды уезжают в неё, базовая остаётся с единичными', () => {
+            const skus = ['498824', '498824-100', '498824-800'];
+
+            const result = distributeCodesToSkus('498824', skus, codes([1, 16], [100, 11], [800, 9]));
+
+            expect(result).toEqual(
+                new Map([['498824', 16], ['498824-100', 11], ['498824-800', 9]]),
+            );
+        });
+
+        it('базовая фасовка может быть заведена как код-1', () => {
+            const result = distributeCodesToSkus('552601', ['552601-1', '552601-3'], codes([1, 2], [3, 9], [40, 32]));
+
+            // 2 единичных + 32 × 40 штук из номинала без фасовки
+            expect(result).toEqual(new Map([['552601-1', 1282], ['552601-3', 9]]));
+        });
+
+        it('если заведены и код, и код-1 — одинаковое значение в обе, без деления пополам', () => {
+            const result = distributeCodesToSkus('552601', ['552601', '552601-1'], codes([1, 5]));
+
+            expect(result).toEqual(new Map([['552601', 5], ['552601-1', 5]]));
+        });
+
+        it('фасовки без кодов обнуляются, старое значение не наследуется', () => {
+            const result = distributeCodesToSkus('569126', ['569126', '569126-10', '569126-20'], new Map());
+
+            expect(result).toEqual(new Map([['569126', 0], ['569126-10', 0], ['569126-20', 0]]));
+        });
+
+        it('базовой фасовки нет — штуки без своего номинала теряются', () => {
+            const result = distributeCodesToSkus('569126', ['569126-10'], codes([1, 4], [10, 2]));
+
+            expect(result).toEqual(new Map([['569126-10', 2]]));
         });
     });
 });

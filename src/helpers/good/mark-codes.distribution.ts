@@ -85,3 +85,57 @@ export const freeCodesAfterReserve = (
     quantity: number,
     reserve: number,
 ): FreeCodesByNominal => dropCodesForNeed(codes, computeNeedToDrop(codes, quantity, reserve));
+
+/**
+ * Раскладка уцелевших кодов по фасовкам маркета.
+ *
+ * - номинал N, под который у товара есть фасовка `код-N` → в неё уходит **число кодов**
+ *   (маркет считает фасовку упаковками, а не штуками);
+ * - номинал 1 → базовая фасовка (`код` либо `код-1` — что реально заведено на сервисе);
+ * - номинал без своей фасовки → его штуки (N × число кодов) уходят в базовую;
+ * - фасовки, которым кодов не досталось, получают 0 — старое значение не наследуется.
+ *
+ * `skus` — SKU этого товара на конкретном сервисе; на разных маркетах набор фасовок разный,
+ * поэтому и раскладка считается на каждый сервис отдельно.
+ */
+export const distributeCodesToSkus = (
+    goodCode: string,
+    skus: string[],
+    codes: FreeCodesByNominal,
+): Map<string, number> => {
+    const result = new Map<string, number>(skus.map((sku) => [sku, 0]));
+
+    // Фасовка под номинал: 1 → базовая (`код` или `код-1`), N → `код-N`.
+    const skuByNominal = new Map<number, string[]>();
+    for (const sku of skus) {
+        const suffix = sku.slice(goodCode.length);
+        const nominal = suffix === '' ? 1 : Number(suffix.replace('-', ''));
+        if (!Number.isInteger(nominal) || nominal <= 0) continue;
+        if (!skuByNominal.has(nominal)) skuByNominal.set(nominal, []);
+        skuByNominal.get(nominal).push(sku);
+    }
+
+    const baseSkus = skuByNominal.get(1) ?? [];
+    let basePieces = 0;
+
+    for (const [nominal, count] of codes) {
+        if (count <= 0) continue;
+        if (nominal === 1) {
+            basePieces += count;
+            continue;
+        }
+        const own = skuByNominal.get(nominal);
+        if (own) {
+            // Одна фасовка = один код этого номинала.
+            own.forEach((sku) => result.set(sku, count));
+        } else {
+            // Фасовки под такой номинал нет — штуки уходят в базовую (её вскрывают руками).
+            basePieces += nominal * count;
+        }
+    }
+
+    // `код` и `код-1` на одном сервисе вместе не заводятся; если всё же оба — значение одинаковое.
+    baseSkus.forEach((sku) => result.set(sku, basePieces));
+
+    return result;
+};
