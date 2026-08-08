@@ -23,7 +23,6 @@ export interface IGood {
     getAllAvitoGoods(): Promise<GoodAvitoDto[]>;
     getQuantities(goodCodes: string[], t: FirebirdTransaction): Promise<Map<string, number>>;
     //updateCountForService(service: ICountUpdateable, args: any): Promise<number>;
-    updateCountForSkus(service: ICountUpdateable, skus: string[]): Promise<number>;
     updatePriceForService(service: IPriceUpdateable, skus: string[], prices?: Map<string, UpdatePriceDto>): Promise<any>;
     generatePercentsForService(service: IPriceUpdateable | null, skus: string[], goodPercentsDto?: Map<string, Partial<GoodPercentDto>>): Promise<GoodPercentDto[]>;
     updatePercentsForService(service: IPriceUpdateable, skus: string[], goodPercentsDto?: Map<string, Partial<GoodPercentDto>>): Promise<void>;

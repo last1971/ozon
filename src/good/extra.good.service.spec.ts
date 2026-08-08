@@ -21,7 +21,6 @@ import Excel from 'exceljs';
 describe('ExtraGoodService', () => {
     let service: ExtraGoodService;
     const updateCountForService = jest.fn();
-    const updateCountForSkus = jest.fn();
     const loadSkuList = jest.fn();
     const updateGoodCounts = jest.fn();
     const mockIn = jest.fn();
@@ -41,7 +40,8 @@ describe('ExtraGoodService', () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 ExtraGoodService,
-                { provide: GOOD_SERVICE, useValue: { updateCountForService, updateCountForSkus, in: mockIn, setWbData, setAvitoData, setPercents, setGoodsDisabled, clearGoodsDisabled, getDisabledCodes } },
+                GoodsCountProcessor,
+                { provide: GOOD_SERVICE, useValue: { updateCountForService, in: mockIn, setWbData, setAvitoData, setPercents, setGoodsDisabled, clearGoodsDisabled, getDisabledCodes } },
                 { provide: YandexOfferService, useValue: { test: "Yandex", skuList: [], getGoodIds } },
                 { provide: ExpressOfferService, useValue: { skuList: [], getGoodIds } },
                 { provide: ProductService, useValue: { skuList: ["222", "222-10"], updateGoodCounts, getGoodIds } },
@@ -59,7 +59,6 @@ describe('ExtraGoodService', () => {
         }).compile();
 
         updateCountForService.mockClear();
-        updateCountForSkus.mockClear();
         updateGoodCounts.mockClear();
         service = module.get<ExtraGoodService>(ExtraGoodService);
     });
@@ -87,11 +86,6 @@ describe('ExtraGoodService', () => {
     it("test checkGoodCount", async () => {
         await service.checkGoodCount();
         expect(getGoodIds.mock.calls).toHaveLength(6);
-    });
-
-    it("reserveCreated", async () => {
-        await service.reserveCreated(["1", "2"]);
-        expect(updateCountForSkus.mock.calls).toHaveLength(6);
     });
 
     it("serviceIsSwitchedOn", async () => {
@@ -137,8 +131,8 @@ describe('ExtraGoodService', () => {
             { code: '222', quantity: 2, reserve: null, name: '222' },
         ]);
 
-        // Проверяем вызов processGoodsCountChanges
-        expect(mockProcessGoodsCountChanges).toHaveBeenCalledWith([
+        // Проверяем вызов processGoodsCountChanges: карта сервисов теперь приходит параметром
+        expect(mockProcessGoodsCountChanges).toHaveBeenCalledWith(expect.any(Map), [
             { code: '111', quantity: 10, reserve: 1, name: '111' },
             { code: '222', quantity: 2, reserve: null, name: '222' },
         ]);

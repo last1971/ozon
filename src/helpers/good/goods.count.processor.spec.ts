@@ -1,4 +1,4 @@
-import { GoodsCountProcessor } from "./goods.count.processor";
+import { CountUpdateableServices, GoodsCountProcessor } from "./goods.count.processor";
 import { Logger } from "@nestjs/common";
 import { GoodServiceEnum } from "../../good/good.service.enum";
 import { ICountUpdateable } from "src/interfaces/ICountUpdatebale";
@@ -8,13 +8,24 @@ import { IGood } from "../../interfaces/IGood";
 describe("GoodsCountProcessor", () => {
     let goodsCountProcessor: GoodsCountProcessor;
     let logger: Logger;
+    let services: CountUpdateableServices;
     let mockServiceOne: ICountUpdateable;
     let mockServiceTwo: ICountUpdateable;
 
+    // Процессор — провайдер: goodService приходит через конструктор, карта сервисов — в вызов.
+    const makeProcessor = (goodService?: Partial<IGood>): GoodsCountProcessor => {
+        const proc = new GoodsCountProcessor({
+            getDisabledCodes: jest.fn().mockResolvedValue([]),
+            in: jest.fn().mockResolvedValue([]),
+            ...goodService,
+        } as unknown as IGood);
+        logger = proc["logger"];
+        jest.spyOn(logger, "log").mockImplementation(() => undefined);
+        return proc;
+    };
+
     beforeEach(() => {
         jest.clearAllMocks(); // Сброс всех моков
-
-        logger = { log: jest.fn() } as unknown as Logger;
 
         mockServiceOne = {
             updateGoodCounts: jest.fn(async (skusToUpdate) => skusToUpdate.size),
@@ -32,12 +43,12 @@ describe("GoodsCountProcessor", () => {
             skuList: ["hz-1", "hz-2", "hz-3"]
         };
 
-        const services = new Map<GoodServiceEnum, { service: ICountUpdateable; isSwitchedOn: boolean }>([
+        services = new Map<GoodServiceEnum, { service: ICountUpdateable; isSwitchedOn: boolean }>([
             [GoodServiceEnum.OZON, { service: mockServiceOne, isSwitchedOn: true }],
             [GoodServiceEnum.WB, { service: mockServiceTwo, isSwitchedOn: false }]
         ]);
 
-        goodsCountProcessor = new GoodsCountProcessor(services, logger);
+        goodsCountProcessor = makeProcessor();
     });
 
     afterEach(() => {
@@ -50,7 +61,7 @@ describe("GoodsCountProcessor", () => {
             { code: "hz", quantity: 5, reserve: 1, name: "Good3" }
         ] as GoodDto[];
 
-        await goodsCountProcessor.processGoodsCountChanges(goods);
+        await goodsCountProcessor.processGoodsCountChanges(services, goods);
 
         expect(mockServiceOne.updateGoodCounts).toHaveBeenCalled();
         expect(mockServiceTwo.updateGoodCounts).not.toHaveBeenCalled();
@@ -62,7 +73,7 @@ describe("GoodsCountProcessor", () => {
             { code: "hz", quantity: 15, reserve: 5, name: "Good4" }
         ] as GoodDto[];
 
-        await goodsCountProcessor.processGoodsCountChanges(goods);
+        await goodsCountProcessor.processGoodsCountChanges(services, goods);
 
         expect(mockServiceOne.updateGoodCounts).not.toHaveBeenCalledWith(goods);
         expect(mockServiceTwo.updateGoodCounts).not.toHaveBeenCalled();
@@ -74,7 +85,7 @@ describe("GoodsCountProcessor", () => {
             { code: "mur", quantity: 10, reserve: 4, name: "Good7" }
         ] as GoodDto[];
 
-        await goodsCountProcessor.processGoodsCountChanges(goods);
+        await goodsCountProcessor.processGoodsCountChanges(services, goods);
 
         expect(mockServiceOne.updateGoodCounts).not.toHaveBeenCalled();
         expect(logger.log).not.toHaveBeenCalled();
@@ -86,7 +97,7 @@ describe("GoodsCountProcessor", () => {
             { code: "hz", quantity: 0, name: "Good2" }
         ] as GoodDto[];
 
-        await goodsCountProcessor.processGoodsCountChanges(goods);
+        await goodsCountProcessor.processGoodsCountChanges(services, goods);
 
         expect(mockServiceOne.updateGoodCounts).toHaveBeenCalledWith(new Map([['sku-1', 0], ['sku-2', 0], ['sku-3', 0]]));
         expect(mockServiceTwo.updateGoodCounts).not.toHaveBeenCalled();
@@ -106,7 +117,7 @@ describe("GoodsCountProcessor", () => {
             "precomputeFilteredSkus"
         );
 
-        await goodsCountProcessor.processGoodsCountChanges(goods);
+        await goodsCountProcessor.processGoodsCountChanges(services, goods);
 
         expect(spyPrecomputeFilteredSkus).toHaveBeenCalledWith(goods, mockServiceOne.skuList);
     });
@@ -129,7 +140,7 @@ describe("GoodsCountProcessor", () => {
             { code: "sku", quantity: totalQuantity, reserve: 0 }
         ] as GoodDto[];
 
-        await goodsCountProcessor.processGoodsCountChanges(goods);
+        await goodsCountProcessor.processGoodsCountChanges(services, goods);
 
         const distributionResult = spyDistributeGoods.mock.results[0].value;
 
@@ -153,7 +164,7 @@ describe("GoodsCountProcessor", () => {
             { code: "sku", quantity: totalQuantity }
         ] as GoodDto[];
 
-        await goodsCountProcessor.processGoodsCountChanges(goods);
+        await goodsCountProcessor.processGoodsCountChanges(services, goods);
 
         const distributionResult = spyDistributeGoods.mock.results[0].value;
 
@@ -176,7 +187,7 @@ describe("GoodsCountProcessor", () => {
             { code: "sku", quantity: totalQuantity, reserve: 0 }
         ] as GoodDto[];
 
-        await goodsCountProcessor.processGoodsCountChanges(goods);
+        await goodsCountProcessor.processGoodsCountChanges(services, goods);
 
         const distributionResult = spyDistributeGoods.mock.results[0].value;
 
@@ -206,8 +217,9 @@ describe("GoodsCountProcessor", () => {
 
         const processGoods = (GoodsCountProcessor.prototype as any).processGoods;
 
-        // Вызываем метод processGoods без явного передачи кеша
-        const skusToUpdate = processGoods.call(goodsCountProcessor, goods, filteredSkuMap);
+        // Состояние одного пересчёта: кэши больше не живут на инстансе
+        const state = (GoodsCountProcessor.prototype as any).newState.call(goodsCountProcessor);
+        const skusToUpdate = processGoods.call(goodsCountProcessor, state, goods, filteredSkuMap);
 
         // Ожидание: метод distributeGoodQuantities был вызван
         expect(spyDistributeGoodQuantities).toHaveBeenCalled();
@@ -221,7 +233,7 @@ describe("GoodsCountProcessor", () => {
         ]);
 
         // Делаем дополнительное ожидание, проверяя кэш (через товары):
-        expect(Array.from(goodsCountProcessor['quantityCache'].entries())).toEqual([
+        expect(Array.from(state.quantityCache.entries())).toEqual([
             ["sku-1", 14], // Проверка, что значение не изменилось
             ["sku-2", 13], // Проверка, что значение не изменилось
             ["hz-2", expect.any(Number)], // Проверка, что для новых SKU всё распределилось
@@ -275,7 +287,7 @@ describe("GoodsCountProcessor", () => {
             });
 
         // Подготавливаем мок для goodService, чтобы возвращать данные о товарах
-        const goodServiceMock = {
+        const proc = makeProcessor({
             in: jest.fn().mockResolvedValueOnce([
                 { code: "aaa", quantity: 15, reserve: 0 },
                 { code: "bbb", quantity: 15, reserve: 0 },
@@ -284,15 +296,10 @@ describe("GoodsCountProcessor", () => {
                     { code: "ccc", quantity: 5, reserve: 0 }, // Второй вызов
                 ])
                 .mockResolvedValue([]), // Последующие вызовы возвращают пустой результат
-        } as unknown as IGood;
-
+        });
 
         // Выполнение метода
-        const result = await goodsCountProcessor.processGoodsCountForService(
-            GoodServiceEnum.OZON,
-            goodServiceMock,
-            {}
-        );
+        const result = await proc.processGoodsCountForService(services, GoodServiceEnum.OZON, {});
 
         // Ожидания
         expect(result).toBe(3); // 2 обновления из первой страницы, 1 из второй
@@ -313,19 +320,15 @@ describe("GoodsCountProcessor", () => {
         });
 
         // Мок для goodService (emulation API call для `in`)
-        const goodServiceMock = {
+        const proc = makeProcessor({
             in: jest.fn().mockResolvedValue([
                 { code: "sku", quantity: 10, reserve: 0 },
                 { code: "hz", quantity: 15, reserve: 0 },
             ]),
-        } as unknown as IGood;
+        });
 
         // Выполнение метода
-        const result = await goodsCountProcessor.processGoodsCountForService(
-            GoodServiceEnum.OZON,
-            goodServiceMock,
-            {}
-        );
+        const result = await proc.processGoodsCountForService(services, GoodServiceEnum.OZON, {});
 
         // Ожидания
         expect(result).toBe(3); // Обновиться должны 2 SKU
@@ -351,22 +354,25 @@ describe("GoodsCountProcessor", () => {
             ]);
 
         it("good-блок (good:sku) → все его SKU = 0, несмотря на склад", async () => {
-            const goodService = { getDisabledCodes: jest.fn().mockResolvedValue(["good:sku"]) } as unknown as IGood;
-            const proc = new GoodsCountProcessor(onlyOzon(), logger, goodService);
+            const getDisabledCodes = jest.fn().mockResolvedValue(["good:sku"]);
+            const proc = makeProcessor({ getDisabledCodes });
 
-            await proc.processGoodsCountChanges([{ code: "sku", quantity: 100, reserve: 0, name: "x" }] as GoodDto[]);
+            await proc.processGoodsCountChanges(onlyOzon(), [
+                { code: "sku", quantity: 100, reserve: 0, name: "x" },
+            ] as GoodDto[]);
 
-            expect(goodService.getDisabledCodes).toHaveBeenCalledWith(GoodServiceEnum.OZON);
+            expect(getDisabledCodes).toHaveBeenCalledWith(GoodServiceEnum.OZON);
             expect(mockServiceOne.updateGoodCounts).toHaveBeenCalledWith(
                 new Map([["sku-1", 0], ["sku-2", 0], ["sku-3", 0]]),
             );
         });
 
         it("sku-блок (sku-2) → 0 только у неё, соседи тянут склад", async () => {
-            const goodService = { getDisabledCodes: jest.fn().mockResolvedValue(["sku-2"]) } as unknown as IGood;
-            const proc = new GoodsCountProcessor(onlyOzon(), logger, goodService);
+            const proc = makeProcessor({ getDisabledCodes: jest.fn().mockResolvedValue(["sku-2"]) });
 
-            await proc.processGoodsCountChanges([{ code: "sku", quantity: 100, reserve: 0, name: "x" }] as GoodDto[]);
+            await proc.processGoodsCountChanges(onlyOzon(), [
+                { code: "sku", quantity: 100, reserve: 0, name: "x" },
+            ] as GoodDto[]);
 
             expect(mockServiceOne.updateGoodCounts).toHaveBeenCalledWith(
                 new Map([["sku-1", 17], ["sku-2", 0], ["sku-3", 17]]),
@@ -378,23 +384,24 @@ describe("GoodsCountProcessor", () => {
                 goods: new Map([["sku-1", 5], ["sku-2", 5], ["sku-3", 5]]),
                 nextArgs: null,
             });
-            const goodService = {
+            const proc = makeProcessor({
                 in: jest.fn().mockResolvedValue([{ code: "sku", quantity: 100, reserve: 0 }]),
                 getDisabledCodes: jest.fn().mockResolvedValue(["sku-1"]),
-            } as unknown as IGood;
-            const proc = new GoodsCountProcessor(onlyOzon(), logger, goodService);
+            });
 
-            await proc.processGoodsCountForService(GoodServiceEnum.OZON, goodService, {});
+            await proc.processGoodsCountForService(onlyOzon(), GoodServiceEnum.OZON, {});
 
             expect(mockServiceOne.updateGoodCounts).toHaveBeenCalledWith(
                 new Map([["sku-1", 0], ["sku-2", 16], ["sku-3", 17]]),
             );
         });
 
-        it("без goodService отключений нет — обычное распределение", async () => {
-            const proc = new GoodsCountProcessor(onlyOzon(), logger);
+        it("отключений нет — обычное распределение", async () => {
+            const proc = makeProcessor();
 
-            await proc.processGoodsCountChanges([{ code: "sku", quantity: 100, reserve: 0, name: "x" }] as GoodDto[]);
+            await proc.processGoodsCountChanges(onlyOzon(), [
+                { code: "sku", quantity: 100, reserve: 0, name: "x" },
+            ] as GoodDto[]);
 
             expect(mockServiceOne.updateGoodCounts).toHaveBeenCalledWith(
                 new Map([["sku-1", 17], ["sku-2", 16], ["sku-3", 17]]),

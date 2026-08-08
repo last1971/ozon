@@ -58,9 +58,6 @@ export class ElectronicaGoodService implements IGood {
         return new Map<string, number>();
     }
 
-    async updateCountForSkus(service: ICountUpdateable, skus: string[]): Promise<number> {
-        return 0;
-    }
     async updateCountForService(service: ICountUpdateable, args: any): Promise<number> {
         return 0;
     }

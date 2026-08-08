@@ -20,6 +20,7 @@ import { WriteDisabledFlagCommand } from './commands/write-disabled-flag.command
 import { ClearDisabledFlagCommand } from './commands/clear-disabled-flag.command';
 import { PushZeroCountsCommand } from './commands/push-zero-counts.command';
 import { RestoreCountsCommand } from './commands/restore-counts.command';
+import { GoodsCountProcessor } from '../helpers/good/goods.count.processor';
 
 @Module({
     imports: [FirebirdModule, ProductModule, YandexOfferModule, WbCardModule, HelpersModule, forwardRef(() => AvitoCardModule), SyliusModule],
@@ -36,6 +37,7 @@ import { RestoreCountsCommand } from './commands/restore-counts.command';
             inject: [FIREBIRD, ConfigService, EventEmitter2, CACHE_MANAGER, PriceCalculationHelper],
         },
         ExtraGoodService,
+        GoodsCountProcessor,
         ResolveDisableTokensCommand,
         WriteDisabledFlagCommand,
         ClearDisabledFlagCommand,

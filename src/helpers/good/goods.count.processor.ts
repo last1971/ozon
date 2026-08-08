@@ -1,75 +1,99 @@
-import { Logger } from "@nestjs/common";
+import { Inject, Injectable, Logger } from "@nestjs/common";
 import { GoodCountsDto, ICountUpdateable } from "../../interfaces/ICountUpdatebale";
 import { GoodDto } from "../../good/dto/good.dto";
 import { GoodServiceEnum } from "../../good/good.service.enum";
 import { goodQuantityCoeff, isDisabled, skusToGoodIds } from "../index";
-import { IGood } from "../../interfaces/IGood";
+import { GOOD_SERVICE, IGood } from "../../interfaces/IGood";
 
+/** Карта маркетплейсов, которую держит ExtraGoodService. */
+export type CountUpdateableServices = Map<GoodServiceEnum, { service: ICountUpdateable; isSwitchedOn: boolean }>;
+
+/**
+ * Состояние одного пересчёта. Раньше кэши лежали на инстансе — процессор создавался
+ * через `new` на каждый вызов. Теперь он провайдер (один на приложение), поэтому кэши
+ * живут ровно столько, сколько идёт один пересчёт, и между вызовами не протекают.
+ */
+interface RunState {
+    // Посчитанные количества по SKU.
+    quantityCache: Map<string, number>;
+    // Ленивый кэш отключённых кодов по сервису.
+    disabledCache: Map<string, Set<string>>;
+}
+
+@Injectable()
 export class GoodsCountProcessor {
-    private quantityCache = new Map<string, number>();
-    // Ленивый кэш отключённых кодов по сервису (живёт на время одной операции пересчёта).
-    private disabledCache = new Map<string, Set<string>>();
-    constructor(
-        // Cписок всех сервисов
-        private services: Map<GoodServiceEnum, { service: ICountUpdateable; isSwitchedOn: boolean }>,
-        private logger: Logger, // Логгер для сообщений
-        // Источник флагов «товар отключён на маркете» (GOODS_DISABLED). Без него отключений нет.
-        private goodService?: IGood,
-    ) {}
+    private readonly logger = new Logger(GoodsCountProcessor.name);
 
-    /** Set отключённых кодов (GOODSCODE или SKU) для сервиса. Кэшируется на время операции. */
-    private async getDisabled(serviceKey: GoodServiceEnum | string): Promise<Set<string>> {
-        const cacheKey = String(serviceKey);
-        if (!this.disabledCache.has(cacheKey)) {
-            const codes = this.goodService
-                ? await this.goodService.getDisabledCodes(serviceKey as GoodServiceEnum)
-                : [];
-            this.disabledCache.set(cacheKey, new Set(codes));
-        }
-        return this.disabledCache.get(cacheKey);
+    // Источник флагов «товар отключён на маркете» (GOODS_DISABLED) и данных о товарах.
+    constructor(@Inject(GOOD_SERVICE) private readonly goodService: IGood) {}
+
+    private newState(): RunState {
+        return { quantityCache: new Map<string, number>(), disabledCache: new Map<string, Set<string>>() };
     }
 
-    async processGoodsCountChanges(goods: GoodDto[]): Promise<void> {
-        //const quantityCache = new Map<string, number>();
+    /** Set отключённых кодов (GOODSCODE или SKU) для сервиса. Кэшируется на время пересчёта. */
+    private async getDisabled(state: RunState, serviceKey: GoodServiceEnum | string): Promise<Set<string>> {
+        const cacheKey = String(serviceKey);
+        if (!state.disabledCache.has(cacheKey)) {
+            const codes = await this.goodService.getDisabledCodes(serviceKey as GoodServiceEnum);
+            state.disabledCache.set(cacheKey, new Set(codes));
+        }
+        return state.disabledCache.get(cacheKey);
+    }
 
-        for (const { key, service } of this.getActiveServices()) {
-            const disabled = await this.getDisabled(key);
+    async processGoodsCountChanges(services: CountUpdateableServices, goods: GoodDto[]): Promise<void> {
+        const state = this.newState();
+
+        for (const { key, service } of this.getActiveServices(services)) {
+            const disabled = await this.getDisabled(state, key);
             const filteredSkuMap = this.precomputeFilteredSkus(goods, service.skuList);
 
-            const skusToUpdate= this.processGoods(goods, filteredSkuMap, disabled);
+            const skusToUpdate = this.processGoods(state, goods, filteredSkuMap, disabled);
 
             // Обновляем сервис, если есть изменения
             await this.updateServiceWithSkus(service, skusToUpdate, key);
         }
     }
 
-    async processGoodsCountForService(marketService: GoodServiceEnum, goodService: IGood, args: any): Promise<number> {
-        const { service, isSwitchedOn } = this.services.get(marketService);
+    async processGoodsCountForService(
+        services: CountUpdateableServices,
+        marketService: GoodServiceEnum,
+        args: any,
+    ): Promise<number> {
+        return this.processForService(this.newState(), services, marketService, args);
+    }
+
+    private async processForService(
+        state: RunState,
+        services: CountUpdateableServices,
+        marketService: GoodServiceEnum,
+        args: any,
+    ): Promise<number> {
+        const { service, isSwitchedOn } = services.get(marketService);
 
         // Если сервис выключен, пропускаем
         if (!isSwitchedOn) return 0;
-
 
         // 1. Получаем данные от сервиса
         const serviceGoods = await service.getGoodIds(args);
 
         // 2. Рассчитываем обновления
-        const updateGoods = await this.calculateUpdatedGoods(serviceGoods, goodService, service.skuList, marketService);
+        const updateGoods = await this.calculateUpdatedGoods(state, serviceGoods, service.skuList, marketService);
 
         // 3. Обновляем данные в сервисе
         const updatedCount = await this.updateServiceWithSkus(service, updateGoods, marketService);
 
         // 4. Рекурсивно обрабатываем следующую порцию, если есть
         if (serviceGoods.nextArgs) {
-            return updatedCount + (await this.processGoodsCountForService(marketService, goodService, serviceGoods.nextArgs));
+            return updatedCount + (await this.processForService(state, services, marketService, serviceGoods.nextArgs));
         }
 
         return updatedCount;
     }
 
     // Список активных сервисов
-    private getActiveServices(): Array<{ key: string; service: ICountUpdateable }> {
-        return Array.from(this.services.entries())
+    private getActiveServices(services: CountUpdateableServices): Array<{ key: string; service: ICountUpdateable }> {
+        return Array.from(services.entries())
             .filter(([_, service]) => service.isSwitchedOn)
             .map(([key, service]) => ({ key, service: service.service }));
     }
@@ -87,6 +111,7 @@ export class GoodsCountProcessor {
     }
 
     private processGoods(
+        state: RunState,
         goods: GoodDto[],
         filteredSkuMap: Map<string, string[]>,
         disabled: Set<string> = new Set(),
@@ -96,18 +121,18 @@ export class GoodsCountProcessor {
         for (const good of goods) {
             const filteredSkus = filteredSkuMap.get(good.code) || [];
 
-            if (filteredSkus.some((sku) => !this.quantityCache.has(sku))) {
+            if (filteredSkus.some((sku) => !state.quantityCache.has(sku))) {
                 const distributedQuantities = this.distributeGoodQuantities(filteredSkus, good);
 
                 // Обновляем только локальный кэш
                 distributedQuantities.forEach((quantity, sku) => {
-                    this.quantityCache.set(sku, quantity);
+                    state.quantityCache.set(sku, quantity);
                 });
             }
 
             // Блок по точному SKU или по гудскоде — решает isDisabled (единый формат из хелпера).
             filteredSkus.forEach((sku) => {
-                skusToUpdate.set(sku, isDisabled(sku, disabled) ? 0 : this.quantityCache.get(sku));
+                skusToUpdate.set(sku, isDisabled(sku, disabled) ? 0 : state.quantityCache.get(sku));
             });
         }
 
@@ -168,8 +193,8 @@ export class GoodsCountProcessor {
     }
 
     private async calculateUpdatedGoods(
+        state: RunState,
         serviceGoods: GoodCountsDto<number>,
-        goodService: IGood,
         skuList: string[],
         marketService: GoodServiceEnum,
     ): Promise<Map<string, number>> {
@@ -178,10 +203,10 @@ export class GoodsCountProcessor {
 
         if (goodIds.length === 0) return updateGoods;
 
-        const goods = await goodService.in(goodIds, null);
+        const goods = await this.goodService.in(goodIds, null);
         const filteredSkuMap = this.precomputeFilteredSkus(goods, skuList);
-        const disabled = await this.getDisabled(marketService);
-        const calculatedGoods = this.processGoods(goods, filteredSkuMap, disabled);
+        const disabled = await this.getDisabled(state, marketService);
+        const calculatedGoods = this.processGoods(state, goods, filteredSkuMap, disabled);
 
         // Сравниваем текущие и новые данные
         for (const [id, currentCount] of serviceGoods.goods) {

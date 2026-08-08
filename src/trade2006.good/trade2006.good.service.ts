@@ -10,11 +10,7 @@ import {
     getPieces,
     goodCode,
     goodQuantityCoeff,
-    productQuantity,
-    skusToGoodIds,
-    StringToIOfferIdableAdapter,
 } from '../helpers';
-import { ICountUpdateable } from '../interfaces/ICountUpdatebale';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
 import { UpdatePriceDto } from '../price/dto/update.price.dto';
 import { ConfigService } from '@nestjs/config';
@@ -373,26 +369,6 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         return count;
     }
     */
-
-    async updateCountForSkus(service: ICountUpdateable, skus: string[]): Promise<number> {
-        const goodIds: string[] = skusToGoodIds(skus);
-        const goods = await this.getQuantities(goodIds);
-        const fullSkus = skus;
-        for (const percent of await this.getPerc(goodIds)) {
-            const sku = percent.offer_id.toString() + '-' + percent.pieces.toString();
-            if (!fullSkus.includes(sku)) {
-                fullSkus.push(sku);
-                if (percent.pieces === 1) fullSkus.push(percent.offer_id.toString());
-            }
-        }
-        const updateGoods: Map<string, number> = new Map();
-        fullSkus.forEach((sku) => {
-            const item = new StringToIOfferIdableAdapter(sku);
-            const goodCount = productQuantity(goods.get(goodCode(item)), goodQuantityCoeff(item));
-            updateGoods.set(sku, goodCount);
-        });
-        return service.updateGoodCounts(updateGoods);
-    }
 
     async generatePercentsForService(
         service: IPriceUpdateable | null,
