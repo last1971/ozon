@@ -25,7 +25,7 @@ import { ActionListProduct } from 'src/promos/dto/actionsCandidate.dto';
 import { ProductPriceDto } from 'src/price/dto/product.price.dto';
 import { UpdateAttributesBodyDto, UpdateAttributesResponseDto } from './dto/update.attributes.dto';
 import { BuyoutDto } from '../posting/dto/buyout.dto';
-import { AccrualByDayResultDto, PayoutPeriodDto } from '../posting/dto/accrual.dto';
+import { AccrualTypeDto, AccrualByDayResultDto, PayoutPeriodDto } from '../posting/dto/accrual.dto';
 import { Cacheable } from 'nestjs-cacheable';
 
 @Injectable()
@@ -320,6 +320,12 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
         if (lastId) body.last_id = lastId;
         const res = await this.ozonApiService.method('/v1/finance/accrual/by-day', body);
         return { accruals: res?.accruals || [], last_id: res?.last_id || 0 };
+    }
+
+    /** Словарь видов начислений: без него в письме вместо услуги виден лишь код. */
+    async getAccrualTypes(): Promise<AccrualTypeDto[]> {
+        const res = await this.ozonApiService.method('/v1/finance/accrual/types', {});
+        return res?.accrual_types || [];
     }
 
     /** Недельные периоды выплат: по ним берётся окно, а не по «последним N дням». */

@@ -10,6 +10,7 @@ describe('AccrualWeekService', () => {
     let service: AccrualWeekService;
 
     const getAccrualsByDay = jest.fn();
+    const getAccrualTypes = jest.fn();
     const saveDay = jest.fn();
     const getMissingDays = jest.fn();
     const getUnsettled = jest.fn();
@@ -29,6 +30,7 @@ describe('AccrualWeekService', () => {
         [
             getAccrualsByDay, saveDay, getMissingDays, getUnsettled, settle, applyVerdicts,
             getByPostingNumbers, getInvoiceStates, updateByCommissions, setVerdict, emit, commit, rollback,
+            getAccrualTypes,
         ].forEach((m) => m.mockReset());
 
         getAccrualsByDay.mockResolvedValue({ accruals: [], last_id: 0 });
@@ -37,6 +39,10 @@ describe('AccrualWeekService', () => {
         getUnsettled.mockResolvedValue([]);
         getByPostingNumbers.mockResolvedValue([]);
         getInvoiceStates.mockResolvedValue(new Map());
+        getAccrualTypes.mockResolvedValue([
+            { id: 41, name: 'PayPerClick', description: 'Оплата за клик' },
+            { id: 76, name: 'Insurance', description: 'Страхование товара от массовых повреждений' },
+        ]);
 
         const module: TestingModule = await Test.createTestingModule({
             providers: [
@@ -54,7 +60,7 @@ describe('AccrualWeekService', () => {
                         updateByCommissions,
                     },
                 },
-                { provide: ProductService, useValue: { getAccrualsByDay } },
+                { provide: ProductService, useValue: { getAccrualsByDay, getAccrualTypes } },
                 { provide: EventEmitter2, useValue: { emit } },
             ],
         }).compile();
@@ -197,8 +203,34 @@ describe('AccrualWeekService', () => {
             const [event, subject, letterBody] = emit.mock.calls[0];
             expect(event).toBe('error.message');
             expect(subject).toContain('2026-07-13');
-            expect(letterBody).toContain('Без привязки к отправлению');
+            expect(letterBody).toContain('БЕЗ ПРИВЯЗКИ К ОТПРАВЛЕНИЮ');
             expect(letterBody).toContain('-578.64');
+        });
+
+        it('услуги в письме подписаны названиями, а не кодами', async () => {
+            const ad = {
+                ...item('', -2130.35, 1),
+                non_item_fee: { type_id: 41 },
+            } as any;
+            getUnsettled.mockResolvedValueOnce([ad]);
+
+            await service.runWeek('2026-07-13', '2026-07-19');
+
+            const letterBody = emit.mock.calls[0][2];
+            expect(letterBody).toContain('Оплата за клик');
+            expect(letterBody).not.toContain('NON_ITEM');
+        });
+
+        it('словарь недоступен — письмо всё равно уходит', async () => {
+            getAccrualTypes.mockRejectedValueOnce(new Error('Ozon лёг'));
+            getUnsettled.mockResolvedValueOnce([
+                { ...item('', -2130.35, 1), non_item_fee: { type_id: 41 } } as any,
+            ]);
+
+            await service.runWeek('2026-07-13', '2026-07-19');
+
+            expect(emit).toHaveBeenCalled();
+            expect(emit.mock.calls[0][2]).toContain('код 41');
         });
 
         it('при откате письмо не уходит', async () => {

@@ -33,6 +33,22 @@ export class AccrualPostingDto {
     products?: AccrualPostingProductDto[];
 }
 
+export class AccrualFeeDto {
+    type_id?: number;
+    accrued?: AccrualAmountDto;
+}
+
+export class AccrualItemFeesDto {
+    fees?: { sku?: number; fees?: AccrualFeeDto[] }[];
+}
+
+/** Словарь видов начислений: /v1/finance/accrual/types. */
+export class AccrualTypeDto {
+    id: number;
+    name: string;
+    description: string;
+}
+
 export class AccrualDto {
     accrual_id: number;
     date: string;
@@ -41,8 +57,8 @@ export class AccrualDto {
     unit_number: string;
     accrued_category: AccrualCategory | string;
     posting?: AccrualPostingDto;
-    item_fees?: unknown;
-    non_item_fee?: unknown;
+    item_fees?: AccrualItemFeesDto;
+    non_item_fee?: AccrualFeeDto;
     container_fees?: unknown;
 }
 

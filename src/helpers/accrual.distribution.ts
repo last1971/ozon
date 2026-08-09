@@ -65,6 +65,20 @@ export const isBody = (a: AccrualDto): boolean =>
     a.accrued_category === AccrualCategory.POSTING && (a.posting?.products ?? []).some((p) => p.commission);
 
 /**
+ * Виды услуг внутри начисления. В письме без них видно только «NON_ITEM»,
+ * а расшифровка (реклама, хранение, страховка) — то единственное, ради чего
+ * это письмо и читают.
+ */
+export function accrualTypeIds(a: AccrualDto): number[] {
+    const ids: number[] = [];
+    for (const item of a.item_fees?.fees ?? []) {
+        for (const fee of item.fees ?? []) if (fee.type_id) ids.push(fee.type_id);
+    }
+    if (a.non_item_fee?.type_id) ids.push(a.non_item_fee.type_id);
+    return [...new Set(ids)];
+}
+
+/**
  * Раскладывает начисления по счетам. Драйвер — приход тела (решение владельца, 2026-08-09).
  *
  * Замер на живом кабинете за 06.07–02.08.2026: раньше тела по отправлению не приходит
