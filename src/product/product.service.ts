@@ -2,7 +2,7 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { OzonApiService } from '../ozon.api/ozon.api.service';
 import { ProductListResultDto } from './dto/product.list.result.dto';
 import { ProductCodeStockDto, ProductCodeUpdateStockResultDto } from './dto/product.code.dto';
-import { PostingResultDto } from '../posting/dto/posting.result.dto';
+import { PostingsDto } from '../posting/dto/postings.dto';
 import { PostingsRequestDto } from '../posting/dto/postings.request.dto';
 import { ProductPriceListDto } from '../price/dto/product.price.list.dto';
 import { PriceRequestDto } from '../price/dto/price.request.dto';
@@ -14,7 +14,6 @@ import { TransactionDto } from '../posting/dto/transaction.dto';
 import { GoodCountsDto, ICountUpdateable } from '../interfaces/ICountUpdatebale';
 import { StockType } from './stock.type';
 import { PostingsFboRequestDto } from '../posting.fbo/dto/postings.fbo.request.dto';
-import { PostingDto } from '../posting/dto/posting.dto';
 import { ConfigService } from '@nestjs/config';
 import { ProductFilterDto } from "./dto/product.filter.dto";
 import { ProductInfoDto } from "./dto/product.info.dto";
@@ -109,11 +108,13 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
             }
         );
     }
-    async orderList(filter: PostingsRequestDto, limit = 100, offset = 0): Promise<PostingResultDto> {
-        return this.ozonApiService.method('/v3/posting/fbs/list', { filter, limit, offset });
+    // v4 вместо v3 (v3 отключается 31.08.2026): ответ плоский, offset сломан — только cursor.
+    async orderList(filter: PostingsRequestDto, limit = 100, cursor = ''): Promise<PostingsDto> {
+        return this.ozonApiService.method('/v4/posting/fbs/list', { filter, limit, cursor });
     }
-    async orderFboList(request: PostingsFboRequestDto): Promise<{ result: PostingDto[] }> {
-        return this.ozonApiService.method('/v2/posting/fbo/list', request);
+    // v3 вместо v2 (v2 отключается 31.08.2026): ответ плоский, курсор вместо offset, limit ≤ 100.
+    async orderFboList(request: PostingsFboRequestDto): Promise<PostingsDto> {
+        return this.ozonApiService.method('/v3/posting/fbo/list', request);
     }
     async getPrices(priceRequest: PriceRequestDto): Promise<ProductPriceListDto> {
         const options = {

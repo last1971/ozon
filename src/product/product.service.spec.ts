@@ -120,11 +120,21 @@ describe('ProductService', () => {
     });
     it('test orderList', async () => {
         const date = new Date();
-        await service.orderList({ since: date, to: date, status: 'test' });
+        await service.orderList({ since: date, to: date, statuses: ['test'] });
         expect(method.mock.calls[0]).toEqual([
-            '/v3/posting/fbs/list',
-            { filter: { since: date, to: date, status: 'test' }, limit: 100, offset: 0 },
+            '/v4/posting/fbs/list',
+            { filter: { since: date, to: date, statuses: ['test'] }, limit: 100, cursor: '' },
         ]);
+    });
+
+    it('orderList передаёт курсор дальше', async () => {
+        const date = new Date();
+        await service.orderList({ since: date, to: date, statuses: ['test'] }, 100, 'CUR1');
+        expect(method.mock.calls[0][1]).toEqual({
+            filter: { since: date, to: date, statuses: ['test'] },
+            limit: 100,
+            cursor: 'CUR1',
+        });
     });
     it('test getPrices', async () => {
         await service.getPrices({ limit: 0, visibility: ProductVisibility.ARCHIVED });
@@ -189,14 +199,16 @@ describe('ProductService', () => {
         const date = new Date();
         await service.orderFboList({
             limit: 1,
-            filter: { since: date, to: date, status: 'staus' },
+            cursor: '',
+            filter: { since: date, to: date, statuses: ['staus'] },
             with: { analytics_data: false },
         });
         expect(method.mock.calls[0]).toEqual([
-            '/v2/posting/fbo/list',
+            '/v3/posting/fbo/list',
             {
                 limit: 1,
-                filter: { since: date, to: date, status: 'staus' },
+                cursor: '',
+                filter: { since: date, to: date, statuses: ['staus'] },
                 with: { analytics_data: false },
             },
         ]);
