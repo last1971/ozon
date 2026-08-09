@@ -42,12 +42,26 @@ const round2 = (v: number): number => Math.round(v * 100) / 100;
 const unitOf = (a: AccrualDto): string => (a.unit_number || '').trim();
 const orderOf = (postingNumber: string): string => postingNumber.slice(0, postingNumber.lastIndexOf('-'));
 
+/** Вид номера в начислении — им же размечается журнал (OZON_ACCRUAL.UNIT_KIND). */
+export enum AccrualUnitKind {
+    NONE = 0,
+    ORDER = 1,
+    POSTING = 2,
+}
+
+export function unitKindOf(unitNumber: string): AccrualUnitKind {
+    const unit = (unitNumber || '').trim();
+    if (POSTING_NUMBER.test(unit)) return AccrualUnitKind.POSTING;
+    if (ORDER_NUMBER.test(unit)) return AccrualUnitKind.ORDER;
+    return AccrualUnitKind.NONE;
+}
+
 /**
  * «Тело» продажи: запись POSTING с блоком commission внутри. Только у неё есть
  * seller_price и комиссия за продажу; total_amount у неё — уже нетто, комиссия
  * и доставка из него вычтены Озоном. Внутренности трогать нельзя, иначе двойной счёт.
  */
-const isBody = (a: AccrualDto): boolean =>
+export const isBody = (a: AccrualDto): boolean =>
     a.accrued_category === AccrualCategory.POSTING && (a.posting?.products ?? []).some((p) => p.commission);
 
 /**
@@ -109,8 +123,8 @@ export function distributeAccruals(accruals: AccrualDto[]): AccrualDistribution 
                 returns.push(a); // обработка возврата по несостоявшейся сделке
             } else {
                 // Тела нет. По самой записи невыкуп не опознать: из 186 таких отправлений
-                // за 06.07–02.08 у 137 счёт уже переименован возвратом, а 49 живые и ждут
-                // (15 из них — с 13.07). Судьбу решает состояние счёта, см. classifyPending.
+                // за 06.07–02.08 115 отменены возвратом, 22 счёта уже оплачены и закрыты,
+                // а 49 живые и ждут. Судьбу решает состояние счёта, см. classifyPending.
                 pending.push(a);
             }
         }
@@ -158,20 +172,28 @@ export function distributeAccruals(accruals: AccrualDto[]): AccrualDistribution 
 export enum PendingVerdict {
     /** Счёт живой, тела ещё нет — запись остаётся в журнале до следующего прогона. */
     WAITING = 'WAITING',
-    /** Счёт переименован возвратом («… отмена») — ждать нечего, считается отдельно. */
+    /** Счёт переименован отменой или возвратом — ждать нечего, считается отдельно. */
     RETURNED = 'RETURNED',
+    /** Счёт уже оплачен и закрыт: запись опоздала, в него её не добавить. В отчёт. */
+    CLOSED = 'CLOSED',
     /** Счёта по номеру нет вовсе — в отчёт. */
     NO_INVOICE = 'NO_INVOICE',
     /** Счёт живой, но запись висит дольше порога — в отчёт, из журнала не убираем. */
     STALE = 'STALE',
 }
 
-/** Состояние счёта по номеру отправления: отдаёт слой, который видит таблицу S. */
+/**
+ * Состояние счёта по номеру отправления: отдаёт слой, который видит таблицу S.
+ * Пометки дописываются к PRIM, поэтому «нет точного совпадения» само по себе
+ * ничего не значит — важно, какая именно пометка.
+ */
 export interface InvoiceState {
     /** Есть счёт с PRIM ровно равным номеру отправления — живой, ждёт оплаты. */
     exact: boolean;
-    /** Есть счёт, чей PRIM начинается с номера: переименован при отмене или возврате. */
-    renamed: boolean;
+    /** PRIM переименован отменой или возвратом. */
+    cancelled: boolean;
+    /** PRIM переименован в «… закрыт»: счёт оплачен и закрыт. */
+    closed: boolean;
 }
 
 export interface PendingClassification {
@@ -186,8 +208,9 @@ export interface PendingClassification {
  *
  * Форма начисления невыкуп не доказывает: POSTING без commission приходит и по
  * несостоявшейся сделке, и по той, чьё тело ещё в пути. Замер 06.07–02.08.2026:
- * из 186 отправлений с услугами, но без тела, у 137 счёт уже переименован возвратом,
- * а 49 живые в статусе 4 — часть из них тело ещё получит. Поэтому решает база.
+ * из 186 отправлений с услугами, но без тела 115 отменены возвратом, 22 счёта уже
+ * оплачены и закрыты, а 49 живые в статусе 4 — часть из них тело ещё получит.
+ * Поэтому решает база.
  *
  * Записи уровня заказа к одному счёту не привязать, они просто ждут своего тела,
  * пока не упрутся в порог давности.
@@ -208,7 +231,8 @@ export function classifyPending(
 
         let verdict: PendingVerdict;
         if (state?.exact) verdict = stale ? PendingVerdict.STALE : PendingVerdict.WAITING;
-        else if (state?.renamed) verdict = PendingVerdict.RETURNED;
+        else if (state?.cancelled) verdict = PendingVerdict.RETURNED;
+        else if (state?.closed) verdict = PendingVerdict.CLOSED;
         else if (postingNumber) verdict = PendingVerdict.NO_INVOICE;
         else verdict = stale ? PendingVerdict.STALE : PendingVerdict.WAITING;
 

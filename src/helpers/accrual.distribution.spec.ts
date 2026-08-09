@@ -174,18 +174,23 @@ const round2 = (v: number): number => Math.round(v * 100) / 100;
 
 describe('classifyPending', () => {
     const dated = (unit: string, date: string): AccrualDto => ({ ...acc(unit, -95), date });
-    const state = (exact: boolean, renamed: boolean): InvoiceState => ({ exact, renamed });
+    const state = (over: Partial<InvoiceState>): InvoiceState => ({
+        exact: false,
+        cancelled: false,
+        closed: false,
+        ...over,
+    });
     const run = (list: AccrualDto[], invoices: Map<string, InvoiceState>) =>
         classifyPending(list, invoices, { today: '2026-08-02' }).map((c) => c.verdict);
 
     it('счёт живой, тела нет — ждём дальше', () => {
-        const invoices = new Map([['111-222-1', state(true, false)]]);
+        const invoices = new Map([['111-222-1', state({ exact: true })]]);
         expect(run([dated('111-222-1', '2026-07-28')], invoices)).toEqual([PendingVerdict.WAITING]);
     });
 
     it('PRIM переименован возвратом — ждать нечего', () => {
-        // «15503858-0803-1 отмена FBO»: точного совпадения нет, префикс есть
-        const invoices = new Map([['111-222-1', state(false, true)]]);
+        // «15503858-0803-1 отмена FBO»: точного совпадения нет, есть пометка отмены
+        const invoices = new Map([['111-222-1', state({ cancelled: true })]]);
         expect(run([dated('111-222-1', '2026-07-28')], invoices)).toEqual([PendingVerdict.RETURNED]);
     });
 
@@ -194,13 +199,24 @@ describe('classifyPending', () => {
     });
 
     it('живой счёт, но запись висит дольше порога — в отчёт', () => {
-        const invoices = new Map([['111-222-1', state(true, false)]]);
+        const invoices = new Map([['111-222-1', state({ exact: true })]]);
         expect(run([dated('111-222-1', '2026-07-01')], invoices)).toEqual([PendingVerdict.STALE]);
     });
 
-    it('переименованный счёт даёт возврат независимо от давности', () => {
-        const invoices = new Map([['111-222-1', state(false, true)]]);
+    it('отменённый счёт даёт возврат независимо от давности', () => {
+        const invoices = new Map([['111-222-1', state({ cancelled: true })]]);
         expect(run([dated('111-222-1', '2026-06-01')], invoices)).toEqual([PendingVerdict.RETURNED]);
+    });
+
+    it('счёт уже оплачен и закрыт — запись опоздала, в отчёт', () => {
+        // «... закрыт» дописывает updateByCommissions; таких пометок больше всего
+        const invoices = new Map([['111-222-1', state({ closed: true })]]);
+        expect(run([dated('111-222-1', '2026-07-28')], invoices)).toEqual([PendingVerdict.CLOSED]);
+    });
+
+    it('отмена важнее закрытия, если в базе есть обе пометки', () => {
+        const invoices = new Map([['111-222-1', state({ cancelled: true, closed: true })]]);
+        expect(run([dated('111-222-1', '2026-07-28')], invoices)).toEqual([PendingVerdict.RETURNED]);
     });
 
     it('запись уровня заказа ждёт, пока не упрётся в порог', () => {

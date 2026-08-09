@@ -146,19 +146,6 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
 
         return { result: results };
     }
-    async getTransactionList(filter: TransactionFilterDto, page = 1): Promise<any> {
-        const res = await this.ozonApiService.method('/v3/finance/transaction/list', { filter, page, page_size: 1000 });
-        const response: TransactionDto[] = res.result.operations.map(
-            (operation: any): TransactionDto => ({
-                amount: operation.amount,
-                posting_number: operation.posting.posting_number,
-            }),
-        );
-        if (page !== res.result.page_count && res.result.page_count > 1) {
-            return response.concat(await this.getTransactionList(filter, page + 1));
-        }
-        return response;
-    }
 
     async getGoods(args: any, stockTypes = [StockType.FBS, StockType.FBO]): Promise<any> {
         const products = await this.listWithCount(args);
@@ -346,9 +333,5 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
         return res?.result?.cash_flows || [];
     }
 
-    async getBuyoutList(filter: { date_from: string; date_to: string }): Promise<BuyoutDto[]> {
-        const res = await this.ozonApiService.method('/v1/finance/products/buyout', filter);
-        return res?.products || [];
-    }
 
 }

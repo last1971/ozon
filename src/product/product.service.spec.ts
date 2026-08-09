@@ -160,13 +160,6 @@ describe('ProductService', () => {
         ]);
         expect(result).toEqual({ result: [{ updated: true }] });
     });
-    it('test getTransaction', async () => {
-        const date = new Date();
-        method.mockResolvedValue({ result: { operations: [], page_count: 1 } });
-        const filter = { date: { from: date, to: date }, transaction_type: 'test' };
-        await service.getTransactionList(filter);
-        expect(method.mock.calls[0]).toEqual(['/v3/finance/transaction/list', { filter, page: 1, page_size: 1000 }]);
-    });
     it('getGoods', async () => {
         method.mockResolvedValueOnce({
             items: [{
@@ -390,30 +383,6 @@ describe('ProductService', () => {
 
         expect(method.mock.calls[0]).toEqual(['/v1/product/import/info', { task_id: 123456 }]);
         expect(result).toEqual({ result: { status: 'done' } });
-    });
-
-    it('getBuyoutList', async () => {
-        const mockProducts = [
-            { posting_number: '123-001', amount: 1000, offer_id: 'sku1' },
-            { posting_number: '123-002', amount: 2000, offer_id: 'sku2' },
-        ];
-        method.mockResolvedValue({ products: mockProducts });
-
-        const result = await service.getBuyoutList({ date_from: '2025-01-01', date_to: '2025-01-07' });
-
-        expect(method.mock.calls[0]).toEqual([
-            '/v1/finance/products/buyout',
-            { date_from: '2025-01-01', date_to: '2025-01-07' },
-        ]);
-        expect(result).toEqual(mockProducts);
-    });
-
-    it('getBuyoutList returns empty array when no products', async () => {
-        method.mockResolvedValue({});
-
-        const result = await service.getBuyoutList({ date_from: '2025-01-01', date_to: '2025-01-07' });
-
-        expect(result).toEqual([]);
     });
 
     it('getCategoryTree', async () => {
