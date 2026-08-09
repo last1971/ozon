@@ -195,6 +195,41 @@ describe('ProductService', () => {
         expect(res).toEqual(1);
         expect(method.mock.calls[0]).toEqual(['/v2/products/stocks', { stocks: [{ offer_id: '1', stock: 1, warehouse_id: undefined }] }]);
     });
+    it('getAccrualsByDay: первая страница без last_id', async () => {
+        method.mockResolvedValueOnce({ accruals: [{ accrual_id: 1 }], last_id: 77 });
+        const res = await service.getAccrualsByDay('2026-07-13');
+        expect(method.mock.calls[0]).toEqual(['/v1/finance/accrual/by-day', { date: '2026-07-13' }]);
+        expect(res).toEqual({ accruals: [{ accrual_id: 1 }], last_id: 77 });
+    });
+
+    it('getAccrualsByDay: следующая страница передаёт last_id', async () => {
+        method.mockResolvedValueOnce({ accruals: [], last_id: 0 });
+        await service.getAccrualsByDay('2026-07-13', 77);
+        expect(method.mock.calls[0][1]).toEqual({ date: '2026-07-13', last_id: 77 });
+    });
+
+    it('getAccrualsByDay: пустой ответ не роняет', async () => {
+        method.mockResolvedValueOnce(null);
+        expect(await service.getAccrualsByDay('2026-07-13')).toEqual({ accruals: [], last_id: 0 });
+    });
+
+    it('getPayoutPeriods: недельные периоды выплат', async () => {
+        method.mockResolvedValueOnce({
+            result: { cash_flows: [{ period: { id: 0, begin: '2026-07-13T00:00:00Z', end: '2026-07-19T00:00:00Z' } }] },
+        });
+        const res = await service.getPayoutPeriods('2026-07-01T00:00:00.000Z', '2026-07-31T23:59:59.000Z');
+        expect(method.mock.calls[0]).toEqual([
+            '/v1/finance/cash-flow-statement/list',
+            {
+                date: { from: '2026-07-01T00:00:00.000Z', to: '2026-07-31T23:59:59.000Z' },
+                page: 1,
+                page_size: 100,
+                with_details: false,
+            },
+        ]);
+        expect(res).toHaveLength(1);
+    });
+
     it('orderFboList', async () => {
         const date = new Date();
         await service.orderFboList({

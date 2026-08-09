@@ -25,6 +25,7 @@ import { ActionListProduct } from 'src/promos/dto/actionsCandidate.dto';
 import { ProductPriceDto } from 'src/price/dto/product.price.dto';
 import { UpdateAttributesBodyDto, UpdateAttributesResponseDto } from './dto/update.attributes.dto';
 import { BuyoutDto } from '../posting/dto/buyout.dto';
+import { AccrualByDayResultDto, PayoutPeriodDto } from '../posting/dto/accrual.dto';
 import { Cacheable } from 'nestjs-cacheable';
 
 @Injectable()
@@ -321,6 +322,28 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
 
     async getTaskInfo(taskId: number): Promise<any> {
         return this.ozonApiService.method('/v1/product/import/info', { task_id: taskId });
+    }
+
+    /**
+     * Начисления за ОДИН день. Замена /v3/finance/transaction/list (умирает 08.09.2026).
+     * Пагинация внутри дня — по last_id; страница без last_id читается первой.
+     */
+    async getAccrualsByDay(date: string, lastId = 0): Promise<AccrualByDayResultDto> {
+        const body: { date: string; last_id?: number } = { date };
+        if (lastId) body.last_id = lastId;
+        const res = await this.ozonApiService.method('/v1/finance/accrual/by-day', body);
+        return { accruals: res?.accruals || [], last_id: res?.last_id || 0 };
+    }
+
+    /** Недельные периоды выплат: по ним берётся окно, а не по «последним N дням». */
+    async getPayoutPeriods(dateFrom: string, dateTo: string): Promise<PayoutPeriodDto[]> {
+        const res = await this.ozonApiService.method('/v1/finance/cash-flow-statement/list', {
+            date: { from: dateFrom, to: dateTo },
+            page: 1,
+            page_size: 100,
+            with_details: false,
+        });
+        return res?.result?.cash_flows || [];
     }
 
     async getBuyoutList(filter: { date_from: string; date_to: string }): Promise<BuyoutDto[]> {
