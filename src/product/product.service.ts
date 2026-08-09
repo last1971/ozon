@@ -25,7 +25,8 @@ import { ActionListProduct } from 'src/promos/dto/actionsCandidate.dto';
 import { ProductPriceDto } from 'src/price/dto/product.price.dto';
 import { UpdateAttributesBodyDto, UpdateAttributesResponseDto } from './dto/update.attributes.dto';
 import { BuyoutDto } from '../posting/dto/buyout.dto';
-import { AccrualByDayResultDto, PayoutPeriodDto } from '../posting/dto/accrual.dto';
+import { AccrualTypeDto, AccrualByDayResultDto, PayoutPeriodDto } from '../posting/dto/accrual.dto';
+import { normalizePostingsPrices } from '../helpers/posting.price';
 import { Cacheable } from 'nestjs-cacheable';
 
 @Injectable()
@@ -111,11 +112,13 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
     }
     // v4 вместо v3 (v3 отключается 31.08.2026): ответ плоский, offset сломан — только cursor.
     async orderList(filter: PostingsRequestDto, limit = 100, cursor = ''): Promise<PostingsDto> {
-        return this.ozonApiService.method('/v4/posting/fbs/list', { filter, limit, cursor });
+        // v4 отдаёт цену объектом {amount, currency} вместо строки — приводим к прежнему виду
+        return normalizePostingsPrices(await this.ozonApiService.method('/v4/posting/fbs/list', { filter, limit, cursor }));
     }
     // v3 вместо v2 (v2 отключается 31.08.2026): ответ плоский, курсор вместо offset, limit ≤ 100.
     async orderFboList(request: PostingsFboRequestDto): Promise<PostingsDto> {
-        return this.ozonApiService.method('/v3/posting/fbo/list', request);
+        // v3 отдаёт цену объектом {amount, currency} вместо строки — приводим к прежнему виду
+        return normalizePostingsPrices(await this.ozonApiService.method('/v3/posting/fbo/list', request));
     }
     async getPrices(priceRequest: PriceRequestDto): Promise<ProductPriceListDto> {
         const options = {
@@ -320,6 +323,12 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
         if (lastId) body.last_id = lastId;
         const res = await this.ozonApiService.method('/v1/finance/accrual/by-day', body);
         return { accruals: res?.accruals || [], last_id: res?.last_id || 0 };
+    }
+
+    /** Словарь видов начислений: без него в письме вместо услуги виден лишь код. */
+    async getAccrualTypes(): Promise<AccrualTypeDto[]> {
+        const res = await this.ozonApiService.method('/v1/finance/accrual/types', {});
+        return res?.accrual_types || [];
     }
 
     /** Недельные периоды выплат: по ним берётся окно, а не по «последним N дням». */

@@ -6,6 +6,7 @@ import { Trade2006InvoiceService } from '../trade2006.invoice/trade2006.invoice.
 import { ProductService } from '../product/product.service';
 import { AccrualDto } from '../posting/dto/accrual.dto';
 import {
+    accrualTypeIds,
     classifyPending,
     distributeAccruals,
     PendingClassification,
@@ -95,7 +96,7 @@ export class AccrualWeekService {
                 balanced: false,
             };
             report.balanced = this.isBalanced(unsettled, report, unpaid);
-            this.sendLetter(report, unattributed);
+            await this.sendLetter(report, unattributed);
             return report;
         } catch (e) {
             await transaction.rollback(true);
@@ -206,40 +207,59 @@ export class AccrualWeekService {
     /**
      * Письмо по итогам прогона тем же каналом, что и остальные уведомления.
      *
-     * Шлём ПОСЛЕ коммита: при откате уведомлять не о чем. В письмо идёт то, что
-     * требует рук — начисления без привязки к отправлению (реклама, склад,
-     * страхование), неоплаченные счета и несошедшийся контроль.
+     * Шлём ПОСЛЕ коммита: при откате уведомлять не о чем. Услуги подписываем
+     * названиями из словаря Ozon — без них в письме видно лишь «NON_ITEM», а
+     * читают его как раз ради расшифровки (реклама, хранение, страховка).
      */
-    private sendLetter(report: AccrualWeekReportDto, unattributed: AccrualDto[]): void {
+    private async sendLetter(report: AccrualWeekReportDto, unattributed: AccrualDto[]): Promise<void> {
+        const money = (v: number): string => v.toFixed(2).padStart(12);
         const lines: string[] = [
-            `Период: ${report.period.from} … ${report.period.to}`,
-            `Загружено начислений: ${report.loaded}`,
-            `Закрыто счетов: ${report.closed.count} на ${report.closed.amount} руб.`,
-            `Ждут своего тела: ${report.waiting.count} на ${report.waiting.amount} руб.`,
-            `Возвраты и невыкупы: ${report.returns.count} на ${report.returns.amount} руб.`,
+            `Начисления Ozon за ${report.period.from} … ${report.period.to}`,
+            '',
+            `Загружено начислений   ${String(report.loaded).padStart(6)}`,
+            `Закрыто счетов         ${String(report.closed.count).padStart(6)}   ${money(report.closed.amount)}`,
+            `Ждут своего тела       ${String(report.waiting.count).padStart(6)}   ${money(report.waiting.amount)}`,
+            `Возвраты и невыкупы    ${String(report.returns.count).padStart(6)}   ${money(report.returns.amount)}`,
+            `Опоздали               ${String(report.late.count).padStart(6)}   ${money(report.late.amount)}`,
+            `В письмо               ${String(report.letter.count).padStart(6)}   ${money(report.letter.amount)}`,
         ];
 
         if (!report.balanced) {
-            lines.push('', 'ВНИМАНИЕ: контроль не сошёлся, итогу верить нельзя.');
+            lines.push('', '!!! КОНТРОЛЬ НЕ СОШЁЛСЯ — итогу верить нельзя.');
         }
         if (report.missingDays.length) {
             lines.push('', `Пропущенные дни в журнале: ${report.missingDays.join(', ')}`);
         }
-        if (report.late.count) {
-            lines.push('', `Опоздали (счёт уже закрыт либо его нет): ${report.late.count} на ${report.late.amount} руб.`);
-        }
 
         if (report.unpaid.length) {
-            lines.push('', `Не оплачено, разобраться — ${report.unpaid.length}:`);
+            lines.push('', `НЕ ОПЛАЧЕНО, РАЗОБРАТЬСЯ — ${report.unpaid.length}`, ''.padEnd(64, '-'));
             for (const u of report.unpaid) {
-                lines.push(`  ${u.postingNumber}  ${u.amount} руб.  ${u.reason}`);
+                lines.push(`${u.postingNumber.padEnd(22)}${money(u.amount)}   ${u.reason}`);
             }
         }
 
         if (unattributed.length) {
-            lines.push('', `Без привязки к отправлению — ${unattributed.length} на ${report.letter.amount} руб.:`);
+            const names = await this.accrualTypeNames();
+            const byService = new Map<string, { count: number; amount: number }>();
             for (const a of unattributed) {
-                lines.push(`  ${a.date}  ${a.total_amount?.amount} руб.  ${a.accrued_category}`);
+                const service = accrualTypeIds(a)
+                    .map((id) => names.get(id) ?? `код ${id}`)
+                    .join(', ');
+                const key = service || String(a.accrued_category);
+                const cell = byService.get(key) ?? { count: 0, amount: 0 };
+                cell.count += 1;
+                cell.amount = round2(cell.amount + amountOf(a));
+                byService.set(key, cell);
+            }
+
+            lines.push(
+                '',
+                `БЕЗ ПРИВЯЗКИ К ОТПРАВЛЕНИЮ — ${unattributed.length} на ${report.letter.amount} руб.`,
+                'Это услуги периода, их не разнести по счетам.',
+                ''.padEnd(64, '-'),
+            );
+            for (const [service, cell] of [...byService].sort((a, b) => a[1].amount - b[1].amount)) {
+                lines.push(`${service.padEnd(46).slice(0, 46)}${String(cell.count).padStart(4)} шт${money(cell.amount)}`);
             }
         }
 
@@ -249,6 +269,17 @@ export class AccrualWeekService {
             lines.join('\n'),
         );
         this.logger.log('Письмо по итогам прогона отправлено');
+    }
+
+    /** Словарь видов начислений; молчит при недоступности — письмо важнее подписей. */
+    private async accrualTypeNames(): Promise<Map<number, string>> {
+        try {
+            const types = await this.productService.getAccrualTypes();
+            return new Map(types.map((t) => [t.id, t.description || t.name]));
+        } catch (e) {
+            this.logger.warn(`Словарь видов начислений недоступен: ${e.message}`);
+            return new Map();
+        }
     }
 
     /** Судьбу ожидающих решает состояние счёта, а не форма начисления. */
