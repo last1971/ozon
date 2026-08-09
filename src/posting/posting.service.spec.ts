@@ -43,10 +43,11 @@ describe('PostingService', () => {
             products: [{ price: '1.11', offer_id: '444', quantity: 2 }],
         },
     ];
+    // v4: ответ плоский, без обёртки result; has_next=false — одна страница
     const orderList = jest.fn().mockResolvedValue({
-        result: {
-            postings,
-        },
+        postings,
+        has_next: false,
+        cursor: '',
     });
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
@@ -124,16 +125,38 @@ describe('PostingService', () => {
         expect(products).toEqual(postings);
     });
 
+    it('пагинация курсором: собирает все страницы и передаёт курсор из ответа', async () => {
+        orderList.mockResolvedValueOnce({ postings: [postings[0]], has_next: true, cursor: 'CUR1' });
+        orderList.mockResolvedValueOnce({ postings: [postings[1]], has_next: false, cursor: '' });
+
+        const products = await service.listAwaitingDelivering();
+
+        expect(products).toEqual(postings);
+        expect(orderList).toHaveBeenCalledTimes(2);
+        expect(orderList.mock.calls[0][2]).toBe('');
+        expect(orderList.mock.calls[1][2]).toBe('CUR1');
+    });
+
+    it('пагинация курсором: не зацикливается, если Ozon вернул тот же курсор', async () => {
+        orderList.mockResolvedValue({ postings: [postings[0]], has_next: true, cursor: 'SAME' });
+
+        const products = await service.listAwaitingDelivering();
+
+        // вторая страница пришла с тем же курсором — выходим, а не крутим бесконечно
+        expect(orderList).toHaveBeenCalledTimes(2);
+        expect(products).toHaveLength(2);
+    });
+
     it('test packaging list', async () => {
         await service.listAwaitingPackaging();
         expect(orderList.mock.calls[0]).toEqual([
             {
                 since: DateTime.now().minus({ day: 5 }).startOf('day').toJSDate(),
                 to: DateTime.now().endOf('day').toJSDate(),
-                status: 'awaiting_packaging',
+                statuses: ['awaiting_packaging'],
             },
             100,
-            0,
+            '',
         ]);
     });
 

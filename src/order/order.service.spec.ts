@@ -12,12 +12,12 @@ import { ConfigService } from '@nestjs/config';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { ProcessedCacheService } from '../processed-cache/processed-cache.service';
+import { AccrualWeekService } from '../trade2006.accrual/accrual.week.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
 describe('OrderService', () => {
     let service: OrderService;
-    const getTransactionList = jest.fn().mockResolvedValue([]);
-    const getBuyoutList = jest.fn().mockResolvedValue([]);
+    const runWeek = jest.fn();
     const updateByTransactions = jest.fn();
     const createInvoice = jest.fn().mockResolvedValue(1);
     const getByPosting = jest.fn()
@@ -51,8 +51,9 @@ describe('OrderService', () => {
         wbSubmitFbsMarkCodes.mockReset();
         const module: TestingModule = await Test.createTestingModule({
             providers: [
+                { provide: AccrualWeekService, useValue: { runWeek } },
                 OrderService,
-                { provide: ProductService, useValue: { getTransactionList, getBuyoutList } },
+                { provide: ProductService, useValue: {} },
                 {
                     provide: INVOICE_SERVICE,
                     useValue: {
@@ -183,8 +184,6 @@ describe('OrderService', () => {
         service = module.get<OrderService>(OrderService);
 
         // Clear mocks
-        getTransactionList.mockClear();
-        getBuyoutList.mockClear();
         updateByTransactions.mockClear();
     });
 
@@ -192,51 +191,50 @@ describe('OrderService', () => {
         expect(service).toBeDefined();
     });
 
-    it('test updateTransactions', async () => {
+    it('updateTransactions прогоняет неделю новым путём', async () => {
         const dto = {
-            date: {
-                from: new Date('2023-06-16'),
-                to: new Date('2023-06-16'),
-            },
-            transaction_type: 'orders',
+            date: { from: new Date('2026-07-13'), to: new Date('2026-07-19') },
         };
-        await service.updateTransactions(dto);
-        expect(getTransactionList).toHaveBeenCalledWith(dto);
-        expect(getBuyoutList).toHaveBeenCalledWith({ date_from: '2023-06-16', date_to: '2023-06-16' });
-        expect(updateByTransactions).toHaveBeenCalledWith([], null);
+        runWeek.mockResolvedValueOnce({
+            period: { from: '2026-07-13', to: '2026-07-19' },
+            loaded: 1085,
+            missingDays: [],
+            closed: { count: 315, amount: 390593.18 },
+            unpaid: [],
+            waiting: { count: 196, amount: -5950.45 },
+            late: { count: 0, amount: 0 },
+            returns: { count: 7, amount: -5367.29 },
+            letter: { count: 23, amount: -14319.27 },
+            balanced: true,
+        });
+
+        const res = await service.updateTransactions(dto);
+
+        expect(runWeek).toHaveBeenCalledWith('2026-07-13', '2026-07-19');
+        expect(res.isSuccess).toBe(true);
+        // выкупной костыль и старая ручка транзакций удалены целиком
     });
 
-    it('updateTransactions corrects negative amounts with buyout data', async () => {
-        const dto = {
-            date: {
-                from: new Date('2023-06-16'),
-                to: new Date('2023-06-16'),
-            },
-            transaction_type: 'orders',
-        };
+    it('updateTransactions сообщает о несошедшемся контроле', async () => {
+        runWeek.mockResolvedValueOnce({
+            period: { from: '2026-07-13', to: '2026-07-19' },
+            loaded: 10,
+            missingDays: ['2026-07-10'],
+            closed: { count: 1, amount: 100 },
+            unpaid: [{ postingNumber: '111-222-1', amount: 50, reason: 'счёт не найден: возврат либо счёта нет' }],
+            waiting: { count: 0, amount: 0 },
+            late: { count: 0, amount: 0 },
+            returns: { count: 0, amount: 0 },
+            letter: { count: 0, amount: 0 },
+            balanced: false,
+        });
 
-        getTransactionList.mockResolvedValueOnce([
-            { posting_number: '001', amount: -100 },
-            { posting_number: '002', amount: 200 },
-            { posting_number: '003', amount: -50 },
-        ]);
+        const res = await service.updateTransactions({
+            date: { from: new Date('2026-07-13'), to: new Date('2026-07-19') },
+        });
 
-        getBuyoutList.mockResolvedValueOnce([
-            { posting_number: '001', amount: 150 },
-            // '003' not in buyout - should stay negative
-        ]);
-
-        await service.updateTransactions(dto);
-
-        // Check that updateByTransactions received corrected amounts
-        expect(updateByTransactions).toHaveBeenCalledWith(
-            [
-                { posting_number: '001', amount: 50 },   // -100 + 150 = 50
-                { posting_number: '002', amount: 200 },  // unchanged (positive)
-                { posting_number: '003', amount: -50 },  // unchanged (not in buyout)
-            ],
-            null,
-        );
+        expect(res.isSuccess).toBe(false);
+        expect(res.message).toContain('111-222-1');
     });
 
     // TODO: этот тест устарел после рефакторинга с кэшированием

@@ -48,25 +48,62 @@ describe('PostingFboService', () => {
     });
 
     it('list', async () => {
-        orderFboList.mockResolvedValueOnce({ result: [] });
+        orderFboList.mockResolvedValueOnce({ postings: [], has_next: false, cursor: '' });
         await service.list('status');
         expect(orderFboList.mock.calls[0]).toEqual([
             {
                 filter: {
                     since: DateTime.now().minus({ day: 2 }).startOf('day').toJSDate(),
-                    status: 'status',
+                    statuses: ['status'],
                     to: DateTime.now().endOf('day').toJSDate(),
                 },
-                limit: 1000,
+                limit: 100,
+                cursor: '',
                 with: { analytics_data: true, financial_data: true },
             },
         ]);
     });
 
     it('listCanceled', async () => {
-        orderFboList.mockResolvedValueOnce({ result: [] });
+        orderFboList.mockResolvedValueOnce({ postings: [], has_next: false, cursor: '' });
         await service.listCanceled();
-        expect(orderFboList.mock.calls[0][0].filter.status).toBe('cancelled');
+        expect(orderFboList.mock.calls[0][0].filter.statuses).toEqual(['cancelled']);
+    });
+
+    it('пагинация курсором: собирает страницы, помечает isFbo, передаёт курсор', async () => {
+        orderFboList.mockResolvedValueOnce({
+            postings: [{ posting_number: 'A' }],
+            has_next: true,
+            cursor: 'CUR1',
+        });
+        orderFboList.mockResolvedValueOnce({
+            postings: [{ posting_number: 'B' }],
+            has_next: false,
+            cursor: '',
+        });
+
+        const res = await service.list('cancelled');
+
+        expect(res).toEqual([
+            { posting_number: 'A', isFbo: true },
+            { posting_number: 'B', isFbo: true },
+        ]);
+        expect(orderFboList).toHaveBeenCalledTimes(2);
+        expect(orderFboList.mock.calls[0][0].cursor).toBe('');
+        expect(orderFboList.mock.calls[1][0].cursor).toBe('CUR1');
+    });
+
+    it('пагинация курсором: не зацикливается на повторном курсоре', async () => {
+        orderFboList.mockResolvedValue({
+            postings: [{ posting_number: 'A' }],
+            has_next: true,
+            cursor: 'SAME',
+        });
+
+        const res = await service.list('cancelled');
+
+        expect(orderFboList).toHaveBeenCalledTimes(2);
+        expect(res).toHaveLength(2);
     });
 
     describe('createInvoice → делегирует в creator с контекстом Ozon', () => {

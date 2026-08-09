@@ -120,11 +120,21 @@ describe('ProductService', () => {
     });
     it('test orderList', async () => {
         const date = new Date();
-        await service.orderList({ since: date, to: date, status: 'test' });
+        await service.orderList({ since: date, to: date, statuses: ['test'] });
         expect(method.mock.calls[0]).toEqual([
-            '/v3/posting/fbs/list',
-            { filter: { since: date, to: date, status: 'test' }, limit: 100, offset: 0 },
+            '/v4/posting/fbs/list',
+            { filter: { since: date, to: date, statuses: ['test'] }, limit: 100, cursor: '' },
         ]);
+    });
+
+    it('orderList передаёт курсор дальше', async () => {
+        const date = new Date();
+        await service.orderList({ since: date, to: date, statuses: ['test'] }, 100, 'CUR1');
+        expect(method.mock.calls[0][1]).toEqual({
+            filter: { since: date, to: date, statuses: ['test'] },
+            limit: 100,
+            cursor: 'CUR1',
+        });
     });
     it('test getPrices', async () => {
         await service.getPrices({ limit: 0, visibility: ProductVisibility.ARCHIVED });
@@ -149,13 +159,6 @@ describe('ProductService', () => {
             },
         ]);
         expect(result).toEqual({ result: [{ updated: true }] });
-    });
-    it('test getTransaction', async () => {
-        const date = new Date();
-        method.mockResolvedValue({ result: { operations: [], page_count: 1 } });
-        const filter = { date: { from: date, to: date }, transaction_type: 'test' };
-        await service.getTransactionList(filter);
-        expect(method.mock.calls[0]).toEqual(['/v3/finance/transaction/list', { filter, page: 1, page_size: 1000 }]);
     });
     it('getGoods', async () => {
         method.mockResolvedValueOnce({
@@ -185,18 +188,55 @@ describe('ProductService', () => {
         expect(res).toEqual(1);
         expect(method.mock.calls[0]).toEqual(['/v2/products/stocks', { stocks: [{ offer_id: '1', stock: 1, warehouse_id: undefined }] }]);
     });
+    it('getAccrualsByDay: первая страница без last_id', async () => {
+        method.mockResolvedValueOnce({ accruals: [{ accrual_id: 1 }], last_id: 77 });
+        const res = await service.getAccrualsByDay('2026-07-13');
+        expect(method.mock.calls[0]).toEqual(['/v1/finance/accrual/by-day', { date: '2026-07-13' }]);
+        expect(res).toEqual({ accruals: [{ accrual_id: 1 }], last_id: 77 });
+    });
+
+    it('getAccrualsByDay: следующая страница передаёт last_id', async () => {
+        method.mockResolvedValueOnce({ accruals: [], last_id: 0 });
+        await service.getAccrualsByDay('2026-07-13', 77);
+        expect(method.mock.calls[0][1]).toEqual({ date: '2026-07-13', last_id: 77 });
+    });
+
+    it('getAccrualsByDay: пустой ответ не роняет', async () => {
+        method.mockResolvedValueOnce(null);
+        expect(await service.getAccrualsByDay('2026-07-13')).toEqual({ accruals: [], last_id: 0 });
+    });
+
+    it('getPayoutPeriods: недельные периоды выплат', async () => {
+        method.mockResolvedValueOnce({
+            result: { cash_flows: [{ period: { id: 0, begin: '2026-07-13T00:00:00Z', end: '2026-07-19T00:00:00Z' } }] },
+        });
+        const res = await service.getPayoutPeriods('2026-07-01T00:00:00.000Z', '2026-07-31T23:59:59.000Z');
+        expect(method.mock.calls[0]).toEqual([
+            '/v1/finance/cash-flow-statement/list',
+            {
+                date: { from: '2026-07-01T00:00:00.000Z', to: '2026-07-31T23:59:59.000Z' },
+                page: 1,
+                page_size: 100,
+                with_details: false,
+            },
+        ]);
+        expect(res).toHaveLength(1);
+    });
+
     it('orderFboList', async () => {
         const date = new Date();
         await service.orderFboList({
             limit: 1,
-            filter: { since: date, to: date, status: 'staus' },
+            cursor: '',
+            filter: { since: date, to: date, statuses: ['staus'] },
             with: { analytics_data: false },
         });
         expect(method.mock.calls[0]).toEqual([
-            '/v2/posting/fbo/list',
+            '/v3/posting/fbo/list',
             {
                 limit: 1,
-                filter: { since: date, to: date, status: 'staus' },
+                cursor: '',
+                filter: { since: date, to: date, statuses: ['staus'] },
                 with: { analytics_data: false },
             },
         ]);
@@ -343,30 +383,6 @@ describe('ProductService', () => {
 
         expect(method.mock.calls[0]).toEqual(['/v1/product/import/info', { task_id: 123456 }]);
         expect(result).toEqual({ result: { status: 'done' } });
-    });
-
-    it('getBuyoutList', async () => {
-        const mockProducts = [
-            { posting_number: '123-001', amount: 1000, offer_id: 'sku1' },
-            { posting_number: '123-002', amount: 2000, offer_id: 'sku2' },
-        ];
-        method.mockResolvedValue({ products: mockProducts });
-
-        const result = await service.getBuyoutList({ date_from: '2025-01-01', date_to: '2025-01-07' });
-
-        expect(method.mock.calls[0]).toEqual([
-            '/v1/finance/products/buyout',
-            { date_from: '2025-01-01', date_to: '2025-01-07' },
-        ]);
-        expect(result).toEqual(mockProducts);
-    });
-
-    it('getBuyoutList returns empty array when no products', async () => {
-        method.mockResolvedValue({});
-
-        const result = await service.getBuyoutList({ date_from: '2025-01-01', date_to: '2025-01-07' });
-
-        expect(result).toEqual([]);
     });
 
     it('getCategoryTree', async () => {

@@ -2,7 +2,7 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { OzonApiService } from '../ozon.api/ozon.api.service';
 import { ProductListResultDto } from './dto/product.list.result.dto';
 import { ProductCodeStockDto, ProductCodeUpdateStockResultDto } from './dto/product.code.dto';
-import { PostingResultDto } from '../posting/dto/posting.result.dto';
+import { PostingsDto } from '../posting/dto/postings.dto';
 import { PostingsRequestDto } from '../posting/dto/postings.request.dto';
 import { ProductPriceListDto } from '../price/dto/product.price.list.dto';
 import { PriceRequestDto } from '../price/dto/price.request.dto';
@@ -14,7 +14,6 @@ import { TransactionDto } from '../posting/dto/transaction.dto';
 import { GoodCountsDto, ICountUpdateable } from '../interfaces/ICountUpdatebale';
 import { StockType } from './stock.type';
 import { PostingsFboRequestDto } from '../posting.fbo/dto/postings.fbo.request.dto';
-import { PostingDto } from '../posting/dto/posting.dto';
 import { ConfigService } from '@nestjs/config';
 import { ProductFilterDto } from "./dto/product.filter.dto";
 import { ProductInfoDto } from "./dto/product.info.dto";
@@ -26,6 +25,7 @@ import { ActionListProduct } from 'src/promos/dto/actionsCandidate.dto';
 import { ProductPriceDto } from 'src/price/dto/product.price.dto';
 import { UpdateAttributesBodyDto, UpdateAttributesResponseDto } from './dto/update.attributes.dto';
 import { BuyoutDto } from '../posting/dto/buyout.dto';
+import { AccrualByDayResultDto, PayoutPeriodDto } from '../posting/dto/accrual.dto';
 import { Cacheable } from 'nestjs-cacheable';
 
 @Injectable()
@@ -109,11 +109,13 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
             }
         );
     }
-    async orderList(filter: PostingsRequestDto, limit = 100, offset = 0): Promise<PostingResultDto> {
-        return this.ozonApiService.method('/v3/posting/fbs/list', { filter, limit, offset });
+    // v4 вместо v3 (v3 отключается 31.08.2026): ответ плоский, offset сломан — только cursor.
+    async orderList(filter: PostingsRequestDto, limit = 100, cursor = ''): Promise<PostingsDto> {
+        return this.ozonApiService.method('/v4/posting/fbs/list', { filter, limit, cursor });
     }
-    async orderFboList(request: PostingsFboRequestDto): Promise<{ result: PostingDto[] }> {
-        return this.ozonApiService.method('/v2/posting/fbo/list', request);
+    // v3 вместо v2 (v2 отключается 31.08.2026): ответ плоский, курсор вместо offset, limit ≤ 100.
+    async orderFboList(request: PostingsFboRequestDto): Promise<PostingsDto> {
+        return this.ozonApiService.method('/v3/posting/fbo/list', request);
     }
     async getPrices(priceRequest: PriceRequestDto): Promise<ProductPriceListDto> {
         const options = {
@@ -143,19 +145,6 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
         }
 
         return { result: results };
-    }
-    async getTransactionList(filter: TransactionFilterDto, page = 1): Promise<any> {
-        const res = await this.ozonApiService.method('/v3/finance/transaction/list', { filter, page, page_size: 1000 });
-        const response: TransactionDto[] = res.result.operations.map(
-            (operation: any): TransactionDto => ({
-                amount: operation.amount,
-                posting_number: operation.posting.posting_number,
-            }),
-        );
-        if (page !== res.result.page_count && res.result.page_count > 1) {
-            return response.concat(await this.getTransactionList(filter, page + 1));
-        }
-        return response;
     }
 
     async getGoods(args: any, stockTypes = [StockType.FBS, StockType.FBO]): Promise<any> {
@@ -322,9 +311,27 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
         return this.ozonApiService.method('/v1/product/import/info', { task_id: taskId });
     }
 
-    async getBuyoutList(filter: { date_from: string; date_to: string }): Promise<BuyoutDto[]> {
-        const res = await this.ozonApiService.method('/v1/finance/products/buyout', filter);
-        return res?.products || [];
+    /**
+     * Начисления за ОДИН день. Замена /v3/finance/transaction/list (умирает 08.09.2026).
+     * Пагинация внутри дня — по last_id; страница без last_id читается первой.
+     */
+    async getAccrualsByDay(date: string, lastId = 0): Promise<AccrualByDayResultDto> {
+        const body: { date: string; last_id?: number } = { date };
+        if (lastId) body.last_id = lastId;
+        const res = await this.ozonApiService.method('/v1/finance/accrual/by-day', body);
+        return { accruals: res?.accruals || [], last_id: res?.last_id || 0 };
     }
+
+    /** Недельные периоды выплат: по ним берётся окно, а не по «последним N дням». */
+    async getPayoutPeriods(dateFrom: string, dateTo: string): Promise<PayoutPeriodDto[]> {
+        const res = await this.ozonApiService.method('/v1/finance/cash-flow-statement/list', {
+            date: { from: dateFrom, to: dateTo },
+            page: 1,
+            page_size: 100,
+            with_details: false,
+        });
+        return res?.result?.cash_flows || [];
+    }
+
 
 }

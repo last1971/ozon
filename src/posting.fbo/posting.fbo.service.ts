@@ -54,22 +54,37 @@ export class PostingFboService implements IOrderable {
     }
 
     async list(status: string, day = 2): Promise<PostingDto[]> {
-        const orders = await this.productService.orderFboList({
-            limit: 1000,
-            filter: {
-                since: DateTime.now().minus({ day }).startOf('day').toJSDate(),
-                to: DateTime.now().endOf('day').toJSDate(),
-                status,
-            },
-            with: {
-                analytics_data: true,
-                financial_data: true,
-            },
-        });
-        return orders.result.map(order => ({
-            ...order,
-            isFbo: true
-        }));
+        const filter = {
+            since: DateTime.now().minus({ day }).startOf('day').toJSDate(),
+            to: DateTime.now().endOf('day').toJSDate(),
+            statuses: [status],
+        };
+        const limit = 100; // предел v3 — 100, в v2 было 1000
+        const all: PostingDto[] = [];
+        let cursor = '';
+        let hasMore = true;
+        // Пагинации здесь не было вовсе: с limit 1000 хватало одного запроса, но новый
+        // предел 100 молча обрезал бы выборку (у магазина отмен за 90 дней больше 1000).
+        while (hasMore) {
+            const orders = await this.productService.orderFboList({
+                limit,
+                cursor,
+                filter,
+                with: {
+                    analytics_data: true,
+                    financial_data: true,
+                },
+            });
+            const postings = orders?.postings || [];
+            all.push(...postings.map((order) => ({ ...order, isFbo: true })));
+
+            // Тот же курсор в ответе = страница не сдвинулась, выходим, иначе вечный цикл.
+            const nextCursor = orders?.cursor || '';
+            hasMore = Boolean(orders?.has_next) && nextCursor !== '' && nextCursor !== cursor;
+            cursor = nextCursor;
+        }
+
+        return all;
     }
     async listCanceled(): Promise<PostingDto[]> {
         return this.list('cancelled', 90);

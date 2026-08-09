@@ -29,6 +29,8 @@ import { TransferOutLineDTO } from "./dto/transfer.out.line.dto";
 import { plainToClass } from "class-transformer";
 import { WithTransactions } from "../helpers/mixin/transaction.mixin";
 import { FboMigrationLinkDto } from "../posting.fbo/dto/fbo-migration-link.dto";
+import { InvoiceState } from '../helpers/accrual.distribution';
+import { OZON_INVOICE_CLOSED_SUFFIX, OZON_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
 
 @Injectable()
 export class Trade2006InvoiceService extends WithTransactions(class {}) implements IInvoice, ISuppliable {
@@ -145,6 +147,54 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             ),
         );
         return InvoiceDto.map(invoices);
+    }
+
+    /**
+     * Состояние счетов по номерам отправлений — для разбора ожидающих начислений.
+     *
+     * getByPostingNumbers ищет ТОЧНЫМ равенством PRIM и переименованные не видит —
+     * на этом держится гейт возвратов, трогать его нельзя. Здесь нужно отличить
+     * «счёта нет» от «счёт есть, но отменён» и от «счёт уже оплачен и закрыт»:
+     * к PRIM дописывается пометка. Ищем префиксом, а не списком суффиксов: их в
+     * базе больше, чем кажется (закрыт 2341, отмена FBO 362, отмена 61,
+     * возврат WBFBO 62 — по счетам с 01.06.2026), и словарь будет протухать.
+     */
+    async getInvoiceStates(postingNumbers: string[]): Promise<Map<string, InvoiceState>> {
+        const unique = [...new Set(postingNumbers)];
+        const states = new Map<string, InvoiceState>(
+            unique.map((n) => [n, { exact: false, cancelled: false, closed: false }]),
+        );
+        const cancelSuffixes: string[] = Object.values(OZON_ORDER_CANCELLATION_SUFFIX);
+
+        await Promise.all(
+            chunk(unique, 40).map(async (part: string[]) => {
+                const t = await this.pool.getTransaction(ISOLATION_READ_UNCOMMITTED);
+                const rows = await t.query(
+                    `SELECT PRIM FROM S WHERE ${part.map(() => 'PRIM STARTING WITH ?').join(' OR ')}`,
+                    part,
+                    true,
+                );
+                for (const row of rows) {
+                    const prim = (row.PRIM ?? '').trim();
+                    const state = states.get(prim);
+                    if (state) {
+                        state.exact = true;
+                        continue;
+                    }
+                    // «12345-0001-1 отмена FBO» → база «12345-0001-1», пометка « отмена FBO».
+                    // Префикс мог зацепить чужой номер подлиннее, поэтому проверяем пробел.
+                    const space = prim.indexOf(' ');
+                    if (space < 0) continue;
+                    const base = prim.slice(0, space);
+                    const mark = prim.slice(space);
+                    const target = states.get(base);
+                    if (!target) continue;
+                    if (cancelSuffixes.some((suffix) => mark.endsWith(suffix))) target.cancelled = true;
+                    else if (mark.endsWith(OZON_INVOICE_CLOSED_SUFFIX)) target.closed = true;
+                }
+            }),
+        );
+        return states;
     }
 
     async getByDto(invoiceGetDto: InvoiceGetDto): Promise<InvoiceDto[]> {
@@ -293,7 +343,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
                     await this.setInvoiceAmount(invoice, newAmount, transaction);
                     await this.upsertInvoiceCashFlow(invoice, newAmount, transaction);
                     await this.createTransferOut(invoice, transaction);
-                    await this.updatePrim(invoice.remark, invoice.remark + ' закрыт', transaction);
+                    await this.updatePrim(invoice.remark, invoice.remark + OZON_INVOICE_CLOSED_SUFFIX, transaction);
                 }
 
                 const percent = Math.floor(((i + 1) / total) * 10) * 10;

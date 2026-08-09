@@ -18,6 +18,8 @@ import { find } from 'lodash';
 import { ProcessedCacheService } from '../processed-cache/processed-cache.service';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { OZON_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
+import { DateTime } from 'luxon';
+import { AccrualWeekService } from '../trade2006.accrual/accrual.week.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FbsPrepareDto, isMarkSubmittable, SubmitResultDto } from '../interfaces/IMarkSubmittable';
 import { isShipmentLabelProvider, IShipmentLabelProvider } from '../interfaces/IShipmentLabelProvider';
@@ -43,6 +45,7 @@ export class OrderService {
         private configService: ConfigService,
         private processedCache: ProcessedCacheService,
         private eventEmitter: EventEmitter2,
+        private accrualWeekService: AccrualWeekService,
     ) {
         const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
         if (services.includes(GoodServiceEnum.WB)) this.orderServices.push(wbOrder);
@@ -64,36 +67,26 @@ export class OrderService {
         );
     }
 
+    /**
+     * Прогон недели: начисления в журнал, затем закрытие счетов по телам продаж.
+     *
+     * Заменил разбор /v3/finance/transaction/list (Ozon рубит его 08.09.2026).
+     * Старый путь брал ПЕРВУЮ операцию по номеру отправления вместо суммы всех
+     * (0141528485-0059-8: -213 руб. вместо реальных 5159) и не видел эквайринг,
+     * привязанный к заказу. Костыль коррекции отрицательных выкупом убран —
+     * by-day отдаёт нетто сразу.
+     */
     async updateTransactions(data: TransactionFilterDto): Promise<ResultDto> {
-        this.logger.log('updateTransactions: получаем список транзакций из Ozon API');
-        const transactions = await this.productService.getTransactionList(data);
-        this.logger.log(`updateTransactions: получено ${transactions.length} транзакций`);
+        const from = DateTime.fromJSDate(new Date(data.date.from)).toISODate();
+        const to = DateTime.fromJSDate(new Date(data.date.to)).toISODate();
+        this.logger.log(`updateTransactions: прогон недели ${from} … ${to}`);
 
-        // Получаем buyout данные за те же даты
-        const dateFrom = new Date(data.date.from).toISOString().split('T')[0];
-        const dateTo = new Date(data.date.to).toISOString().split('T')[0];
-        const buyouts = await this.productService.getBuyoutList({ date_from: dateFrom, date_to: dateTo });
-        this.logger.log(`updateTransactions: получено ${buyouts.length} buyout записей`);
-
-        // Создаём Map для быстрого поиска
-        const buyoutMap = new Map<string, number>();
-        for (const buyout of buyouts) {
-            buyoutMap.set(buyout.posting_number, buyout.amount);
-        }
-
-        // Корректируем отрицательные транзакции
-        let correctedCount = 0;
-        for (const transaction of transactions) {
-            if (transaction.amount < 0 && buyoutMap.has(transaction.posting_number)) {
-                const oldAmount = transaction.amount;
-                transaction.amount += buyoutMap.get(transaction.posting_number);
-                this.logger.log(`Скорректирован ${transaction.posting_number}: ${oldAmount} → ${transaction.amount}`);
-                correctedCount++;
-            }
-        }
-        this.logger.log(`updateTransactions: скорректировано ${correctedCount} отрицательных транзакций`);
-
-        return this.invoiceService.updateByTransactions(transactions, null);
+        const report = await this.accrualWeekService.runWeek(from, to);
+        this.logger.log(
+            `updateTransactions: закрыто ${report.closed.count} счетов на ${report.closed.amount}, ` +
+                `не оплачено ${report.unpaid.length}, ждёт ${report.waiting.count}, в письмо ${report.letter.count}`,
+        );
+        return { isSuccess: report.balanced, message: JSON.stringify(report) };
     }
 
     async runFboPackageForTesting(posting: PostingDto): Promise<InvoiceDto> {

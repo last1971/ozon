@@ -59,21 +59,23 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         const filter: PostingsRequestDto = {
             since: DateTime.now().minus({ day }).startOf('day').toJSDate(),
             to: DateTime.now().endOf('day').toJSDate(),
-            status,
+            statuses: [status],
         };
-        const limit = 100; // Размер страницы
-        let offset = 0;
+        const limit = 100; // Предел v4 — 100, в v3 было 1000
         let allPostings: PostingDto[] = [];
+        let cursor = '';
         let hasMore = true;
         while (hasMore) {
-            const response = await this.productService.orderList(filter, limit, offset);
-            const postings = response.result?.postings || [];
+            const response = await this.productService.orderList(filter, limit, cursor);
+            const postings = response?.postings || [];
 
             allPostings = allPostings.concat(postings);
 
-            // Продолжаем, если было извлечено ровно `limit` записей
-            hasMore = postings.length === limit;
-            offset += limit;
+            // Курсор вместо offset: offset в v4 сломан — отдаёт первую страницу по кругу.
+            // Тот же курсор в ответе = страница не сдвинулась, выходим, иначе вечный цикл.
+            const nextCursor = response?.cursor || '';
+            hasMore = Boolean(response?.has_next) && nextCursor !== '' && nextCursor !== cursor;
+            cursor = nextCursor;
         }
 
         return allPostings;
