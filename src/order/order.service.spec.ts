@@ -64,6 +64,13 @@ describe('OrderService', () => {
                         updatePrim,
                         update: jest.fn(),
                         isExists: async (remark: string) => remark === '123' || remark === '111',
+                        // предикат вместо булева isExists: те же номера, но с пометкой счёта
+                        findByPosting: async (posting: any) => {
+                            const remark = typeof posting === 'string' ? posting : posting.posting_number;
+                            return remark === '123' || remark === '111'
+                                ? { invoice: { id: 1, status: 3, remark }, mark: '', cancelled: false, closed: false }
+                                : null;
+                        },
                         listFbsAwaitingShip,
                     },
                 },
@@ -339,7 +346,7 @@ describe('OrderService', () => {
         expect(savedString).toContain('003');
     });
 
-    it('cache flusher НЕ выполняется при откате транзакции', async () => {
+    it('упавший элемент не попадает в кеш, флашер при этом отрабатывает', async () => {
         cacheSet.mockClear();
         // Симулируем падение transaction.commit
         const commit = jest.fn().mockRejectedValueOnce(new Error('DB shutdown'));
@@ -364,10 +371,13 @@ describe('OrderService', () => {
 
         await service.checkNewOrders();
 
-        // commit упал → rollback вызван, cacheSet не должен быть тронут
+        // Транзакция теперь на элемент: commit упал → откат этого элемента, флашер
+        // всё равно отрабатывает, но упавший номер в сохранённый набор не попадает.
         expect(commit).toHaveBeenCalled();
         expect(rollback).toHaveBeenCalled();
-        expect(cacheSet).not.toHaveBeenCalled();
+        for (const call of cacheSet.mock.calls) {
+            expect(call[1]).not.toContain('NEW-1');
+        }
     });
 
     describe('getInvoiceByClaimId', () => {

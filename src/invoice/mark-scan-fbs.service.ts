@@ -7,6 +7,7 @@ import { MarkScanProgressDto } from './dto/mark-scan-progress.dto';
 import { MarkScanProgressLineDto } from './dto/mark-scan-progress-line.dto';
 import { MarkScanResultDto } from './dto/mark-scan-result.dto';
 import { extractKi, isMarkCodesEnabled } from '../helpers';
+import { InvoiceMatchDto } from './dto/invoice.match.dto';
 
 @Injectable()
 export class MarkScanFbsService {
@@ -17,6 +18,41 @@ export class MarkScanFbsService {
 
     private isEnabled(): boolean {
         return isMarkCodesEnabled(this.configService);
+    }
+
+    /**
+     * Гейт на входе в скан и в подбор: счёт отменён маркетплейсом — работать по нему нельзя.
+     * Все привязанные коды отвязываются здесь же, иначе они останутся висеть на мёртвом
+     * счёте: автоматика второй раз по этому отправлению не придёт, а кладовщик без
+     * сообщения навесит на него ещё и следующий код или отгрузит отменённый заказ.
+     */
+    async assertLive(match: InvoiceMatchDto): Promise<void> {
+        if (!match?.cancelled && !match?.closed) return;
+        const reason = match.cancelled ? 'отменён маркетплейсом' : 'оплачен и закрыт';
+        if (match.cancelled) {
+            const detached = await this.detachAll(match.invoice);
+            throw new ConflictException(
+                `Счёт ${reason} (${match.mark.trim()}). Отвязано кодов: ${detached}. Товар в отгрузку не отдавать.`,
+            );
+        }
+        throw new ConflictException(`Счёт ${reason} (${match.mark.trim()}), работа по нему запрещена.`);
+    }
+
+    /** Снять все КМ с счёта. Возвращает, сколько отвязано. */
+    private async detachAll(invoice: InvoiceDto): Promise<number> {
+        const transaction = await this.invoiceService.getTransaction();
+        try {
+            const codes = await this.invoiceService.getAttachedMarkCodesByScode(invoice.id, transaction);
+            const ss = this.invoiceService.getStorageSS();
+            for (const code of codes) {
+                await this.invoiceService.detachMarkCodeForFbs(code.ki, code.realpricecode, ss, transaction);
+            }
+            await transaction.commit(true);
+            return codes.length;
+        } catch (e) {
+            await transaction.rollback(true).catch(() => undefined);
+            throw new ConflictException(`Счёт отменён, но коды отвязать не удалось: ${e?.message}`);
+        }
     }
 
     async scan(invoice: InvoiceDto, rawScan: string): Promise<MarkScanResultDto> {

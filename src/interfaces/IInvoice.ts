@@ -9,11 +9,14 @@ import { InvoiceLineDto } from '../invoice/dto/invoice.line.dto';
 import { InvoiceUpdateDto } from "../invoice/dto/invoice.update.dto";
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { FboMigrationLinkDto } from '../posting.fbo/dto/fbo-migration-link.dto';
+import { InvoiceMatchDto } from '../invoice/dto/invoice.match.dto';
 
 export interface IInvoice {
     getTransaction(): Promise<FirebirdTransaction>;
     create(invoice: InvoiceCreateDto, t: FirebirdTransaction): Promise<InvoiceDto>;
     isExists(remark: string, t: FirebirdTransaction): Promise<boolean>;
+    /** Счёт по номеру отправления вместе с пометкой (' отмена', ' отмена FBO', ' закрыт'). */
+    findByPosting(posting: PostingDto | string, t: FirebirdTransaction): Promise<InvoiceMatchDto | null>;
     updatePrim(prim: string, newPrim: string, t: FirebirdTransaction): Promise<void>;
     getByPosting(posting: PostingDto | string, t: FirebirdTransaction, containing?: boolean): Promise<InvoiceDto>;
     getByPostingNumbers(postingNumbers: string[]): Promise<InvoiceDto[]>;

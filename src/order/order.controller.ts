@@ -61,13 +61,19 @@ export class OrderController {
         await this.wbOrder.checkCanceledOrders();
         return { isSuccess: await this.wbOrder.addFboOrders() };
     }
+    @ApiOperation({
+        summary: 'Прогнать Ozon FBO руками: отмены (окно 90 дней) и доставка — то же, что суточный крон',
+    })
     @ApiOkResponse({
         description: 'Проверить отменённые Ozon FBO заказы',
         type: ResultDto,
     })
     @Get('update-ozonfbo')
     async updateOzonFboOrder(): Promise<ResultDto> {
-        await this.postingFboService.checkCanceledOrders();
+        // Раньше здесь звался PostingFboService.checkCanceledOrders — отдельная реализация
+        // со своей транзакцией на весь батч, мимо гейтов, дедупа и письма о сбоях.
+        // Ручной прогон обязан идти тем же путём, что и крон, иначе руками чиним не то.
+        await this.orderService.checkFboOrdersDaily();
         return { isSuccess: true };
     }
 

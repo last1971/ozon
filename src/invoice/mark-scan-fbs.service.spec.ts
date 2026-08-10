@@ -292,4 +292,35 @@ describe('MarkScanFbsService', () => {
             expect(invoiceService.detachMarkCodeForFbs).not.toHaveBeenCalled();
         });
     });
+
+    describe('assertLive — гейт скана и подбора (итерация 3)', () => {
+        it('живой счёт → пропускает молча', async () => {
+            await expect(
+                service.assertLive({ invoice, mark: '', cancelled: false, closed: false }),
+            ).resolves.toBeUndefined();
+            expect(invoiceService.getTransaction).not.toHaveBeenCalled();
+        });
+
+        it('счёт отменён → 409 и все коды отвязаны', async () => {
+            invoiceService.getAttachedMarkCodesByScode.mockResolvedValueOnce([
+                { ki: 'KI-1', realpricecode: 11 },
+                { ki: 'KI-2', realpricecode: 12 },
+            ]);
+
+            await expect(
+                service.assertLive({ invoice, mark: ' отмена FBO', cancelled: true, closed: false }),
+            ).rejects.toThrow(ConflictException);
+
+            expect(invoiceService.detachMarkCodeForFbs).toHaveBeenCalledTimes(2);
+            expect(invoiceService.detachMarkCodeForFbs).toHaveBeenCalledWith('KI-1', 11, 0, tx);
+            expect(tx.commit).toHaveBeenCalled();
+        });
+
+        it('счёт закрыт → 409, коды не трогаем', async () => {
+            await expect(
+                service.assertLive({ invoice, mark: ' закрыт', cancelled: false, closed: true }),
+            ).rejects.toThrow(ConflictException);
+            expect(invoiceService.detachMarkCodeForFbs).not.toHaveBeenCalled();
+        });
+    });
 });

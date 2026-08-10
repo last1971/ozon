@@ -127,6 +127,23 @@ describe('ProductService', () => {
         ]);
     });
 
+    it('ошибка ручки списка FBS больше не проглатывается (итерация 3)', async () => {
+        // method на сбое отдаёт { result: null, error } — раньше это превращалось
+        // в «отправлений нет», и прогон молча ничего не делал.
+        method.mockResolvedValueOnce({ result: null, error: { message: '429 Too Many Requests' } });
+        const date = new Date();
+        await expect(service.orderList({ since: date, to: date, statuses: ['test'] })).rejects.toThrow(
+            '/v4/posting/fbs/list: 429 Too Many Requests',
+        );
+    });
+
+    it('ошибка ручки списка FBO больше не проглатывается (итерация 3)', async () => {
+        method.mockResolvedValueOnce({ result: null, error: { service_message: 'socket hang up' } });
+        await expect(service.orderFboList({ limit: 100, filter: {} } as any)).rejects.toThrow(
+            '/v3/posting/fbo/list: socket hang up',
+        );
+    });
+
     it('orderList передаёт курсор дальше', async () => {
         const date = new Date();
         await service.orderList({ since: date, to: date, statuses: ['test'] }, 100, 'CUR1');

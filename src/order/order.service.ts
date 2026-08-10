@@ -12,8 +12,8 @@ import { WbOrderService } from '../wb.order/wb.order.service';
 import { WbCustomerService } from '../wb.customer/wb.customer.service';
 import { ConfigService } from '@nestjs/config';
 import { GoodServiceEnum } from '../good/good.service.enum';
-import { FirebirdTransaction } from "ts-firebird";
-import { PostingDto } from "../posting/dto/posting.dto";
+import { FirebirdTransaction } from 'ts-firebird';
+import { PostingDto } from '../posting/dto/posting.dto';
 import { find } from 'lodash';
 import { ProcessedCacheService } from '../processed-cache/processed-cache.service';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
@@ -115,43 +115,74 @@ export class OrderService {
      */
     @Cron('0 */5 * * * *', { name: 'checkNewOrders' })
     async checkNewOrders(): Promise<void> {
+        this.cycleFailures = [];
         for (const service of this.orderServices) {
             // Передача КМ вынесена в ручной POST /pickup/:remark/marks. Крон-ретрая нет:
             // марки уже привязаны в БД на скане, результат сборщик видит сразу при нажатии.
-            await this.runSteps(
-                service,
-                service.isFbo() ? ['package'] : ['cancel', 'returns', 'package', 'delivery'],
-            );
+            await this.runSteps(service, service.isFbo() ? ['package'] : ['cancel', 'returns', 'package', 'delivery']);
         }
+        this.reportCycleFailures('checkNewOrders');
     }
 
     /** Суточный проход по FBO: отмены (окно 90 дней) и доставка. */
     @Cron('0 0 4 * * *', { name: 'checkFboOrdersDaily' })
     async checkFboOrdersDaily(): Promise<void> {
+        this.cycleFailures = [];
         for (const service of this.orderServices.filter((s) => s.isFbo())) {
             await this.runSteps(service, ['cancel', 'delivery']);
         }
+        this.reportCycleFailures('checkFboOrdersDaily');
     }
 
+    /**
+     * Сбои элементов за прогон — одним письмом, а не по письму на элемент.
+     * Раньше их не было в принципе: ошибка рушила весь батч и уходила только в лог.
+     */
+    private reportCycleFailures(cycle: string): void {
+        if (!this.cycleFailures.length) return;
+        this.eventEmitter.emit(
+            'error.message',
+            `Сбои в прогоне ${cycle}: ${this.cycleFailures.length}`,
+            this.cycleFailures.join('\n'),
+        );
+        this.cycleFailures = [];
+    }
+
+    /**
+     * Транзакция теперь на ЭЛЕМЕНТ, а не на весь прогон: одна упавшая посылка больше
+     * не откатывает всё, что успели сделать соседние. Флашеры кеша выполняются после
+     * всех шагов — ключ «обработано» ставится только успешным элементам.
+     */
     private async runSteps(service: IOrderable, steps: OrderStep[]): Promise<void> {
-        const transaction = await this.invoiceService.getTransaction();
         const flushers: (() => Promise<void>)[] = [];
         try {
-            if (steps.includes('cancel')) await this.cancelOrders(service, transaction, flushers);
-            if (steps.includes('returns')) await this.processReturns(service, transaction, flushers);
-            if (steps.includes('package')) await this.packageOrders(service, transaction, flushers);
-            if (steps.includes('delivery')) await this.deliveryOrders(service, transaction, flushers);
-            await transaction.commit(true);
-            for (const flush of flushers) {
-                try {
-                    await flush();
-                } catch (e) {
-                    this.logger.error(`Cache flush failed: ${e.message}`);
-                }
-            }
+            if (steps.includes('cancel')) await this.cancelOrders(service, flushers);
+            if (steps.includes('returns')) await this.processReturns(service, flushers);
+            if (steps.includes('package')) await this.packageOrders(service, flushers);
+            if (steps.includes('delivery')) await this.deliveryOrders(service, flushers);
         } catch (e) {
-            await transaction.rollback(true);
+            // Сюда падают только сбои самих ручек-списков: сбой элемента ловится внутри.
             this.logger.error(e.message + ' IN ' + service.constructor.name);
+            this.cycleFailures.push(`${service.constructor.name}: ${e.message}`);
+        }
+        for (const flush of flushers) {
+            try {
+                await flush();
+            } catch (e) {
+                this.logger.error(`Cache flush failed: ${e.message}`);
+            }
+        }
+    }
+
+    /** Одна транзакция на элемент: успех — коммит, ошибка — откат и проброс наверх. */
+    private async perItem(fn: (transaction: FirebirdTransaction) => Promise<void>): Promise<void> {
+        const transaction = await this.invoiceService.getTransaction();
+        try {
+            await fn(transaction);
+            await transaction.commit(true);
+        } catch (e) {
+            await transaction.rollback(true).catch(() => undefined);
+            throw e;
         }
     }
 
@@ -204,6 +235,9 @@ export class OrderService {
         return service.getShipmentBarcode(invoice);
     }
 
+    /** Сбои элементов за текущий прогон крона — уходят одним письмом в конце. */
+    private cycleFailures: string[] = [];
+
     private async processWithCache<T extends { posting_number: string }>(
         cacheName: string,
         service: IOrderable,
@@ -211,7 +245,7 @@ export class OrderService {
         processor: (item: T) => Promise<void>,
         flushers: (() => Promise<void>)[],
     ): Promise<void> {
-        await this.processedCache.process(
+        const { failed } = await this.processedCache.process(
             cacheName,
             service.constructor.name,
             items,
@@ -219,65 +253,110 @@ export class OrderService {
             processor,
             flushers,
         );
+        for (const failure of failed) {
+            this.logger.error(`${cacheName} ${service.constructor.name} — ${failure}`);
+            this.cycleFailures.push(`${cacheName} ${service.constructor.name} — ${failure}`);
+        }
     }
 
-    async deliveryOrders(
-        service: IOrderable,
-        transaction: FirebirdTransaction,
-        flushers: (() => Promise<void>)[],
-    ): Promise<void> {
+    async deliveryOrders(service: IOrderable, flushers: (() => Promise<void>)[]): Promise<void> {
         const deliveringPostings = await service.listAwaitingDelivering();
 
-        await this.processWithCache('delivery', service, deliveringPostings, async (posting) => {
-            let invoice = await this.invoiceService.getByPosting(posting, transaction);
-            if (!invoice) {
-                invoice = await service.createInvoice(posting, transaction, flushers);
-            }
-            if (invoice) {
-                // FBO подбираем через хелпер (пропускает счета-недоборы из FBO_SHORTAGE);
-                // не-FBO (FBS/Yandex/WB) — обычный pickup без лишнего запроса.
-                if (service.isFbo()) {
-                    await this.invoiceService.pickupFboUnlessShortage(invoice, transaction);
-                } else {
-                    await this.invoiceService.pickupInvoice(invoice, transaction);
-                }
-            }
-        }, flushers);
+        await this.processWithCache(
+            'delivery',
+            service,
+            deliveringPostings,
+            (posting) =>
+                this.perItem(async (transaction) => {
+                    const match = await this.invoiceService.findByPosting(posting, transaction);
+                    // Путь доставки НЕ безопасен: на проде 18 из 2543 доставленных за 60 дней имеют
+                    // единственный счёт с пометкой « отмена FBO» — заказ отменили, счёт отдали
+                    // в доноры, а отправление всё-таки доставили. Автоматике тут делать нечего.
+                    if (match?.cancelled || match?.closed) {
+                        this.eventEmitter.emit(
+                            'error.message',
+                            'Доставка по помеченному счёту',
+                            `${posting.posting_number}: счёт ${match.invoice.id} помечен «${match.mark.trim()}»,` +
+                                ` а отправление доставлено — не трогаем, разобрать руками`,
+                        );
+                        return;
+                    }
+                    let invoice = match?.invoice ?? null;
+                    if (!invoice) {
+                        invoice = await service.createInvoice(posting, transaction, flushers);
+                    }
+                    if (invoice) {
+                        // FBO подбираем через хелпер (пропускает счета-недоборы из FBO_SHORTAGE);
+                        // не-FBO (FBS/Yandex/WB) — обычный pickup без лишнего запроса.
+                        if (service.isFbo()) {
+                            await this.invoiceService.pickupFboUnlessShortage(invoice, transaction);
+                        } else {
+                            await this.invoiceService.pickupInvoice(invoice, transaction);
+                        }
+                    }
+                }),
+            flushers,
+        );
     }
 
-    async packageOrders(
-        service: IOrderable,
-        transaction: FirebirdTransaction,
-        flushers: (() => Promise<void>)[],
-    ): Promise<void> {
+    async packageOrders(service: IOrderable, flushers: (() => Promise<void>)[]): Promise<void> {
         const packagingPostings = await service.listAwaitingPackaging();
 
-        await this.processWithCache('packaging', service, packagingPostings, async (posting) => {
-            if (!(await this.invoiceService.isExists(posting.posting_number, transaction))) {
-                await service.createInvoice(posting, transaction, flushers);
-            }
-        }, flushers);
+        await this.processWithCache(
+            'packaging',
+            service,
+            packagingPostings,
+            (posting) =>
+                this.perItem(async (transaction) => {
+                    const match = await this.invoiceService.findByPosting(posting.posting_number, transaction);
+                    if (!match) {
+                        await service.createInvoice(posting, transaction, flushers);
+                        return;
+                    }
+                    // Счёт есть, но переименован. На проде такого не встречалось (0 из 296 живых
+                    // отправлений), поэтому не создаём второй, а показываем случай в логе.
+                    if (match.cancelled || match.closed) {
+                        this.logger.warn(
+                            `${posting.posting_number}: отправление живое, а счёт ${match.invoice.id} помечен` +
+                                ` «${match.mark.trim()}» — счёт не создаём, разобрать руками`,
+                        );
+                    }
+                }),
+            flushers,
+        );
     }
 
-    async cancelOrders(
-        service: IOrderable,
-        transaction: FirebirdTransaction,
-        flushers: (() => Promise<void>)[],
-    ): Promise<void> {
+    async cancelOrders(service: IOrderable, flushers: (() => Promise<void>)[]): Promise<void> {
         const orders = await service.listCanceled();
 
-        await this.processWithCache('cancellations', service, orders, async (order) => {
-            if (await this.invoiceService.isExists(order.posting_number, transaction)) {
-                await this.cancelOrder(order, transaction);
-            }
-        }, flushers);
+        await this.processWithCache(
+            'cancellations',
+            service,
+            orders,
+            (order) =>
+                this.perItem(async (transaction) => {
+                    const match = await this.invoiceService.findByPosting(order.posting_number, transaction);
+                    if (!match) return;
+                    // Раньше здесь стоял isExists с точным равенством PRIM: после первой отмены счёт
+                    // переименован, и повторная отмена его просто не находила. Новый предикат находит,
+                    // поэтому пропускать уже помеченные надо явно — иначе суффикс ляжет вторым слоем.
+                    if (match.cancelled) return;
+                    if (match.closed || match.invoice.status === 5) {
+                        this.eventEmitter.emit(
+                            'error.message',
+                            'Отмена закрытого счёта',
+                            `${order.posting_number}: счёт ${match.invoice.id}, статус ${match.invoice.status}` +
+                                `${match.mark ? `, пометка «${match.mark.trim()}»` : ''} — не трогаем`,
+                        );
+                        return;
+                    }
+                    await this.cancelOrder(order, transaction);
+                }),
+            flushers,
+        );
     }
 
-    async processReturns(
-        service: IOrderable,
-        transaction: FirebirdTransaction,
-        flushers: (() => Promise<void>)[],
-    ): Promise<void> {
+    async processReturns(service: IOrderable, flushers: (() => Promise<void>)[]): Promise<void> {
         if (service.constructor.name !== 'PostingService') {
             return;
         }
@@ -285,13 +364,29 @@ export class OrderService {
         const postingService = service as PostingService;
         const returns = await postingService.listReturns();
 
-        await this.processWithCache('returns', service, returns, async (returnItem) => {
-            if (await this.invoiceService.isExists(returnItem.posting_number, transaction)) {
-                const invoice = await this.invoiceService.getByPosting(returnItem.posting_number, transaction);
-                await this.invoiceService.update(invoice, { IGK: 'NOT1C' }, transaction);
-                await this.processInvoiceStatus4(invoice, returnItem.posting_number, transaction, 'returned');
-            }
-        }, flushers);
+        await this.processWithCache(
+            'returns',
+            service,
+            returns,
+            (returnItem) =>
+                this.perItem(async (transaction) => {
+                    const match = await this.invoiceService.findByPosting(returnItem.posting_number, transaction);
+                    // Гейт возврата держится на том, что переименованный счёт не берётся: он уже
+                    // отработан. Предикат теперь его находит, поэтому проверяем пометку явно.
+                    if (!match || match.mark) return;
+                    if (match.invoice.status === 5) {
+                        this.eventEmitter.emit(
+                            'error.message',
+                            'Возврат по закрытому счёту',
+                            `${returnItem.posting_number}: счёт ${match.invoice.id} в статусе 5 — не трогаем`,
+                        );
+                        return;
+                    }
+                    await this.invoiceService.update(match.invoice, { IGK: 'NOT1C' }, transaction);
+                    await this.processInvoiceStatus4(match.invoice, returnItem.posting_number, transaction, 'returned');
+                }),
+            flushers,
+        );
     }
 
     private async processInvoiceStatus4(
@@ -370,7 +465,7 @@ export class OrderService {
                 offer_id: `${line.goodCode}${line.whereOrdered ? `-${line.whereOrdered}` : ''}`,
                 quantity: line.quantity,
             })),
-        }
+        };
     }
 
     /**

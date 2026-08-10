@@ -359,6 +359,52 @@ describe('Trade2006InvoiceService', () => {
             assemblyEnd: undefined,
         });
     });
+    describe('findByPosting — предикат вместо булева isExists (итерация 3)', () => {
+        it('точное равенство ИЛИ префикс с пробелом, чужие номера не цепляются', async () => {
+            query.mockResolvedValueOnce([]);
+            await service.findByPosting('0126-0026-1');
+            expect(query.mock.calls[0]).toEqual([
+                'SELECT * FROM S WHERE PRIM = ? OR PRIM STARTING WITH ?',
+                ['0126-0026-1', '0126-0026-1 '],
+                true,
+            ]);
+        });
+
+        it('счёта нет → null', async () => {
+            query.mockResolvedValueOnce([]);
+            expect(await service.findByPosting('нет-такого')).toBeNull();
+        });
+
+        it('чистый счёт → пометки нет', async () => {
+            query.mockResolvedValueOnce([{ PRIM: 'test1', SCODE: 2, POKUPATCODE: 1, STATUS: 3 }]);
+            const res = await service.findByPosting('test1');
+            expect(res).toMatchObject({ mark: '', cancelled: false, closed: false });
+            expect(res.invoice.id).toBe(2);
+        });
+
+        it('переименованный отменой → cancelled, пометка отдаётся вызывающему', async () => {
+            query.mockResolvedValueOnce([{ PRIM: 'test1 отмена FBO', SCODE: 2, POKUPATCODE: 1, STATUS: 1 }]);
+            const res = await service.findByPosting('test1');
+            expect(res).toMatchObject({ mark: ' отмена FBO', cancelled: true, closed: false });
+        });
+
+        it('закрытый счёт → closed', async () => {
+            query.mockResolvedValueOnce([{ PRIM: 'test1 закрыт', SCODE: 2, POKUPATCODE: 1, STATUS: 5 }]);
+            const res = await service.findByPosting('test1');
+            expect(res).toMatchObject({ cancelled: false, closed: true });
+        });
+
+        it('две строки на номер → берётся точное совпадение, а не первое попавшееся', async () => {
+            query.mockResolvedValueOnce([
+                { PRIM: 'test1 отмена', SCODE: 9, POKUPATCODE: 1, STATUS: 1 },
+                { PRIM: 'test1', SCODE: 2, POKUPATCODE: 1, STATUS: 3 },
+            ]);
+            const res = await service.findByPosting('test1');
+            expect(res.invoice.id).toBe(2);
+            expect(res.cancelled).toBe(false);
+        });
+    });
+
     it('Test pickupInvoice', async () => {
         await service.pickupInvoice({ id: 1, date: new Date(), remark: '1', buyerId: 1, status: 3 });
         expect(execute.mock.calls[0]).toEqual([

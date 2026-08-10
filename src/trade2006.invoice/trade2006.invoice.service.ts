@@ -31,6 +31,7 @@ import { WithTransactions } from "../helpers/mixin/transaction.mixin";
 import { FboMigrationLinkDto } from "../posting.fbo/dto/fbo-migration-link.dto";
 import { InvoiceState } from '../helpers/accrual.distribution';
 import { OZON_INVOICE_CLOSED_SUFFIX, OZON_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
+import { InvoiceMatchDto } from '../invoice/dto/invoice.match.dto';
 
 @Injectable()
 export class Trade2006InvoiceService extends WithTransactions(class {}) implements IInvoice, ISuppliable {
@@ -131,6 +132,49 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         const res = await transaction.query(`SELECT * FROM S WHERE PRIM ${operator} ?`, [postingNumber], !t);
         return res.length > 0 ? InvoiceDto.map(res)[0] : null;
     }
+    /**
+     * Счёт по номеру отправления вместе с пометкой в `PRIM`.
+     *
+     * Предикат `PRIM = ? OR PRIM STARTING WITH (номер + пробел)` — ловит и переименованные
+     * счета (' отмена', ' отмена FBO', ' закрыт'), и при этом не цепляет чужие номера:
+     * `CONTAINING`/чистый префикс на проде врут — из 14 636 номеров 146 неоднозначны
+     * (расщеплённые заказы дают …-0026-1 и …-0026-11), 399 пар, и в 30 парах короткий
+     * номер имеет БОЛЬШИЙ SCODE, то есть порядок вставки не спасает.
+     *
+     * Дублей «два счёта на один номер» на проде нет (0 из 2953 проверенных), но если
+     * вдруг придут — точное совпадение приоритетнее переименованного.
+     */
+    async findByPosting(
+        posting: PostingDto | string,
+        t: FirebirdTransaction = null,
+    ): Promise<InvoiceMatchDto | null> {
+        const transaction = t ?? (await this.pool.getTransaction());
+        const postingNumber = typeof posting === 'string' ? posting : posting.posting_number;
+        const rows = await transaction.query(
+            'SELECT * FROM S WHERE PRIM = ? OR PRIM STARTING WITH ?',
+            [postingNumber, postingNumber + ' '],
+            !t,
+        );
+        if (!rows.length) return null;
+        const invoices = InvoiceDto.map(rows);
+        const exact = invoices.find((i) => (i.remark ?? '').trim() === postingNumber);
+        const invoice = exact ?? invoices[0];
+        if (invoices.length > 1) {
+            this.logger.warn(
+                `findByPosting ${postingNumber}: найдено ${invoices.length} счетов — ` +
+                    `взят ${invoice.id} (${invoices.map((i) => `${i.id}:${(i.remark ?? '').trim()}`).join(', ')})`,
+            );
+        }
+        const mark = (invoice.remark ?? '').trim().slice(postingNumber.length);
+        const cancelSuffixes: string[] = Object.values(OZON_ORDER_CANCELLATION_SUFFIX);
+        return {
+            invoice,
+            mark,
+            cancelled: cancelSuffixes.some((suffix) => mark.endsWith(suffix)),
+            closed: mark.endsWith(OZON_INVOICE_CLOSED_SUFFIX),
+        };
+    }
+
     async getByPostingNumbers(postingNumbers: string[]): Promise<InvoiceDto[]> {
         const invoices = flatten(
             await Promise.all(
