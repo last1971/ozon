@@ -13,11 +13,18 @@ import { GoodServiceEnum } from '../good/good.service.enum';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { ProcessedCacheService } from '../processed-cache/processed-cache.service';
 import { MpEventService } from '../mp-event/mp-event.service';
+import { MpDecisionDryRunService } from '../mp-decision/mp-decision.dry-run.service';
+import { MarkScanFbsService } from '../invoice/mark-scan-fbs.service';
 import { AccrualWeekService } from '../trade2006.accrual/accrual.week.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
 describe('OrderService', () => {
     const mpRecord = jest.fn().mockResolvedValue(true);
+    // Отвязка всех кодов счёта — тот же путь, что кнопка «отвязать последний».
+    const detachAll = jest.fn().mockResolvedValue(0);
+    // Решающая таблица вхолостую (итерация 5): наблюдает и ничего не меняет.
+    const dryObservePosting = jest.fn().mockResolvedValue(null);
+    const dryObserveReturn = jest.fn().mockResolvedValue(null);
     const mpIsHandled = jest.fn().mockResolvedValue(false);
     const mpMarkHandled = jest.fn().mockResolvedValue(undefined);
     let service: OrderService;
@@ -186,6 +193,15 @@ describe('OrderService', () => {
                 {
                     provide: MpEventService,
                     useValue: { record: mpRecord, isHandled: mpIsHandled, markHandled: mpMarkHandled },
+                },
+                { provide: MarkScanFbsService, useValue: { detachAll } },
+                {
+                    provide: MpDecisionDryRunService,
+                    useValue: {
+                        observePosting: dryObservePosting,
+                        observeReturn: dryObserveReturn,
+                        flush: jest.fn(),
+                    },
                 },
                 {
                     provide: EventEmitter2,
@@ -498,7 +514,88 @@ describe('OrderService', () => {
             mockInvoiceService.pickupInvoice = jest.fn();
             mockInvoiceService.updatePrim = jest.fn();
             mockInvoiceService.bulkSetStatus = jest.fn();
+            mockInvoiceService.returnMarkCodesToStock = jest.fn().mockResolvedValue(0);
             eventEmitterEmit.mockClear();
+            detachAll.mockClear().mockResolvedValue(0);
+        });
+
+        it('отмена FBS при STATUS=3 снимает коды сразу, в транзакции элемента', async () => {
+            const order = { posting_number: '123', isFbo: false } as any;
+            const invoice = { status: 3 };
+            mockInvoiceService.getByPosting.mockResolvedValue(invoice);
+            detachAll.mockResolvedValue(2);
+
+            await service.cancelOrder(order, mockTransaction);
+
+            // та же транзакция, что у суффикса и статуса: упало — откатится всё разом
+            expect(detachAll).toHaveBeenCalledWith(invoice, mockTransaction);
+            expect(mockInvoiceService.bulkSetStatus).toHaveBeenCalledWith([invoice], 0, mockTransaction);
+        });
+
+        it('сбой отвязки роняет всю отмену — счёт не гасим наполовину', async () => {
+            const order = { posting_number: '123', isFbo: false } as any;
+            mockInvoiceService.getByPosting.mockResolvedValue({ status: 3 });
+            detachAll.mockRejectedValue(new Error('MARKCODE_DETACH_FOR_FBS: гард не пустил'));
+
+            await expect(service.cancelOrder(order, mockTransaction)).rejects.toThrow('гард не пустил');
+
+            expect(mockInvoiceService.updatePrim).not.toHaveBeenCalled();
+            expect(mockInvoiceService.bulkSetStatus).not.toHaveBeenCalled();
+        });
+
+        it('отмена FBS при STATUS=4, посылка УЖЕ отгружена → донор « отмена FBO», коды не трогаем', async () => {
+            // товар физически у Ozon: разбирать нечего, а TT=3 нужен, чтобы код уехал
+            // миграцией на FBO-продажу. 62 из 115 отмен на проде — именно этот случай.
+            const order = { posting_number: '456', isFbo: false, delivering_date: '2026-08-08T10:00:00Z' } as any;
+            mockInvoiceService.getByPosting.mockResolvedValue({ id: 777, status: 4 });
+
+            await service.cancelOrder(order, mockTransaction);
+
+            expect(mockInvoiceService.returnMarkCodesToStock).not.toHaveBeenCalled();
+            expect(detachAll).not.toHaveBeenCalled();
+            expect(mockInvoiceService.updatePrim).toHaveBeenCalledWith('456', '456 отмена FBO', mockTransaction);
+        });
+
+        it('признак отгрузки берётся и из substatus, не только из даты', async () => {
+            const order = {
+                posting_number: '456',
+                isFbo: false,
+                substatus: 'posting_transferred_to_delivery',
+            } as any;
+            mockInvoiceService.getByPosting.mockResolvedValue({ id: 777, status: 4 });
+
+            await service.cancelOrder(order, mockTransaction);
+
+            expect(mockInvoiceService.updatePrim).toHaveBeenCalledWith('456', '456 отмена FBO', mockTransaction);
+        });
+
+        it('отмена FBS при STATUS=4, посылка У НАС: коды на склад (TT→0), привязка остаётся, суффикс « отмена»', async () => {
+            const order = { posting_number: '456', isFbo: false } as any;
+            const invoice = { id: 777, status: 4 };
+            mockInvoiceService.getByPosting.mockResolvedValue(invoice);
+            mockInvoiceService.returnMarkCodesToStock = jest.fn().mockResolvedValue(3);
+
+            await service.cancelOrder(order, mockTransaction);
+
+            expect(mockInvoiceService.returnMarkCodesToStock).toHaveBeenCalledWith(777, mockTransaction);
+            // отвязки нет: по привязке Дельфи потребует отсканировать содержимое коробки
+            expect(detachAll).not.toHaveBeenCalled();
+            // « отмена», а НЕ « отмена FBO»: товар лежит у нас, донором счёт быть не должен
+            expect(mockInvoiceService.updatePrim).toHaveBeenCalledWith('456', '456 отмена', mockTransaction);
+            expect(eventEmitterEmit).toHaveBeenCalledWith(
+                'error.message',
+                'Отменён собранный заказ — разобрать посылку',
+                expect.stringContaining('расформировать счёт 777'),
+            );
+        });
+
+        it('отмена FBO кодов НЕ трогает — TT=3 нужен, чтобы код уехал миграцией с донора', async () => {
+            const order = { posting_number: '789', isFbo: true } as any;
+            mockInvoiceService.getByPosting.mockResolvedValue({ status: 4 });
+
+            await service.cancelOrder(order, mockTransaction);
+
+            expect(detachAll).not.toHaveBeenCalled();
         });
 
         it('should cancel FBS order with status 3 (not picked) without calling processInvoiceStatus4', async () => {
@@ -522,18 +619,13 @@ describe('OrderService', () => {
             );
         });
 
-        it('should cancel FBS order with status 4 (picked) via processInvoiceStatus4', async () => {
+        it('отмена FBS при STATUS=4 статус руками не двигает — его ставит updatePrim', async () => {
             const order = { posting_number: '456', isFbo: false } as any;
-            const invoice = { status: 4 };
-            mockInvoiceService.getByPosting.mockResolvedValue(invoice);
+            mockInvoiceService.getByPosting.mockResolvedValue({ id: 777, status: 4 });
+            mockInvoiceService.returnMarkCodesToStock = jest.fn().mockResolvedValue(0);
 
             await service.cancelOrder(order, mockTransaction);
 
-            expect(mockInvoiceService.updatePrim).toHaveBeenCalledWith(
-                '456',
-                expect.stringContaining('456'),
-                mockTransaction
-            );
             expect(mockInvoiceService.bulkSetStatus).not.toHaveBeenCalled();
         });
 
@@ -847,6 +939,7 @@ describe('OrderService', () => {
 
         beforeEach(() => {
             mpRecord.mockReset().mockResolvedValue(true);
+            dryObserveReturn.mockClear();
             mpIsHandled.mockReset().mockResolvedValue(false);
             mpMarkHandled.mockReset().mockResolvedValue(undefined);
             commit.mockResolvedValue(undefined);
@@ -891,6 +984,65 @@ describe('OrderService', () => {
             await service.processReturns(svc, []);
 
             expect(mpMarkHandled).toHaveBeenCalledTimes(1);
+        });
+
+        it('новое состояние возврата идёт в решающую таблицу вхолостую, знакомое — нет', async () => {
+            const svc: any = makeService([
+                { id: 4, posting_number: '111', schema: 'Fbs', visual: { status: { sys_name: 'ReturnedToOzon' } } },
+            ]);
+            svc.listReturnsByPosting = jest.fn().mockResolvedValue([]);
+            svc.getPostingUnits = jest.fn().mockResolvedValue(null);
+
+            await service.processReturns(svc, []);
+            expect(dryObserveReturn).toHaveBeenCalledWith(expect.objectContaining({ id: 4 }), undefined);
+
+            dryObserveReturn.mockClear();
+            mpRecord.mockResolvedValue(false);
+            await service.processReturns(svc, []);
+            expect(dryObserveReturn).not.toHaveBeenCalled();
+        });
+
+        it('частичность: записи возврата за всю историю против единиц отправления, заявочные не в счёт', async () => {
+            const svc: any = makeService([
+                { id: 5, posting_number: '111', schema: 'Fbs', visual: { status: { sys_name: 'ReturnedToOzon' } } },
+            ]);
+            svc.listReturnsByPosting = jest.fn().mockResolvedValue([
+                { visual: { status: { sys_name: 'ReturnedToOzon' } } },
+                { visual: { status: { sys_name: 'ReturnedToOzon' } } },
+                { visual: { status: { sys_name: 'Rejected' } } },
+            ]);
+            svc.getPostingUnits = jest.fn().mockResolvedValue(3);
+
+            await service.processReturns(svc, []);
+
+            expect(svc.listReturnsByPosting).toHaveBeenCalledWith('111');
+            expect(dryObserveReturn.mock.calls[0][1]).toEqual({ returnedRows: 2, postingUnits: 3 });
+        });
+
+        it('возврат FBO и статусы без физики: состав у Ozon не спрашиваем', async () => {
+            const svc: any = makeService([
+                { id: 6, posting_number: '111', schema: 'Fbo', visual: { status: { sys_name: 'ReturnedToOzon' } } },
+                { id: 7, posting_number: '111', schema: 'Fbs', visual: { status: { sys_name: 'MovingToOzon' } } },
+            ]);
+            svc.listReturnsByPosting = jest.fn().mockResolvedValue([]);
+            svc.getPostingUnits = jest.fn().mockResolvedValue(1);
+
+            await service.processReturns(svc, []);
+
+            expect(svc.getPostingUnits).not.toHaveBeenCalled();
+            expect(dryObserveReturn.mock.calls.every((call) => call[1] === undefined)).toBe(true);
+        });
+
+        it('сбой ручек Ozon при подсчёте частичности не роняет разбор возврата', async () => {
+            const svc: any = makeService([
+                { id: 8, posting_number: '111', schema: 'Fbs', visual: { status: { sys_name: 'ReturnedToOzon' } } },
+            ]);
+            svc.listReturnsByPosting = jest.fn().mockRejectedValue(new Error('502 Bad Gateway'));
+            svc.getPostingUnits = jest.fn().mockResolvedValue(1);
+
+            await service.processReturns(svc, []);
+
+            expect(dryObserveReturn).toHaveBeenCalledWith(expect.objectContaining({ id: 8 }), undefined);
         });
 
         it('сбой действия → «обработано» не ставится, событие вернётся в следующий проход', async () => {
@@ -954,6 +1106,21 @@ describe('OrderService', () => {
             expect(fbs.listCanceled).toHaveBeenCalled();
             expect(fbs.listAwaitingPackaging).toHaveBeenCalled();
             expect(fbs.listAwaitingDelivering).toHaveBeenCalled();
+        });
+
+        it('отмена FBO идёт в решающую таблицу вхолостую, отмена FBS — нет (её считает наблюдатель)', async () => {
+            const fbo: any = makeFbo();
+            fbo.listCanceled = jest.fn().mockResolvedValue([{ posting_number: 'FBO-1', isFbo: true }]);
+            const fbs: any = makeFbs();
+            fbs.listCanceled = jest.fn().mockResolvedValue([{ posting_number: '111', isFbo: false }]);
+            (service as any).orderServices = [fbo, fbs];
+            dryObservePosting.mockClear();
+
+            await service.cancelOrders(fbo, []);
+            await service.cancelOrders(fbs, []);
+
+            expect(dryObservePosting).toHaveBeenCalledTimes(1);
+            expect(dryObservePosting).toHaveBeenCalledWith('FBO-1', 'FBO', 'cancel');
         });
 
         it('суточный крон берёт отмены и доставку только у FBO', async () => {

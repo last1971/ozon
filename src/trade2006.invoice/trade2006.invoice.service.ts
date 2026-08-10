@@ -789,6 +789,33 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         if (!transaction) await t.commit(true);
     }
 
+    /**
+     * Вернуть коды счёта на склад: `TT 3→0` через `MARKCODE_RETURN_TO_STOCK`.
+     *
+     * `REALPRICECODE` процедура НЕ трогает — код остаётся привязанным к строке счёта.
+     * Это принципиально: при расформировании в Дельфи `CountAttachedMarks` отбирает
+     * ровно `TRANSFER_TYPE = 0` по `REALPRICECODE` и по этому счётчику заставляет
+     * кладовщика отсканировать коды из коробки. Снимешь привязку заодно — Дельфи
+     * расформирует молча, и содержимое посылки никто не сверит.
+     *
+     * @returns сколько кодов вернули.
+     */
+    async returnMarkCodesToStock(scode: number, transaction: FirebirdTransaction = null): Promise<number> {
+        const t = transaction ?? (await this.getTransaction());
+        try {
+            const codes = await this.getAttachedMarkCodesByScode(scode, t);
+            const ss = this.getStorageSS();
+            for (const code of codes) {
+                await t.execute('EXECUTE PROCEDURE MARKCODE_RETURN_TO_STOCK (?, ?)', [code.ki, ss]);
+            }
+            if (!transaction) await t.commit(true);
+            return codes.length;
+        } catch (e) {
+            if (!transaction) await t.rollback(true).catch(() => undefined);
+            throw e;
+        }
+    }
+
     async countFreeMarkCodesForGood(
         goodscode: string,
         transaction: FirebirdTransaction = null,
@@ -953,6 +980,92 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             goodscode: String(r.GOODSCODE),
             realpricecode: r.REALPRICECODE,
             quantity: Number(r.QUANTITY) || 1,
+        }));
+    }
+
+    /**
+     * Полное состояние кодов счёта — вход слоя 2 решающей таблицы.
+     *
+     * В отличие от `getAttachedMarkCodesByScode` не фильтрует по `TRANSFER_TYPE`:
+     * решение зависит и от TT=2 (передан по УПД-2 — трогать нельзя), и от STATUS
+     * с RETIRE_REASON (выведен нашей продажей или по другой причине).
+     */
+    async getMarkCodesStateByScode(
+        scode: number,
+        transaction: FirebirdTransaction = null,
+    ): Promise<{ ki: string; status: number; transferType: number; retireReason: number | null; kmFull: string | null }[]> {
+        // Маркировка выключена (магазин) — таблицы MARKCODES нет.
+        if (!isMarkCodesEnabled(this.configService)) return [];
+        const t = transaction ?? (await this.getTransaction());
+        const rows = await t.query(
+            'SELECT m.KI, m.STATUS, m.TRANSFER_TYPE, m.RETIRE_REASON, m.KM_FULL FROM MARKCODES m ' +
+                'JOIN REALPRICE rp ON rp.REALPRICECODE = m.REALPRICECODE ' +
+                'WHERE rp.SCODE = ?',
+            [scode],
+            !transaction,
+        );
+        return rows.map((r) => ({
+            ki: String(r.KI),
+            status: Number(r.STATUS),
+            transferType: Number(r.TRANSFER_TYPE),
+            retireReason: r.RETIRE_REASON === null || r.RETIRE_REASON === undefined ? null : Number(r.RETIRE_REASON),
+            kmFull: r.KM_FULL ?? null,
+        }));
+    }
+
+    /**
+     * Подвисшие коды: ушли маркетплейсу (TT=2/3) и остались в обороте (STATUS=5)
+     * на счёте, которого уже нет в работе.
+     *
+     * Счета в статусах 3 и 4 (создан-не-собран, подобран) исключены: код с TT=3
+     * на таком счёте — это нормальная сборка FBS, а не висяк. Отгруженные,
+     * списанные и проданные в розницу коды отсеиваются теми же полями, что
+     * и в LIVE_CODE_FILTER. Индекс IDX_MC_TRANSFER_STATUS (TRANSFER_TYPE, STATUS).
+     *
+     * Возраст считается по дате СЧЁТА: STATUS_UPDATED_AT для этого не годится —
+     * триггер MARKCODES_BU двигает его только при смене STATUS, а у висяка STATUS
+     * как раз и не менялся с момента ввода в оборот.
+     */
+    async findStuckMarkCodes(
+        minAgeDays = 3,
+        transaction: FirebirdTransaction = null,
+    ): Promise<
+        {
+            ki: string;
+            goodscode: string;
+            status: number;
+            transferType: number;
+            scode: number | null;
+            prim: string | null;
+            invoiceStatus: number | null;
+            invoiceDate: Date | null;
+        }[]
+    > {
+        if (!isMarkCodesEnabled(this.configService)) return [];
+        const t = transaction ?? (await this.getTransaction());
+        const edge = DateTime.now().minus({ day: minAgeDays }).startOf('day').toJSDate();
+        const rows = await t.query(
+            'SELECT m.KI, m.GOODSCODE, m.STATUS, m.TRANSFER_TYPE, s.SCODE, s.PRIM, s.STATUS AS S_STATUS, s.DATA ' +
+                'FROM MARKCODES m ' +
+                'LEFT JOIN REALPRICE rp ON rp.REALPRICECODE = m.REALPRICECODE ' +
+                'LEFT JOIN S s ON s.SCODE = rp.SCODE ' +
+                'WHERE m.TRANSFER_TYPE IN (2, 3) AND m.STATUS = 5 ' +
+                'AND m.REALPRICEFCODE IS NULL AND m.SHOPLOGCODE IS NULL AND m.SPISID IS NULL ' +
+                'AND (s.SCODE IS NULL OR s.STATUS NOT IN (3, 4)) ' +
+                'AND (s.DATA IS NULL OR s.DATA < ?) ' +
+                'ORDER BY s.DATA',
+            [edge],
+            !transaction,
+        );
+        return rows.map((r) => ({
+            ki: String(r.KI),
+            goodscode: String(r.GOODSCODE),
+            status: Number(r.STATUS),
+            transferType: Number(r.TRANSFER_TYPE),
+            scode: r.SCODE ?? null,
+            prim: r.PRIM ?? null,
+            invoiceStatus: r.S_STATUS === null || r.S_STATUS === undefined ? null : Number(r.S_STATUS),
+            invoiceDate: r.DATA ?? null,
         }));
     }
 

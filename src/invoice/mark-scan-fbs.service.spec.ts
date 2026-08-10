@@ -301,19 +301,19 @@ describe('MarkScanFbsService', () => {
             expect(invoiceService.getTransaction).not.toHaveBeenCalled();
         });
 
-        it('счёт отменён → 409 и все коды отвязаны', async () => {
-            invoiceService.getAttachedMarkCodesByScode.mockResolvedValueOnce([
-                { ki: 'KI-1', realpricecode: 11 },
-                { ki: 'KI-2', realpricecode: 12 },
-            ]);
-
+        it('счёт отменён → 409, коды НЕ трогаем: по ним Дельфи потребует скан при расформировании', async () => {
             await expect(
-                service.assertLive({ invoice, mark: ' отмена FBO', cancelled: true, closed: false }),
+                service.assertLive({ invoice, mark: ' отмена', cancelled: true, closed: false }),
             ).rejects.toThrow(ConflictException);
 
-            expect(invoiceService.detachMarkCodeForFbs).toHaveBeenCalledTimes(2);
-            expect(invoiceService.detachMarkCodeForFbs).toHaveBeenCalledWith('KI-1', 11, 0, tx);
-            expect(tx.commit).toHaveBeenCalled();
+            expect(invoiceService.detachMarkCodeForFbs).not.toHaveBeenCalled();
+            expect(invoiceService.getAttachedMarkCodesByScode).not.toHaveBeenCalled();
+        });
+
+        it('в сообщении — что делать: расформировать счёт и отсканировать коды', async () => {
+            await expect(
+                service.assertLive({ invoice, mark: ' отмена', cancelled: true, closed: false }),
+            ).rejects.toThrow(/расформируйте счёт 100/);
         });
 
         it('счёт закрыт → 409, коды не трогаем', async () => {
@@ -321,6 +321,33 @@ describe('MarkScanFbsService', () => {
                 service.assertLive({ invoice, mark: ' закрыт', cancelled: false, closed: true }),
             ).rejects.toThrow(ConflictException);
             expect(invoiceService.detachMarkCodeForFbs).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('detachAll с внешней транзакцией', () => {
+        it('работает в переданной транзакции и НЕ коммитит её', async () => {
+            invoiceService.getAttachedMarkCodesByScode.mockResolvedValue([
+                { ki: 'A', realpricecode: 1 },
+                { ki: 'B', realpricecode: 1 },
+            ]);
+            const outer: any = { commit: jest.fn(), rollback: jest.fn() };
+
+            await expect(service.detachAll(invoice, outer)).resolves.toBe(2);
+
+            expect(invoiceService.detachMarkCodeForFbs).toHaveBeenCalledTimes(2);
+            expect(invoiceService.detachMarkCodeForFbs).toHaveBeenCalledWith('A', 1, 0, outer);
+            expect(outer.commit).not.toHaveBeenCalled();
+            expect(outer.rollback).not.toHaveBeenCalled();
+            expect(invoiceService.getTransaction).not.toHaveBeenCalled();
+        });
+
+        it('ошибка уходит наверх как есть — откатывает вызывающий, целиком', async () => {
+            invoiceService.getAttachedMarkCodesByScode.mockResolvedValue([{ ki: 'A', realpricecode: 1 }]);
+            invoiceService.detachMarkCodeForFbs.mockRejectedValue(new Error('гард не пустил'));
+            const outer: any = { commit: jest.fn(), rollback: jest.fn() };
+
+            await expect(service.detachAll(invoice, outer)).rejects.toThrow('гард не пустил');
+            expect(outer.rollback).not.toHaveBeenCalled();
         });
     });
 });

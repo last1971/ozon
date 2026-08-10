@@ -854,6 +854,69 @@ describe('Trade2006InvoiceService', () => {
             expect(query).not.toHaveBeenCalled();
         });
 
+        it('getMarkCodesStateByScode — без фильтра по TT: слою 2 нужны и TT=2, и RETIRE_REASON', async () => {
+            get.mockImplementation((key: string, def?: any) => (key === 'MARK_CODES_ENABLED' ? true : def));
+            query.mockResolvedValueOnce([
+                { KI: 'A', STATUS: 5, TRANSFER_TYPE: 3, RETIRE_REASON: null, KM_FULL: 'KM-A' },
+                { KI: 'B', STATUS: 6, TRANSFER_TYPE: 2, RETIRE_REASON: 3, KM_FULL: null },
+            ]);
+            const res = await service.getMarkCodesStateByScode(50, null);
+            expect(res).toEqual([
+                { ki: 'A', status: 5, transferType: 3, retireReason: null, kmFull: 'KM-A' },
+                { ki: 'B', status: 6, transferType: 2, retireReason: 3, kmFull: null },
+            ]);
+            const sql = query.mock.calls[0][0];
+            expect(sql).toContain('JOIN REALPRICE');
+            expect(sql).not.toContain('TRANSFER_TYPE =');
+            expect(query.mock.calls[0][1]).toEqual([50]);
+        });
+
+        it('getMarkCodesStateByScode — MARK_CODES_ENABLED=false → [] без запроса', async () => {
+            get.mockImplementation((key: string, def?: any) => (key === 'MARK_CODES_ENABLED' ? false : def));
+            expect(await service.getMarkCodesStateByScode(50, null)).toEqual([]);
+            expect(query).not.toHaveBeenCalled();
+        });
+
+        it('findStuckMarkCodes — TT=2/3 в обороте на счёте вне работы, счета в подборке исключены', async () => {
+            get.mockImplementation((key: string, def?: any) => (key === 'MARK_CODES_ENABLED' ? true : def));
+            query.mockResolvedValueOnce([
+                {
+                    KI: 'A',
+                    GOODSCODE: 444,
+                    STATUS: 5,
+                    TRANSFER_TYPE: 3,
+                    SCODE: 91933,
+                    PRIM: '33261943-0361-1 закрыт',
+                    S_STATUS: 5,
+                    DATA: new Date('2026-08-01'),
+                },
+            ]);
+            const res = await service.findStuckMarkCodes(3, null);
+            expect(res).toEqual([
+                {
+                    ki: 'A',
+                    goodscode: '444',
+                    status: 5,
+                    transferType: 3,
+                    scode: 91933,
+                    prim: '33261943-0361-1 закрыт',
+                    invoiceStatus: 5,
+                    invoiceDate: new Date('2026-08-01'),
+                },
+            ]);
+            const sql = query.mock.calls[0][0];
+            expect(sql).toContain('m.TRANSFER_TYPE IN (2, 3) AND m.STATUS = 5');
+            expect(sql).toContain('m.REALPRICEFCODE IS NULL');
+            expect(sql).toContain('s.STATUS NOT IN (3, 4)');
+            expect(query.mock.calls[0][1][0]).toBeInstanceOf(Date);
+        });
+
+        it('findStuckMarkCodes — MARK_CODES_ENABLED=false → [] без запроса', async () => {
+            get.mockImplementation((key: string, def?: any) => (key === 'MARK_CODES_ENABLED' ? false : def));
+            expect(await service.findStuckMarkCodes(3, null)).toEqual([]);
+            expect(query).not.toHaveBeenCalled();
+        });
+
         it('getRealpriceLinesByScode — все строки счёта', async () => {
             query.mockResolvedValueOnce([
                 { REALPRICECODE: 100, GOODSCODE: 444, QUAN: 2 },

@@ -11,6 +11,7 @@ import { WbCustomerModule } from '../wb.customer/wb.customer.module';
 import { Trade2006AccrualModule } from '../trade2006.accrual/trade2006.accrual.module';
 import { ProcessedCacheModule } from '../processed-cache/processed-cache.module';
 import { MpEventModule } from '../mp-event/mp-event.module';
+import { MpDecisionModule } from '../mp-decision/mp-decision.module';
 
 @Module({
     imports: [
@@ -23,6 +24,7 @@ import { MpEventModule } from '../mp-event/mp-event.module';
         WbCustomerModule,
         ProcessedCacheModule,
         MpEventModule,
+        MpDecisionModule,
         Trade2006AccrualModule,
     ],
     providers: [OrderService],

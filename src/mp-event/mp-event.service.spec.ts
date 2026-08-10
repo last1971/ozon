@@ -76,6 +76,33 @@ describe('MpEventService', () => {
         });
     });
 
+    describe('hasAnyState', () => {
+        it('есть запись о delivering → true, состояния уходят в IN', async () => {
+            query.mockResolvedValueOnce([{ STATE: 'delivering' }]);
+            await expect(
+                service.hasAnyState('OZON', 'POSTING_FBS', '0267983325-0001-3', ['delivering', 'delivered']),
+            ).resolves.toBe(true);
+            expect(query.mock.calls[0][0]).toContain('STATE IN (?, ?)');
+            expect(query.mock.calls[0][1]).toEqual([
+                'OZON',
+                'POSTING_FBS',
+                '0267983325-0001-3',
+                'delivering',
+                'delivered',
+            ]);
+        });
+
+        it('записи нет → false', async () => {
+            query.mockResolvedValueOnce([]);
+            await expect(service.hasAnyState('OZON', 'POSTING_FBS', '1', ['delivering'])).resolves.toBe(false);
+        });
+
+        it('пустой список состояний → false без запроса', async () => {
+            await expect(service.hasAnyState('OZON', 'POSTING_FBS', '1', [])).resolves.toBe(false);
+            expect(query).not.toHaveBeenCalled();
+        });
+    });
+
     describe('windowStart', () => {
         it('журнал пуст → холодный старт по дефолтному окну', async () => {
             query.mockResolvedValueOnce([{ LAST_SEEN: null }]);

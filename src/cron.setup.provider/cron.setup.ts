@@ -175,6 +175,19 @@ export const cronConfig: Record<string, CronSetup> = {
         },
         development: false,
     },
+    /**
+     * Еженедельный отчёт «подвисшие коды» (итерация 5): один SELECT плюс письмо.
+     * На dev выключен — база там боевая, лишние письма не нужны.
+     */
+    weeklyStuckCodes: {
+        production: {
+            enabled: true,
+            settings: {
+                time: '0 0 8 * * 1',
+            },
+        },
+        development: false,
+    },
     updateTransactions: {
         production: false,
         development: {

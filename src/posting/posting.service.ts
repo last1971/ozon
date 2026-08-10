@@ -32,6 +32,7 @@ import { SetAndConfirmExemplarsCommand } from './commands/set-and-confirm-exempl
 import { ShipExemplarsCommand } from './commands/ship-exemplars.command';
 import { firstPageOnly } from '../helpers/pdf/pdf.helpers';
 import { MpEventService } from '../mp-event/mp-event.service';
+import { MpDecisionDryRunService } from '../mp-decision/mp-decision.dry-run.service';
 
 @Injectable()
 export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable {
@@ -47,6 +48,7 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         private setAndConfirmExemplarsCommand: SetAndConfirmExemplarsCommand,
         private shipExemplarsCommand: ShipExemplarsCommand,
         private mpEvent: MpEventService,
+        private dryRun: MpDecisionDryRunService,
     ) {}
 
     isFbo(): boolean {
@@ -154,11 +156,14 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         }
 
         // Журнал: пишем всё увиденное. На нём стоит окно следующей выборки, и на нём же
-        // заработает правило «пришла отмена, а записи о delivering нет → товар ещё у нас».
+        // держится правило «пришла отмена, а записи о delivering нет → товар ещё у нас».
+        // Он же дедуплицирует решающую таблицу: вхолостую считаем только события,
+        // которых в журнале ещё не было, то есть одно решение на одно состояние.
         for (const { status, postings } of found) {
             for (const posting of postings) {
+                let isNew = false;
                 try {
-                    await this.mpEvent.record({
+                    isNew = await this.mpEvent.record({
                         service: 'OZON',
                         kind: 'POSTING_FBS',
                         extId: posting.posting_number,
@@ -167,9 +172,16 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
                     });
                 } catch (e) {
                     this.logger.warn(`журнал: ${posting.posting_number}/${status} не записан — ${e.message}`);
+                    continue;
                 }
+                if (!isNew) continue;
+                // Решающая таблица вхолостую (итерация 5): считает, что следовало бы
+                // сделать, и не делает ничего. Схема FBS — по источнику события.
+                if (status === 'cancelled') await this.dryRun.observePosting(posting.posting_number, 'FBS', 'cancel');
+                if (status === 'delivered') await this.dryRun.observePosting(posting.posting_number, 'FBS', 'delivered');
             }
         }
+        this.dryRun.flush('observeFbsWideWindow');
 
         const all = found.flatMap((f) => f.postings);
         if (!all.length) {
@@ -265,6 +277,48 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         }
 
         return allReturns;
+    }
+
+    /**
+     * Все записи возврата по ОДНОМУ отправлению, за всю историю.
+     *
+     * Числитель признака частичности. Окно прогона для этого не годится: записи
+     * приезжают порознь, и «пока приехала одна из двух» — не частичный возврат,
+     * а незаконченный. Фильтр `posting_numbers[]` рабочий — в отличие от
+     * `posting_number` (единственное число), который Ozon молча игнорирует
+     * и отдаёт первые 100 возвратов подряд.
+     */
+    async listReturnsByPosting(postingNumber: string): Promise<ReturnDto[]> {
+        const result: ReturnsListDto = await this.ozonApiService.method('/v1/returns/list', {
+            filter: { posting_numbers: [postingNumber] },
+            limit: 500,
+            last_id: 0,
+        });
+        return result?.returns ?? [];
+    }
+
+    /**
+     * Сколько единиц в отправлении ПО ДАННЫМ OZON. Знаменатель признака частичности.
+     *
+     * Намеренно не через `getByPostingNumber`: у того есть фолбэк на нашу базу,
+     * а там количества в наших штуках с коэффициентом кратности — упаковка
+     * `570615-10` лежит в счёте как `QUAN=10` против одной записи возврата,
+     * и полный возврат кратного товара выглядел бы частичным (проверено на проде
+     * 10.08: счета 91713 и 91473 — оба ложные срабатывания).
+     *
+     * @returns null — состав получить не удалось (например, отправление FBO):
+     *          судить о частичности нечем, и врать в эту сторону нельзя.
+     */
+    async getPostingUnits(postingNumber: string): Promise<number | null> {
+        try {
+            const res = await this.ozonApiService.method('/v3/posting/fbs/get', { posting_number: postingNumber });
+            const products = res?.result?.products;
+            if (!products?.length) return null;
+            return products.reduce((sum: number, product: any) => sum + (Number(product.quantity) || 0), 0);
+        } catch (e) {
+            this.logger.warn(`состав отправления ${postingNumber} не получен — ${e.message}`);
+            return null;
+        }
     }
 
     async createInvoice(posting: PostingDto, transaction: FirebirdTransaction): Promise<InvoiceDto> {

@@ -22,24 +22,44 @@ export class MarkScanFbsService {
 
     /**
      * Гейт на входе в скан и в подбор: счёт отменён маркетплейсом — работать по нему нельзя.
-     * Все привязанные коды отвязываются здесь же, иначе они останутся висеть на мёртвом
-     * счёте: автоматика второй раз по этому отправлению не придёт, а кладовщик без
-     * сообщения навесит на него ещё и следующий код или отгрузит отменённый заказ.
+     *
+     * Коды здесь НЕ трогаем. Их состояние уже привела в порядок автоматика отмены:
+     * при `STATUS=3` она их отвязала совсем, при `STATUS=4` сняла только `TT`
+     * (`MARKCODE_RETURN_TO_STOCK`), оставив привязку к строке — именно по ней Дельфи
+     * при расформировании потребует отсканировать содержимое коробки. Снять их здесь
+     * значило бы лишить кладовщика этой проверки: расформирование прошло бы молча.
      */
     async assertLive(match: InvoiceMatchDto): Promise<void> {
         if (!match?.cancelled && !match?.closed) return;
-        const reason = match.cancelled ? 'отменён маркетплейсом' : 'оплачен и закрыт';
         if (match.cancelled) {
-            const detached = await this.detachAll(match.invoice);
             throw new ConflictException(
-                `Счёт ${reason} (${match.mark.trim()}). Отвязано кодов: ${detached}. Товар в отгрузку не отдавать.`,
+                `Счёт отменён маркетплейсом (${match.mark.trim()}). Товар в отгрузку не отдавать. ` +
+                    `Если посылка собрана — расформируйте счёт ${match.invoice.id} в Trade и отсканируйте коды.`,
             );
         }
-        throw new ConflictException(`Счёт ${reason} (${match.mark.trim()}), работа по нему запрещена.`);
+        throw new ConflictException(`Счёт оплачен и закрыт (${match.mark.trim()}), работа по нему запрещена.`);
     }
 
-    /** Снять все КМ с счёта. Возвращает, сколько отвязано. */
-    private async detachAll(invoice: InvoiceDto): Promise<number> {
+    /**
+     * Снять все КМ со счёта тем же путём, что кнопка «отвязать последний»
+     * (`MARKCODE_DETACH_FOR_FBS`), только по всем кодам счёта сразу.
+     * Возвращает, сколько отвязано.
+     *
+     * @param t внешняя транзакция. Передана — работаем в ней и НЕ коммитим:
+     *          вызывающий (отмена в кроне) складывает отвязку, суффикс и статус
+     *          в одну транзакцию, иначе можно получить «статус сменили, а коды
+     *          остались». Ошибка при этом уходит наверх как есть, чтобы откатился
+     *          весь элемент целиком.
+     */
+    async detachAll(invoice: InvoiceDto, t: FirebirdTransaction = null): Promise<number> {
+        if (t) {
+            const codes = await this.invoiceService.getAttachedMarkCodesByScode(invoice.id, t);
+            const ss = this.invoiceService.getStorageSS();
+            for (const code of codes) {
+                await this.invoiceService.detachMarkCodeForFbs(code.ki, code.realpricecode, ss, t);
+            }
+            return codes.length;
+        }
         const transaction = await this.invoiceService.getTransaction();
         try {
             const codes = await this.invoiceService.getAttachedMarkCodesByScode(invoice.id, transaction);

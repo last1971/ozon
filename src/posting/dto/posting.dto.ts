@@ -26,6 +26,12 @@ export class PostingDto {
         cluster_to?: string;
     };
 
+    @ApiProperty({ description: 'Дата передачи в доставку — признак «товар уехал к Ozon»', required: false })
+    delivering_date?: string;
+
+    @ApiProperty({ description: 'Подстатус отправления у Ozon', required: false })
+    substatus?: string;
+
     @ApiProperty({ description: 'Флаг FBO', required: false })
     isFbo?: boolean;
 

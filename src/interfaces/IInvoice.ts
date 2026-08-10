@@ -86,6 +86,8 @@ export interface IInvoice {
         transaction: FirebirdTransaction,
     ): Promise<void>;
     countFreeMarkCodesForGood(goodscode: string, transaction: FirebirdTransaction): Promise<number>;
+    /** Вернуть коды счёта на склад: TT 3→0, привязка к строке остаётся (Дельфи требует по ней скан). */
+    returnMarkCodesToStock(scode: number, transaction: FirebirdTransaction): Promise<number>;
     getMarkCodeInfoByKi(
         ki: string,
         transaction: FirebirdTransaction,
@@ -105,6 +107,29 @@ export interface IInvoice {
         scode: number,
         transaction: FirebirdTransaction,
     ): Promise<{ realpricecode: number; goodscode: string; quantity: number }[]>;
+    /** Полное состояние кодов счёта (без фильтра по TT) — вход слоя 2 решающей таблицы. */
+    getMarkCodesStateByScode(
+        scode: number,
+        transaction: FirebirdTransaction,
+    ): Promise<
+        { ki: string; status: number; transferType: number; retireReason: number | null; kmFull: string | null }[]
+    >;
+    /** Коды, ушедшие маркетплейсу и оставшиеся в обороте на счёте вне работы — еженедельный отчёт. */
+    findStuckMarkCodes(
+        minAgeDays: number,
+        transaction: FirebirdTransaction,
+    ): Promise<
+        {
+            ki: string;
+            goodscode: string;
+            status: number;
+            transferType: number;
+            scode: number | null;
+            prim: string | null;
+            invoiceStatus: number | null;
+            invoiceDate: Date | null;
+        }[]
+    >;
     /** Счёт подобран (PODBPOS.QUAN{attr} >= QUAN{attr}NEED по всем строкам) — после подбора отвязка КМ запрещена. */
     isPickedUp(invoice: InvoiceDto, transaction: FirebirdTransaction): Promise<boolean>;
     getStorageSS(): 0 | 1;

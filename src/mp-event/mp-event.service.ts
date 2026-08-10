@@ -115,6 +115,32 @@ export class MpEventService {
     }
 
     /**
+     * Видели ли по этому идентификатору хоть одно из состояний.
+     *
+     * Отсюда берётся признак «товар передан Ozon»: запись о `delivering` (и дальше)
+     * в журнале. `FINISH_PICKUP` для этого не годится — он говорит лишь, что
+     * кладовщик закончил сборку, а коробка может ещё лежать у нас.
+     */
+    async hasAnyState(
+        service: MpService,
+        kind: MpKind,
+        extId: string,
+        states: string[],
+        t: FirebirdTransaction = null,
+    ): Promise<boolean> {
+        if (!states.length) return false;
+        return this.withTransaction(t, async (transaction) => {
+            const rows = await transaction.query(
+                'SELECT FIRST 1 STATE FROM MP_EVENT WHERE SERVICE = ? AND KIND = ? AND EXT_ID = ?' +
+                    ` AND STATE IN (${states.map(() => '?').join(', ')})`,
+                [service, kind, extId, ...states],
+                false,
+            );
+            return rows.length > 0;
+        });
+    }
+
+    /**
      * Начало окна выборки: `MAX(LAST_SEEN)` по паре минус нахлёст.
      *
      * Холодный старт (по паре в журнале пусто) — дефолтное окно: FBS 45 дней,

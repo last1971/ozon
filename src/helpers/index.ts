@@ -9,3 +9,4 @@ export * from './mark-codes.helper';
 export * from './spreadsheet.util';
 export * from './to-string-list.util';
 export * from './disabled-code';
+export * from './posting.shipped';
