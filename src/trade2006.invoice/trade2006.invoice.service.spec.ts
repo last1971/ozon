@@ -620,7 +620,7 @@ describe('Trade2006InvoiceService', () => {
             expect(res).toEqual([{ ki: 'KI-3' }, { ki: 'KI-1' }]);
             const sql = query.mock.calls[0][0];
             expect(sql).toContain('m.REALPRICEFCODE IS NULL');
-            expect(sql).toContain('m.TRANSFER_TYPE IN (2, 3)');
+            expect(sql).toContain('(m.TRANSFER_TYPE = 2 OR (m.TRANSFER_TYPE = 3 AND m.STATUS = 5))');
             expect(sql).toContain('COALESCE(m.QUANTITY, 1) = ?');
             expect(sql).toContain('ORDER BY m.TRANSFER_TYPE DESC');
             expect(query.mock.calls[0][1]).toEqual([100, 5]);

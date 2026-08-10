@@ -600,9 +600,14 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
     }
 
     // Живой код к переносу: не отгружен фактически, не продан в розницу, не списан,
-    // передан маркету (TT=2 обычный FBO, TT=3 подвисший FBS).
+    // передан маркету. Гард несимметричный (итерация 6): у TT=2 STATUS всегда 6
+    // (УПД-2 выводит код самим фактом передачи) — плоское STATUS=5 убило бы их
+    // миграцию; а выведенный FBS-код (TT=3, STATUS=6) уезжать на новую FBO-продажу
+    // не должен — гейт вывода требует STATUS=5, товар был бы продан дважды,
+    // выведен один раз. Тот же гард стоит в MARKCODE_MIGRATE (37_fbs_sold_unsold_return.sql).
     private static readonly LIVE_CODE_FILTER =
-        'm.REALPRICEFCODE IS NULL AND m.SHOPLOGCODE IS NULL AND m.SPISID IS NULL AND m.TRANSFER_TYPE IN (2, 3)';
+        'm.REALPRICEFCODE IS NULL AND m.SHOPLOGCODE IS NULL AND m.SPISID IS NULL AND ' +
+        '(m.TRANSFER_TYPE = 2 OR (m.TRANSFER_TYPE = 3 AND m.STATUS = 5))';
 
     async findFboPodbposCandidates(
         goodscode: string,
