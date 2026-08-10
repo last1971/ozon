@@ -819,6 +819,72 @@ describe('OrderService', () => {
         });
     });
 
+    describe('расщепление кронов: FBO отмены и доставка — раз в сутки (итерация 2)', () => {
+        const makeFbo = () => ({
+            constructor: { name: 'PostingFboService' },
+            isFbo: () => true,
+            getBuyerId: () => 33,
+            listCanceled: jest.fn().mockResolvedValue([]),
+            listAwaitingPackaging: jest.fn().mockResolvedValue([]),
+            listAwaitingDelivering: jest.fn().mockResolvedValue([]),
+            listReturns: jest.fn().mockResolvedValue([]),
+        });
+        const makeFbs = () => ({
+            constructor: { name: 'PostingService' },
+            isFbo: () => false,
+            getBuyerId: () => 11,
+            listCanceled: jest.fn().mockResolvedValue([]),
+            listAwaitingPackaging: jest.fn().mockResolvedValue([]),
+            listAwaitingDelivering: jest.fn().mockResolvedValue([]),
+            listReturns: jest.fn().mockResolvedValue([]),
+        });
+
+        beforeEach(() => {
+            cacheGet.mockReset().mockResolvedValue('');
+            cacheSet.mockReset().mockResolvedValue(undefined);
+            commit.mockResolvedValue(undefined);
+            rollback.mockResolvedValue(undefined);
+            (service as any).invoiceService.getTransaction = jest.fn().mockResolvedValue({ commit, rollback });
+            (service as any).invoiceService.isExists = jest.fn().mockResolvedValue(false);
+        });
+
+        it('пятиминутный крон у FBO делает только создание счетов', async () => {
+            const fbo: any = makeFbo();
+            (service as any).orderServices = [fbo];
+
+            await service.checkNewOrders();
+
+            expect(fbo.listAwaitingPackaging).toHaveBeenCalled();
+            expect(fbo.listCanceled).not.toHaveBeenCalled();
+            expect(fbo.listAwaitingDelivering).not.toHaveBeenCalled();
+        });
+
+        it('пятиминутный крон у не-FBO делает всё как раньше', async () => {
+            const fbs: any = makeFbs();
+            (service as any).orderServices = [fbs];
+
+            await service.checkNewOrders();
+
+            expect(fbs.listCanceled).toHaveBeenCalled();
+            expect(fbs.listAwaitingPackaging).toHaveBeenCalled();
+            expect(fbs.listAwaitingDelivering).toHaveBeenCalled();
+        });
+
+        it('суточный крон берёт отмены и доставку только у FBO', async () => {
+            const fbo: any = makeFbo();
+            const fbs: any = makeFbs();
+            (service as any).orderServices = [fbo, fbs];
+
+            await service.checkFboOrdersDaily();
+
+            expect(fbo.listCanceled).toHaveBeenCalled();
+            expect(fbo.listAwaitingDelivering).toHaveBeenCalled();
+            expect(fbo.listAwaitingPackaging).not.toHaveBeenCalled();
+            expect(fbs.listCanceled).not.toHaveBeenCalled();
+            expect(fbs.listAwaitingDelivering).not.toHaveBeenCalled();
+        });
+    });
+
     describe('runFboPackageForTesting', () => {
         const posting = {
             posting_number: 'TEST-MIG-001',

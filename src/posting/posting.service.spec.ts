@@ -26,8 +26,10 @@ describe('PostingService', () => {
     const getKmFullByKi = jest.fn();
     const getGtdByKi = jest.fn();
     const getPickedPartiesGtdByScode = jest.fn();
+    const getByPostingNumbers = jest.fn();
     let markMigrationEnabled = false;
     let nodeEnv: string | undefined;
+    let services: string[] = [];
     const date = new Date();
     const postings = [
         {
@@ -67,6 +69,7 @@ describe('PostingService', () => {
                         getKmFullByKi,
                         getGtdByKi,
                         getPickedPartiesGtdByScode,
+                        getByPostingNumbers,
                         getTransaction: () => ({ commit }),
                     },
                 },
@@ -77,6 +80,7 @@ describe('PostingService', () => {
                             if (key === 'OZON_BUYER_ID') return 24416;
                             if (key === 'MARK_CODES_ENABLED') return markMigrationEnabled;
                             if (key === 'NODE_ENV') return nodeEnv;
+                            if (key === 'SERVICES') return services;
                             return def;
                         },
                     },
@@ -111,8 +115,11 @@ describe('PostingService', () => {
         getGtdByKi.mockResolvedValue(null);
         getPickedPartiesGtdByScode.mockReset();
         getPickedPartiesGtdByScode.mockResolvedValue([]);
+        getByPostingNumbers.mockReset();
+        getByPostingNumbers.mockResolvedValue([]);
         markMigrationEnabled = false;
         nodeEnv = undefined;
+        services = [];
         service = module.get<PostingService>(PostingService);
     });
 
@@ -158,6 +165,75 @@ describe('PostingService', () => {
             100,
             '',
         ]);
+    });
+
+    describe('окна выборки (итерация 2)', () => {
+        // соседние тесты подменяют реализацию мока насовсем (mockResolvedValue), а beforeEach
+        // сверху делает только mockClear — возвращаем одностраничный ответ явно.
+        beforeEach(() => {
+            orderList.mockResolvedValue({ postings, has_next: false, cursor: '' });
+        });
+
+        it('окно действий по отменам осталось 7 дней и без фильтра смены статуса', async () => {
+            await service.listCanceled();
+
+            expect(orderList.mock.calls[0][0]).toEqual({
+                since: DateTime.now().minus({ day: 7 }).startOf('day').toJSDate(),
+                to: DateTime.now().endOf('day').toJSDate(),
+                statuses: ['cancelled'],
+            });
+        });
+
+        it('без OZON в SERVICES наблюдение не ходит в API вовсе', async () => {
+            await service.observeWideWindow();
+
+            expect(orderList).not.toHaveBeenCalled();
+        });
+
+        it('наблюдение: 4 статуса, окно создания 45 дней, окно смены статуса 2 дня', async () => {
+            services = ['ozon'];
+
+            await service.observeWideWindow();
+
+            expect(orderList).toHaveBeenCalledTimes(4);
+            expect(orderList.mock.calls.map((call) => call[0].statuses[0])).toEqual([
+                'cancelled',
+                'delivered',
+                'awaiting_deliver',
+                'delivering',
+            ]);
+            expect(orderList.mock.calls[0][0]).toEqual({
+                since: DateTime.now().minus({ day: 45 }).startOf('day').toJSDate(),
+                to: DateTime.now().endOf('day').toJSDate(),
+                statuses: ['cancelled'],
+                last_changed_status_date: {
+                    from: DateTime.now().minus({ day: 2 }).startOf('day').toISO(),
+                    to: DateTime.now().endOf('day').toISO(),
+                },
+            });
+        });
+
+        it('наблюдение ничего не делает — ни счетов, ни переименований', async () => {
+            services = ['ozon'];
+            getByPostingNumbers.mockResolvedValue([{ id: 555, status: 3, remark: '123' }]);
+            getAttachedMarkCodesByScode.mockResolvedValue([{ ki: 'KI-1' }]);
+
+            await service.observeWideWindow();
+
+            expect(createInvoiceFromPostingDto).not.toHaveBeenCalled();
+            expect(create).not.toHaveBeenCalled();
+            expect(updatePrim).not.toHaveBeenCalled();
+            expect(bulkSetStatus).not.toHaveBeenCalled();
+        });
+
+        it('наблюдение: упавший статус не роняет остальные', async () => {
+            services = ['ozon'];
+            orderList.mockRejectedValueOnce(new Error('502 Bad Gateway'));
+
+            await service.observeWideWindow();
+
+            expect(orderList).toHaveBeenCalledTimes(4);
+        });
     });
 
     it('test createInvoice', async () => {

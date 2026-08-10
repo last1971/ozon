@@ -24,6 +24,8 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FbsPrepareDto, isMarkSubmittable, SubmitResultDto } from '../interfaces/IMarkSubmittable';
 import { isShipmentLabelProvider, IShipmentLabelProvider } from '../interfaces/IShipmentLabelProvider';
 
+type OrderStep = 'cancel' | 'returns' | 'package' | 'delivery';
+
 @Injectable()
 export class OrderService {
     private logger = new Logger(OrderService.name);
@@ -104,30 +106,52 @@ export class OrderService {
         }
     }
 
+    /**
+     * Пятиминутный проход. У FBO здесь остаётся только создание счетов по новым заказам:
+     * отмены и доставка FBO уехали в суточный крон (итерация 2 плана FBS-выбытия) —
+     * это полный перечит 90-дневного окна без фильтра по дате смены статуса
+     * (`last_changed_status_date` в `/v3/posting/fbo/list` мёртвый, обмерено),
+     * чаще раза в сутки он не даёт ничего, кроме нагрузки.
+     */
     @Cron('0 */5 * * * *', { name: 'checkNewOrders' })
     async checkNewOrders(): Promise<void> {
         for (const service of this.orderServices) {
-            const transaction = await this.invoiceService.getTransaction();
-            const flushers: (() => Promise<void>)[] = [];
-            try {
-                await this.cancelOrders(service, transaction, flushers);
-                await this.processReturns(service, transaction, flushers);
-                // Передача КМ вынесена в ручной POST /pickup/:remark/marks. Крон-ретрая нет:
-                // марки уже привязаны в БД на скане, результат сборщик видит сразу при нажатии.
-                await this.packageOrders(service, transaction, flushers);
-                await this.deliveryOrders(service, transaction, flushers);
-                await transaction.commit(true);
-                for (const flush of flushers) {
-                    try {
-                        await flush();
-                    } catch (e) {
-                        this.logger.error(`Cache flush failed: ${e.message}`);
-                    }
+            // Передача КМ вынесена в ручной POST /pickup/:remark/marks. Крон-ретрая нет:
+            // марки уже привязаны в БД на скане, результат сборщик видит сразу при нажатии.
+            await this.runSteps(
+                service,
+                service.isFbo() ? ['package'] : ['cancel', 'returns', 'package', 'delivery'],
+            );
+        }
+    }
+
+    /** Суточный проход по FBO: отмены (окно 90 дней) и доставка. */
+    @Cron('0 0 4 * * *', { name: 'checkFboOrdersDaily' })
+    async checkFboOrdersDaily(): Promise<void> {
+        for (const service of this.orderServices.filter((s) => s.isFbo())) {
+            await this.runSteps(service, ['cancel', 'delivery']);
+        }
+    }
+
+    private async runSteps(service: IOrderable, steps: OrderStep[]): Promise<void> {
+        const transaction = await this.invoiceService.getTransaction();
+        const flushers: (() => Promise<void>)[] = [];
+        try {
+            if (steps.includes('cancel')) await this.cancelOrders(service, transaction, flushers);
+            if (steps.includes('returns')) await this.processReturns(service, transaction, flushers);
+            if (steps.includes('package')) await this.packageOrders(service, transaction, flushers);
+            if (steps.includes('delivery')) await this.deliveryOrders(service, transaction, flushers);
+            await transaction.commit(true);
+            for (const flush of flushers) {
+                try {
+                    await flush();
+                } catch (e) {
+                    this.logger.error(`Cache flush failed: ${e.message}`);
                 }
-            } catch (e) {
-                await transaction.rollback(true);
-                this.logger.error(e.message + ' IN ' + service.constructor.name);
             }
+        } catch (e) {
+            await transaction.rollback(true);
+            this.logger.error(e.message + ' IN ' + service.constructor.name);
         }
     }
 

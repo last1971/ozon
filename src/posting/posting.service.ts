@@ -8,7 +8,7 @@ import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { ConfigService } from '@nestjs/config';
 import { IOrderable } from '../interfaces/IOrderable';
 import { FirebirdTransaction } from 'ts-firebird';
-// import { Cron } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { ISuppliable } from '../interfaces/i.suppliable';
 import * as console from 'node:console';
 import { SupplyDto } from '../supply/dto/supply.dto';
@@ -55,12 +55,25 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         throw new Error('Method not implemented.');
     }
 
-    async list(status: string, day = 3): Promise<PostingDto[]> {
+    /**
+     * @param day    ширина окна по дате СОЗДАНИЯ отправления (since/to, обязательны в v4)
+     * @param lcsdDay окно по дате СМЕНЫ СТАТУСА, дни назад от «сейчас». Задан — выборка
+     *               становится инкрементальной: 45-дневное окно создания перестаёт тянуть
+     *               весь хвост, приходят только реально изменившиеся отправления.
+     *               С итерации 4 начало окна поедет от `MAX(LAST_SEEN)` журнала.
+     */
+    async list(status: string, day = 3, lcsdDay?: number): Promise<PostingDto[]> {
         const filter: PostingsRequestDto = {
             since: DateTime.now().minus({ day }).startOf('day').toJSDate(),
             to: DateTime.now().endOf('day').toJSDate(),
             statuses: [status],
         };
+        if (lcsdDay) {
+            filter.last_changed_status_date = {
+                from: DateTime.now().minus({ day: lcsdDay }).startOf('day').toISO(),
+                to: DateTime.now().endOf('day').toISO(),
+            };
+        }
         const limit = 100; // Предел v4 — 100, в v3 было 1000
         let allPostings: PostingDto[] = [];
         let cursor = '';
@@ -87,7 +100,104 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         return this.list('awaiting_deliver');
     }
     async listCanceled(): Promise<PostingDto[]> {
-        return this.list('cancelled', 7);
+        // РАБОЧЕЕ окно действий — трогать нельзя до итерации 8 плана: расширение подняло бы
+        // накопленный хвост (~30 % отмен, которых система не видела), и его обработала бы
+        // старая логика «донор немедленно при отмене». Хвост пока только наблюдаем.
+        return this.list('cancelled', PostingService.ACTION_WINDOW_DAYS);
+    }
+
+    /** Окно действий (отмены). Расширение — итерация 8, не раньше. */
+    private static readonly ACTION_WINDOW_DAYS = 7;
+    /** Окно наблюдения по дате создания отправления: отмена приходит и через 26 дней после заказа. */
+    private static readonly WIDE_WINDOW_DAYS = 45;
+    /** Нахлёст по дате смены статуса. С итерации 4 отсчёт поедет от `MAX(LAST_SEEN)` журнала. */
+    private static readonly LCSD_OVERLAP_DAYS = 2;
+    /**
+     * Промежуточные статусы опрашиваем ради правила «пришла отмена, а записи о `delivering`
+     * нет → товар ещё у нас» (заработает с журналом, итерация 4).
+     */
+    private static readonly OBSERVED_STATUSES = ['cancelled', 'delivered', 'awaiting_deliver', 'delivering'];
+
+    /**
+     * Итерация 2 плана FBS-выбытия: наблюдение за расширенным окном.
+     * НИЧЕГО не делает — только пишет в лог сервиса. Действия остаются на рабочем
+     * 7-дневном окне (`listCanceled`) вплоть до итерации 8.
+     */
+    @Cron('0 */5 * * * *', { name: 'observeFbsWideWindow' })
+    async observeWideWindow(): Promise<void> {
+        if (!this.configService.get<GoodServiceEnum[]>('SERVICES', []).includes(GoodServiceEnum.OZON)) return;
+
+        const actionEdge = DateTime.now().minus({ day: PostingService.ACTION_WINDOW_DAYS }).startOf('day');
+        const found: { status: string; postings: PostingDto[] }[] = [];
+        let apiErrors = 0;
+
+        for (const status of PostingService.OBSERVED_STATUSES) {
+            try {
+                found.push({
+                    status,
+                    postings: await this.list(
+                        status,
+                        PostingService.WIDE_WINDOW_DAYS,
+                        PostingService.LCSD_OVERLAP_DAYS,
+                    ),
+                });
+            } catch (e) {
+                apiErrors++;
+                this.logger.warn(`наблюдение: статус ${status} — ошибка API: ${e.message}`);
+            }
+        }
+
+        const all = found.flatMap((f) => f.postings);
+        if (!all.length) {
+            this.logger.log(
+                `наблюдение (окно ${PostingService.WIDE_WINDOW_DAYS} дн, смена статуса за ` +
+                    `${PostingService.LCSD_OVERLAP_DAYS} дн): пусто, ошибок API ${apiErrors}`,
+            );
+            return;
+        }
+
+        const invoices = await this.invoiceService.getByPostingNumbers(all.map((p) => p.posting_number));
+        const byRemark = new Map(invoices.map((invoice) => [(invoice.remark ?? '').trim(), invoice]));
+        const marks = await this.countMarksByScode(invoices);
+
+        for (const { status, postings } of found) {
+            // in_process_at приходит строкой ISO, но в тестах и старых записях бывает Date —
+            // fromJSDate(new Date(...)) переваривает оба.
+            const tail = postings.filter((p) => DateTime.fromJSDate(new Date(p.in_process_at as any)) < actionEdge);
+            this.logger.log(
+                `наблюдение ${status}: всего ${postings.length}, в рабочем окне ` +
+                    `${postings.length - tail.length}, из хвоста ${tail.length}`,
+            );
+            for (const posting of postings) {
+                const invoice = byRemark.get(posting.posting_number);
+                this.logger.log(
+                    `наблюдение ${status} ${posting.posting_number}: ` +
+                        (invoice
+                            ? `счёт ${invoice.id} статус ${invoice.status}, кодов ${marks.get(invoice.id) ?? 0}`
+                            : 'счёта нет') +
+                        (tail.includes(posting) ? ', из хвоста' : ''),
+                );
+            }
+        }
+        this.logger.log(`наблюдение: ошибок API ${apiErrors}`);
+    }
+
+    /** Сколько кодов привязано к каждому найденному счёту — одним чтением на весь прогон. */
+    private async countMarksByScode(invoices: InvoiceDto[]): Promise<Map<number, number>> {
+        const counts = new Map<number, number>();
+        if (!invoices.length) return counts;
+        const transaction = await this.invoiceService.getTransaction();
+        try {
+            for (const invoice of invoices) {
+                const codes = await this.invoiceService.getAttachedMarkCodesByScode(invoice.id, transaction);
+                counts.set(invoice.id, codes.length);
+            }
+        } catch (e) {
+            this.logger.warn(`наблюдение: коды не прочитаны — ${e.message}`);
+        } finally {
+            await transaction.commit(true);
+        }
+        return counts;
     }
 
     async listReturns(days = 7): Promise<ReturnDto[]> {
