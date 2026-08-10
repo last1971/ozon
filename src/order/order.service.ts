@@ -23,6 +23,7 @@ import { AccrualWeekService } from '../trade2006.accrual/accrual.week.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FbsPrepareDto, isMarkSubmittable, SubmitResultDto } from '../interfaces/IMarkSubmittable';
 import { isShipmentLabelProvider, IShipmentLabelProvider } from '../interfaces/IShipmentLabelProvider';
+import { MpEventDto, MpEventService } from '../mp-event/mp-event.service';
 
 type OrderStep = 'cancel' | 'returns' | 'package' | 'delivery';
 
@@ -48,6 +49,7 @@ export class OrderService {
         private processedCache: ProcessedCacheService,
         private eventEmitter: EventEmitter2,
         private accrualWeekService: AccrualWeekService,
+        private mpEvent: MpEventService,
     ) {
         const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
         if (services.includes(GoodServiceEnum.WB)) this.orderServices.push(wbOrder);
@@ -356,7 +358,8 @@ export class OrderService {
         );
     }
 
-    async processReturns(service: IOrderable, flushers: (() => Promise<void>)[]): Promise<void> {
+    // flushers больше не нужен: возвраты дедуплицируются журналом, а не Redis-кешем.
+    async processReturns(service: IOrderable, _flushers: (() => Promise<void>)[]): Promise<void> {
         if (service.constructor.name !== 'PostingService') {
             return;
         }
@@ -364,12 +367,25 @@ export class OrderService {
         const postingService = service as PostingService;
         const returns = await postingService.listReturns();
 
-        await this.processWithCache(
-            'returns',
-            service,
-            returns,
-            (returnItem) =>
-                this.perItem(async (transaction) => {
+        // Дедуп возвратов переехал с Redis на журнал MP_EVENT (итерация 4). Ключ включает
+        // СОСТОЯНИЕ возврата, поэтому переход MovingToOzon → ReturnedToOzon — это новое
+        // событие; со старым ключом по номеру второе состояние не приходило никогда.
+        // «Обработано» ставится только после всех действий: упало посередине — следующий
+        // проход возьмёт снова, а не похоронит, как это делал Redis.
+        for (const returnItem of returns) {
+            const event: MpEventDto = {
+                service: 'OZON',
+                kind: 'RETURN',
+                extId: String(returnItem.id),
+                state: returnItem.visual?.status?.sys_name ?? 'unknown',
+                posting: returnItem.posting_number,
+                payload: returnItem,
+            };
+            try {
+                await this.mpEvent.record(event);
+                if (await this.mpEvent.isHandled(event)) continue;
+
+                await this.perItem(async (transaction) => {
                     const match = await this.invoiceService.findByPosting(returnItem.posting_number, transaction);
                     // Гейт возврата держится на том, что переименованный счёт не берётся: он уже
                     // отработан. Предикат теперь его находит, поэтому проверяем пометку явно.
@@ -384,9 +400,13 @@ export class OrderService {
                     }
                     await this.invoiceService.update(match.invoice, { IGK: 'NOT1C' }, transaction);
                     await this.processInvoiceStatus4(match.invoice, returnItem.posting_number, transaction, 'returned');
-                }),
-            flushers,
-        );
+                });
+                await this.mpEvent.markHandled(event);
+            } catch (e) {
+                this.logger.error(`returns ${returnItem.posting_number} (${event.state}) — ${e.message}`);
+                this.cycleFailures.push(`returns ${returnItem.posting_number} (${event.state}) — ${e.message}`);
+            }
+        }
     }
 
     private async processInvoiceStatus4(

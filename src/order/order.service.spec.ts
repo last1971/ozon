@@ -12,10 +12,14 @@ import { ConfigService } from '@nestjs/config';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { ProcessedCacheService } from '../processed-cache/processed-cache.service';
+import { MpEventService } from '../mp-event/mp-event.service';
 import { AccrualWeekService } from '../trade2006.accrual/accrual.week.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 
 describe('OrderService', () => {
+    const mpRecord = jest.fn().mockResolvedValue(true);
+    const mpIsHandled = jest.fn().mockResolvedValue(false);
+    const mpMarkHandled = jest.fn().mockResolvedValue(undefined);
     let service: OrderService;
     const runWeek = jest.fn();
     const updateByTransactions = jest.fn();
@@ -179,6 +183,10 @@ describe('OrderService', () => {
                     },
                 },
                 ProcessedCacheService,
+                {
+                    provide: MpEventService,
+                    useValue: { record: mpRecord, isHandled: mpIsHandled, markHandled: mpMarkHandled },
+                },
                 {
                     provide: EventEmitter2,
                     useValue: {
@@ -826,6 +834,74 @@ describe('OrderService', () => {
             await service.checkNewOrders();
 
             expect(listFbsAwaitingShip).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('возвраты: дедуп журналом вместо Redis (итерация 4)', () => {
+        const makeService = (returns: any[]) => ({
+            constructor: { name: 'PostingService' },
+            isFbo: () => false,
+            getBuyerId: () => 11,
+            listReturns: jest.fn().mockResolvedValue(returns),
+        });
+
+        beforeEach(() => {
+            mpRecord.mockReset().mockResolvedValue(true);
+            mpIsHandled.mockReset().mockResolvedValue(false);
+            mpMarkHandled.mockReset().mockResolvedValue(undefined);
+            commit.mockResolvedValue(undefined);
+            rollback.mockResolvedValue(undefined);
+            (service as any).invoiceService.getTransaction = jest.fn().mockResolvedValue({ commit, rollback });
+        });
+
+        it('состояние возврата входит в ключ события', async () => {
+            const svc: any = makeService([
+                { id: 1003975443, posting_number: 'НЕТ-СЧЁТА', visual: { status: { sys_name: 'ReturnedToOzon' } } },
+            ]);
+
+            await service.processReturns(svc, []);
+
+            expect(mpRecord).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    service: 'OZON',
+                    kind: 'RETURN',
+                    extId: '1003975443',
+                    state: 'ReturnedToOzon',
+                }),
+            );
+        });
+
+        it('уже обработанное событие пропускается, счёт не трогаем', async () => {
+            mpIsHandled.mockResolvedValue(true);
+            const svc: any = makeService([
+                { id: 1, posting_number: '111', visual: { status: { sys_name: 'ReturnedToOzon' } } },
+            ]);
+
+            await service.processReturns(svc, []);
+
+            expect(mpMarkHandled).not.toHaveBeenCalled();
+            expect((service as any).invoiceService.getTransaction).not.toHaveBeenCalled();
+        });
+
+        it('отметка «обработано» ставится ПОСЛЕ действий, а не до', async () => {
+            const svc: any = makeService([
+                { id: 2, posting_number: '111', visual: { status: { sys_name: 'ReturnedToOzon' } } },
+            ]);
+
+            await service.processReturns(svc, []);
+
+            expect(mpMarkHandled).toHaveBeenCalledTimes(1);
+        });
+
+        it('сбой действия → «обработано» не ставится, событие вернётся в следующий проход', async () => {
+            (service as any).invoiceService.getTransaction = jest.fn().mockRejectedValue(new Error('DB down'));
+            const svc: any = makeService([
+                { id: 3, posting_number: '111', visual: { status: { sys_name: 'ReturnedToOzon' } } },
+            ]);
+
+            await service.processReturns(svc, []);
+
+            expect(mpMarkHandled).not.toHaveBeenCalled();
         });
     });
 

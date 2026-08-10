@@ -1,5 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PostingFboService } from './posting.fbo.service';
+import { MpEventService } from '../mp-event/mp-event.service';
 import { ProductService } from '../product/product.service';
 import { ConfigService } from '@nestjs/config';
 import { INVOICE_SERVICE } from '../interfaces/IInvoice';
@@ -9,6 +10,8 @@ import { FboInvoiceCreatorService } from './fbo-invoice-creator.service';
 import { GoodServiceEnum } from '../good/good.service.enum';
 
 describe('PostingFboService', () => {
+    const mpRecord = jest.fn().mockResolvedValue(true);
+    const mpWindowStart = jest.fn();
     let service: PostingFboService;
 
     const orderFboList = jest.fn();
@@ -27,10 +30,19 @@ describe('PostingFboService', () => {
         migrationEnabled = false;
         create.mockReset();
         emit.mockReset();
+        mpRecord.mockReset().mockResolvedValue(true);
+        // журнал пуст → холодный старт, окно как было: «сейчас минус day»
+        mpWindowStart.mockReset().mockImplementation(async (_s: any, _k: any, days: number) =>
+            DateTime.now().minus({ day: days }).startOf('day').toJSDate(),
+        );
 
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 PostingFboService,
+                {
+                    provide: MpEventService,
+                    useValue: { record: mpRecord, windowStart: mpWindowStart },
+                },
                 { provide: ProductService, useValue: { orderFboList } },
                 { provide: ConfigService, useValue: { get: configGet } },
                 { provide: INVOICE_SERVICE, useValue: {} },
@@ -62,6 +74,46 @@ describe('PostingFboService', () => {
                 with: { analytics_data: true, financial_data: true },
             },
         ]);
+    });
+
+    describe('окно от журнала (итерация 4)', () => {
+        it('журнал свежий → окно НЕ сужается: у FBO фильтр по смене статуса мёртвый', async () => {
+            mpWindowStart.mockResolvedValue(DateTime.now().minus({ hour: 2 }).toJSDate());
+
+            await service.listCanceled();
+
+            expect(orderFboList.mock.calls[0][0].filter.since).toEqual(
+                DateTime.now().minus({ day: 90 }).startOf('day').toJSDate(),
+            );
+        });
+
+        it('прогон пропускали дольше окна → окно расширяется до перекрытия простоя', async () => {
+            const longAgo = DateTime.now().minus({ day: 200 }).toJSDate();
+            mpWindowStart.mockResolvedValue(longAgo);
+
+            await service.listCanceled();
+
+            expect(orderFboList.mock.calls[0][0].filter.since).toEqual(longAgo);
+        });
+
+        it('увиденные отправления пишутся в журнал', async () => {
+            orderFboList.mockResolvedValueOnce({
+                postings: [{ posting_number: 'FBO-1', products: [] }],
+                has_next: false,
+                cursor: '',
+            });
+
+            await service.listCanceled();
+
+            expect(mpRecord).toHaveBeenCalledWith(
+                expect.objectContaining({
+                    service: 'OZON',
+                    kind: 'POSTING_FBO',
+                    extId: 'FBO-1',
+                    state: 'cancelled',
+                }),
+            );
+        });
     });
 
     it('listCanceled', async () => {

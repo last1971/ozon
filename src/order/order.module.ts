@@ -10,6 +10,7 @@ import { WbOrderModule } from '../wb.order/wb.order.module';
 import { WbCustomerModule } from '../wb.customer/wb.customer.module';
 import { Trade2006AccrualModule } from '../trade2006.accrual/trade2006.accrual.module';
 import { ProcessedCacheModule } from '../processed-cache/processed-cache.module';
+import { MpEventModule } from '../mp-event/mp-event.module';
 
 @Module({
     imports: [
@@ -21,6 +22,7 @@ import { ProcessedCacheModule } from '../processed-cache/processed-cache.module'
         WbOrderModule,
         WbCustomerModule,
         ProcessedCacheModule,
+        MpEventModule,
         Trade2006AccrualModule,
     ],
     providers: [OrderService],

@@ -31,6 +31,7 @@ import { ValidateExemplarsCommand } from './commands/validate-exemplars.command'
 import { SetAndConfirmExemplarsCommand } from './commands/set-and-confirm-exemplars.command';
 import { ShipExemplarsCommand } from './commands/ship-exemplars.command';
 import { firstPageOnly } from '../helpers/pdf/pdf.helpers';
+import { MpEventService } from '../mp-event/mp-event.service';
 
 @Injectable()
 export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable {
@@ -45,6 +46,7 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         private validateExemplarsCommand: ValidateExemplarsCommand,
         private setAndConfirmExemplarsCommand: SetAndConfirmExemplarsCommand,
         private shipExemplarsCommand: ShipExemplarsCommand,
+        private mpEvent: MpEventService,
     ) {}
 
     isFbo(): boolean {
@@ -69,8 +71,12 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
             statuses: [status],
         };
         if (lcsdDay) {
+            // Начало окна смены статуса даёт журнал: MAX(LAST_SEEN) по паре минус нахлёст.
+            // Простой сервиса дольше нахлёста больше не съедает события молча — Ozon второй
+            // раз их не покажет. Журнал пуст (холодный старт) → «сейчас минус lcsdDay».
+            const from = await this.mpEvent.windowStart('OZON', 'POSTING_FBS', lcsdDay, lcsdDay);
             filter.last_changed_status_date = {
-                from: DateTime.now().minus({ day: lcsdDay }).startOf('day').toISO(),
+                from: DateTime.fromJSDate(from).toISO(),
                 to: DateTime.now().endOf('day').toISO(),
             };
         }
@@ -147,6 +153,24 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
             }
         }
 
+        // Журнал: пишем всё увиденное. На нём стоит окно следующей выборки, и на нём же
+        // заработает правило «пришла отмена, а записи о delivering нет → товар ещё у нас».
+        for (const { status, postings } of found) {
+            for (const posting of postings) {
+                try {
+                    await this.mpEvent.record({
+                        service: 'OZON',
+                        kind: 'POSTING_FBS',
+                        extId: posting.posting_number,
+                        state: status,
+                        posting: posting.posting_number,
+                    });
+                } catch (e) {
+                    this.logger.warn(`журнал: ${posting.posting_number}/${status} не записан — ${e.message}`);
+                }
+            }
+        }
+
         const all = found.flatMap((f) => f.postings);
         if (!all.length) {
             this.logger.log(
@@ -200,16 +224,28 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         return counts;
     }
 
+    /**
+     * Возвраты за окно от журнала.
+     *
+     * Фильтр сменился с `logistic_return_date` на `visual_status_change_moment`
+     * (они взаимоисключающие): по дате логистического возврата переход
+     * `MovingToOzon → ReturnedToOzon` не виден — дата не меняется, номер тот же,
+     * и второе состояние не приходило никогда. По моменту смены статуса приходит
+     * (проверено на живом кабинете: пустое окно 2020 г. → 0, двое суток → 77).
+     *
+     * @param days ширина окна при ХОЛОДНОМ старте, когда журнал по паре пуст.
+     */
     async listReturns(days = 7): Promise<ReturnDto[]> {
         let allReturns: ReturnDto[] = [];
         let lastId = 0;
         let hasNext = true;
+        const from = await this.mpEvent.windowStart('OZON', 'RETURN', days, PostingService.LCSD_OVERLAP_DAYS);
 
         while (hasNext) {
             const filter = {
                 filter: {
-                    logistic_return_date: {
-                        time_from: DateTime.now().minus({ days }).startOf('day').toISO(),
+                    visual_status_change_moment: {
+                        time_from: DateTime.fromJSDate(from).toISO(),
                         time_to: DateTime.now().endOf('day').toISO(),
                     },
                 },
@@ -231,40 +267,6 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         return allReturns;
     }
 
-    // deprecated remove method and checkCanceledOzonOrders
-    // @Cron('0 */5 * * * *', { name: 'checkCanceledOzonOrders' })
-    /*
-    async checkCancelled(): Promise<void> {
-        const orders = await this.listCanceled();
-        const transaction = await this.invoiceService.getTransaction();
-        try {
-            for (const order of orders) {
-                if (await this.invoiceService.isExists(order.posting_number, transaction)) {
-                    const invoice = await this.invoiceService.getByPosting(order, transaction);
-                    if (invoice.status === 3) {
-                        await this.invoiceService.updatePrim(
-                            order.posting_number,
-                            order.posting_number + OZON_ORDER_CANCELLATION_SUFFIX.REGULAR,
-                            transaction,
-                        );
-                        await this.invoiceService.bulkSetStatus([invoice], 0, transaction);
-                    }
-                    if (invoice.status === 4) {
-                        await this.invoiceService.updatePrim(
-                            order.posting_number,
-                            order.posting_number + OZON_ORDER_CANCELLATION_SUFFIX.FBO,
-                            transaction,
-                        );
-                    }
-                }
-            }
-            await transaction.commit(true);
-        } catch (e) {
-            await transaction.rollback(true);
-            console.error(e);
-        }
-    }
-    */
     async createInvoice(posting: PostingDto, transaction: FirebirdTransaction): Promise<InvoiceDto> {
         const buyerId = this.getBuyerId();
         return this.invoiceService.createInvoiceFromPostingDto(buyerId, posting, transaction);

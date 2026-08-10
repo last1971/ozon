@@ -8,8 +8,10 @@ import { CreateFboInvoiceCommand } from './commands/create-fbo-invoice.command';
 import { PickupFboCommand } from './commands/pickup-fbo.command';
 import { FboInvoiceCreatorService } from './fbo-invoice-creator.service';
 
+import { MpEventModule } from '../mp-event/mp-event.module';
+
 @Module({
-    imports: [ProductModule, InvoiceModule],
+    imports: [ProductModule, InvoiceModule, MpEventModule],
     providers: [
         PostingFboService,
         FboMarkMigrationService,

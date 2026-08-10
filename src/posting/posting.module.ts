@@ -8,9 +8,10 @@ import { BuildExemplarsPayloadCommand } from './commands/build-exemplars-payload
 import { ValidateExemplarsCommand } from './commands/validate-exemplars.command';
 import { SetAndConfirmExemplarsCommand } from './commands/set-and-confirm-exemplars.command';
 import { ShipExemplarsCommand } from './commands/ship-exemplars.command';
+import { MpEventModule } from '../mp-event/mp-event.module';
 
 @Module({
-    imports: [OzonApiModule, ProductModule, InvoiceModule],
+    imports: [OzonApiModule, ProductModule, InvoiceModule, MpEventModule],
     providers: [
         PostingService,
         CreateOrGetExemplarsCommand,

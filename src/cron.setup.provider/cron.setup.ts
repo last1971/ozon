@@ -152,6 +152,29 @@ export const cronConfig: Record<string, CronSetup> = {
             },
         },
     },
+    /** Суточный прогон FBO: отмены (окно 90 дней) и доставка. Руками — GET /order/update-ozonfbo. */
+    checkFboOrdersDaily: {
+        production: {
+            enabled: true,
+            settings: {
+                time: '0 0 4 * * *',
+            },
+        },
+        development: false,
+    },
+    /**
+     * Наблюдение за расширенным окном FBS (итерация 2): ничего не делает, только пишет в лог.
+     * На dev выключено — кабинет и база там боевые, лишние запросы к Ozon не нужны.
+     */
+    observeFbsWideWindow: {
+        production: {
+            enabled: true,
+            settings: {
+                time: CronExpression.EVERY_5_MINUTES,
+            },
+        },
+        development: false,
+    },
     updateTransactions: {
         production: false,
         development: {
@@ -160,24 +183,6 @@ export const cronConfig: Record<string, CronSetup> = {
                 time: '0 30 15 * * *',
             },
         },
-    },
-    checkCanceledFboOrders: {
-        production: {
-            enabled: true,
-            settings: {
-                time: CronExpression.EVERY_MINUTE,
-            },
-        },
-        development: false,
-    },
-    checkCanceledOzonOrders: {
-        production: {
-            enabled: true,
-            settings: {
-                time: CronExpression.EVERY_MINUTE,
-            },
-        },
-        development: false,
     },
     checkCanceledWbOrders: {
         production: {

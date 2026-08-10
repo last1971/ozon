@@ -10,6 +10,7 @@ import { BuildExemplarsPayloadCommand } from './commands/build-exemplars-payload
 import { ValidateExemplarsCommand } from './commands/validate-exemplars.command';
 import { SetAndConfirmExemplarsCommand } from './commands/set-and-confirm-exemplars.command';
 import { ShipExemplarsCommand } from './commands/ship-exemplars.command';
+import { MpEventService } from '../mp-event/mp-event.service';
 
 describe('PostingService', () => {
     let service: PostingService;
@@ -27,6 +28,9 @@ describe('PostingService', () => {
     const getGtdByKi = jest.fn();
     const getPickedPartiesGtdByScode = jest.fn();
     const getByPostingNumbers = jest.fn();
+    const mpRecord = jest.fn().mockResolvedValue(true);
+    // журнал пуст → окно как при холодном старте, поведение прежних тестов сохраняется
+    const mpWindowStart = jest.fn();
     let markMigrationEnabled = false;
     let nodeEnv: string | undefined;
     let services: string[] = [];
@@ -96,6 +100,10 @@ describe('PostingService', () => {
                         methodBinary: ozonApiMethodBinary,
                     },
                 },
+                {
+                    provide: MpEventService,
+                    useValue: { record: mpRecord, windowStart: mpWindowStart },
+                },
                 CreateOrGetExemplarsCommand,
                 BuildExemplarsPayloadCommand,
                 ValidateExemplarsCommand,
@@ -116,6 +124,10 @@ describe('PostingService', () => {
         getPickedPartiesGtdByScode.mockReset();
         getPickedPartiesGtdByScode.mockResolvedValue([]);
         getByPostingNumbers.mockReset();
+        mpRecord.mockReset().mockResolvedValue(true);
+        mpWindowStart.mockReset().mockImplementation(async (_s: any, _k: any, days: number) =>
+            DateTime.now().minus({ days }).startOf('day').toJSDate(),
+        );
         getByPostingNumbers.mockResolvedValue([]);
         markMigrationEnabled = false;
         nodeEnv = undefined;
@@ -213,6 +225,29 @@ describe('PostingService', () => {
             });
         });
 
+        it('окно смены статуса берётся из журнала, а не от «сейчас» (итерация 4)', async () => {
+            services = ['ozon'];
+            const lastSeen = DateTime.now().minus({ hour: 5 }).toJSDate();
+            mpWindowStart.mockResolvedValue(lastSeen);
+
+            await service.observeWideWindow();
+
+            expect(mpWindowStart).toHaveBeenCalledWith('OZON', 'POSTING_FBS', 2, 2);
+            expect(orderList.mock.calls[0][0].last_changed_status_date.from).toBe(
+                DateTime.fromJSDate(lastSeen).toISO(),
+            );
+        });
+
+        it('увиденные отправления пишутся в журнал', async () => {
+            services = ['ozon'];
+
+            await service.observeWideWindow();
+
+            expect(mpRecord).toHaveBeenCalledWith(
+                expect.objectContaining({ service: 'OZON', kind: 'POSTING_FBS', extId: '123', state: 'cancelled' }),
+            );
+        });
+
         it('наблюдение ничего не делает — ни счетов, ни переименований', async () => {
             services = ['ozon'];
             getByPostingNumbers.mockResolvedValue([{ id: 555, status: 3, remark: '123' }]);
@@ -264,9 +299,12 @@ describe('PostingService', () => {
         const result = await service.listReturns(7);
 
         expect(result).toEqual(mockReturns);
+        // Итерация 4: фильтр по МОМЕНТУ СМЕНЫ СТАТУСА, а не по дате логистического возврата —
+        // иначе переход MovingToOzon → ReturnedToOzon не виден, дата не меняется.
+        // Начало окна даёт журнал (здесь мок отдаёт холодный старт на 7 дней).
         expect(ozonApiMethod).toHaveBeenCalledWith('/v1/returns/list', {
             filter: {
-                logistic_return_date: {
+                visual_status_change_moment: {
                     time_from: DateTime.now().minus({ days: 7 }).startOf('day').toISO(),
                     time_to: DateTime.now().endOf('day').toISO(),
                 },
@@ -274,6 +312,7 @@ describe('PostingService', () => {
             limit: 500,
             last_id: 0,
         });
+        expect(mpWindowStart).toHaveBeenCalledWith('OZON', 'RETURN', 7, 2);
     });
 
     describe('getByPostingNumber', () => {
@@ -367,7 +406,7 @@ describe('PostingService', () => {
         expect(ozonApiMethod).toHaveBeenCalledTimes(2);
         expect(ozonApiMethod).toHaveBeenNthCalledWith(2, '/v1/returns/list', {
             filter: {
-                logistic_return_date: {
+                visual_status_change_moment: {
                     time_from: DateTime.now().minus({ days: 7 }).startOf('day').toISO(),
                     time_to: DateTime.now().endOf('day').toISO(),
                 },
@@ -375,6 +414,8 @@ describe('PostingService', () => {
             limit: 500,
             last_id: 1,
         });
+        // окно берётся один раз на весь пагинированный обход, а не на каждую страницу
+        expect(mpWindowStart).toHaveBeenCalledTimes(1);
     });
 
     describe('submitFbsMarkCodes', () => {
