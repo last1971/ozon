@@ -13,7 +13,7 @@ import { GoodServiceEnum } from '../good/good.service.enum';
 import { CACHE_MANAGER } from '@nestjs/cache-manager';
 import { ProcessedCacheService } from '../processed-cache/processed-cache.service';
 import { MpEventService } from '../mp-event/mp-event.service';
-import { MpDecisionDryRunService } from '../mp-decision/mp-decision.dry-run.service';
+import { MpDecisionRunnerService } from '../mp-decision/mp-decision.runner.service';
 import { MarkScanFbsService } from '../invoice/mark-scan-fbs.service';
 import { AccrualWeekService } from '../trade2006.accrual/accrual.week.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -25,6 +25,9 @@ describe('OrderService', () => {
     // Решающая таблица вхолостую (итерация 5): наблюдает и ничего не меняет.
     const dryObservePosting = jest.fn().mockResolvedValue(null);
     const dryObserveReturn = jest.fn().mockResolvedValue(null);
+    const mpReturnsEnabled = jest.fn().mockReturnValue(false);
+    const mpNeedsExecution = jest.fn().mockReturnValue(false);
+    const mpExecute = jest.fn().mockResolvedValue({ done: [], failed: [] });
     const mpIsHandled = jest.fn().mockResolvedValue(false);
     const mpMarkHandled = jest.fn().mockResolvedValue(undefined);
     let service: OrderService;
@@ -51,9 +54,11 @@ describe('OrderService', () => {
     const wbSubmitFbsMarkCodes = jest.fn();
     let nodeEnv = 'development';
     let markCodesEnabled = false;
+    let cancelActionsEnabled = true;
     beforeEach(async () => {
         nodeEnv = 'development';
         markCodesEnabled = false;
+        cancelActionsEnabled = true;
         commit.mockReset();
         rollback.mockReset();
         createInvoice.mockClear();
@@ -178,6 +183,7 @@ describe('OrderService', () => {
                             if (key === 'CACHE_TTL_DAYS') return 14;
                             if (key === 'NODE_ENV') return nodeEnv;
                             if (key === 'MARK_CODES_ENABLED') return markCodesEnabled;
+                            if (key === 'MP_CANCEL_ACTIONS_ENABLED') return cancelActionsEnabled;
                             return defaultValue;
                         }
                     }
@@ -196,11 +202,14 @@ describe('OrderService', () => {
                 },
                 { provide: MarkScanFbsService, useValue: { detachAll } },
                 {
-                    provide: MpDecisionDryRunService,
+                    provide: MpDecisionRunnerService,
                     useValue: {
                         observePosting: dryObservePosting,
                         observeReturn: dryObserveReturn,
                         flush: jest.fn(),
+                        returnsEnabled: mpReturnsEnabled,
+                        needsExecution: mpNeedsExecution,
+                        execute: mpExecute,
                     },
                 },
                 {
@@ -1055,6 +1064,70 @@ describe('OrderService', () => {
 
             expect(mpMarkHandled).not.toHaveBeenCalled();
         });
+
+        describe('итерация 8 — возвраты исполняет решающая таблица', () => {
+            const decision = { branch: 'return/returned-to-ozon' } as any;
+            const item = { id: 21, posting_number: '111', visual: { status: { sys_name: 'ReturnedToOzon' } } };
+
+            beforeEach(() => {
+                mpReturnsEnabled.mockReturnValue(true);
+                mpNeedsExecution.mockReturnValue(true);
+                mpExecute.mockClear().mockResolvedValue({ done: [], failed: [] });
+                dryObserveReturn.mockResolvedValue(decision);
+                updatePrim.mockClear();
+            });
+            afterEach(() => {
+                mpReturnsEnabled.mockReturnValue(false);
+                mpNeedsExecution.mockReturnValue(false);
+                dryObserveReturn.mockResolvedValue(null);
+            });
+
+            it('решение исполняется в транзакции элемента, старый путь «донор при возврате» молчит', async () => {
+                await service.processReturns(makeService([item]) as any, []);
+
+                expect(mpExecute).toHaveBeenCalledWith(decision, expect.anything());
+                expect(commit).toHaveBeenCalled();
+                expect(updatePrim).not.toHaveBeenCalled();
+                expect(mpMarkHandled).toHaveBeenCalledTimes(1);
+            });
+
+            it('знакомое, но необработанное событие ретраится: решение пересчитывается', async () => {
+                mpRecord.mockResolvedValue(false);
+
+                await service.processReturns(makeService([item]) as any, []);
+
+                expect(dryObserveReturn).toHaveBeenCalledTimes(1);
+                expect(mpExecute).toHaveBeenCalledTimes(1);
+                expect(mpMarkHandled).toHaveBeenCalledTimes(1);
+            });
+
+            it('потолок прогона (решение null) → событие не помечается, возьмётся следующим проходом', async () => {
+                dryObserveReturn.mockResolvedValue(null);
+
+                await service.processReturns(makeService([item]) as any, []);
+
+                expect(mpExecute).not.toHaveBeenCalled();
+                expect(mpMarkHandled).not.toHaveBeenCalled();
+            });
+
+            it('решение без включённых действий — пометка без транзакции', async () => {
+                mpNeedsExecution.mockReturnValue(false);
+
+                await service.processReturns(makeService([item]) as any, []);
+
+                expect(mpExecute).not.toHaveBeenCalled();
+                expect((service as any).invoiceService.getTransaction).not.toHaveBeenCalled();
+                expect(mpMarkHandled).toHaveBeenCalledTimes(1);
+            });
+
+            it('сбой исполнения → «обработано» не ставится', async () => {
+                mpExecute.mockRejectedValueOnce(new Error('DB down'));
+
+                await service.processReturns(makeService([item]) as any, []);
+
+                expect(mpMarkHandled).not.toHaveBeenCalled();
+            });
+        });
     });
 
     describe('расщепление кронов: FBO отмены и доставка — раз в сутки (итерация 2)', () => {
@@ -1106,6 +1179,19 @@ describe('OrderService', () => {
             expect(fbs.listCanceled).toHaveBeenCalled();
             expect(fbs.listAwaitingPackaging).toHaveBeenCalled();
             expect(fbs.listAwaitingDelivering).toHaveBeenCalled();
+        });
+
+        it('рубильник MP_CANCEL_ACTIONS_ENABLED=false: отмены не-FBO не читаются и не помечаются, FBO работает', async () => {
+            cancelActionsEnabled = false;
+            const fbo: any = makeFbo();
+            const fbs: any = makeFbs();
+
+            await service.cancelOrders(fbo, []);
+            await service.cancelOrders(fbs, []);
+
+            expect(fbo.listCanceled).toHaveBeenCalled();
+            expect(fbs.listCanceled).not.toHaveBeenCalled();
+            expect(cacheSet).not.toHaveBeenCalled();
         });
 
         it('отмена FBO идёт в решающую таблицу вхолостую, отмена FBS — нет (её считает наблюдатель)', async () => {

@@ -31,8 +31,8 @@ import { ValidateExemplarsCommand } from './commands/validate-exemplars.command'
 import { SetAndConfirmExemplarsCommand } from './commands/set-and-confirm-exemplars.command';
 import { ShipExemplarsCommand } from './commands/ship-exemplars.command';
 import { firstPageOnly } from '../helpers/pdf/pdf.helpers';
-import { MpEventService } from '../mp-event/mp-event.service';
-import { MpDecisionDryRunService } from '../mp-decision/mp-decision.dry-run.service';
+import { MpEventDto, MpEventService } from '../mp-event/mp-event.service';
+import { MpDecisionRunnerService } from '../mp-decision/mp-decision.runner.service';
 
 @Injectable()
 export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable {
@@ -48,7 +48,7 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         private setAndConfirmExemplarsCommand: SetAndConfirmExemplarsCommand,
         private shipExemplarsCommand: ShipExemplarsCommand,
         private mpEvent: MpEventService,
-        private dryRun: MpDecisionDryRunService,
+        private mpRunner: MpDecisionRunnerService,
     ) {}
 
     isFbo(): boolean {
@@ -161,27 +161,48 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         // которых в журнале ещё не было, то есть одно решение на одно состояние.
         for (const { status, postings } of found) {
             for (const posting of postings) {
+                const event: MpEventDto = {
+                    service: 'OZON',
+                    kind: 'POSTING_FBS',
+                    extId: posting.posting_number,
+                    state: status,
+                    posting: posting.posting_number,
+                };
                 let isNew = false;
                 try {
-                    isNew = await this.mpEvent.record({
-                        service: 'OZON',
-                        kind: 'POSTING_FBS',
-                        extId: posting.posting_number,
-                        state: status,
-                        posting: posting.posting_number,
-                    });
+                    isNew = await this.mpEvent.record(event);
                 } catch (e) {
                     this.logger.warn(`журнал: ${posting.posting_number}/${status} не записан — ${e.message}`);
                     continue;
                 }
-                if (!isNew) continue;
-                // Решающая таблица вхолостую (итерация 5): считает, что следовало бы
-                // сделать, и не делает ничего. Схема FBS — по источнику события.
-                if (status === 'cancelled') await this.dryRun.observePosting(posting.posting_number, 'FBS', 'cancel');
-                if (status === 'delivered') await this.dryRun.observePosting(posting.posting_number, 'FBS', 'delivered');
+                // Продажа исполняется (итерация 7): недоделанное delivered-событие
+                // ретраится каждым проходом, пока не помечено в журнале. Остальные
+                // статусы — только наблюдение по новым событиям, как в итерации 5.
+                const saleLive = status === 'delivered' && this.mpRunner.salesEnabled();
+                if (!isNew && !saleLive) continue;
+                if (status === 'cancelled') {
+                    // Схема FBS — по источнику события; отмены исполняет cancelOrder.
+                    await this.mpRunner.observePosting(posting.posting_number, 'FBS', 'cancel');
+                    continue;
+                }
+                if (status !== 'delivered') continue;
+                if (!saleLive) {
+                    await this.mpRunner.observePosting(posting.posting_number, 'FBS', 'delivered');
+                    continue;
+                }
+                try {
+                    if (await this.mpEvent.isHandled(event)) continue;
+                    const decision = await this.mpRunner.observePosting(posting.posting_number, 'FBS', 'delivered');
+                    // Потолок прогона или сбой наблюдения — событие возьмётся следующим проходом.
+                    if (!decision) continue;
+                    if (this.mpRunner.needsExecution(decision)) await this.mpRunner.execute(decision);
+                    await this.mpEvent.markHandled(event);
+                } catch (e) {
+                    this.logger.warn(`продажа ${posting.posting_number}: действия не выполнены — ${e.message}`);
+                }
             }
         }
-        this.dryRun.flush('observeFbsWideWindow');
+        this.mpRunner.flush('observeFbsWideWindow');
 
         const all = found.flatMap((f) => f.postings);
         if (!all.length) {

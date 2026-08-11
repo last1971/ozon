@@ -26,9 +26,9 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FbsPrepareDto, isMarkSubmittable, SubmitResultDto } from '../interfaces/IMarkSubmittable';
 import { isShipmentLabelProvider, IShipmentLabelProvider } from '../interfaces/IShipmentLabelProvider';
 import { MpEventDto, MpEventService } from '../mp-event/mp-event.service';
-import { MpDecisionDryRunService } from '../mp-decision/mp-decision.dry-run.service';
+import { MpDecisionRunnerService } from '../mp-decision/mp-decision.runner.service';
 import { MarkScanFbsService } from '../invoice/mark-scan-fbs.service';
-import { CLAIM_RETURN_STATES } from '../mp-decision/mp-decision.types';
+import { CLAIM_RETURN_STATES, Decision } from '../mp-decision/mp-decision.types';
 
 type OrderStep = 'cancel' | 'returns' | 'package' | 'delivery';
 
@@ -55,7 +55,7 @@ export class OrderService {
         private eventEmitter: EventEmitter2,
         private accrualWeekService: AccrualWeekService,
         private mpEvent: MpEventService,
-        private dryRun: MpDecisionDryRunService,
+        private mpRunner: MpDecisionRunnerService,
         private markScanService: MarkScanFbsService,
     ) {
         const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
@@ -336,6 +336,16 @@ export class OrderService {
     }
 
     async cancelOrders(service: IOrderable, flushers: (() => Promise<void>)[]): Promise<void> {
+        // Аварийный рубильник новой логики отмен (FBS живёт без флага с 10.08).
+        // Выключен → отмены не читаются и НЕ помечаются в Redis: копятся и будут
+        // разобраны после включения. FBO не глушим — его путь старый и не менялся.
+        if (!service.isFbo() && this.configService.get<boolean>('MP_CANCEL_ACTIONS_ENABLED', true) === false) {
+            this.logger.warn(
+                `MP_CANCEL_ACTIONS_ENABLED=false: отмены ${service.constructor.name} не обрабатываются ` +
+                    'и копятся. Окно отмен 7 дней — не держать выключенным дольше.',
+            );
+            return;
+        }
         const orders = await service.listCanceled();
 
         await this.processWithCache(
@@ -346,7 +356,7 @@ export class OrderService {
                 // Решающая таблица вхолостую (итерация 5). Отмены FBS считает крон
                 // расширенного окна с дедупом по журналу — здесь только FBO, которых
                 // он не видит; повтор гасит тот же Redis-кэш, что и саму обработку.
-                if (service.isFbo()) await this.dryRun.observePosting(order.posting_number, 'FBO', 'cancel');
+                if (service.isFbo()) await this.mpRunner.observePosting(order.posting_number, 'FBO', 'cancel');
                 await this.perItem(async (transaction) => {
                     const match = await this.invoiceService.findByPosting(order.posting_number, transaction);
                     if (!match) return;
@@ -368,7 +378,7 @@ export class OrderService {
             },
             flushers,
         );
-        this.dryRun.flush(`cancelOrders/${service.constructor.name}`);
+        this.mpRunner.flush(`cancelOrders/${service.constructor.name}`);
     }
 
     // flushers больше не нужен: возвраты дедуплицируются журналом, а не Redis-кешем.
@@ -396,12 +406,35 @@ export class OrderService {
             };
             try {
                 const isNew = await this.mpEvent.record(event);
-                // Решающая таблица вхолостую (итерация 5) — на новом состоянии возврата,
-                // то есть одно решение на состояние, а не на каждый пятиминутный проход.
-                if (isNew) {
-                    await this.dryRun.observeReturn(returnItem, await this.returnCounts(postingService, returnItem));
+                const handled = await this.mpEvent.isHandled(event);
+                const returnsLive = this.mpRunner.returnsEnabled();
+                // Решение считается на новом состоянии возврата (одно решение на состояние,
+                // а не на каждый пятиминутный проход) — и, при включённых действиях,
+                // на недоделанном событии: оно ретраится, пока не помечено в журнале.
+                let decision: Decision | null = null;
+                if (isNew || (returnsLive && !handled)) {
+                    decision = await this.mpRunner.observeReturn(
+                        returnItem,
+                        await this.returnCounts(postingService, returnItem),
+                    );
                 }
-                if (await this.mpEvent.isHandled(event)) continue;
+                if (handled) continue;
+
+                if (returnsLive) {
+                    // Итерация 8: возвраты исполняет решающая таблица (unretire ДО донора,
+                    // донор по ReturnedToOzon, TT 3→0 по ReceivedBySeller); старый путь
+                    // «донор при любом физическом возврате» выключен вместе с ней.
+                    // Потолок прогона или сбой наблюдения — событие возьмётся следующим проходом.
+                    if (!decision) continue;
+                    const d = decision;
+                    if (this.mpRunner.needsExecution(d)) {
+                        await this.perItem(async (transaction) => {
+                            await this.mpRunner.execute(d, transaction);
+                        });
+                    }
+                    await this.mpEvent.markHandled(event);
+                    continue;
+                }
 
                 await this.perItem(async (transaction) => {
                     const match = await this.invoiceService.findByPosting(returnItem.posting_number, transaction);
@@ -425,7 +458,7 @@ export class OrderService {
                 this.cycleFailures.push(`returns ${returnItem.posting_number} (${event.state}) — ${e.message}`);
             }
         }
-        this.dryRun.flush('processReturns');
+        this.mpRunner.flush('processReturns');
     }
 
     /**

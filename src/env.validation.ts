@@ -222,6 +222,28 @@ class EnvironmentVariables {
     @Transform(({ obj }) => obj.MARK_CODES_ENABLED === 'true' || obj.MARK_CODES_ENABLED === true)
     MARK_CODES_ENABLED: boolean;
 
+    /**
+     * Аварийный рубильник отмен (по умолчанию ВКЛЮЧЕНО). `false` — отмены не-FBO
+     * сервисов не обрабатываются и не помечаются в Redis, то есть копятся и будут
+     * разобраны после включения. Окно отмен 7 дней: выключать на часы, не на неделю.
+     */
+    @IsOptional()
+    @IsBoolean()
+    @Transform(({ obj }) => obj.MP_CANCEL_ACTIONS_ENABLED !== 'false' && obj.MP_CANCEL_ACTIONS_ENABLED !== false)
+    MP_CANCEL_ACTIONS_ENABLED: boolean;
+
+    /** Итерация 7: исполнять `delivered → 5→6` (MARKCODE_FBS_SOLD) по решающей таблице. */
+    @IsOptional()
+    @IsBoolean()
+    @Transform(({ obj }) => obj.MP_SALE_ACTIONS_ENABLED === 'true' || obj.MP_SALE_ACTIONS_ENABLED === true)
+    MP_SALE_ACTIONS_ENABLED: boolean;
+
+    /** Итерация 8: исполнять возвраты по решающей таблице (6→5, донор, TT 3→0) вместо старого пути. */
+    @IsOptional()
+    @IsBoolean()
+    @Transform(({ obj }) => obj.MP_RETURN_ACTIONS_ENABLED === 'true' || obj.MP_RETURN_ACTIONS_ENABLED === true)
+    MP_RETURN_ACTIONS_ENABLED: boolean;
+
     @IsOptional()
     @IsNumber()
     VAT_RATE: number;

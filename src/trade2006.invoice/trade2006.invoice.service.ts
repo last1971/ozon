@@ -811,7 +811,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             const codes = await this.getAttachedMarkCodesByScode(scode, t);
             const ss = this.getStorageSS();
             for (const code of codes) {
-                await t.execute('EXECUTE PROCEDURE MARKCODE_RETURN_TO_STOCK (?, ?)', [code.ki, ss]);
+                await this.markCodeReturnToStock(code.ki, ss, t);
             }
             if (!transaction) await t.commit(true);
             return codes.length;
@@ -819,6 +819,21 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             if (!transaction) await t.rollback(true).catch(() => undefined);
             throw e;
         }
+    }
+
+    /** TT 3→0 одного кода (MARKCODE_RETURN_TO_STOCK): привязка остаётся, партийный резерв снимается. */
+    async markCodeReturnToStock(ki: string, s_s: 0 | 1, transaction: FirebirdTransaction): Promise<void> {
+        await transaction.execute('EXECUTE PROCEDURE MARKCODE_RETURN_TO_STOCK (?, ?)', [ki, s_s]);
+    }
+
+    /** Вывод кода по нашей FBS-продаже: 5→6, RETIRE_REASON=1, RETIRED_AT (MARKCODE_FBS_SOLD). */
+    async markCodeFbsSold(ki: string, transaction: FirebirdTransaction): Promise<void> {
+        await transaction.execute('EXECUTE PROCEDURE MARKCODE_FBS_SOLD (?)', [ki]);
+    }
+
+    /** Откат вывода по нашей продаже: 6→5 (MARKCODE_FBS_UNSOLD, только RETIRE_REASON=1). */
+    async markCodeFbsUnsold(ki: string, transaction: FirebirdTransaction): Promise<void> {
+        await transaction.execute('EXECUTE PROCEDURE MARKCODE_FBS_UNSOLD (?)', [ki]);
     }
 
     async countFreeMarkCodesForGood(

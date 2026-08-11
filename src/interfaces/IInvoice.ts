@@ -88,6 +88,12 @@ export interface IInvoice {
     countFreeMarkCodesForGood(goodscode: string, transaction: FirebirdTransaction): Promise<number>;
     /** Вернуть коды счёта на склад: TT 3→0, привязка к строке остаётся (Дельфи требует по ней скан). */
     returnMarkCodesToStock(scode: number, transaction: FirebirdTransaction): Promise<number>;
+    /** TT 3→0 одного кода: привязка остаётся, партийный резерв снимается. */
+    markCodeReturnToStock(ki: string, s_s: 0 | 1, transaction: FirebirdTransaction): Promise<void>;
+    /** Вывод кода по нашей FBS-продаже: 5→6, RETIRE_REASON=1. */
+    markCodeFbsSold(ki: string, transaction: FirebirdTransaction): Promise<void>;
+    /** Откат вывода по нашей продаже: 6→5 (только RETIRE_REASON=1). */
+    markCodeFbsUnsold(ki: string, transaction: FirebirdTransaction): Promise<void>;
     getMarkCodeInfoByKi(
         ki: string,
         transaction: FirebirdTransaction,

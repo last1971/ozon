@@ -11,7 +11,7 @@ import { ValidateExemplarsCommand } from './commands/validate-exemplars.command'
 import { SetAndConfirmExemplarsCommand } from './commands/set-and-confirm-exemplars.command';
 import { ShipExemplarsCommand } from './commands/ship-exemplars.command';
 import { MpEventService } from '../mp-event/mp-event.service';
-import { MpDecisionDryRunService } from '../mp-decision/mp-decision.dry-run.service';
+import { MpDecisionRunnerService } from '../mp-decision/mp-decision.runner.service';
 
 describe('PostingService', () => {
     let service: PostingService;
@@ -30,11 +30,16 @@ describe('PostingService', () => {
     const getPickedPartiesGtdByScode = jest.fn();
     const getByPostingNumbers = jest.fn();
     const mpRecord = jest.fn().mockResolvedValue(true);
+    const mpIsHandled = jest.fn().mockResolvedValue(false);
+    const mpMarkHandled = jest.fn();
     // журнал пуст → окно как при холодном старте, поведение прежних тестов сохраняется
     const mpWindowStart = jest.fn();
     // решающая таблица вхолостую (итерация 5) — только наблюдает
     const dryObservePosting = jest.fn().mockResolvedValue(null);
     const dryFlush = jest.fn();
+    const mpSalesEnabled = jest.fn().mockReturnValue(false);
+    const mpNeedsExecution = jest.fn().mockReturnValue(false);
+    const mpExecute = jest.fn().mockResolvedValue({ done: [], failed: [] });
     let markMigrationEnabled = false;
     let nodeEnv: string | undefined;
     let services: string[] = [];
@@ -106,11 +111,22 @@ describe('PostingService', () => {
                 },
                 {
                     provide: MpEventService,
-                    useValue: { record: mpRecord, windowStart: mpWindowStart },
+                    useValue: {
+                        record: mpRecord,
+                        windowStart: mpWindowStart,
+                        isHandled: mpIsHandled,
+                        markHandled: mpMarkHandled,
+                    },
                 },
                 {
-                    provide: MpDecisionDryRunService,
-                    useValue: { observePosting: dryObservePosting, flush: dryFlush },
+                    provide: MpDecisionRunnerService,
+                    useValue: {
+                        observePosting: dryObservePosting,
+                        flush: dryFlush,
+                        salesEnabled: mpSalesEnabled,
+                        needsExecution: mpNeedsExecution,
+                        execute: mpExecute,
+                    },
                 },
                 CreateOrGetExemplarsCommand,
                 BuildExemplarsPayloadCommand,
@@ -317,6 +333,75 @@ describe('PostingService', () => {
             await service.observeWideWindow();
 
             expect(orderList).toHaveBeenCalledTimes(4);
+        });
+    });
+
+    describe('итерация 7 — продажа исполняется по флагу', () => {
+        const decision = { branch: 'delivered/normal' } as any;
+        beforeEach(() => {
+            services = ['ozon'];
+            orderList.mockResolvedValue({ postings, has_next: false, cursor: '' });
+            mpSalesEnabled.mockReturnValue(true);
+            mpIsHandled.mockClear().mockResolvedValue(false);
+            mpNeedsExecution.mockReturnValue(true);
+            mpExecute.mockClear().mockResolvedValue({ done: [], failed: [] });
+            mpMarkHandled.mockClear().mockResolvedValue(undefined);
+            dryObservePosting.mockClear().mockResolvedValue(decision);
+        });
+        afterEach(() => {
+            mpSalesEnabled.mockReturnValue(false);
+            mpNeedsExecution.mockReturnValue(false);
+            mpRecord.mockResolvedValue(true);
+            mpIsHandled.mockResolvedValue(false);
+            dryObservePosting.mockResolvedValue(null);
+        });
+
+        it('знакомое, но необработанное delivered-событие ретраится: решение исполняется и помечается', async () => {
+            mpRecord.mockResolvedValue(false);
+
+            await service.observeWideWindow();
+
+            // 2 отправления в delivered; отмены (isNew=false) остаются наблюдением и не считаются
+            expect(mpExecute).toHaveBeenCalledTimes(2);
+            expect(mpExecute).toHaveBeenCalledWith(decision);
+            expect(mpMarkHandled).toHaveBeenCalledWith(expect.objectContaining({ state: 'delivered' }));
+            expect(mpMarkHandled).not.toHaveBeenCalledWith(expect.objectContaining({ state: 'cancelled' }));
+        });
+
+        it('обработанное delivered-событие не пересчитывается', async () => {
+            mpRecord.mockResolvedValue(false);
+            mpIsHandled.mockResolvedValue(true);
+
+            await service.observeWideWindow();
+
+            expect(mpExecute).not.toHaveBeenCalled();
+            expect(mpMarkHandled).not.toHaveBeenCalled();
+        });
+
+        it('решение без включённых действий — пометка без транзакции', async () => {
+            mpNeedsExecution.mockReturnValue(false);
+
+            await service.observeWideWindow();
+
+            expect(mpExecute).not.toHaveBeenCalled();
+            expect(mpMarkHandled).toHaveBeenCalledWith(expect.objectContaining({ state: 'delivered' }));
+        });
+
+        it('потолок прогона (решение null) → событие не помечается, возьмётся следующим проходом', async () => {
+            dryObservePosting.mockResolvedValue(null);
+
+            await service.observeWideWindow();
+
+            expect(mpExecute).not.toHaveBeenCalled();
+            expect(mpMarkHandled).not.toHaveBeenCalled();
+        });
+
+        it('сбой исполнения не помечает событие и не роняет прогон', async () => {
+            mpExecute.mockRejectedValueOnce(new Error('DB down'));
+
+            await service.observeWideWindow();
+
+            expect(mpMarkHandled).toHaveBeenCalledTimes(1);
         });
     });
 
