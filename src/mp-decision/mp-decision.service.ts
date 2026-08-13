@@ -92,39 +92,55 @@ export class MpDecisionService {
     private decideCancel(input: DecisionInput): Decision {
         const invoice = input.invoice;
 
-        if (input.scheme === 'FBO') {
-            // Текущее поведение, не меняется. TT кодов не трогаем: миграция отбирает
-            // TRANSFER_TYPE IN (2,3), обнулённый код на донора не переедет.
-            return this.build(input, 'cancel-fbo', 'make-donor', false, 'отмена FBO — счёт в доноры FBO-пула');
-        }
-
-        // Гейт закрытого счёта сильнее всего остального: закрытая продажа проведена
-        // и оплачена, откатывать её статусом нельзя.
+        // Гейт закрытого счёта сильнее всего остального (обе схемы): закрытая
+        // продажа проведена и оплачена, откатывать её статусом нельзя.
         if (invoice.closed || invoice.status === 5) {
-            return this.build(input, 'cancel-fbs/closed-invoice', 'none', true, `счёт закрыт (STATUS=${invoice.status})`);
+            return this.build(input, 'cancel/closed-invoice', 'none', true, `счёт закрыт (STATUS=${invoice.status})`);
         }
         if (invoice.cancelled) {
-            return this.build(input, 'cancel-fbs/already-marked', 'none', false, 'счёт уже помечен отменой');
+            return this.build(input, 'cancel/already-marked', 'none', false, 'счёт уже помечен отменой');
         }
+
+        if (input.scheme === 'FBO') {
+            // Решение владельца 2026-08-11: подобранный FBO-счёт при отмене ЖДЁТ
+            // записи возврата — только она знает, куда поедет товар (лёг на склад
+            // Ozon → донор, поехал к нам → приём). Донор немедленно — только для
+            // неподобранного (недобор, товара за счётом нет).
+            if (invoice.status === 4) {
+                return this.build(
+                    input,
+                    'cancel-fbo/picked',
+                    'none',
+                    false,
+                    'ждём запись возврата — она решит: склад Ozon → донор, к нам → приём',
+                );
+            }
+            if (invoice.status === 3) {
+                return this.build(
+                    input,
+                    'cancel-fbo/unpicked',
+                    'make-donor',
+                    false,
+                    'недобор (подборки нет) — « отмена FBO» + STATUS=1 сразу',
+                );
+            }
+            return this.build(input, 'cancel-fbo/status-unexpected', 'none', true, `состояние счёта вне набора: STATUS=${invoice.status}`);
+        }
+
         // «Передано» — только по статусу отправления у Ozon, не по FINISH_PICKUP.
         // Проверка идёт РАНЬШЕ статусов 3/4 — как в бою: иначе отгруженная посылка
         // со STATUS=3 попала бы в отвязку кодов.
         if (input.transferred) {
-            if (invoice.status === 4) {
-                return this.build(
-                    input,
-                    'cancel-fbs/transferred',
-                    'make-donor',
-                    false,
-                    'товар уже у Ozon — « отмена FBO» + STATUS=1, счёт в доноры FBO-пула (решение владельца 2026-08-10)',
-                );
-            }
+            // Решение владельца 2026-08-11 (заменяет «донор сразу» от 10.08):
+            // по отмене НЕЛЬЗЯ понять, куда поедет товар — знает только запись
+            // возврата. Счёт не трогаем вовсе (пометка сломала бы обработку
+            // возврата: он пропускает помеченные счета), ждём возврат.
             return this.build(
                 input,
-                'cancel-fbs/transferred-wrong-status',
+                'cancel-fbs/transferred',
                 'none',
-                true,
-                `отгружена, но счёт не подобран (STATUS=${invoice.status}) — разобрать руками`,
+                false,
+                'товар уехал к Ozon — ждём запись возврата: она решит, донор (ReturnedToOzon) или приём у нас (ReceivedBySeller)',
             );
         }
         if (invoice.status === 4) {
@@ -226,11 +242,11 @@ export class MpDecisionService {
      * а подвисший код на счёте-доноре и так виден в еженедельном отчёте.
      *
      * Ветка переходная: `already-marked` порождена СТАРЫМ поведением «донор
-     * немедленно при ЛЮБОЙ отмене FBS». С 10.08 донором сразу становится только
-     * отгруженная отмена; неотгруженные счета помечаются « отмена», поэтому после
-     * разбора хвоста сюда будут попадать лишь настоящие повторы события.
+     * немедленно при ЛЮБОЙ отмене FBS». Теперь при отмене помечаются только
+     * счета, лежащие у нас; отгруженные ждут возврата, поэтому после разбора
+     * хвоста сюда будут попадать лишь настоящие повторы события.
      */
-    private static readonly ALREADY_HANDLED = ['cancel-fbs/already-marked'];
+    private static readonly ALREADY_HANDLED = ['cancel/already-marked'];
 
     /** Слой 2 для событий отмены и доставки. */
     private decideCodes(input: DecisionInput, layer1: Layer1Action, branch: string): CodeDecision[] {
@@ -250,9 +266,14 @@ export class MpDecisionService {
                 // (TRANSFER_TYPE IN (2,3)) его не перенесёт на счёт FBO-продажи.
                 return this.code(code, [], false, 'отмена FBO — TT не трогаем, код уезжает миграцией');
             }
+            if (input.transferred) {
+                // Отгруженная отмена ждёт записи возврата — код остаётся TT=3
+                // на счёте до тех пор; висяк без возврата ловит недельный отчёт.
+                return this.code(code, [], false, 'ждём запись возврата — код остаётся TT=3');
+            }
             if (layer1 === 'make-donor') {
-                // Отмена отгруженной FBS: как и у FBO, код обязан остаться TT=3
-                // на доноре — иначе миграция (TRANSFER_TYPE IN (2,3)) его не перенесёт.
+                // Код обязан остаться TT=3 на доноре — иначе миграция
+                // (TRANSFER_TYPE IN (2,3)) его не перенесёт на FBO-продажу.
                 return this.code(code, [], false, 'счёт в доноры — код остаётся TT=3, уедет миграцией на FBO-продажу');
             }
             if (layer1 === 'cancel-fbs-unpicked') {

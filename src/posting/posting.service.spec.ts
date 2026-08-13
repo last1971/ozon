@@ -32,6 +32,7 @@ describe('PostingService', () => {
     const mpRecord = jest.fn().mockResolvedValue(true);
     const mpIsHandled = jest.fn().mockResolvedValue(false);
     const mpMarkHandled = jest.fn();
+    const mpListUnhandled = jest.fn().mockResolvedValue([]);
     // журнал пуст → окно как при холодном старте, поведение прежних тестов сохраняется
     const mpWindowStart = jest.fn();
     // решающая таблица вхолостую (итерация 5) — только наблюдает
@@ -116,6 +117,7 @@ describe('PostingService', () => {
                         windowStart: mpWindowStart,
                         isHandled: mpIsHandled,
                         markHandled: mpMarkHandled,
+                        listUnhandled: mpListUnhandled,
                     },
                 },
                 {
@@ -152,6 +154,7 @@ describe('PostingService', () => {
         getPickedPartiesGtdByScode.mockResolvedValue([]);
         getByPostingNumbers.mockReset();
         mpRecord.mockReset().mockResolvedValue(true);
+        mpListUnhandled.mockClear().mockResolvedValue([]);
         mpWindowStart.mockReset().mockImplementation(async (_s: any, _k: any, days: number) =>
             DateTime.now().minus({ days }).startOf('day').toJSDate(),
         );
@@ -402,6 +405,38 @@ describe('PostingService', () => {
             await service.observeWideWindow();
 
             expect(mpMarkHandled).toHaveBeenCalledTimes(1);
+        });
+
+        it('добор из журнала: осевшее delivered исполняется, хотя Ozon его больше не отдаёт', async () => {
+            orderList.mockResolvedValue({ postings: [], has_next: false, cursor: '' });
+            mpListUnhandled.mockResolvedValueOnce([
+                { extId: '123-0001-1', posting: '123-0001-1', firstSeen: new Date('2026-07-20') },
+            ]);
+
+            await service.observeWideWindow();
+
+            expect(mpListUnhandled).toHaveBeenCalledWith('OZON', 'POSTING_FBS', 'delivered');
+            expect(dryObservePosting).toHaveBeenCalledWith('123-0001-1', 'FBS', 'delivered');
+            expect(mpExecute).toHaveBeenCalledWith(decision);
+            expect(mpMarkHandled).toHaveBeenCalledWith(
+                expect.objectContaining({ extId: '123-0001-1', state: 'delivered' }),
+            );
+        });
+
+        it('добор при выключенном флаге не ходит в журнал', async () => {
+            mpSalesEnabled.mockReturnValue(false);
+            orderList.mockResolvedValue({ postings: [], has_next: false, cursor: '' });
+
+            await service.observeWideWindow();
+
+            expect(mpListUnhandled).not.toHaveBeenCalled();
+        });
+
+        it('сбой добора не роняет прогон', async () => {
+            orderList.mockResolvedValue({ postings: [], has_next: false, cursor: '' });
+            mpListUnhandled.mockRejectedValueOnce(new Error('DB down'));
+
+            await expect(service.observeWideWindow()).resolves.not.toThrow();
         });
     });
 

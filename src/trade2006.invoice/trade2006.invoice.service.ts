@@ -614,7 +614,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         prims: string[],
         nominal: number,
         transaction: FirebirdTransaction = null,
-    ): Promise<{ podbposcode: number; scode: number; realpricecode: number; quanAvail: number; prim: string; cntNom: number; cntLive: number; cntTt3: number }[]> {
+    ): Promise<{ podbposcode: number; scode: number; realpricecode: number; quanAvail: number; prim: string; cntNom: number; cntLive: number; cntTt3: number; cntDead: number }[]> {
         if (prims.length === 0) return [];
         const t = transaction ?? (await this.getTransaction());
         const attribute = this.getStorageSS() === 1 ? 'SHOP' : 'SKLAD';
@@ -628,6 +628,11 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             `(SELECT COUNT(*) FROM MARKCODES m WHERE m.REALPRICECODE = rp.REALPRICECODE AND ${live} AND COALESCE(m.QUANTITY, 1) = ?) AS CNT_NOM, ` +
             `(SELECT COUNT(*) FROM MARKCODES m WHERE m.REALPRICECODE = rp.REALPRICECODE AND ${live}) AS CNT_LIVE, ` +
             `(SELECT COUNT(*) FROM MARKCODES m WHERE m.REALPRICECODE = rp.REALPRICECODE AND ${live} AND m.TRANSFER_TYPE = 3 AND COALESCE(m.QUANTITY, 1) = ?) AS CNT_TT3, ` +
+            // Выведенный FBS-код на строке (TT=3, STATUS=6): в миграцию не идёт (гард),
+            // но его присутствие на доноре — сигнал «возврат проданного, код не оживлён».
+            '(SELECT COUNT(*) FROM MARKCODES m WHERE m.REALPRICECODE = rp.REALPRICECODE AND ' +
+            'm.REALPRICEFCODE IS NULL AND m.SHOPLOGCODE IS NULL AND m.SPISID IS NULL AND ' +
+            'm.TRANSFER_TYPE = 3 AND m.STATUS = 6) AS CNT_DEAD, ' +
             `${lvlCase} ` +
             'FROM PODBPOS pp ' +
             'JOIN S s ON s.SCODE = pp.SCODE ' +
@@ -643,6 +648,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             cntNom: Number(r.CNT_NOM) || 0,
             cntLive: Number(r.CNT_LIVE) || 0,
             cntTt3: Number(r.CNT_TT3) || 0,
+            cntDead: Number(r.CNT_DEAD) || 0,
             lvl: Number(r.LVL),
         }));
         // Ярусы: (а) есть живые коды нужного номинала (вперёд — с TT=3), (б) кодов нет, (в) чужой номинал.
@@ -1035,7 +1041,10 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
 
     /**
      * Подвисшие коды: ушли маркетплейсу (TT=2/3) и остались в обороте (STATUS=5)
-     * на счёте, которого уже нет в работе.
+     * на счёте, которого уже нет в работе, — либо выведены нашей FBS-продажей
+     * (STATUS=6, RETIRE_REASON=1) на счёте, ставшем донором: товар вернулся и
+     * уехал новой продажей, а код не оживлён (unretire не случился — например,
+     * возврат разобрал старый путь, который кодов не знает).
      *
      * Счета в статусах 3 и 4 (создан-не-собран, подобран) исключены: код с TT=3
      * на таком счёте — это нормальная сборка FBS, а не висяк. Отгруженные,
@@ -1069,12 +1078,16 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
                 'FROM MARKCODES m ' +
                 'LEFT JOIN REALPRICE rp ON rp.REALPRICECODE = m.REALPRICECODE ' +
                 'LEFT JOIN S s ON s.SCODE = rp.SCODE ' +
-                'WHERE m.TRANSFER_TYPE IN (2, 3) AND m.STATUS = 5 ' +
+                'WHERE m.TRANSFER_TYPE IN (2, 3) ' +
                 'AND m.REALPRICEFCODE IS NULL AND m.SHOPLOGCODE IS NULL AND m.SPISID IS NULL ' +
-                'AND (s.SCODE IS NULL OR s.STATUS NOT IN (3, 4)) ' +
+                // Висяк в обороте: STATUS=5 на счёте вне работы. Висяк выведенный:
+                // STATUS=6 нашей продажей (RETIRE_REASON=1) на счёте-доноре («отмена»
+                // в PRIM) — товар вернулся и уехал заново, а код никто не оживил.
+                'AND ((m.STATUS = 5 AND (s.SCODE IS NULL OR s.STATUS NOT IN (3, 4))) ' +
+                'OR (m.STATUS = 6 AND m.RETIRE_REASON = 1 AND s.PRIM CONTAINING ?)) ' +
                 'AND (s.DATA IS NULL OR s.DATA < ?) ' +
                 'ORDER BY s.DATA',
-            [edge],
+            ['отмена', edge],
             !transaction,
         );
         return rows.map((r) => ({

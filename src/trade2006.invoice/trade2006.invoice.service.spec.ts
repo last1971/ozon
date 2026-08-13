@@ -588,6 +588,8 @@ describe('Trade2006InvoiceService', () => {
             expect(sql).toContain('rp.REALPRICECODE = pp.REALPRICECODE');
             expect(sql).toContain('pp.SKLAD_ID IS NULL');
             expect(sql).toContain('QUANSHOP');
+            // Счётчик выведенных кодов на строке — сигнал «возврат проданного» для письма миграции.
+            expect(sql).toContain('m.TRANSFER_TYPE = 3 AND m.STATUS = 6) AS CNT_DEAD');
             // параметры: nominal (CNT_NOM), nominal (CNT_TT3), prims для LVL, goodscode, prims для WHERE
             expect(query.mock.calls[0][1]).toEqual([
                 1, 1,
@@ -905,10 +907,13 @@ describe('Trade2006InvoiceService', () => {
                 },
             ]);
             const sql = query.mock.calls[0][0];
-            expect(sql).toContain('m.TRANSFER_TYPE IN (2, 3) AND m.STATUS = 5');
+            expect(sql).toContain('m.TRANSFER_TYPE IN (2, 3)');
             expect(sql).toContain('m.REALPRICEFCODE IS NULL');
-            expect(sql).toContain('s.STATUS NOT IN (3, 4)');
-            expect(query.mock.calls[0][1][0]).toBeInstanceOf(Date);
+            expect(sql).toContain('m.STATUS = 5 AND (s.SCODE IS NULL OR s.STATUS NOT IN (3, 4))');
+            // Зеркальный висяк: выведенный нашей продажей код на счёте-доноре.
+            expect(sql).toContain('m.STATUS = 6 AND m.RETIRE_REASON = 1 AND s.PRIM CONTAINING ?');
+            expect(query.mock.calls[0][1][0]).toBe('отмена');
+            expect(query.mock.calls[0][1][1]).toBeInstanceOf(Date);
         });
 
         it('findStuckMarkCodes — MARK_CODES_ENABLED=false → [] без запроса', async () => {

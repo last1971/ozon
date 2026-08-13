@@ -41,7 +41,7 @@ export interface IInvoice {
         prims: string[],
         nominal: number,
         transaction: FirebirdTransaction,
-    ): Promise<{ podbposcode: number; scode: number; realpricecode: number; quanAvail: number; prim: string; cntNom: number; cntLive: number; cntTt3: number }[]>;
+    ): Promise<{ podbposcode: number; scode: number; realpricecode: number; quanAvail: number; prim: string; cntNom: number; cntLive: number; cntTt3: number; cntDead: number }[]>;
     findFboPodbposDonor(
         goodscode: string,
         prims: string[],

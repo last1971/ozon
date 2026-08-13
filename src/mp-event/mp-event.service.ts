@@ -5,8 +5,13 @@ import { FIREBIRD } from '../firebird/firebird.module';
 
 /** Маркетплейс — часть ключа дедупа и единицы отсчёта окна. */
 export type MpService = 'OZON' | 'WB' | 'YANDEX';
-/** Вид потока. Окно считается отдельно по каждой паре (SERVICE, KIND). */
-export type MpKind = 'POSTING_FBS' | 'POSTING_FBO' | 'RETURN';
+/**
+ * Вид потока. Окно считается отдельно по каждой паре (SERVICE, KIND).
+ * CANCEL_WAIT — не поток с маркетплейса, а наша отметка «отменён после отгрузки,
+ * ждём запись возврата»: по ней недельный отчёт напоминает о заказах,
+ * возврат которых так и не появился.
+ */
+export type MpKind = 'POSTING_FBS' | 'POSTING_FBO' | 'RETURN' | 'CANCEL_WAIT';
 
 export interface MpEventDto {
     service: MpService;
@@ -137,6 +142,55 @@ export class MpEventService {
                 false,
             );
             return rows.length > 0;
+        });
+    }
+
+    /**
+     * Неразобранные события потока — кормит недельную напоминалку об отменах без
+     * возврата, а с фильтром по состоянию — добор доставленного: событие, осевшее
+     * без пометки, из окна Ozon уже не вернётся, журнал — единственная память о нём.
+     */
+    async listUnhandled(
+        service: MpService,
+        kind: MpKind,
+        state?: string,
+        t: FirebirdTransaction = null,
+    ): Promise<{ extId: string; posting: string | null; firstSeen: Date }[]> {
+        return this.withTransaction(t, async (transaction) => {
+            const rows = await transaction.query(
+                'SELECT EXT_ID, POSTING, FIRST_SEEN FROM MP_EVENT' +
+                    ' WHERE SERVICE = ? AND KIND = ? AND HANDLED_AT IS NULL' +
+                    (state ? ' AND STATE = ?' : '') +
+                    ' ORDER BY FIRST_SEEN',
+                state ? [service, kind, state] : [service, kind],
+                false,
+            );
+            return rows.map((r) => ({
+                extId: String(r.EXT_ID),
+                posting: r.POSTING ? String(r.POSTING) : null,
+                firstSeen: new Date(r.FIRST_SEEN),
+            }));
+        });
+    }
+
+    /**
+     * Состояния всех записей потока по номеру отправления (например, статусы
+     * возврата). Факта «запись есть» напоминалке мало: «едет», «приехал к нам»
+     * и «утилизирован» — три разных судьбы ожидания.
+     */
+    async listStatesForPosting(
+        service: MpService,
+        kind: MpKind,
+        posting: string,
+        t: FirebirdTransaction = null,
+    ): Promise<string[]> {
+        return this.withTransaction(t, async (transaction) => {
+            const rows = await transaction.query(
+                'SELECT STATE FROM MP_EVENT WHERE SERVICE = ? AND KIND = ? AND POSTING = ?',
+                [service, kind, posting],
+                false,
+            );
+            return rows.map((r) => String(r.STATE));
         });
     }
 

@@ -5,6 +5,8 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DateTime } from 'luxon';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { isMarkCodesEnabled } from '../helpers/mark-codes.helper';
+import { MpEventService } from '../mp-event/mp-event.service';
+import { CLAIM_RETURN_STATES, LOST_RETURN_STATES } from './mp-decision.types';
 
 /**
  * Еженедельный отчёт «подвисшие коды» (Этап 5, перенесён в итерацию 5).
@@ -13,7 +15,9 @@ import { isMarkCodesEnabled } from '../helpers/mark-codes.helper';
  * в обороте (STATUS=5) на счёте, который уже не в работе: продажа состоялась,
  * а из оборота код не вывели. Эталонный случай — §3 плана: FBS-заказ отменён
  * после отгрузки, счёт стал донором, код уехал на FBO-продажу и вывести его
- * не может никто.
+ * не может никто. Зеркальный висяк — выведенный код (STATUS=6) на счёте-доноре:
+ * продажа состоялась и код вывели, но товар вернулся и уехал новой продажей,
+ * а оживить код (unretire) было некому — возврат разбирал старый путь.
  *
  * Почему отчёт нужен раньше остального ручного контура: письма дедуплицируются
  * «одно на состояние», то есть про зависший код система напоминает ровно один
@@ -28,14 +32,26 @@ export class StuckCodesService {
     /** В письмо больше не влезает по-человечески; сколько осталось — пишем строкой. */
     private static readonly LETTER_LIMIT = 200;
 
+    /** Отменён, а заявки возврата всё нет — подозрительно уже через столько дней. */
+    private static readonly WAIT_NO_RETURN_DAYS = 5;
+    /** Заявка есть, но склада не достигла — напоминаем, когда едет неприлично долго. */
+    private static readonly WAIT_IN_TRANSIT_DAYS = 14;
+
     constructor(
         @Inject(INVOICE_SERVICE) private invoiceService: IInvoice,
         private configService: ConfigService,
         private eventEmitter: EventEmitter2,
+        private mpEvent: MpEventService,
     ) {}
 
     @Cron('0 0 8 * * 1', { name: 'weeklyStuckCodes' })
     async report(): Promise<void> {
+        // Напоминалка об отменах без возврата работает и на магазине (кодов не требует).
+        await this.reportCancelWaits().catch((e) => {
+            this.logger.error(`отчёт «отменённые без возврата» не собран — ${e.message}`);
+            this.eventEmitter.emit('error.message', 'Отчёт «отменённые без возврата» не собран', e.message);
+        });
+
         // На магазине маркировка выключена, таблицы MARKCODES там нет вовсе.
         if (!isMarkCodesEnabled(this.configService)) return;
 
@@ -71,8 +87,78 @@ export class StuckCodesService {
             'error.message',
             `Подвисшие коды: ${rows.length}`,
             [
-                'Коды, ушедшие маркетплейсу (TT=2/3) и оставшиеся в обороте (STATUS=5)',
-                `на счетах, которые уже не в работе. Старше ${StuckCodesService.MIN_AGE_DAYS} дн.`,
+                'Коды, ушедшие маркетплейсу (TT=2/3): оставшиеся в обороте (STATUS=5)',
+                'на счетах, которые уже не в работе, и выведенные нашей продажей (STATUS=6)',
+                'на счетах-донорах — товар вернулся и уехал заново, код не оживлён.',
+                `Старше ${StuckCodesService.MIN_AGE_DAYS} дн.`,
+                '',
+                ...lines,
+            ].join('\n'),
+        );
+    }
+
+    /**
+     * Отменённые после отгрузки заказы, возврат которых не случился (решение
+     * владельца 2026-08-11 — отменяет прежний отказ от напоминалки).
+     *
+     * Источник — отметки CANCEL_WAIT в журнале: их ставит отмена, когда решает
+     * «ждём запись возврата». Разобранные закрываем (счёт помечен « отмена FBO»
+     * возвратом на склад Ozon, погашен ручным расформированием после приёма,
+     * либо товар до нас не доедет — списан/утилизирован/потерян у Ozon).
+     * Остальные — в письмо по состоянию возврата: живой заявки нет → проверить
+     * в кабинете Ozon; приехал к нам → ждёт расформирования; едет дольше
+     * двух недель → завис в пути.
+     */
+    private async reportCancelWaits(): Promise<void> {
+        const waits = await this.mpEvent.listUnhandled('OZON', 'CANCEL_WAIT');
+        if (!waits.length) return;
+
+        const lines: string[] = [];
+        for (const wait of waits) {
+            const posting = wait.posting ?? wait.extId;
+            const match = await this.invoiceService.findByPosting(posting, null);
+            if (!match) {
+                this.logger.warn(`CANCEL_WAIT ${posting}: счёт не найден — пропускаю`);
+                continue;
+            }
+            if (match.mark || match.invoice.status === 0) {
+                // Возврат разобрал счёт (донор) либо его расформировали руками — ожидание закрыто.
+                await this.mpEvent.markHandled({ service: 'OZON', kind: 'CANCEL_WAIT', extId: wait.extId, state: 'waiting' });
+                continue;
+            }
+            const age = Math.floor(-DateTime.fromJSDate(wait.firstSeen).diffNow('days').days);
+            const states = await this.mpEvent.listStatesForPosting('OZON', 'RETURN', posting);
+            if (states.some((s) => LOST_RETURN_STATES.includes(s))) {
+                // Товар до нас не доедет (списан/утилизирован/потерян): письмо об этом
+                // уже уходило веткой return/lost, ждать больше нечего — иначе строка
+                // «завис в пути» про несуществующий товар повторялась бы вечно.
+                await this.mpEvent.markHandled({ service: 'OZON', kind: 'CANCEL_WAIT', extId: wait.extId, state: 'waiting' });
+                continue;
+            }
+            if (states.includes('ReceivedBySeller')) {
+                // Не закрываем: напоминание погаснет само, когда счёт расформируют (STATUS=0).
+                lines.push(`${posting} — возврат ПРИЕХАЛ к нам, счёт ждёт расформирования (отменён ${age} дн назад)`);
+                continue;
+            }
+            // Заявочные записи (отклонена, деньги вернули без товара) физики не обещают —
+            // для ожидания их нет: считаем, что живой заявки возврата не появилось.
+            const hasReturn = states.some((s) => !CLAIM_RETURN_STATES.includes(s));
+            if (!hasReturn && age >= StuckCodesService.WAIT_NO_RETURN_DAYS) {
+                lines.push(`${posting} — отменён ${age} дн назад, живой заявки возврата НЕТ — проверить в кабинете Ozon`);
+            } else if (hasReturn && age >= StuckCodesService.WAIT_IN_TRANSIT_DAYS) {
+                lines.push(`${posting} — отменён ${age} дн назад, возврат завис в пути (заявка есть, склада не достигла)`);
+            }
+        }
+
+        this.logger.log(`отменённых в ожидании возврата: ${waits.length}, в письмо: ${lines.length}`);
+        if (!lines.length) return;
+
+        this.eventEmitter.emit(
+            'error.message',
+            `Отменённые без возврата: ${lines.length}`,
+            [
+                'Заказы, отменённые после отгрузки, по которым возврат не случился.',
+                'Счёт не тронут (ждёт), товар где-то между покупателем и складом.',
                 '',
                 ...lines,
             ].join('\n'),

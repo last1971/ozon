@@ -83,33 +83,29 @@ describe('MpDecisionService — решающая таблица', () => {
     });
 
     describe('слой 1 — отмена', () => {
-        it('FBO → счёт в доноры, поведение не меняется', () => {
+        it('FBO подобранный (STATUS=4) → ждём запись возврата: она решит, донор или приём у нас', () => {
             const decision = service.decide(input({ scheme: 'FBO', invoice: invoice({ status: 4 }) }));
-            expect(decision).toMatchObject({ branch: 'cancel-fbo', layer1: 'make-donor', letter: false });
+            expect(decision).toMatchObject({ branch: 'cancel-fbo/picked', layer1: 'none', letter: false });
         });
 
-        it('FBS, счёт закрыт → не трогаем, письмо', () => {
+        it('FBO недобор (STATUS=3) → донор сразу', () => {
+            const decision = service.decide(input({ scheme: 'FBO', invoice: invoice({ status: 3 }) }));
+            expect(decision).toMatchObject({ branch: 'cancel-fbo/unpicked', layer1: 'make-donor', letter: false });
+        });
+
+        it('счёт закрыт (обе схемы) → не трогаем, письмо', () => {
             const decision = service.decide(input({ invoice: invoice({ status: 5, mark: ' закрыт', closed: true }) }));
-            expect(decision).toMatchObject({ branch: 'cancel-fbs/closed-invoice', layer1: 'none', letter: true });
+            expect(decision).toMatchObject({ branch: 'cancel/closed-invoice', layer1: 'none', letter: true });
         });
 
-        it('FBS, счёт уже помечен отменой → ничего и без письма (идемпотентность)', () => {
+        it('счёт уже помечен отменой → ничего и без письма (идемпотентность)', () => {
             const decision = service.decide(input({ invoice: invoice({ mark: ' отмена', cancelled: true, status: 0 }) }));
-            expect(decision).toMatchObject({ branch: 'cancel-fbs/already-marked', layer1: 'none', letter: false });
+            expect(decision).toMatchObject({ branch: 'cancel/already-marked', layer1: 'none', letter: false });
         });
 
-        it('FBS, товар уже у Ozon (в журнале есть delivering) → донор сразу, как в бою', () => {
+        it('FBS, товар уже у Ozon → счёт не трогаем, ждём запись возврата (решение 11.08)', () => {
             const decision = service.decide(input({ transferred: true, invoice: invoice({ status: 4 }) }));
-            expect(decision).toMatchObject({ branch: 'cancel-fbs/transferred', layer1: 'make-donor', letter: false });
-        });
-
-        it('FBS, отгружена, но счёт не подобран → ничего, письмо', () => {
-            const decision = service.decide(input({ transferred: true, invoice: invoice({ status: 3 }) }));
-            expect(decision).toMatchObject({
-                branch: 'cancel-fbs/transferred-wrong-status',
-                layer1: 'none',
-                letter: true,
-            });
+            expect(decision).toMatchObject({ branch: 'cancel-fbs/transferred', layer1: 'none', letter: false });
         });
 
         it('FBS, STATUS=4 → коды на склад, счёт под расформирование, письмо кладовщику', () => {
@@ -219,7 +215,7 @@ describe('MpDecisionService — решающая таблица', () => {
             const decision = service.decide(
                 input({ invoice: invoice({ status: 1, mark: ' отмена FBO', cancelled: true }), codes: [code()] }),
             );
-            expect(decision.branch).toBe('cancel-fbs/already-marked');
+            expect(decision.branch).toBe('cancel/already-marked');
             expect(decision.layer2[0]).toMatchObject({ actions: [], letter: false });
         });
 
@@ -228,7 +224,7 @@ describe('MpDecisionService — решающая таблица', () => {
             expect(decision.layer2[0]).toMatchObject({ actions: ['return-to-stock'], letter: false });
         });
 
-        it('отмена отгруженной FBS → код остаётся TT=3, уедет миграцией', () => {
+        it('отмена отгруженной FBS → код остаётся TT=3, ждём запись возврата', () => {
             const decision = service.decide(
                 input({ transferred: true, invoice: invoice({ status: 4 }), codes: [code()] }),
             );

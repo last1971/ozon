@@ -103,6 +103,33 @@ describe('MpEventService', () => {
         });
     });
 
+    describe('listUnhandled / listStatesForPosting (напоминалка CANCEL_WAIT)', () => {
+        it('listUnhandled отдаёт неразобранные события потока', async () => {
+            query.mockResolvedValueOnce([{ EXT_ID: '456', POSTING: '456', FIRST_SEEN: '2026-08-05T00:00:00' }]);
+            const rows = await service.listUnhandled('OZON', 'CANCEL_WAIT');
+            expect(query.mock.calls[0][0]).toContain('HANDLED_AT IS NULL');
+            expect(rows).toEqual([{ extId: '456', posting: '456', firstSeen: new Date('2026-08-05T00:00:00') }]);
+        });
+
+        it('listUnhandled с состоянием фильтрует по STATE (добор доставленного)', async () => {
+            query.mockResolvedValueOnce([{ EXT_ID: '789-1', POSTING: '789-1', FIRST_SEEN: '2026-07-20T00:00:00' }]);
+            const rows = await service.listUnhandled('OZON', 'POSTING_FBS', 'delivered');
+            expect(query.mock.calls[0][0]).toContain('AND STATE = ?');
+            expect(query.mock.calls[0][1]).toEqual(['OZON', 'POSTING_FBS', 'delivered']);
+            expect(rows[0].extId).toBe('789-1');
+        });
+
+        it('listStatesForPosting ищет по номеру отправления и отдаёт состояния', async () => {
+            query.mockResolvedValueOnce([{ STATE: 'MovingToOzon' }, { STATE: 'Utilized' }]);
+            await expect(service.listStatesForPosting('OZON', 'RETURN', '456')).resolves.toEqual([
+                'MovingToOzon',
+                'Utilized',
+            ]);
+            expect(query.mock.calls[0][0]).toContain('POSTING = ?');
+            expect(query.mock.calls[0][1]).toEqual(['OZON', 'RETURN', '456']);
+        });
+    });
+
     describe('windowStart', () => {
         it('журнал пуст → холодный старт по дефолтному окну', async () => {
             query.mockResolvedValueOnce([{ LAST_SEEN: null }]);

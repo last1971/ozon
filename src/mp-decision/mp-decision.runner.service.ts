@@ -141,9 +141,11 @@ export class MpDecisionRunnerService {
      * станет донором — иначе код в 6 уедет миграцией), затем слой 1 (донор),
      * затем остальные действия кодов (`retire`, `return-to-stock`).
      *
-     * Ошибка одного действия не блокирует остальные (слои независимы) — она
-     * копится в outcome и уходит в письмо. Наружу летит только сбой самой
-     * транзакции: тогда событие не фиксируется и приходит на ретрай.
+     * Ошибка ошибке рознь. Гард SP (в тексте есть ANY_EXCEPTION) — осмысленный
+     * отказ: ретрай его не изменит, поэтому не блокируем остальные действия,
+     * копим в outcome и отдаём в письмо. Всё прочее (сеть, база, lock) — сбой:
+     * летит наружу, транзакция откатывается, событие остаётся необработанным
+     * и приходит на ретрай следующим прогоном.
      */
     async execute(decision: Decision, transaction: FirebirdTransaction = null): Promise<ExecOutcome> {
         const outcome: ExecOutcome = { done: [], failed: [] };
@@ -159,6 +161,9 @@ export class MpDecisionRunnerService {
                     await fn();
                     outcome.done.push(label);
                 } catch (e) {
+                    // Все гарды процедур кидают именованное исключение ANY_EXCEPTION —
+                    // инфраструктурная ошибка этого имени в тексте содержать не может.
+                    if (!String(e.message ?? e).includes('ANY_EXCEPTION')) throw e;
                     outcome.failed.push(`${label} — ${e.message}`);
                 }
             };
@@ -193,6 +198,10 @@ export class MpDecisionRunnerService {
             return outcome;
         } catch (e) {
             if (!transaction) await t.rollback(true).catch(() => undefined);
+            // Транзакция откачена (нами или владельцем) — «СДЕЛАНО» до сбоя откатилось
+            // вместе с ней, письмо не должно рапортовать о несделанном.
+            outcome.done = [];
+            outcome.failed.push(`сбой исполнения, транзакция откачена, событие уйдёт в ретрай: ${e.message}`);
             throw e;
         }
     }
@@ -286,6 +295,15 @@ export class MpDecisionRunnerService {
                 : 'Решающая таблица работает ВХОЛОСТУЮ (действия выключены): ниже — что было бы сделано.',
             `Флаги: продажа=${this.salesEnabled() ? 'ВКЛ' : 'выкл'}, возвраты=${this.returnsEnabled() ? 'ВКЛ' : 'выкл'};` +
                 ' отмены FBS живут отдельным кодом и исполняются всегда.',
+            // Ветки ожидания возврата (cancel-fbs/transferred, cancel-fbo/picked) тихие
+            // и видны только счётчиками — без этой строки читатель решит, что бой ждёт,
+            // хотя до флага их разбирает старый код.
+            ...(this.returnsEnabled()
+                ? []
+                : [
+                      'Возвраты выкл: «ждём запись возврата» (cancel-fbs/transferred, cancel-fbo/picked) — ' +
+                          'план таблицы, а НЕ бой: бой сейчас делает донора сразу старым кодом.',
+                  ]),
             ...(skipped
                 ? [
                       `ВНИМАНИЕ: ${skipped} событий за этот прогон не разобрано — упёрлись в потолок ` +

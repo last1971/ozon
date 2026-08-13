@@ -139,7 +139,21 @@ describe('MpDecisionRunnerService', () => {
         expect(body).toContain('retire');
         expect(body).toContain('KM_FULL: KM-1');
         expect(body).toContain('delivered/normal: 2');
+        // Возвраты выключены → шапка предупреждает: «ждём возврата» — план, а не бой.
+        expect(body).toContain('бой сейчас делает донора сразу старым кодом');
         expect(service.getCounters()).toEqual({ 'delivered/normal': 2 });
+    });
+
+    it('флаг возвратов включён → предупреждение о старом пути из шапки исчезает', async () => {
+        flags.MP_RETURN_ACTIONS_ENABLED = true;
+        getMarkCodesStateByScode.mockResolvedValue([
+            { ki: 'KI-1', status: 5, transferType: 3, retireReason: null, kmFull: 'KM-1' },
+        ]);
+        await service.observePosting('72067989-0727-1', 'FBS', 'delivered');
+        service.flush('observeFbsWideWindow');
+
+        const [, , body] = emit.mock.calls[0];
+        expect(body).not.toContain('бой сейчас делает донора сразу');
     });
 
     it('нечего показать → письма нет', async () => {
@@ -250,9 +264,11 @@ describe('MpDecisionRunnerService', () => {
             expect(outcome.done).toEqual(['unretire KI-1', 'TT 3->0 KI-1']);
         });
 
-        it('слои независимы: упавший unretire не блокирует донора и уходит в письмо', async () => {
+        it('слои независимы: гард SP (ANY_EXCEPTION) не блокирует донора и уходит в письмо', async () => {
             flags.MP_RETURN_ACTIONS_ENABLED = true;
-            markCodeFbsUnsold.mockRejectedValue(new Error('гард не пустил'));
+            markCodeFbsUnsold.mockRejectedValue(
+                new Error('exception 1, ANY_EXCEPTION, КМ выведен не нашей продажей (RETIRE_REASON<>1)'),
+            );
             findByPosting.mockResolvedValue(match({ invoice: { id: 91694, status: 4, remark: '72067989-0727-1' } }));
             getMarkCodesStateByScode.mockResolvedValue([codeState({ status: 6, retireReason: 1 })]);
             const decision = await service.observeReturn({
@@ -266,11 +282,40 @@ describe('MpDecisionRunnerService', () => {
 
             expect(updatePrim).toHaveBeenCalled();
             expect(tx.commit).toHaveBeenCalled();
-            expect(outcome.failed).toEqual(['unretire KI-1 — гард не пустил']);
+            expect(outcome.failed).toEqual([
+                'unretire KI-1 — exception 1, ANY_EXCEPTION, КМ выведен не нашей продажей (RETIRE_REASON<>1)',
+            ]);
 
             service.flush('processReturns');
             const [, , body] = emit.mock.calls[0];
-            expect(body).toContain('НЕ ПРОШЛО (разобрать): unretire KI-1 — гард не пустил');
+            expect(body).toContain('НЕ ПРОШЛО (разобрать): unretire KI-1 — exception 1, ANY_EXCEPTION');
+        });
+
+        it('настоящий сбой (без ANY_EXCEPTION) → откат, проброс наружу, в письме нет «СДЕЛАНО»', async () => {
+            flags.MP_RETURN_ACTIONS_ENABLED = true;
+            tx.commit.mockClear();
+            tx.rollback.mockClear().mockResolvedValue(undefined);
+            // unretire прошёл, а донор упал по инфраструктуре — сделанное откатывается вместе с транзакцией
+            updatePrim.mockRejectedValueOnce(new Error('Connection reset by peer'));
+            findByPosting.mockResolvedValue(match({ invoice: { id: 91694, status: 4, remark: '72067989-0727-1' } }));
+            getMarkCodesStateByScode.mockResolvedValue([codeState({ status: 6, retireReason: 1 })]);
+            const decision = await service.observeReturn({
+                id: 4,
+                posting_number: '72067989-0727-1',
+                schema: 'Fbs',
+                visual: { status: { sys_name: 'ReturnedToOzon' } },
+            });
+
+            await expect(service.execute(decision)).rejects.toThrow('Connection reset by peer');
+
+            expect(tx.commit).not.toHaveBeenCalled();
+            expect(tx.rollback).toHaveBeenCalled();
+
+            service.flush('processReturns');
+            const [, , body] = emit.mock.calls[0];
+            // прошедший до сбоя unretire откатился — письмо не рапортует о нём как о сделанном
+            expect(body).not.toContain('СДЕЛАНО: unretire');
+            expect(body).toContain('событие уйдёт в ретрай');
         });
 
         it('отмены исполнитель не трогает даже со включёнными флагами', async () => {

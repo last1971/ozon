@@ -144,6 +144,17 @@ export class FboMarkMigrationService {
                         'FBO migration: часть товара переехала без кодов маркировки',
                         `GOODSCODE ${gc}: перенесено ${take} шт, кодами покрыто ${coveredByCodes} (SCODE ${cand.scode} -> ${scode})`,
                     );
+                } else if (coveredByCodes < take && cand.cntDead > 0) {
+                    // Живых кодов нет, но на строке донора лежит выведенный (TT=3, STATUS=6):
+                    // это возврат проданного, который разобрали без оживления кода. Гейт
+                    // cntLive такой случай глушил — товар уезжал в полной тишине.
+                    this.eventEmitter.emit(
+                        'error.message',
+                        'FBO migration: на доноре выведенный код — возврат проданного без оживления',
+                        `GOODSCODE ${gc}: перенесено ${take} шт без кодов, на строке донора ` +
+                            `выведенных кодов: ${cand.cntDead} (SCODE ${cand.scode} -> ${scode}) — ` +
+                            `нужен ручной unretire (MARKCODE_FBS_UNSOLD) и разбор в ЧЗ`,
+                    );
                 }
             }
 

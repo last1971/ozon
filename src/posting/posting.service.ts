@@ -190,20 +190,57 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
                     await this.mpRunner.observePosting(posting.posting_number, 'FBS', 'delivered');
                     continue;
                 }
-                try {
-                    if (await this.mpEvent.isHandled(event)) continue;
-                    const decision = await this.mpRunner.observePosting(posting.posting_number, 'FBS', 'delivered');
-                    // Потолок прогона или сбой наблюдения — событие возьмётся следующим проходом.
-                    if (!decision) continue;
-                    if (this.mpRunner.needsExecution(decision)) await this.mpRunner.execute(decision);
-                    await this.mpEvent.markHandled(event);
-                } catch (e) {
-                    this.logger.warn(`продажа ${posting.posting_number}: действия не выполнены — ${e.message}`);
+                await this.executeDeliveredSale(event);
+            }
+        }
+
+        // Добор из журнала: доставленное, осевшее необработанным. В выборку Ozon такое
+        // уже не вернётся (статус конечный, окно смены статуса — 2 дня): это хвост,
+        // накопленный до включения флага, и события, чьё исполнение падало дольше
+        // нахлёста. В штатном режиме выборка пуста.
+        if (this.mpRunner.salesEnabled()) {
+            try {
+                const tail = await this.mpEvent.listUnhandled('OZON', 'POSTING_FBS', 'delivered');
+                for (const row of tail) {
+                    await this.executeDeliveredSale({
+                        service: 'OZON',
+                        kind: 'POSTING_FBS',
+                        extId: row.extId,
+                        state: 'delivered',
+                        posting: row.posting ?? row.extId,
+                    });
                 }
+            } catch (e) {
+                this.logger.warn(`добор доставленного из журнала не прошёл — ${e.message}`);
             }
         }
         this.mpRunner.flush('observeFbsWideWindow');
 
+        await this.logObservationTail(found, actionEdge, apiErrors);
+    }
+
+    /**
+     * Продажа по доставленному отправлению: решение → действия → пометка в журнале.
+     * Пометки нет ни при потолке прогона, ни при сбое — событие останется в журнале
+     * необработанным, и его подберёт добор следующего прогона.
+     */
+    private async executeDeliveredSale(event: MpEventDto): Promise<void> {
+        try {
+            if (await this.mpEvent.isHandled(event)) return;
+            const decision = await this.mpRunner.observePosting(event.posting, 'FBS', 'delivered');
+            if (!decision) return;
+            if (this.mpRunner.needsExecution(decision)) await this.mpRunner.execute(decision);
+            await this.mpEvent.markHandled(event);
+        } catch (e) {
+            this.logger.warn(`продажа ${event.posting}: действия не выполнены — ${e.message}`);
+        }
+    }
+
+    private async logObservationTail(
+        found: { status: string; postings: PostingDto[] }[],
+        actionEdge: DateTime,
+        apiErrors: number,
+    ): Promise<void> {
         const all = found.flatMap((f) => f.postings);
         if (!all.length) {
             this.logger.log(
