@@ -373,7 +373,7 @@ export class OrderService {
                         this.eventEmitter.emit(
                             'error.message',
                             'Отмена закрытого счёта',
-                            `${order.posting_number}: счёт ${match.invoice.id}, статус ${match.invoice.status}` +
+                            `${order.posting_number}: счёт №${match.invoice.number ?? '?'} (SCODE ${match.invoice.id}), статус ${match.invoice.status}` +
                                 `${match.mark ? `, пометка «${match.mark.trim()}»` : ''} — не трогаем`,
                         );
                         return;
@@ -460,7 +460,7 @@ export class OrderService {
                         this.eventEmitter.emit(
                             'error.message',
                             'Возврат по закрытому счёту',
-                            `${returnItem.posting_number}: счёт ${match.invoice.id} в статусе 5 — не трогаем`,
+                            `${returnItem.posting_number}: счёт №${match.invoice.number ?? '?'} (SCODE ${match.invoice.id}) в статусе 5 — не трогаем`,
                         );
                         return;
                     }
@@ -566,8 +566,8 @@ export class OrderService {
             this.eventEmitter.emit(
                 'error.message',
                 'Отменён собранный заказ — разобрать посылку',
-                `${postingNumber}: счёт ${invoice.id} был собран, заказ отменён.\n` +
-                    `Вскрыть посылку, расформировать счёт ${invoice.id} в Trade${scanNote}, товар разложить на полку.`,
+                `${postingNumber}: счёт №${invoice.number ?? '?'} (SCODE ${invoice.id}) был собран, заказ отменён.\n` +
+                    `Вскрыть посылку, расформировать счёт №${invoice.number ?? invoice.id} в Trade${scanNote}, товар разложить на полку.`,
             );
     }
 
@@ -613,7 +613,7 @@ export class OrderService {
                     this.eventEmitter.emit(
                         'error.message',
                         'Отмена недоборного FBO-счёта — разобрать руками',
-                        `${order.posting_number}: счёт в журнале недоборов — не подобран и донором не помечен`,
+                        `${order.posting_number}: счёт №${invoice.number ?? '?'} (SCODE ${invoice.id}) в журнале недоборов — не подобран и донором не помечен`,
                     );
                     return;
                 }
@@ -630,7 +630,7 @@ export class OrderService {
                 this.eventEmitter.emit(
                     'error.message',
                     'Отмена FBO при неожиданном статусе счёта',
-                    `${order.posting_number}: счёт в STATUS=${invoice.status} — не трогаем, глянуть глазами`,
+                    `${order.posting_number}: счёт №${invoice.number ?? '?'} (SCODE ${invoice.id}) в STATUS=${invoice.status} — не трогаем, глянуть глазами`,
                 );
             }
         } else if (isShippedToOzon(order)) {

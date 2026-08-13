@@ -267,6 +267,7 @@ export class MpDecisionRunnerService {
             ...event,
             invoice: {
                 id: match.invoice.id,
+                number: match.invoice.number ?? null,
                 status: match.invoice.status,
                 mark: match.mark,
                 cancelled: match.cancelled,
@@ -289,10 +290,16 @@ export class MpDecisionRunnerService {
 
     private buildLetter(entries: { decision: Decision; outcome?: ExecOutcome }[], skipped: number): string {
         const anyExecuted = entries.some((e) => e.outcome);
+        // «ВХОЛОСТУЮ» — только когда действия реально выключены флагами. При включённых
+        // флагах и пустом прогоне исполнителя писать «выключены» — враньё (живой случай
+        // с магазина 13.08: пять писем-веток, исполнять нечего, шапка соврала).
+        const anyFlagOn = this.salesEnabled() || this.returnsEnabled();
         const head = [
             anyExecuted
                 ? 'Решающая таблица: строки с пометкой «СДЕЛАНО» исполнены, остальное — наблюдение.'
-                : 'Решающая таблица работает ВХОЛОСТУЮ (действия выключены): ниже — что было бы сделано.',
+                : anyFlagOn
+                  ? 'Решающая таблица: действия включены, в этом прогоне исполнять было нечего — ниже наблюдение.'
+                  : 'Решающая таблица работает ВХОЛОСТУЮ (действия выключены): ниже — что было бы сделано.',
             `Флаги: продажа=${this.salesEnabled() ? 'ВКЛ' : 'выкл'}, возвраты=${this.returnsEnabled() ? 'ВКЛ' : 'выкл'};` +
                 ' отмены FBS живут отдельным кодом и исполняются всегда.',
             // Ветки ожидания возврата (cancel-fbs/transferred, cancel-fbo/picked) тихие
@@ -329,7 +336,7 @@ export class MpDecisionRunnerService {
         const lines = [`${input.postingNumber} — ${event} [${decision.branch}]`];
         lines.push(
             input.invoice
-                ? `  счёт ${input.invoice.id}, STATUS=${input.invoice.status}` +
+                ? `  счёт №${input.invoice.number ?? '?'} (SCODE ${input.invoice.id}), STATUS=${input.invoice.status}` +
                       `${input.invoice.mark ? `, пометка «${input.invoice.mark.trim()}»` : ''}`
                 : '  счёт не найден',
         );

@@ -7,6 +7,7 @@ describe('MpDecisionService — решающая таблица', () => {
 
     const invoice = (over: Partial<DecisionInput['invoice']> = {}) => ({
         id: 91694,
+        number: 4321,
         status: 3,
         mark: '',
         cancelled: false,
@@ -182,6 +183,15 @@ describe('MpDecisionService — решающая таблица', () => {
                 branch: 'return/received-by-seller',
                 layer1: 'none',
                 letter: true,
+            });
+        });
+
+        it('ReceivedBySeller по уже расформированному счёту (STATUS=0) → тихо, приём завершён', () => {
+            // живой случай магазина 13.08: хвост первого прогона поднял 5 давно разобранных
+            expect(ret('ReceivedBySeller', { invoice: invoice({ status: 0, mark: ' получен' }) })).toMatchObject({
+                branch: 'return/received-by-seller/already-received',
+                layer1: 'none',
+                letter: false,
             });
         });
 

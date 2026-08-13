@@ -131,6 +131,7 @@ export interface IInvoice {
             status: number;
             transferType: number;
             scode: number | null;
+            invoiceNumber: number | null;
             prim: string | null;
             invoiceStatus: number | null;
             invoiceDate: Date | null;

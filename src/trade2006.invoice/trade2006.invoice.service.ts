@@ -1065,6 +1065,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             status: number;
             transferType: number;
             scode: number | null;
+            invoiceNumber: number | null;
             prim: string | null;
             invoiceStatus: number | null;
             invoiceDate: Date | null;
@@ -1074,7 +1075,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         const t = transaction ?? (await this.getTransaction());
         const edge = DateTime.now().minus({ day: minAgeDays }).startOf('day').toJSDate();
         const rows = await t.query(
-            'SELECT m.KI, m.GOODSCODE, m.STATUS, m.TRANSFER_TYPE, s.SCODE, s.PRIM, s.STATUS AS S_STATUS, s.DATA ' +
+            'SELECT m.KI, m.GOODSCODE, m.STATUS, m.TRANSFER_TYPE, s.SCODE, s.NS, s.PRIM, s.STATUS AS S_STATUS, s.DATA ' +
                 'FROM MARKCODES m ' +
                 'LEFT JOIN REALPRICE rp ON rp.REALPRICECODE = m.REALPRICECODE ' +
                 'LEFT JOIN S s ON s.SCODE = rp.SCODE ' +
@@ -1096,6 +1097,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             status: Number(r.STATUS),
             transferType: Number(r.TRANSFER_TYPE),
             scode: r.SCODE ?? null,
+            invoiceNumber: r.NS ?? null,
             prim: r.PRIM ?? null,
             invoiceStatus: r.S_STATUS === null || r.S_STATUS === undefined ? null : Number(r.S_STATUS),
             invoiceDate: r.DATA ?? null,
