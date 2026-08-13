@@ -12,17 +12,25 @@ import { WbOrderService } from '../wb.order/wb.order.service';
 import { WbCustomerService } from '../wb.customer/wb.customer.service';
 import { ConfigService } from '@nestjs/config';
 import { GoodServiceEnum } from '../good/good.service.enum';
-import { FirebirdTransaction } from "ts-firebird";
-import { PostingDto } from "../posting/dto/posting.dto";
+import { FirebirdTransaction } from 'ts-firebird';
+import { PostingDto } from '../posting/dto/posting.dto';
+import { ReturnDto } from '../posting/dto/return.dto';
 import { find } from 'lodash';
 import { ProcessedCacheService } from '../processed-cache/processed-cache.service';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { OZON_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
+import { isShippedToOzon } from '../helpers/posting.shipped';
 import { DateTime } from 'luxon';
 import { AccrualWeekService } from '../trade2006.accrual/accrual.week.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FbsPrepareDto, isMarkSubmittable, SubmitResultDto } from '../interfaces/IMarkSubmittable';
 import { isShipmentLabelProvider, IShipmentLabelProvider } from '../interfaces/IShipmentLabelProvider';
+import { MpEventDto, MpEventService } from '../mp-event/mp-event.service';
+import { MpDecisionRunnerService } from '../mp-decision/mp-decision.runner.service';
+import { MarkScanFbsService } from '../invoice/mark-scan-fbs.service';
+import { CLAIM_RETURN_STATES, Decision } from '../mp-decision/mp-decision.types';
+
+type OrderStep = 'cancel' | 'returns' | 'package' | 'delivery';
 
 @Injectable()
 export class OrderService {
@@ -46,6 +54,9 @@ export class OrderService {
         private processedCache: ProcessedCacheService,
         private eventEmitter: EventEmitter2,
         private accrualWeekService: AccrualWeekService,
+        private mpEvent: MpEventService,
+        private mpRunner: MpDecisionRunnerService,
+        private markScanService: MarkScanFbsService,
     ) {
         const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
         if (services.includes(GoodServiceEnum.WB)) this.orderServices.push(wbOrder);
@@ -104,30 +115,85 @@ export class OrderService {
         }
     }
 
-    @Cron('0 */5 * * * *', { name: 'checkNewOrders' })
+    /**
+     * Пятиминутный проход. У FBO здесь остаётся только создание счетов по новым заказам:
+     * отмены и доставка FBO уехали в суточный крон (итерация 2 плана FBS-выбытия) —
+     * это полный перечит 90-дневного окна без фильтра по дате смены статуса
+     * (`last_changed_status_date` в `/v3/posting/fbo/list` мёртвый, обмерено),
+     * чаще раза в сутки он не даёт ничего, кроме нагрузки.
+     */
+    // Фаза +2 мин от observeFbsWideWindow (общий runner) — боевое время задаёт cron.setup.ts.
+    @Cron('0 2-57/5 * * * *', { name: 'checkNewOrders' })
     async checkNewOrders(): Promise<void> {
+        this.cycleFailures = [];
         for (const service of this.orderServices) {
-            const transaction = await this.invoiceService.getTransaction();
-            const flushers: (() => Promise<void>)[] = [];
+            // Передача КМ вынесена в ручной POST /pickup/:remark/marks. Крон-ретрая нет:
+            // марки уже привязаны в БД на скане, результат сборщик видит сразу при нажатии.
+            await this.runSteps(service, service.isFbo() ? ['package'] : ['cancel', 'returns', 'package', 'delivery']);
+        }
+        this.reportCycleFailures('checkNewOrders');
+    }
+
+    /** Суточный проход по FBO: отмены (окно 90 дней) и доставка. */
+    // 04:03 — между пятиминутками runner-кронов, см. cron.setup.ts.
+    @Cron('0 3 4 * * *', { name: 'checkFboOrdersDaily' })
+    async checkFboOrdersDaily(): Promise<void> {
+        this.cycleFailures = [];
+        for (const service of this.orderServices.filter((s) => s.isFbo())) {
+            await this.runSteps(service, ['cancel', 'delivery']);
+        }
+        this.reportCycleFailures('checkFboOrdersDaily');
+    }
+
+    /**
+     * Сбои элементов за прогон — одним письмом, а не по письму на элемент.
+     * Раньше их не было в принципе: ошибка рушила весь батч и уходила только в лог.
+     */
+    private reportCycleFailures(cycle: string): void {
+        if (!this.cycleFailures.length) return;
+        this.eventEmitter.emit(
+            'error.message',
+            `Сбои в прогоне ${cycle}: ${this.cycleFailures.length}`,
+            this.cycleFailures.join('\n'),
+        );
+        this.cycleFailures = [];
+    }
+
+    /**
+     * Транзакция теперь на ЭЛЕМЕНТ, а не на весь прогон: одна упавшая посылка больше
+     * не откатывает всё, что успели сделать соседние. Флашеры кеша выполняются после
+     * всех шагов — ключ «обработано» ставится только успешным элементам.
+     */
+    private async runSteps(service: IOrderable, steps: OrderStep[]): Promise<void> {
+        const flushers: (() => Promise<void>)[] = [];
+        try {
+            if (steps.includes('cancel')) await this.cancelOrders(service, flushers);
+            if (steps.includes('returns')) await this.processReturns(service, flushers);
+            if (steps.includes('package')) await this.packageOrders(service, flushers);
+            if (steps.includes('delivery')) await this.deliveryOrders(service, flushers);
+        } catch (e) {
+            // Сюда падают только сбои самих ручек-списков: сбой элемента ловится внутри.
+            this.logger.error(e.message + ' IN ' + service.constructor.name);
+            this.cycleFailures.push(`${service.constructor.name}: ${e.message}`);
+        }
+        for (const flush of flushers) {
             try {
-                await this.cancelOrders(service, transaction, flushers);
-                await this.processReturns(service, transaction, flushers);
-                // Передача КМ вынесена в ручной POST /pickup/:remark/marks. Крон-ретрая нет:
-                // марки уже привязаны в БД на скане, результат сборщик видит сразу при нажатии.
-                await this.packageOrders(service, transaction, flushers);
-                await this.deliveryOrders(service, transaction, flushers);
-                await transaction.commit(true);
-                for (const flush of flushers) {
-                    try {
-                        await flush();
-                    } catch (e) {
-                        this.logger.error(`Cache flush failed: ${e.message}`);
-                    }
-                }
+                await flush();
             } catch (e) {
-                await transaction.rollback(true);
-                this.logger.error(e.message + ' IN ' + service.constructor.name);
+                this.logger.error(`Cache flush failed: ${e.message}`);
             }
+        }
+    }
+
+    /** Одна транзакция на элемент: успех — коммит, ошибка — откат и проброс наверх. */
+    private async perItem(fn: (transaction: FirebirdTransaction) => Promise<void>): Promise<void> {
+        const transaction = await this.invoiceService.getTransaction();
+        try {
+            await fn(transaction);
+            await transaction.commit(true);
+        } catch (e) {
+            await transaction.rollback(true).catch(() => undefined);
+            throw e;
         }
     }
 
@@ -180,6 +246,9 @@ export class OrderService {
         return service.getShipmentBarcode(invoice);
     }
 
+    /** Сбои элементов за текущий прогон крона — уходят одним письмом в конце. */
+    private cycleFailures: string[] = [];
+
     private async processWithCache<T extends { posting_number: string }>(
         cacheName: string,
         service: IOrderable,
@@ -187,7 +256,7 @@ export class OrderService {
         processor: (item: T) => Promise<void>,
         flushers: (() => Promise<void>)[],
     ): Promise<void> {
-        await this.processedCache.process(
+        const { failed } = await this.processedCache.process(
             cacheName,
             service.constructor.name,
             items,
@@ -195,65 +264,131 @@ export class OrderService {
             processor,
             flushers,
         );
+        for (const failure of failed) {
+            this.logger.error(`${cacheName} ${service.constructor.name} — ${failure}`);
+            this.cycleFailures.push(`${cacheName} ${service.constructor.name} — ${failure}`);
+        }
     }
 
-    async deliveryOrders(
-        service: IOrderable,
-        transaction: FirebirdTransaction,
-        flushers: (() => Promise<void>)[],
-    ): Promise<void> {
+    async deliveryOrders(service: IOrderable, flushers: (() => Promise<void>)[]): Promise<void> {
         const deliveringPostings = await service.listAwaitingDelivering();
 
-        await this.processWithCache('delivery', service, deliveringPostings, async (posting) => {
-            let invoice = await this.invoiceService.getByPosting(posting, transaction);
-            if (!invoice) {
-                invoice = await service.createInvoice(posting, transaction, flushers);
-            }
-            if (invoice) {
-                // FBO подбираем через хелпер (пропускает счета-недоборы из FBO_SHORTAGE);
-                // не-FBO (FBS/Yandex/WB) — обычный pickup без лишнего запроса.
-                if (service.isFbo()) {
-                    await this.invoiceService.pickupFboUnlessShortage(invoice, transaction);
-                } else {
-                    await this.invoiceService.pickupInvoice(invoice, transaction);
-                }
-            }
-        }, flushers);
+        await this.processWithCache(
+            'delivery',
+            service,
+            deliveringPostings,
+            (posting) =>
+                this.perItem(async (transaction) => {
+                    const match = await this.invoiceService.findByPosting(posting, transaction);
+                    // Путь доставки НЕ безопасен: на проде 18 из 2543 доставленных за 60 дней имеют
+                    // единственный счёт с пометкой « отмена FBO» — заказ отменили, счёт отдали
+                    // в доноры, а отправление всё-таки доставили. Автоматике тут делать нечего.
+                    if (match?.cancelled || match?.closed) {
+                        this.eventEmitter.emit(
+                            'error.message',
+                            'Доставка по помеченному счёту',
+                            `${posting.posting_number}: счёт ${match.invoice.id} помечен «${match.mark.trim()}»,` +
+                                ` а отправление доставлено — не трогаем, разобрать руками`,
+                        );
+                        return;
+                    }
+                    let invoice = match?.invoice ?? null;
+                    if (!invoice) {
+                        invoice = await service.createInvoice(posting, transaction, flushers);
+                    }
+                    if (invoice) {
+                        // FBO подбираем через хелпер (пропускает счета-недоборы из FBO_SHORTAGE);
+                        // не-FBO (FBS/Yandex/WB) — обычный pickup без лишнего запроса.
+                        if (service.isFbo()) {
+                            await this.invoiceService.pickupFboUnlessShortage(invoice, transaction);
+                        } else {
+                            await this.invoiceService.pickupInvoice(invoice, transaction);
+                        }
+                    }
+                }),
+            flushers,
+        );
     }
 
-    async packageOrders(
-        service: IOrderable,
-        transaction: FirebirdTransaction,
-        flushers: (() => Promise<void>)[],
-    ): Promise<void> {
+    async packageOrders(service: IOrderable, flushers: (() => Promise<void>)[]): Promise<void> {
         const packagingPostings = await service.listAwaitingPackaging();
 
-        await this.processWithCache('packaging', service, packagingPostings, async (posting) => {
-            if (!(await this.invoiceService.isExists(posting.posting_number, transaction))) {
-                await service.createInvoice(posting, transaction, flushers);
-            }
-        }, flushers);
+        await this.processWithCache(
+            'packaging',
+            service,
+            packagingPostings,
+            (posting) =>
+                this.perItem(async (transaction) => {
+                    const match = await this.invoiceService.findByPosting(posting.posting_number, transaction);
+                    if (!match) {
+                        await service.createInvoice(posting, transaction, flushers);
+                        return;
+                    }
+                    // Счёт есть, но переименован. На проде такого не встречалось (0 из 296 живых
+                    // отправлений), поэтому не создаём второй, а показываем случай в логе.
+                    if (match.cancelled || match.closed) {
+                        this.logger.warn(
+                            `${posting.posting_number}: отправление живое, а счёт ${match.invoice.id} помечен` +
+                                ` «${match.mark.trim()}» — счёт не создаём, разобрать руками`,
+                        );
+                    }
+                }),
+            flushers,
+        );
     }
 
-    async cancelOrders(
-        service: IOrderable,
-        transaction: FirebirdTransaction,
-        flushers: (() => Promise<void>)[],
-    ): Promise<void> {
+    async cancelOrders(service: IOrderable, flushers: (() => Promise<void>)[]): Promise<void> {
+        // Аварийный рубильник новой логики отмен (FBS живёт без флага с 10.08).
+        // Выключен → отмены не читаются и НЕ помечаются в Redis: копятся и будут
+        // разобраны после включения. FBO не глушим — его путь старый и не менялся.
+        if (!service.isFbo() && this.configService.get<boolean>('MP_CANCEL_ACTIONS_ENABLED', true) === false) {
+            this.logger.warn(
+                `MP_CANCEL_ACTIONS_ENABLED=false: отмены ${service.constructor.name} не обрабатываются ` +
+                    'и копятся. Окно отмен 7 дней — не держать выключенным дольше.',
+            );
+            return;
+        }
         const orders = await service.listCanceled();
 
-        await this.processWithCache('cancellations', service, orders, async (order) => {
-            if (await this.invoiceService.isExists(order.posting_number, transaction)) {
-                await this.cancelOrder(order, transaction);
-            }
-        }, flushers);
+        await this.processWithCache(
+            'cancellations',
+            service,
+            orders,
+            async (order) => {
+                // Решающая таблица вхолостую (итерация 5). Отмены FBS считает крон
+                // расширенного окна с дедупом по журналу — здесь только FBO, которых
+                // он не видит; повтор гасит тот же Redis-кэш, что и саму обработку.
+                if (service.isFbo()) await this.mpRunner.observePosting(order.posting_number, 'FBO', 'cancel');
+                // Письмо кладовщику отдаётся замыканием и уходит ПОСЛЕ коммита:
+                // при откате не будет письма про несделанную отмену.
+                let afterCommit: (() => void) | undefined;
+                await this.perItem(async (transaction) => {
+                    const match = await this.invoiceService.findByPosting(order.posting_number, transaction);
+                    if (!match) return;
+                    // Раньше здесь стоял isExists с точным равенством PRIM: после первой отмены счёт
+                    // переименован, и повторная отмена его просто не находила. Новый предикат находит,
+                    // поэтому пропускать уже помеченные надо явно — иначе суффикс ляжет вторым слоем.
+                    if (match.cancelled) return;
+                    if (match.closed || match.invoice.status === 5) {
+                        this.eventEmitter.emit(
+                            'error.message',
+                            'Отмена закрытого счёта',
+                            `${order.posting_number}: счёт ${match.invoice.id}, статус ${match.invoice.status}` +
+                                `${match.mark ? `, пометка «${match.mark.trim()}»` : ''} — не трогаем`,
+                        );
+                        return;
+                    }
+                    afterCommit = await this.cancelOrder(order, transaction);
+                });
+                afterCommit?.();
+            },
+            flushers,
+        );
+        this.mpRunner.flush(`cancelOrders/${service.constructor.name}`);
     }
 
-    async processReturns(
-        service: IOrderable,
-        transaction: FirebirdTransaction,
-        flushers: (() => Promise<void>)[],
-    ): Promise<void> {
+    // flushers больше не нужен: возвраты дедуплицируются журналом, а не Redis-кешем.
+    async processReturns(service: IOrderable, _flushers: (() => Promise<void>)[]): Promise<void> {
         if (service.constructor.name !== 'PostingService') {
             return;
         }
@@ -261,20 +396,135 @@ export class OrderService {
         const postingService = service as PostingService;
         const returns = await postingService.listReturns();
 
-        await this.processWithCache('returns', service, returns, async (returnItem) => {
-            if (await this.invoiceService.isExists(returnItem.posting_number, transaction)) {
-                const invoice = await this.invoiceService.getByPosting(returnItem.posting_number, transaction);
-                await this.invoiceService.update(invoice, { IGK: 'NOT1C' }, transaction);
-                await this.processInvoiceStatus4(invoice, returnItem.posting_number, transaction, 'returned');
+        // Дедуп возвратов переехал с Redis на журнал MP_EVENT (итерация 4). Ключ включает
+        // СОСТОЯНИЕ возврата, поэтому переход MovingToOzon → ReturnedToOzon — это новое
+        // событие; со старым ключом по номеру второе состояние не приходило никогда.
+        // «Обработано» ставится только после всех действий: упало посередине — следующий
+        // проход возьмёт снова, а не похоронит, как это делал Redis.
+        for (const returnItem of returns) {
+            const event: MpEventDto = {
+                service: 'OZON',
+                kind: 'RETURN',
+                extId: String(returnItem.id),
+                state: returnItem.visual?.status?.sys_name ?? 'unknown',
+                posting: returnItem.posting_number,
+                payload: returnItem,
+            };
+            try {
+                const isNew = await this.mpEvent.record(event);
+                const handled = await this.mpEvent.isHandled(event);
+                const returnsLive = this.mpRunner.returnsEnabled();
+                // Решение считается на новом состоянии возврата (одно решение на состояние,
+                // а не на каждый пятиминутный проход) — и, при включённых действиях,
+                // на недоделанном событии: оно ретраится, пока не помечено в журнале.
+                let decision: Decision | null = null;
+                if (isNew || (returnsLive && !handled)) {
+                    decision = await this.mpRunner.observeReturn(
+                        returnItem,
+                        await this.returnCounts(postingService, returnItem),
+                    );
+                }
+                if (handled) continue;
+
+                if (returnsLive) {
+                    // Итерация 8: возвраты исполняет решающая таблица (unretire ДО донора,
+                    // донор по ReturnedToOzon, TT 3→0 по ReceivedBySeller); старый путь
+                    // «донор при любом физическом возврате» выключен вместе с ней.
+                    // Потолок прогона или сбой наблюдения — событие возьмётся следующим проходом.
+                    if (!decision) continue;
+                    const d = decision;
+                    if (this.mpRunner.needsExecution(d)) {
+                        await this.perItem(async (transaction) => {
+                            await this.mpRunner.execute(d, transaction);
+                        });
+                    }
+                    await this.mpEvent.markHandled(event);
+                    continue;
+                }
+
+                // Старый путь донора не различает записи: до итерации 4 заявочные
+                // возвраты (физики нет, товар никуда не ехал) отсеивал сам фильтр
+                // выборки по logistic_return_date, с фильтром по смене статуса они
+                // приходят — отсеиваем здесь, иначе отклонённая заявка делает донора.
+                if (CLAIM_RETURN_STATES.includes(event.state)) {
+                    await this.mpEvent.markHandled(event);
+                    continue;
+                }
+
+                await this.perItem(async (transaction) => {
+                    const match = await this.invoiceService.findByPosting(returnItem.posting_number, transaction);
+                    // Гейт возврата держится на том, что переименованный счёт не берётся: он уже
+                    // отработан. Предикат теперь его находит, поэтому проверяем пометку явно.
+                    if (!match || match.mark) return;
+                    if (match.invoice.status === 5) {
+                        this.eventEmitter.emit(
+                            'error.message',
+                            'Возврат по закрытому счёту',
+                            `${returnItem.posting_number}: счёт ${match.invoice.id} в статусе 5 — не трогаем`,
+                        );
+                        return;
+                    }
+                    // IGK не пишем: NOT1C — атрибут FBO-счёта и стоит там с создания,
+                    // FBS-счёту не положен (правило владельца, §1 плана).
+                    await this.processInvoiceStatus4(match.invoice, returnItem.posting_number, transaction);
+                });
+                await this.mpEvent.markHandled(event);
+            } catch (e) {
+                this.logger.error(`returns ${returnItem.posting_number} (${event.state}) — ${e.message}`);
+                this.cycleFailures.push(`returns ${returnItem.posting_number} (${event.state}) — ${e.message}`);
             }
-        }, flushers);
+        }
+        this.mpRunner.flush('processReturns');
     }
 
+    /**
+     * Числитель и знаменатель признака частичности — оба со стороны Ozon.
+     *
+     * Наш счёт для этого не годится: количества в нём в штуках с коэффициентом
+     * кратности (упаковка `570615-10` лежит как `QUAN=10`), и полный возврат
+     * кратного товара выглядел бы частичным. Считаем ЗАПИСИ возврата за всю
+     * историю отправления против единиц в самом отправлении.
+     *
+     * Спрашиваем только там, где ответ может что-то изменить: физический статус
+     * возврата и схема FBS. Частичных возвратов FBO за 180 дней не нашлось ни одного
+     * (§2 плана), а `/v3/posting/fbs/get` по FBO отвечает 404 — тратить на них
+     * два вызова API незачем.
+     */
+    private async returnCounts(
+        postingService: PostingService,
+        item: ReturnDto,
+    ): Promise<{ returnedRows: number; postingUnits: number } | undefined> {
+        const state = item.visual?.status?.sys_name ?? '';
+        if (item.schema !== 'Fbs' || !['ReturnedToOzon', 'ReceivedBySeller'].includes(state)) return undefined;
+        try {
+            const [rows, postingUnits] = await Promise.all([
+                postingService.listReturnsByPosting(item.posting_number),
+                postingService.getPostingUnits(item.posting_number),
+            ]);
+            if (postingUnits === null) return undefined;
+            // Заявочные записи в числитель не идут: физики за ними нет, иначе
+            // получится «вернулось больше, чем заказано».
+            const returnedRows = rows.filter(
+                (row) => !CLAIM_RETURN_STATES.includes(row.visual?.status?.sys_name ?? ''),
+            ).length;
+            return { returnedRows, postingUnits };
+        } catch (e) {
+            this.logger.warn(`частичность ${item.posting_number} не посчитана — ${e.message}`);
+            return undefined;
+        }
+    }
+
+    /**
+     * Возврат по подобранному счёту: счёт → « отмена FBO» + `STATUS=1`, то есть в доноры.
+     *
+     * Суффикс здесь именно FBO: товар лёг на склад Ozon, и оттуда он уедет FBO-продажей —
+     * доноры отбираются как раз по этой пометке. У отмены FBS путь другой (товар лежит
+     * у нас), поэтому она сюда больше не заходит.
+     */
     private async processInvoiceStatus4(
         invoice: InvoiceDto,
         postingNumber: string,
         transaction: FirebirdTransaction,
-        type: 'cancelled' | 'returned',
     ): Promise<void> {
         if (invoice.status === 4) {
             await this.invoiceService.updatePrim(
@@ -282,39 +532,148 @@ export class OrderService {
                 postingNumber + OZON_ORDER_CANCELLATION_SUFFIX.FBO,
                 transaction,
             );
-            this.logger.log(`${type === 'cancelled' ? 'FBS (pickuped) order' : 'Return'} ${postingNumber} was ${type}`);
+            this.logger.log(`Return ${postingNumber} was returned`);
         } else {
-            this.eventEmitter.emit(
-                'error.message',
-                `${type === 'cancelled' ? 'Cancel' : 'Return'} wrong status`,
-                `${postingNumber}: status=${invoice.status}`,
-            );
+            this.eventEmitter.emit('error.message', 'Return wrong status', `${postingNumber}: status=${invoice.status}`);
         }
     }
 
-    async cancelOrder(order: PostingDto, transaction: FirebirdTransaction): Promise<void> {
-        const invoice = await this.invoiceService.getByPosting(order, transaction);
-        await this.invoiceService.update(invoice, { IGK: 'NOT1C' }, transaction);
-        if (order.isFbo) {
-            await this.invoiceService.pickupInvoice(invoice, transaction);
-            await this.invoiceService.updatePrim(
-                order.posting_number,
-                order.posting_number + OZON_ORDER_CANCELLATION_SUFFIX.FBO,
-                transaction,
+    /**
+     * Отмена FBS по СОБРАННОЙ посылке (`STATUS=4`). Товар упакован и лежит у нас.
+     *
+     * Коды возвращаются на склад половинчато: `TT 3→0`, а привязка к строке остаётся —
+     * по ней Дельфи при расформировании заставит кладовщика отсканировать содержимое
+     * коробки. Счёт помечается « отмена» (НЕ « отмена FBO»): донором он быть не должен,
+     * товар физически у нас, а не на складе Ozon. `STATUS=1` — иначе счёт останется
+     * подобранным, а расформировать подобранный счёт в Дельфи нельзя.
+     */
+    private async cancelPickedFbs(
+        invoice: InvoiceDto,
+        postingNumber: string,
+        transaction: FirebirdTransaction,
+    ): Promise<() => void> {
+        const returned = await this.invoiceService.returnMarkCodesToStock(invoice.id, transaction);
+        this.logger.log(`FBS (pickuped) order ${postingNumber} was cancelled, кодов на склад: ${returned}`);
+        await this.invoiceService.updatePrim(
+            postingNumber,
+            postingNumber + OZON_ORDER_CANCELLATION_SUFFIX.REGULAR,
+            transaction,
+        );
+        // На магазине кодов нет (returned=0) — про сканирование не пишем, иначе
+        // кладовщик ищет несуществующие коды. Письмо уходит после коммита (замыканием).
+        const scanNote = returned > 0 ? `, отсканировать коды (их ${returned}) при расформировании` : '';
+        return () =>
+            this.eventEmitter.emit(
+                'error.message',
+                'Отменён собранный заказ — разобрать посылку',
+                `${postingNumber}: счёт ${invoice.id} был собран, заказ отменён.\n` +
+                    `Вскрыть посылку, расформировать счёт ${invoice.id} в Trade${scanNote}, товар разложить на полку.`,
             );
-            this.logger.log(`FBO order ${order.posting_number} was cancelled`);
-        } else {
-            if (invoice.status === 3) {
+    }
+
+    /**
+     * Отметка «отменён после отгрузки, ждём запись возврата» — в журнал.
+     * По ней недельный отчёт напоминает о заказах, возврат которых так
+     * и не появился (решение владельца 2026-08-11). Идемпотентна: повтор
+     * отмены двигает LAST_SEEN, второй строки не будет.
+     */
+    private async recordCancelWait(postingNumber: string, transaction: FirebirdTransaction): Promise<void> {
+        await this.mpEvent.record(
+            {
+                service: 'OZON',
+                kind: 'CANCEL_WAIT',
+                extId: postingNumber,
+                state: 'waiting',
+                posting: postingNumber,
+            },
+            transaction,
+        );
+    }
+
+    // IGK здесь больше не трогаем (правило владельца: NOT1C — атрибут FBO-счёта,
+    // он ставится при создании; FBS-счёту не положен, а старая безусловная запись
+    // затирала ШК упаковки и убила IGK как дискриминатор схемы — §1 плана).
+    /** Возвращает письмо-замыкание (если есть) — вызывающий шлёт его ПОСЛЕ коммита. */
+    async cancelOrder(order: PostingDto, transaction: FirebirdTransaction): Promise<(() => void) | undefined> {
+        const invoice = await this.invoiceService.getByPosting(order, transaction);
+        if (order.isFbo) {
+            // Решение владельца 2026-08-11: подобранный FBO-счёт при отмене ЖДЁТ
+            // записи возврата — только она знает, куда поедет товар (склад Ozon →
+            // донор, к нам → приём). Ожидание работает только при включённой
+            // обработке возвратов таблицей — иначе счёт ждал бы вечно, поэтому
+            // до флага живёт старый путь «донор сразу».
+            if (invoice.status === 4 && this.mpRunner.returnsEnabled()) {
+                await this.recordCancelWait(order.posting_number, transaction);
+                this.logger.log(`FBO order ${order.posting_number} cancelled — счёт не трогаем, ждём запись возврата`);
+            } else if (invoice.status === 3 || invoice.status === 4) {
+                // Недоборный счёт (он в FBO_SHORTAGE) не подбираем и в доноры не отдаём:
+                // pickup наличие не проверяет и «подобрал» бы недостающее из воздуха —
+                // то же правило, что у доставки (pickupFboUnlessShortage).
+                if (await this.invoiceService.isInFboShortage(order.posting_number, transaction)) {
+                    this.eventEmitter.emit(
+                        'error.message',
+                        'Отмена недоборного FBO-счёта — разобрать руками',
+                        `${order.posting_number}: счёт в журнале недоборов — не подобран и донором не помечен`,
+                    );
+                    return;
+                }
+                await this.invoiceService.pickupInvoice(invoice, transaction);
                 await this.invoiceService.updatePrim(
                     order.posting_number,
-                    order.posting_number + OZON_ORDER_CANCELLATION_SUFFIX.REGULAR,
+                    order.posting_number + OZON_ORDER_CANCELLATION_SUFFIX.FBO,
                     transaction,
                 );
-                await this.invoiceService.bulkSetStatus([invoice], 0, transaction);
-                this.logger.log(`FBS (not pickuped) order ${order.posting_number} was cancelled`);
+                this.logger.log(`FBO order ${order.posting_number} was cancelled`);
             } else {
-                await this.processInvoiceStatus4(invoice, order.posting_number, transaction, 'cancelled');
+                // Статусы вне набора (0 погашен, 1 уже донор): оживлять такой счёт
+                // подбором нельзя — как в решающей таблице, письмо и руки.
+                this.eventEmitter.emit(
+                    'error.message',
+                    'Отмена FBO при неожиданном статусе счёта',
+                    `${order.posting_number}: счёт в STATUS=${invoice.status} — не трогаем, глянуть глазами`,
+                );
             }
+        } else if (isShippedToOzon(order)) {
+            // Товар уже уехал к Ozon. Проверка идёт ПЕРВОЙ: иначе отгруженная
+            // посылка со STATUS=3 попала бы в отвязку кодов.
+            // Решение владельца 2026-08-11 (заменяет «донор сразу» от 10.08):
+            // по отмене НЕЛЬЗЯ понять, куда поедет товар — знает только запись
+            // возврата (ReturnedToOzon → донор, ReceivedBySeller → приём у нас).
+            // Счёт не трогаем ВОВСЕ: пометка сломала бы обработку возврата (он
+            // пропускает помеченные счета). Ждать можно только при включённой
+            // обработке возвратов таблицей — до флага живёт старый путь.
+            // Замер на проде 10.08: из 115 отмен FBS за 45 дней отгруженных 62.
+            if (this.mpRunner.returnsEnabled()) {
+                await this.recordCancelWait(order.posting_number, transaction);
+                this.logger.log(`FBS order ${order.posting_number} cancelled после отгрузки — ждём запись возврата`);
+            } else {
+                await this.processInvoiceStatus4(invoice, order.posting_number, transaction);
+            }
+        } else if (invoice.status === 3) {
+            // Товар у нас, сборка не закончена. Коды, насканенные до отмены, снимаем
+            // СРАЗУ — тем же путём, что кнопка «отвязать последний»
+            // (MARKCODE_DETACH_FOR_FBS), по всем кодам счёта. Всё в транзакции элемента:
+            // упало — откатывается и отвязка, и статус, иначе получится «счёт погашен,
+            // а коды остались на нём висеть».
+            const detached = await this.markScanService.detachAll(invoice, transaction);
+            await this.invoiceService.updatePrim(
+                order.posting_number,
+                order.posting_number + OZON_ORDER_CANCELLATION_SUFFIX.REGULAR,
+                transaction,
+            );
+            await this.invoiceService.bulkSetStatus([invoice], 0, transaction);
+            this.logger.log(
+                `FBS (not pickuped) order ${order.posting_number} was cancelled, отвязано кодов: ${detached}`,
+            );
+        } else if (invoice.status === 4) {
+            // Посылка собрана и лежит у нас: коды на склад, счёт под расформирование.
+            return this.cancelPickedFbs(invoice, order.posting_number, transaction);
+        } else {
+            this.eventEmitter.emit(
+                'error.message',
+                'Cancel wrong status',
+                `${order.posting_number}: status=${invoice.status}`,
+            );
         }
     }
 
@@ -346,7 +705,7 @@ export class OrderService {
                 offer_id: `${line.goodCode}${line.whereOrdered ? `-${line.whereOrdered}` : ''}`,
                 quantity: line.quantity,
             })),
-        }
+        };
     }
 
     /**

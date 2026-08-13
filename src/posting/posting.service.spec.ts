@@ -10,6 +10,8 @@ import { BuildExemplarsPayloadCommand } from './commands/build-exemplars-payload
 import { ValidateExemplarsCommand } from './commands/validate-exemplars.command';
 import { SetAndConfirmExemplarsCommand } from './commands/set-and-confirm-exemplars.command';
 import { ShipExemplarsCommand } from './commands/ship-exemplars.command';
+import { MpEventService } from '../mp-event/mp-event.service';
+import { MpDecisionRunnerService } from '../mp-decision/mp-decision.runner.service';
 
 describe('PostingService', () => {
     let service: PostingService;
@@ -26,8 +28,22 @@ describe('PostingService', () => {
     const getKmFullByKi = jest.fn();
     const getGtdByKi = jest.fn();
     const getPickedPartiesGtdByScode = jest.fn();
+    const getByPostingNumbers = jest.fn();
+    const mpRecord = jest.fn().mockResolvedValue(true);
+    const mpIsHandled = jest.fn().mockResolvedValue(false);
+    const mpMarkHandled = jest.fn();
+    const mpListUnhandled = jest.fn().mockResolvedValue([]);
+    // журнал пуст → окно как при холодном старте, поведение прежних тестов сохраняется
+    const mpWindowStart = jest.fn();
+    // решающая таблица вхолостую (итерация 5) — только наблюдает
+    const dryObservePosting = jest.fn().mockResolvedValue(null);
+    const dryFlush = jest.fn();
+    const mpSalesEnabled = jest.fn().mockReturnValue(false);
+    const mpNeedsExecution = jest.fn().mockReturnValue(false);
+    const mpExecute = jest.fn().mockResolvedValue({ done: [], failed: [] });
     let markMigrationEnabled = false;
     let nodeEnv: string | undefined;
+    let services: string[] = [];
     const date = new Date();
     const postings = [
         {
@@ -67,6 +83,7 @@ describe('PostingService', () => {
                         getKmFullByKi,
                         getGtdByKi,
                         getPickedPartiesGtdByScode,
+                        getByPostingNumbers,
                         getTransaction: () => ({ commit }),
                     },
                 },
@@ -77,6 +94,7 @@ describe('PostingService', () => {
                             if (key === 'OZON_BUYER_ID') return 24416;
                             if (key === 'MARK_CODES_ENABLED') return markMigrationEnabled;
                             if (key === 'NODE_ENV') return nodeEnv;
+                            if (key === 'SERVICES') return services;
                             return def;
                         },
                     },
@@ -92,6 +110,26 @@ describe('PostingService', () => {
                         methodBinary: ozonApiMethodBinary,
                     },
                 },
+                {
+                    provide: MpEventService,
+                    useValue: {
+                        record: mpRecord,
+                        windowStart: mpWindowStart,
+                        isHandled: mpIsHandled,
+                        markHandled: mpMarkHandled,
+                        listUnhandled: mpListUnhandled,
+                    },
+                },
+                {
+                    provide: MpDecisionRunnerService,
+                    useValue: {
+                        observePosting: dryObservePosting,
+                        flush: dryFlush,
+                        salesEnabled: mpSalesEnabled,
+                        needsExecution: mpNeedsExecution,
+                        execute: mpExecute,
+                    },
+                },
                 CreateOrGetExemplarsCommand,
                 BuildExemplarsPayloadCommand,
                 ValidateExemplarsCommand,
@@ -101,6 +139,9 @@ describe('PostingService', () => {
         }).compile();
 
         orderList.mockClear();
+        dryObservePosting.mockClear();
+        dryFlush.mockClear();
+        mpRecord.mockReset().mockResolvedValue(true);
         ozonApiMethod.mockClear();
         ozonApiMethodBinary.mockReset();
         getByPosting.mockReset();
@@ -111,8 +152,16 @@ describe('PostingService', () => {
         getGtdByKi.mockResolvedValue(null);
         getPickedPartiesGtdByScode.mockReset();
         getPickedPartiesGtdByScode.mockResolvedValue([]);
+        getByPostingNumbers.mockReset();
+        mpRecord.mockReset().mockResolvedValue(true);
+        mpListUnhandled.mockClear().mockResolvedValue([]);
+        mpWindowStart.mockReset().mockImplementation(async (_s: any, _k: any, days: number) =>
+            DateTime.now().minus({ days }).startOf('day').toJSDate(),
+        );
+        getByPostingNumbers.mockResolvedValue([]);
         markMigrationEnabled = false;
         nodeEnv = undefined;
+        services = [];
         service = module.get<PostingService>(PostingService);
     });
 
@@ -160,6 +209,275 @@ describe('PostingService', () => {
         ]);
     });
 
+    describe('окна выборки (итерация 2)', () => {
+        // соседние тесты подменяют реализацию мока насовсем (mockResolvedValue), а beforeEach
+        // сверху делает только mockClear — возвращаем одностраничный ответ явно.
+        beforeEach(() => {
+            orderList.mockResolvedValue({ postings, has_next: false, cursor: '' });
+        });
+
+        it('окно действий по отменам осталось 7 дней и без фильтра смены статуса', async () => {
+            await service.listCanceled();
+
+            expect(orderList.mock.calls[0][0]).toEqual({
+                since: DateTime.now().minus({ day: 7 }).startOf('day').toJSDate(),
+                to: DateTime.now().endOf('day').toJSDate(),
+                statuses: ['cancelled'],
+            });
+        });
+
+        it('без OZON в SERVICES наблюдение не ходит в API вовсе', async () => {
+            await service.observeWideWindow();
+
+            expect(orderList).not.toHaveBeenCalled();
+        });
+
+        it('наблюдение: 4 статуса, окно создания 45 дней, окно смены статуса 2 дня', async () => {
+            services = ['ozon'];
+
+            await service.observeWideWindow();
+
+            expect(orderList).toHaveBeenCalledTimes(4);
+            expect(orderList.mock.calls.map((call) => call[0].statuses[0])).toEqual([
+                'cancelled',
+                'delivered',
+                'awaiting_deliver',
+                'delivering',
+            ]);
+            expect(orderList.mock.calls[0][0]).toEqual({
+                since: DateTime.now().minus({ day: 45 }).startOf('day').toJSDate(),
+                to: DateTime.now().endOf('day').toJSDate(),
+                statuses: ['cancelled'],
+                last_changed_status_date: {
+                    from: DateTime.now().minus({ day: 2 }).startOf('day').toISO(),
+                    to: DateTime.now().endOf('day').toISO(),
+                },
+            });
+        });
+
+        it('окно смены статуса берётся из журнала, а не от «сейчас» (итерация 4)', async () => {
+            services = ['ozon'];
+            const lastSeen = DateTime.now().minus({ hour: 5 }).toJSDate();
+            mpWindowStart.mockResolvedValue(lastSeen);
+
+            await service.observeWideWindow();
+
+            expect(mpWindowStart).toHaveBeenCalledWith('OZON', 'POSTING_FBS', 2, 2);
+            expect(orderList.mock.calls[0][0].last_changed_status_date.from).toBe(
+                DateTime.fromJSDate(lastSeen).toISO(),
+            );
+        });
+
+        it('увиденные отправления пишутся в журнал', async () => {
+            services = ['ozon'];
+
+            await service.observeWideWindow();
+
+            expect(mpRecord).toHaveBeenCalledWith(
+                expect.objectContaining({ service: 'OZON', kind: 'POSTING_FBS', extId: '123', state: 'cancelled' }),
+            );
+        });
+
+        it('наблюдение ничего не делает — ни счетов, ни переименований', async () => {
+            services = ['ozon'];
+            getByPostingNumbers.mockResolvedValue([{ id: 555, status: 3, remark: '123' }]);
+            getAttachedMarkCodesByScode.mockResolvedValue([{ ki: 'KI-1' }]);
+
+            await service.observeWideWindow();
+
+            expect(createInvoiceFromPostingDto).not.toHaveBeenCalled();
+            expect(create).not.toHaveBeenCalled();
+            expect(updatePrim).not.toHaveBeenCalled();
+            expect(bulkSetStatus).not.toHaveBeenCalled();
+        });
+
+        it('новое событие отмены и доставки уходит в решающую таблицу вхолостую', async () => {
+            services = ['ozon'];
+            mpRecord.mockResolvedValue(true);
+
+            await service.observeWideWindow();
+
+            expect(dryObservePosting).toHaveBeenCalledWith('123', 'FBS', 'cancel');
+            expect(dryObservePosting).toHaveBeenCalledWith('123', 'FBS', 'delivered');
+            // awaiting_deliver и delivering — только наблюдение, решений по ним нет:
+            // 2 отправления × 2 статуса, а не × 4
+            expect(dryObservePosting).toHaveBeenCalledTimes(4);
+            expect(dryObservePosting.mock.calls.map((call) => call[2])).toEqual([
+                'cancel',
+                'cancel',
+                'delivered',
+                'delivered',
+            ]);
+            expect(dryFlush).toHaveBeenCalledWith('observeFbsWideWindow');
+        });
+
+        it('знакомое событие в решающую таблицу не идёт: дедуп держит журнал', async () => {
+            services = ['ozon'];
+            mpRecord.mockResolvedValue(false);
+
+            await service.observeWideWindow();
+
+            expect(dryObservePosting).not.toHaveBeenCalled();
+        });
+
+        it('не записалось в журнал → решения не считаем (иначе письмо на каждый проход)', async () => {
+            services = ['ozon'];
+            mpRecord.mockRejectedValue(new Error('DB down'));
+
+            await service.observeWideWindow();
+
+            expect(dryObservePosting).not.toHaveBeenCalled();
+        });
+
+        it('наблюдение: упавший статус не роняет остальные', async () => {
+            services = ['ozon'];
+            orderList.mockRejectedValueOnce(new Error('502 Bad Gateway'));
+
+            await service.observeWideWindow();
+
+            expect(orderList).toHaveBeenCalledTimes(4);
+        });
+    });
+
+    describe('итерация 7 — продажа исполняется по флагу', () => {
+        const decision = { branch: 'delivered/normal' } as any;
+        beforeEach(() => {
+            services = ['ozon'];
+            orderList.mockResolvedValue({ postings, has_next: false, cursor: '' });
+            mpSalesEnabled.mockReturnValue(true);
+            mpIsHandled.mockClear().mockResolvedValue(false);
+            mpNeedsExecution.mockReturnValue(true);
+            mpExecute.mockClear().mockResolvedValue({ done: [], failed: [] });
+            mpMarkHandled.mockClear().mockResolvedValue(undefined);
+            dryObservePosting.mockClear().mockResolvedValue(decision);
+        });
+        afterEach(() => {
+            mpSalesEnabled.mockReturnValue(false);
+            mpNeedsExecution.mockReturnValue(false);
+            mpRecord.mockResolvedValue(true);
+            mpIsHandled.mockResolvedValue(false);
+            dryObservePosting.mockResolvedValue(null);
+        });
+
+        it('знакомое, но необработанное delivered-событие ретраится: решение исполняется и помечается', async () => {
+            mpRecord.mockResolvedValue(false);
+
+            await service.observeWideWindow();
+
+            // 2 отправления в delivered; отмены (isNew=false) остаются наблюдением и не считаются
+            expect(mpExecute).toHaveBeenCalledTimes(2);
+            expect(mpExecute).toHaveBeenCalledWith(decision);
+            expect(mpMarkHandled).toHaveBeenCalledWith(expect.objectContaining({ state: 'delivered' }));
+            expect(mpMarkHandled).not.toHaveBeenCalledWith(expect.objectContaining({ state: 'cancelled' }));
+        });
+
+        it('обработанное delivered-событие не пересчитывается', async () => {
+            mpRecord.mockResolvedValue(false);
+            mpIsHandled.mockResolvedValue(true);
+
+            await service.observeWideWindow();
+
+            expect(mpExecute).not.toHaveBeenCalled();
+            expect(mpMarkHandled).not.toHaveBeenCalled();
+        });
+
+        it('решение без включённых действий — пометка без транзакции', async () => {
+            mpNeedsExecution.mockReturnValue(false);
+
+            await service.observeWideWindow();
+
+            expect(mpExecute).not.toHaveBeenCalled();
+            expect(mpMarkHandled).toHaveBeenCalledWith(expect.objectContaining({ state: 'delivered' }));
+        });
+
+        it('потолок прогона (решение null) → событие не помечается, возьмётся следующим проходом', async () => {
+            dryObservePosting.mockResolvedValue(null);
+
+            await service.observeWideWindow();
+
+            expect(mpExecute).not.toHaveBeenCalled();
+            expect(mpMarkHandled).not.toHaveBeenCalled();
+        });
+
+        it('сбой исполнения не помечает событие и не роняет прогон', async () => {
+            mpExecute.mockRejectedValueOnce(new Error('DB down'));
+
+            await service.observeWideWindow();
+
+            expect(mpMarkHandled).toHaveBeenCalledTimes(1);
+        });
+
+        it('добор из журнала: осевшее delivered исполняется, хотя Ozon его больше не отдаёт', async () => {
+            orderList.mockResolvedValue({ postings: [], has_next: false, cursor: '' });
+            mpListUnhandled.mockResolvedValueOnce([
+                { extId: '123-0001-1', posting: '123-0001-1', firstSeen: new Date('2026-07-20') },
+            ]);
+
+            await service.observeWideWindow();
+
+            expect(mpListUnhandled).toHaveBeenCalledWith('OZON', 'POSTING_FBS', 'delivered');
+            expect(dryObservePosting).toHaveBeenCalledWith('123-0001-1', 'FBS', 'delivered');
+            expect(mpExecute).toHaveBeenCalledWith(decision);
+            expect(mpMarkHandled).toHaveBeenCalledWith(
+                expect.objectContaining({ extId: '123-0001-1', state: 'delivered' }),
+            );
+        });
+
+        it('добор при выключенном флаге не ходит в журнал', async () => {
+            mpSalesEnabled.mockReturnValue(false);
+            orderList.mockResolvedValue({ postings: [], has_next: false, cursor: '' });
+
+            await service.observeWideWindow();
+
+            expect(mpListUnhandled).not.toHaveBeenCalled();
+        });
+
+        it('сбой добора не роняет прогон', async () => {
+            orderList.mockResolvedValue({ postings: [], has_next: false, cursor: '' });
+            mpListUnhandled.mockRejectedValueOnce(new Error('DB down'));
+
+            await expect(service.observeWideWindow()).resolves.not.toThrow();
+        });
+    });
+
+    describe('частичность возврата — числа берутся у Ozon (итерация 5)', () => {
+        it('listReturnsByPosting фильтрует по posting_numbers[], а не по posting_number', async () => {
+            ozonApiMethod.mockResolvedValueOnce({ returns: [{ id: 1 }, { id: 2 }] });
+
+            const res = await service.listReturnsByPosting('72067989-0727-1');
+
+            expect(res).toHaveLength(2);
+            expect(ozonApiMethod).toHaveBeenCalledWith('/v1/returns/list', {
+                filter: { posting_numbers: ['72067989-0727-1'] },
+                limit: 500,
+                last_id: 0,
+            });
+        });
+
+        it('getPostingUnits считает единицы отправления по данным Ozon', async () => {
+            ozonApiMethod.mockResolvedValueOnce({ result: { products: [{ quantity: 2 }, { quantity: 1 }] } });
+
+            await expect(service.getPostingUnits('72067989-0727-1')).resolves.toBe(3);
+            expect(ozonApiMethod).toHaveBeenCalledWith('/v3/posting/fbs/get', {
+                posting_number: '72067989-0727-1',
+            });
+        });
+
+        it('getPostingUnits НЕ лезет в нашу базу: там штуки с коэффициентом кратности', async () => {
+            ozonApiMethod.mockResolvedValueOnce({ result: { products: [] } });
+
+            await expect(service.getPostingUnits('72067989-0727-1')).resolves.toBeNull();
+            expect(getByPosting).not.toHaveBeenCalled();
+            expect(getInvoiceLines).not.toHaveBeenCalled();
+        });
+
+        it('ручка упала (FBO даёт 404) → null, о частичности не судим', async () => {
+            ozonApiMethod.mockRejectedValueOnce(new Error('Unknown posting number'));
+
+            await expect(service.getPostingUnits('33261943-0361-1')).resolves.toBeNull();
+        });
+    });
+
     it('test createInvoice', async () => {
         const posting = {
             posting_number: '321',
@@ -188,9 +506,12 @@ describe('PostingService', () => {
         const result = await service.listReturns(7);
 
         expect(result).toEqual(mockReturns);
+        // Итерация 4: фильтр по МОМЕНТУ СМЕНЫ СТАТУСА, а не по дате логистического возврата —
+        // иначе переход MovingToOzon → ReturnedToOzon не виден, дата не меняется.
+        // Начало окна даёт журнал (здесь мок отдаёт холодный старт на 7 дней).
         expect(ozonApiMethod).toHaveBeenCalledWith('/v1/returns/list', {
             filter: {
-                logistic_return_date: {
+                visual_status_change_moment: {
                     time_from: DateTime.now().minus({ days: 7 }).startOf('day').toISO(),
                     time_to: DateTime.now().endOf('day').toISO(),
                 },
@@ -198,6 +519,7 @@ describe('PostingService', () => {
             limit: 500,
             last_id: 0,
         });
+        expect(mpWindowStart).toHaveBeenCalledWith('OZON', 'RETURN', 7, 2);
     });
 
     describe('getByPostingNumber', () => {
@@ -291,7 +613,7 @@ describe('PostingService', () => {
         expect(ozonApiMethod).toHaveBeenCalledTimes(2);
         expect(ozonApiMethod).toHaveBeenNthCalledWith(2, '/v1/returns/list', {
             filter: {
-                logistic_return_date: {
+                visual_status_change_moment: {
                     time_from: DateTime.now().minus({ days: 7 }).startOf('day').toISO(),
                     time_to: DateTime.now().endOf('day').toISO(),
                 },
@@ -299,6 +621,8 @@ describe('PostingService', () => {
             limit: 500,
             last_id: 1,
         });
+        // окно берётся один раз на весь пагинированный обход, а не на каждую страницу
+        expect(mpWindowStart).toHaveBeenCalledTimes(1);
     });
 
     describe('submitFbsMarkCodes', () => {

@@ -35,6 +35,9 @@ export class InvoiceController {
         @Param() remarkDto: RemarkDto,
         @Body() body: MarkScanDto,
     ): Promise<MarkScanResultDto> {
+        // Гейт: счёт отменён → сообщение кладовщику и отвязка уже привязанных кодов,
+        // вместо тихой привязки очередного КМ к мёртвому счёту.
+        await this.markScanService.assertLive(remarkDto.match);
         return this.markScanService.scan(remarkDto.invoice, body.ki);
     }
 

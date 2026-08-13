@@ -21,13 +21,19 @@ export class PickupController {
     @ApiParam({ name: 'remark', description: 'Примечание = номер заказа', type: 'string' })
     @ApiOkResponse({ description: 'Результат подбора: { isSuccess }' })
     async pick(@Param() remarkDto: RemarkDto): Promise<any> {
-        const { invoice } = remarkDto;
+        const { invoice, match } = remarkDto;
+        // Гейт: отменённый счёт подбирать нельзя — иначе кладовщик отгрузит отменённый заказ.
+        await this.markScanService.assertLive(match);
         const ready = await this.markScanService.isReadyToFinish(invoice);
         if (!ready) {
             throw new BadRequestException('Не все КМ отсканированы');
         }
         await this.invoiceService.pickupInvoice(invoice, null);
-        return { isSuccess: true };
+        // Честный ответ вместо всегдашнего { isSuccess: true }: экран должен видеть,
+        // подобрался счёт на самом деле или подбор молча не сработал.
+        const after = await this.invoiceService.findByPosting(invoice.remark, null);
+        const picked = await this.invoiceService.isPickedUp(after?.invoice ?? invoice, null);
+        return { isSuccess: picked, status: after?.invoice?.status ?? invoice.status, picked };
     }
 
     @Post(':remark/marks/prepare')
@@ -35,7 +41,8 @@ export class PickupController {
     @ApiParam({ name: 'remark', description: 'Примечание = номер заказа', type: 'string' })
     @ApiOkResponse({ description: 'Результат предпроверки: { prepare }' })
     async prepareMarks(@Param() remarkDto: RemarkDto): Promise<any> {
-        const { invoice } = remarkDto;
+        const { invoice, match } = remarkDto;
+        await this.markScanService.assertLive(match);
         const prepare = await this.orderService.prepareFbsMarksForInvoice(invoice);
         return { prepare };
     }
@@ -45,7 +52,8 @@ export class PickupController {
     @ApiParam({ name: 'remark', description: 'Примечание = номер заказа', type: 'string' })
     @ApiOkResponse({ description: 'Результат передачи КМ: { submit }' })
     async submitMarks(@Param() remarkDto: RemarkDto): Promise<any> {
-        const { invoice } = remarkDto;
+        const { invoice, match } = remarkDto;
+        await this.markScanService.assertLive(match);
         const ready = await this.markScanService.isReadyToFinish(invoice);
         if (!ready) {
             throw new BadRequestException('Не все КМ отсканированы');
@@ -84,8 +92,9 @@ export class PickupController {
         description: 'Результат обновления счёта',
     })
     async update(@Param() remarkDto: RemarkDto, @Body() invoiceUpdateDto: InvoiceUpdateDto): Promise<any> {
-        const { invoice } = remarkDto;
+        const { invoice, match } = remarkDto;
         if (invoiceUpdateDto.FINISH_PICKUP) {
+            await this.markScanService.assertLive(match);
             const ready = await this.markScanService.isReadyToFinish(invoice);
             if (!ready) {
                 throw new BadRequestException('Не все КМ отсканированы');

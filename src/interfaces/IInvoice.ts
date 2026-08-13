@@ -9,11 +9,14 @@ import { InvoiceLineDto } from '../invoice/dto/invoice.line.dto';
 import { InvoiceUpdateDto } from "../invoice/dto/invoice.update.dto";
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { FboMigrationLinkDto } from '../posting.fbo/dto/fbo-migration-link.dto';
+import { InvoiceMatchDto } from '../invoice/dto/invoice.match.dto';
 
 export interface IInvoice {
     getTransaction(): Promise<FirebirdTransaction>;
     create(invoice: InvoiceCreateDto, t: FirebirdTransaction): Promise<InvoiceDto>;
     isExists(remark: string, t: FirebirdTransaction): Promise<boolean>;
+    /** Счёт по номеру отправления вместе с пометкой (' отмена', ' отмена FBO', ' закрыт'). */
+    findByPosting(posting: PostingDto | string, t: FirebirdTransaction): Promise<InvoiceMatchDto | null>;
     updatePrim(prim: string, newPrim: string, t: FirebirdTransaction): Promise<void>;
     getByPosting(posting: PostingDto | string, t: FirebirdTransaction, containing?: boolean): Promise<InvoiceDto>;
     getByPostingNumbers(postingNumbers: string[]): Promise<InvoiceDto[]>;
@@ -38,7 +41,7 @@ export interface IInvoice {
         prims: string[],
         nominal: number,
         transaction: FirebirdTransaction,
-    ): Promise<{ podbposcode: number; scode: number; realpricecode: number; quanAvail: number; prim: string; cntNom: number; cntLive: number; cntTt3: number }[]>;
+    ): Promise<{ podbposcode: number; scode: number; realpricecode: number; quanAvail: number; prim: string; cntNom: number; cntLive: number; cntTt3: number; cntDead: number }[]>;
     findFboPodbposDonor(
         goodscode: string,
         prims: string[],
@@ -83,6 +86,14 @@ export interface IInvoice {
         transaction: FirebirdTransaction,
     ): Promise<void>;
     countFreeMarkCodesForGood(goodscode: string, transaction: FirebirdTransaction): Promise<number>;
+    /** Вернуть коды счёта на склад: TT 3→0, привязка к строке остаётся (Дельфи требует по ней скан). */
+    returnMarkCodesToStock(scode: number, transaction: FirebirdTransaction): Promise<number>;
+    /** TT 3→0 одного кода: привязка остаётся, партийный резерв снимается. */
+    markCodeReturnToStock(ki: string, s_s: 0 | 1, transaction: FirebirdTransaction): Promise<void>;
+    /** Вывод кода по нашей FBS-продаже: 5→6, RETIRE_REASON=1. */
+    markCodeFbsSold(ki: string, transaction: FirebirdTransaction): Promise<void>;
+    /** Откат вывода по нашей продаже: 6→5 (только RETIRE_REASON=1). */
+    markCodeFbsUnsold(ki: string, transaction: FirebirdTransaction): Promise<void>;
     getMarkCodeInfoByKi(
         ki: string,
         transaction: FirebirdTransaction,
@@ -102,6 +113,29 @@ export interface IInvoice {
         scode: number,
         transaction: FirebirdTransaction,
     ): Promise<{ realpricecode: number; goodscode: string; quantity: number }[]>;
+    /** Полное состояние кодов счёта (без фильтра по TT) — вход слоя 2 решающей таблицы. */
+    getMarkCodesStateByScode(
+        scode: number,
+        transaction: FirebirdTransaction,
+    ): Promise<
+        { ki: string; status: number; transferType: number; retireReason: number | null; kmFull: string | null }[]
+    >;
+    /** Коды, ушедшие маркетплейсу и оставшиеся в обороте на счёте вне работы — еженедельный отчёт. */
+    findStuckMarkCodes(
+        minAgeDays: number,
+        transaction: FirebirdTransaction,
+    ): Promise<
+        {
+            ki: string;
+            goodscode: string;
+            status: number;
+            transferType: number;
+            scode: number | null;
+            prim: string | null;
+            invoiceStatus: number | null;
+            invoiceDate: Date | null;
+        }[]
+    >;
     /** Счёт подобран (PODBPOS.QUAN{attr} >= QUAN{attr}NEED по всем строкам) — после подбора отвязка КМ запрещена. */
     isPickedUp(invoice: InvoiceDto, transaction: FirebirdTransaction): Promise<boolean>;
     getStorageSS(): 0 | 1;

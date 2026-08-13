@@ -56,20 +56,32 @@ export class ProcessedCacheService {
         keyOf: (item: T) => string,
         processor: (item: T) => Promise<void>,
         flushers: (() => Promise<void>)[],
-    ): Promise<void> {
+    ): Promise<{ done: number; failed: string[] }> {
         const processed = await this.load(cacheName, scope);
+        const failed: string[] = [];
+        let done = 0;
 
         for (const item of items) {
             const key = keyOf(item);
             if (processed.has(key)) {
                 continue;
             }
-            await processor(item);
+            try {
+                await processor(item);
+            } catch (e) {
+                // Ошибка одного элемента не рушит цикл и НЕ помечает его обработанным:
+                // иначе отправление, упавшее один раз, не обрабатывается больше никогда
+                // (ключ живёт CACHE_TTL_DAYS), а остальные элементы прогона теряются.
+                failed.push(`${key}: ${e?.message ?? e}`);
+                continue;
+            }
             processed.add(key);
+            done++;
         }
 
         flushers.push(async () => {
             await this.save(cacheName, scope, processed);
         });
+        return { done, failed };
     }
 }

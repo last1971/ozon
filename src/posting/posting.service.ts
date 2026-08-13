@@ -8,7 +8,7 @@ import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { ConfigService } from '@nestjs/config';
 import { IOrderable } from '../interfaces/IOrderable';
 import { FirebirdTransaction } from 'ts-firebird';
-// import { Cron } from '@nestjs/schedule';
+import { Cron } from '@nestjs/schedule';
 import { ISuppliable } from '../interfaces/i.suppliable';
 import * as console from 'node:console';
 import { SupplyDto } from '../supply/dto/supply.dto';
@@ -31,6 +31,8 @@ import { ValidateExemplarsCommand } from './commands/validate-exemplars.command'
 import { SetAndConfirmExemplarsCommand } from './commands/set-and-confirm-exemplars.command';
 import { ShipExemplarsCommand } from './commands/ship-exemplars.command';
 import { firstPageOnly } from '../helpers/pdf/pdf.helpers';
+import { MpEventDto, MpEventService } from '../mp-event/mp-event.service';
+import { MpDecisionRunnerService } from '../mp-decision/mp-decision.runner.service';
 
 @Injectable()
 export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable {
@@ -45,6 +47,8 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         private validateExemplarsCommand: ValidateExemplarsCommand,
         private setAndConfirmExemplarsCommand: SetAndConfirmExemplarsCommand,
         private shipExemplarsCommand: ShipExemplarsCommand,
+        private mpEvent: MpEventService,
+        private mpRunner: MpDecisionRunnerService,
     ) {}
 
     isFbo(): boolean {
@@ -55,12 +59,29 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         throw new Error('Method not implemented.');
     }
 
-    async list(status: string, day = 3): Promise<PostingDto[]> {
+    /**
+     * @param day    ширина окна по дате СОЗДАНИЯ отправления (since/to, обязательны в v4)
+     * @param lcsdDay окно по дате СМЕНЫ СТАТУСА, дни назад от «сейчас». Задан — выборка
+     *               становится инкрементальной: 45-дневное окно создания перестаёт тянуть
+     *               весь хвост, приходят только реально изменившиеся отправления.
+     *               С итерации 4 начало окна поедет от `MAX(LAST_SEEN)` журнала.
+     */
+    async list(status: string, day = 3, lcsdDay?: number): Promise<PostingDto[]> {
         const filter: PostingsRequestDto = {
             since: DateTime.now().minus({ day }).startOf('day').toJSDate(),
             to: DateTime.now().endOf('day').toJSDate(),
             statuses: [status],
         };
+        if (lcsdDay) {
+            // Начало окна смены статуса даёт журнал: MAX(LAST_SEEN) по паре минус нахлёст.
+            // Простой сервиса дольше нахлёста больше не съедает события молча — Ozon второй
+            // раз их не покажет. Журнал пуст (холодный старт) → «сейчас минус lcsdDay».
+            const from = await this.mpEvent.windowStart('OZON', 'POSTING_FBS', lcsdDay, lcsdDay);
+            filter.last_changed_status_date = {
+                from: DateTime.fromJSDate(from).toISO(),
+                to: DateTime.now().endOf('day').toISO(),
+            };
+        }
         const limit = 100; // Предел v4 — 100, в v3 было 1000
         let allPostings: PostingDto[] = [];
         let cursor = '';
@@ -87,19 +108,214 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         return this.list('awaiting_deliver');
     }
     async listCanceled(): Promise<PostingDto[]> {
-        return this.list('cancelled', 7);
+        // РАБОЧЕЕ окно действий — трогать нельзя до итерации 8 плана: расширение подняло бы
+        // накопленный хвост (~30 % отмен, которых система не видела), и его обработала бы
+        // старая логика «донор немедленно при отмене». Хвост пока только наблюдаем.
+        return this.list('cancelled', PostingService.ACTION_WINDOW_DAYS);
     }
 
+    /** Окно действий (отмены). Расширение — итерация 8, не раньше. */
+    private static readonly ACTION_WINDOW_DAYS = 7;
+    /** Окно наблюдения по дате создания отправления: отмена приходит и через 26 дней после заказа. */
+    private static readonly WIDE_WINDOW_DAYS = 45;
+    /** Нахлёст по дате смены статуса. С итерации 4 отсчёт поедет от `MAX(LAST_SEEN)` журнала. */
+    private static readonly LCSD_OVERLAP_DAYS = 2;
+    /**
+     * Промежуточные статусы опрашиваем ради правила «пришла отмена, а записи о `delivering`
+     * нет → товар ещё у нас» (заработает с журналом, итерация 4).
+     */
+    private static readonly OBSERVED_STATUSES = ['cancelled', 'delivered', 'awaiting_deliver', 'delivering'];
+
+    /**
+     * Итерация 2 плана FBS-выбытия: наблюдение за расширенным окном.
+     * НИЧЕГО не делает — только пишет в лог сервиса. Действия остаются на рабочем
+     * 7-дневном окне (`listCanceled`) вплоть до итерации 8.
+     */
+    @Cron('0 */5 * * * *', { name: 'observeFbsWideWindow' })
+    async observeWideWindow(): Promise<void> {
+        if (!this.configService.get<GoodServiceEnum[]>('SERVICES', []).includes(GoodServiceEnum.OZON)) return;
+
+        const actionEdge = DateTime.now().minus({ day: PostingService.ACTION_WINDOW_DAYS }).startOf('day');
+        const found: { status: string; postings: PostingDto[] }[] = [];
+        let apiErrors = 0;
+
+        for (const status of PostingService.OBSERVED_STATUSES) {
+            try {
+                found.push({
+                    status,
+                    postings: await this.list(
+                        status,
+                        PostingService.WIDE_WINDOW_DAYS,
+                        PostingService.LCSD_OVERLAP_DAYS,
+                    ),
+                });
+            } catch (e) {
+                apiErrors++;
+                this.logger.warn(`наблюдение: статус ${status} — ошибка API: ${e.message}`);
+            }
+        }
+
+        // Журнал: пишем всё увиденное. На нём стоит окно следующей выборки, и на нём же
+        // держится правило «пришла отмена, а записи о delivering нет → товар ещё у нас».
+        // Он же дедуплицирует решающую таблицу: вхолостую считаем только события,
+        // которых в журнале ещё не было, то есть одно решение на одно состояние.
+        for (const { status, postings } of found) {
+            for (const posting of postings) {
+                const event: MpEventDto = {
+                    service: 'OZON',
+                    kind: 'POSTING_FBS',
+                    extId: posting.posting_number,
+                    state: status,
+                    posting: posting.posting_number,
+                };
+                let isNew = false;
+                try {
+                    isNew = await this.mpEvent.record(event);
+                } catch (e) {
+                    this.logger.warn(`журнал: ${posting.posting_number}/${status} не записан — ${e.message}`);
+                    continue;
+                }
+                // Продажа исполняется (итерация 7): недоделанное delivered-событие
+                // ретраится каждым проходом, пока не помечено в журнале. Остальные
+                // статусы — только наблюдение по новым событиям, как в итерации 5.
+                const saleLive = status === 'delivered' && this.mpRunner.salesEnabled();
+                if (!isNew && !saleLive) continue;
+                if (status === 'cancelled') {
+                    // Схема FBS — по источнику события; отмены исполняет cancelOrder.
+                    await this.mpRunner.observePosting(posting.posting_number, 'FBS', 'cancel');
+                    continue;
+                }
+                if (status !== 'delivered') continue;
+                if (!saleLive) {
+                    await this.mpRunner.observePosting(posting.posting_number, 'FBS', 'delivered');
+                    continue;
+                }
+                await this.executeDeliveredSale(event);
+            }
+        }
+
+        // Добор из журнала: доставленное, осевшее необработанным. В выборку Ozon такое
+        // уже не вернётся (статус конечный, окно смены статуса — 2 дня): это хвост,
+        // накопленный до включения флага, и события, чьё исполнение падало дольше
+        // нахлёста. В штатном режиме выборка пуста.
+        if (this.mpRunner.salesEnabled()) {
+            try {
+                const tail = await this.mpEvent.listUnhandled('OZON', 'POSTING_FBS', 'delivered');
+                for (const row of tail) {
+                    await this.executeDeliveredSale({
+                        service: 'OZON',
+                        kind: 'POSTING_FBS',
+                        extId: row.extId,
+                        state: 'delivered',
+                        posting: row.posting ?? row.extId,
+                    });
+                }
+            } catch (e) {
+                this.logger.warn(`добор доставленного из журнала не прошёл — ${e.message}`);
+            }
+        }
+        this.mpRunner.flush('observeFbsWideWindow');
+
+        await this.logObservationTail(found, actionEdge, apiErrors);
+    }
+
+    /**
+     * Продажа по доставленному отправлению: решение → действия → пометка в журнале.
+     * Пометки нет ни при потолке прогона, ни при сбое — событие останется в журнале
+     * необработанным, и его подберёт добор следующего прогона.
+     */
+    private async executeDeliveredSale(event: MpEventDto): Promise<void> {
+        try {
+            if (await this.mpEvent.isHandled(event)) return;
+            const decision = await this.mpRunner.observePosting(event.posting, 'FBS', 'delivered');
+            if (!decision) return;
+            if (this.mpRunner.needsExecution(decision)) await this.mpRunner.execute(decision);
+            await this.mpEvent.markHandled(event);
+        } catch (e) {
+            this.logger.warn(`продажа ${event.posting}: действия не выполнены — ${e.message}`);
+        }
+    }
+
+    private async logObservationTail(
+        found: { status: string; postings: PostingDto[] }[],
+        actionEdge: DateTime,
+        apiErrors: number,
+    ): Promise<void> {
+        const all = found.flatMap((f) => f.postings);
+        if (!all.length) {
+            this.logger.log(
+                `наблюдение (окно ${PostingService.WIDE_WINDOW_DAYS} дн, смена статуса за ` +
+                    `${PostingService.LCSD_OVERLAP_DAYS} дн): пусто, ошибок API ${apiErrors}`,
+            );
+            return;
+        }
+
+        const invoices = await this.invoiceService.getByPostingNumbers(all.map((p) => p.posting_number));
+        const byRemark = new Map(invoices.map((invoice) => [(invoice.remark ?? '').trim(), invoice]));
+        const marks = await this.countMarksByScode(invoices);
+
+        for (const { status, postings } of found) {
+            // in_process_at приходит строкой ISO, но в тестах и старых записях бывает Date —
+            // fromJSDate(new Date(...)) переваривает оба.
+            const tail = postings.filter((p) => DateTime.fromJSDate(new Date(p.in_process_at as any)) < actionEdge);
+            this.logger.log(
+                `наблюдение ${status}: всего ${postings.length}, в рабочем окне ` +
+                    `${postings.length - tail.length}, из хвоста ${tail.length}`,
+            );
+            for (const posting of postings) {
+                const invoice = byRemark.get(posting.posting_number);
+                this.logger.log(
+                    `наблюдение ${status} ${posting.posting_number}: ` +
+                        (invoice
+                            ? `счёт ${invoice.id} статус ${invoice.status}, кодов ${marks.get(invoice.id) ?? 0}`
+                            : 'счёта нет') +
+                        (tail.includes(posting) ? ', из хвоста' : ''),
+                );
+            }
+        }
+        this.logger.log(`наблюдение: ошибок API ${apiErrors}`);
+    }
+
+    /** Сколько кодов привязано к каждому найденному счёту — одним чтением на весь прогон. */
+    private async countMarksByScode(invoices: InvoiceDto[]): Promise<Map<number, number>> {
+        const counts = new Map<number, number>();
+        if (!invoices.length) return counts;
+        const transaction = await this.invoiceService.getTransaction();
+        try {
+            for (const invoice of invoices) {
+                const codes = await this.invoiceService.getAttachedMarkCodesByScode(invoice.id, transaction);
+                counts.set(invoice.id, codes.length);
+            }
+        } catch (e) {
+            this.logger.warn(`наблюдение: коды не прочитаны — ${e.message}`);
+        } finally {
+            await transaction.commit(true);
+        }
+        return counts;
+    }
+
+    /**
+     * Возвраты за окно от журнала.
+     *
+     * Фильтр сменился с `logistic_return_date` на `visual_status_change_moment`
+     * (они взаимоисключающие): по дате логистического возврата переход
+     * `MovingToOzon → ReturnedToOzon` не виден — дата не меняется, номер тот же,
+     * и второе состояние не приходило никогда. По моменту смены статуса приходит
+     * (проверено на живом кабинете: пустое окно 2020 г. → 0, двое суток → 77).
+     *
+     * @param days ширина окна при ХОЛОДНОМ старте, когда журнал по паре пуст.
+     */
     async listReturns(days = 7): Promise<ReturnDto[]> {
         let allReturns: ReturnDto[] = [];
         let lastId = 0;
         let hasNext = true;
+        const from = await this.mpEvent.windowStart('OZON', 'RETURN', days, PostingService.LCSD_OVERLAP_DAYS);
 
         while (hasNext) {
             const filter = {
                 filter: {
-                    logistic_return_date: {
-                        time_from: DateTime.now().minus({ days }).startOf('day').toISO(),
+                    visual_status_change_moment: {
+                        time_from: DateTime.fromJSDate(from).toISO(),
                         time_to: DateTime.now().endOf('day').toISO(),
                     },
                 },
@@ -121,40 +337,48 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         return allReturns;
     }
 
-    // deprecated remove method and checkCanceledOzonOrders
-    // @Cron('0 */5 * * * *', { name: 'checkCanceledOzonOrders' })
-    /*
-    async checkCancelled(): Promise<void> {
-        const orders = await this.listCanceled();
-        const transaction = await this.invoiceService.getTransaction();
+    /**
+     * Все записи возврата по ОДНОМУ отправлению, за всю историю.
+     *
+     * Числитель признака частичности. Окно прогона для этого не годится: записи
+     * приезжают порознь, и «пока приехала одна из двух» — не частичный возврат,
+     * а незаконченный. Фильтр `posting_numbers[]` рабочий — в отличие от
+     * `posting_number` (единственное число), который Ozon молча игнорирует
+     * и отдаёт первые 100 возвратов подряд.
+     */
+    async listReturnsByPosting(postingNumber: string): Promise<ReturnDto[]> {
+        const result: ReturnsListDto = await this.ozonApiService.method('/v1/returns/list', {
+            filter: { posting_numbers: [postingNumber] },
+            limit: 500,
+            last_id: 0,
+        });
+        return result?.returns ?? [];
+    }
+
+    /**
+     * Сколько единиц в отправлении ПО ДАННЫМ OZON. Знаменатель признака частичности.
+     *
+     * Намеренно не через `getByPostingNumber`: у того есть фолбэк на нашу базу,
+     * а там количества в наших штуках с коэффициентом кратности — упаковка
+     * `570615-10` лежит в счёте как `QUAN=10` против одной записи возврата,
+     * и полный возврат кратного товара выглядел бы частичным (проверено на проде
+     * 10.08: счета 91713 и 91473 — оба ложные срабатывания).
+     *
+     * @returns null — состав получить не удалось (например, отправление FBO):
+     *          судить о частичности нечем, и врать в эту сторону нельзя.
+     */
+    async getPostingUnits(postingNumber: string): Promise<number | null> {
         try {
-            for (const order of orders) {
-                if (await this.invoiceService.isExists(order.posting_number, transaction)) {
-                    const invoice = await this.invoiceService.getByPosting(order, transaction);
-                    if (invoice.status === 3) {
-                        await this.invoiceService.updatePrim(
-                            order.posting_number,
-                            order.posting_number + OZON_ORDER_CANCELLATION_SUFFIX.REGULAR,
-                            transaction,
-                        );
-                        await this.invoiceService.bulkSetStatus([invoice], 0, transaction);
-                    }
-                    if (invoice.status === 4) {
-                        await this.invoiceService.updatePrim(
-                            order.posting_number,
-                            order.posting_number + OZON_ORDER_CANCELLATION_SUFFIX.FBO,
-                            transaction,
-                        );
-                    }
-                }
-            }
-            await transaction.commit(true);
+            const res = await this.ozonApiService.method('/v3/posting/fbs/get', { posting_number: postingNumber });
+            const products = res?.result?.products;
+            if (!products?.length) return null;
+            return products.reduce((sum: number, product: any) => sum + (Number(product.quantity) || 0), 0);
         } catch (e) {
-            await transaction.rollback(true);
-            console.error(e);
+            this.logger.warn(`состав отправления ${postingNumber} не получен — ${e.message}`);
+            return null;
         }
     }
-    */
+
     async createInvoice(posting: PostingDto, transaction: FirebirdTransaction): Promise<InvoiceDto> {
         const buyerId = this.getBuyerId();
         return this.invoiceService.createInvoiceFromPostingDto(buyerId, posting, transaction);

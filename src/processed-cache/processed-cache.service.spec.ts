@@ -114,16 +114,33 @@ describe('ProcessedCacheService', () => {
             expect(ttl).toBe(14 * 24 * 60 * 60 * 1000);
         });
 
-        it('ошибка в processor пробрасывается и кеш не дописывается', async () => {
-            const processor = jest.fn().mockRejectedValueOnce(new Error('boom'));
+        it('упавший элемент не помечается обработанным и не рушит остальные', async () => {
+            // Прежний контракт (ошибка пробрасывалась наружу) отменён итерацией 3:
+            // упавшее отправление обязано попасть в следующий прогон, а соседние —
+            // доработать. Плюс раньше упавший элемент помечался обработанным и
+            // не обрабатывался больше никогда: ключ живёт CACHE_TTL_DAYS.
+            const processor = jest
+                .fn()
+                .mockRejectedValueOnce(new Error('boom'))
+                .mockResolvedValueOnce(undefined);
             const flushers: (() => Promise<void>)[] = [];
 
-            await expect(
-                service.process('test', 'TestService', [{ posting_number: '001' }], keyOf, processor, flushers),
-            ).rejects.toThrow('boom');
+            const res = await service.process(
+                'test',
+                'TestService',
+                [{ posting_number: '001' }, { posting_number: '002' }],
+                keyOf,
+                processor,
+                flushers,
+            );
 
-            expect(flushers).toHaveLength(0);
-            expect(cacheSet).not.toHaveBeenCalled();
+            expect(processor).toHaveBeenCalledTimes(2);
+            expect(res.done).toBe(1);
+            expect(res.failed).toEqual(['001: boom']);
+
+            await flushers[0]();
+            // сохранён только успешный ключ
+            expect(cacheSet).toHaveBeenCalledWith(expect.any(String), '002', expect.any(Number));
         });
     });
 });

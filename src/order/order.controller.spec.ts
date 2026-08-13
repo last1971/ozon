@@ -9,13 +9,15 @@ describe('OrderController', () => {
     let controller: OrderController;
     const checkCanceledOrders = jest.fn();
     const runFboPackageForTesting = jest.fn();
+    const checkFboOrdersDaily = jest.fn();
 
     beforeEach(async () => {
         checkCanceledOrders.mockReset();
         runFboPackageForTesting.mockReset();
+        checkFboOrdersDaily.mockReset();
         const module: TestingModule = await Test.createTestingModule({
             providers: [
-                { provide: OrderService, useValue: { runFboPackageForTesting } },
+                { provide: OrderService, useValue: { runFboPackageForTesting, checkFboOrdersDaily } },
                 { provide: YandexOrderService, useValue: {} },
                 { provide: WbOrderService, useValue: {} },
                 { provide: PostingFboService, useValue: { checkCanceledOrders } },
@@ -31,17 +33,18 @@ describe('OrderController', () => {
     });
 
     describe('updateOzonFboOrder', () => {
-        it('вызывает PostingFboService.checkCanceledOrders и возвращает isSuccess', async () => {
-            checkCanceledOrders.mockResolvedValueOnce(undefined);
+        it('идёт тем же путём, что суточный крон, а не старой реализацией FBO-сервиса', async () => {
+            checkFboOrdersDaily.mockResolvedValueOnce(undefined);
 
             const result = await controller.updateOzonFboOrder();
 
-            expect(checkCanceledOrders).toHaveBeenCalledTimes(1);
+            expect(checkFboOrdersDaily).toHaveBeenCalledTimes(1);
+            expect(checkCanceledOrders).not.toHaveBeenCalled();
             expect(result).toEqual({ isSuccess: true });
         });
 
-        it('пробрасывает ошибку из PostingFboService', async () => {
-            checkCanceledOrders.mockRejectedValueOnce(new Error('boom'));
+        it('пробрасывает ошибку прогона', async () => {
+            checkFboOrdersDaily.mockRejectedValueOnce(new Error('boom'));
 
             await expect(controller.updateOzonFboOrder()).rejects.toThrow('boom');
         });

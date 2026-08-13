@@ -13,6 +13,7 @@ describe('InvoiceController', () => {
         scan: jest.fn(),
         unscan: jest.fn(),
         isReadyToFinish: jest.fn(),
+        assertLive: jest.fn(),
     };
     const invoice = { id: 100, remark: 'TEST', buyerId: 7 } as InvoiceDto;
     const remarkDto = { remark: 'TEST', invoice };

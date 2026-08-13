@@ -359,6 +359,52 @@ describe('Trade2006InvoiceService', () => {
             assemblyEnd: undefined,
         });
     });
+    describe('findByPosting — предикат вместо булева isExists (итерация 3)', () => {
+        it('точное равенство ИЛИ префикс с пробелом, чужие номера не цепляются', async () => {
+            query.mockResolvedValueOnce([]);
+            await service.findByPosting('0126-0026-1');
+            expect(query.mock.calls[0]).toEqual([
+                'SELECT * FROM S WHERE PRIM = ? OR PRIM STARTING WITH ?',
+                ['0126-0026-1', '0126-0026-1 '],
+                true,
+            ]);
+        });
+
+        it('счёта нет → null', async () => {
+            query.mockResolvedValueOnce([]);
+            expect(await service.findByPosting('нет-такого')).toBeNull();
+        });
+
+        it('чистый счёт → пометки нет', async () => {
+            query.mockResolvedValueOnce([{ PRIM: 'test1', SCODE: 2, POKUPATCODE: 1, STATUS: 3 }]);
+            const res = await service.findByPosting('test1');
+            expect(res).toMatchObject({ mark: '', cancelled: false, closed: false });
+            expect(res.invoice.id).toBe(2);
+        });
+
+        it('переименованный отменой → cancelled, пометка отдаётся вызывающему', async () => {
+            query.mockResolvedValueOnce([{ PRIM: 'test1 отмена FBO', SCODE: 2, POKUPATCODE: 1, STATUS: 1 }]);
+            const res = await service.findByPosting('test1');
+            expect(res).toMatchObject({ mark: ' отмена FBO', cancelled: true, closed: false });
+        });
+
+        it('закрытый счёт → closed', async () => {
+            query.mockResolvedValueOnce([{ PRIM: 'test1 закрыт', SCODE: 2, POKUPATCODE: 1, STATUS: 5 }]);
+            const res = await service.findByPosting('test1');
+            expect(res).toMatchObject({ cancelled: false, closed: true });
+        });
+
+        it('две строки на номер → берётся точное совпадение, а не первое попавшееся', async () => {
+            query.mockResolvedValueOnce([
+                { PRIM: 'test1 отмена', SCODE: 9, POKUPATCODE: 1, STATUS: 1 },
+                { PRIM: 'test1', SCODE: 2, POKUPATCODE: 1, STATUS: 3 },
+            ]);
+            const res = await service.findByPosting('test1');
+            expect(res.invoice.id).toBe(2);
+            expect(res.cancelled).toBe(false);
+        });
+    });
+
     it('Test pickupInvoice', async () => {
         await service.pickupInvoice({ id: 1, date: new Date(), remark: '1', buyerId: 1, status: 3 });
         expect(execute.mock.calls[0]).toEqual([
@@ -542,6 +588,8 @@ describe('Trade2006InvoiceService', () => {
             expect(sql).toContain('rp.REALPRICECODE = pp.REALPRICECODE');
             expect(sql).toContain('pp.SKLAD_ID IS NULL');
             expect(sql).toContain('QUANSHOP');
+            // Счётчик выведенных кодов на строке — сигнал «возврат проданного» для письма миграции.
+            expect(sql).toContain('m.TRANSFER_TYPE = 3 AND m.STATUS = 6) AS CNT_DEAD');
             // параметры: nominal (CNT_NOM), nominal (CNT_TT3), prims для LVL, goodscode, prims для WHERE
             expect(query.mock.calls[0][1]).toEqual([
                 1, 1,
@@ -574,7 +622,7 @@ describe('Trade2006InvoiceService', () => {
             expect(res).toEqual([{ ki: 'KI-3' }, { ki: 'KI-1' }]);
             const sql = query.mock.calls[0][0];
             expect(sql).toContain('m.REALPRICEFCODE IS NULL');
-            expect(sql).toContain('m.TRANSFER_TYPE IN (2, 3)');
+            expect(sql).toContain('(m.TRANSFER_TYPE = 2 OR (m.TRANSFER_TYPE = 3 AND m.STATUS = 5))');
             expect(sql).toContain('COALESCE(m.QUANTITY, 1) = ?');
             expect(sql).toContain('ORDER BY m.TRANSFER_TYPE DESC');
             expect(query.mock.calls[0][1]).toEqual([100, 5]);
@@ -805,6 +853,72 @@ describe('Trade2006InvoiceService', () => {
             get.mockImplementation((key: string, def?: any) => (key === 'MARK_CODES_ENABLED' ? false : def));
             const res = await service.getAttachedMarkCodesByScode(50, null);
             expect(res).toEqual([]);
+            expect(query).not.toHaveBeenCalled();
+        });
+
+        it('getMarkCodesStateByScode — без фильтра по TT: слою 2 нужны и TT=2, и RETIRE_REASON', async () => {
+            get.mockImplementation((key: string, def?: any) => (key === 'MARK_CODES_ENABLED' ? true : def));
+            query.mockResolvedValueOnce([
+                { KI: 'A', STATUS: 5, TRANSFER_TYPE: 3, RETIRE_REASON: null, KM_FULL: 'KM-A' },
+                { KI: 'B', STATUS: 6, TRANSFER_TYPE: 2, RETIRE_REASON: 3, KM_FULL: null },
+            ]);
+            const res = await service.getMarkCodesStateByScode(50, null);
+            expect(res).toEqual([
+                { ki: 'A', status: 5, transferType: 3, retireReason: null, kmFull: 'KM-A' },
+                { ki: 'B', status: 6, transferType: 2, retireReason: 3, kmFull: null },
+            ]);
+            const sql = query.mock.calls[0][0];
+            expect(sql).toContain('JOIN REALPRICE');
+            expect(sql).not.toContain('TRANSFER_TYPE =');
+            expect(query.mock.calls[0][1]).toEqual([50]);
+        });
+
+        it('getMarkCodesStateByScode — MARK_CODES_ENABLED=false → [] без запроса', async () => {
+            get.mockImplementation((key: string, def?: any) => (key === 'MARK_CODES_ENABLED' ? false : def));
+            expect(await service.getMarkCodesStateByScode(50, null)).toEqual([]);
+            expect(query).not.toHaveBeenCalled();
+        });
+
+        it('findStuckMarkCodes — TT=2/3 в обороте на счёте вне работы, счета в подборке исключены', async () => {
+            get.mockImplementation((key: string, def?: any) => (key === 'MARK_CODES_ENABLED' ? true : def));
+            query.mockResolvedValueOnce([
+                {
+                    KI: 'A',
+                    GOODSCODE: 444,
+                    STATUS: 5,
+                    TRANSFER_TYPE: 3,
+                    SCODE: 91933,
+                    PRIM: '33261943-0361-1 закрыт',
+                    S_STATUS: 5,
+                    DATA: new Date('2026-08-01'),
+                },
+            ]);
+            const res = await service.findStuckMarkCodes(3, null);
+            expect(res).toEqual([
+                {
+                    ki: 'A',
+                    goodscode: '444',
+                    status: 5,
+                    transferType: 3,
+                    scode: 91933,
+                    prim: '33261943-0361-1 закрыт',
+                    invoiceStatus: 5,
+                    invoiceDate: new Date('2026-08-01'),
+                },
+            ]);
+            const sql = query.mock.calls[0][0];
+            expect(sql).toContain('m.TRANSFER_TYPE IN (2, 3)');
+            expect(sql).toContain('m.REALPRICEFCODE IS NULL');
+            expect(sql).toContain('m.STATUS = 5 AND (s.SCODE IS NULL OR s.STATUS NOT IN (3, 4))');
+            // Зеркальный висяк: выведенный нашей продажей код на счёте-доноре.
+            expect(sql).toContain('m.STATUS = 6 AND m.RETIRE_REASON = 1 AND s.PRIM CONTAINING ?');
+            expect(query.mock.calls[0][1][0]).toBe('отмена');
+            expect(query.mock.calls[0][1][1]).toBeInstanceOf(Date);
+        });
+
+        it('findStuckMarkCodes — MARK_CODES_ENABLED=false → [] без запроса', async () => {
+            get.mockImplementation((key: string, def?: any) => (key === 'MARK_CODES_ENABLED' ? false : def));
+            expect(await service.findStuckMarkCodes(3, null)).toEqual([]);
             expect(query).not.toHaveBeenCalled();
         });
 

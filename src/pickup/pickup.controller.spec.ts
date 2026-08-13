@@ -8,8 +8,13 @@ import { InvoiceDto } from '../invoice/dto/invoice.dto';
 
 describe('PickupController', () => {
     let controller: PickupController;
-    const invoiceService = { update: jest.fn(), pickupInvoice: jest.fn() };
-    const markScan = { isReadyToFinish: jest.fn() };
+    const invoiceService = {
+        update: jest.fn(),
+        pickupInvoice: jest.fn(),
+        findByPosting: jest.fn(),
+        isPickedUp: jest.fn(),
+    };
+    const markScan = { isReadyToFinish: jest.fn(), assertLive: jest.fn() };
     const orderService = {
         submitFbsMarkCodesForInvoice: jest.fn(),
         prepareFbsMarksForInvoice: jest.fn(),
@@ -22,7 +27,12 @@ describe('PickupController', () => {
     beforeEach(async () => {
         invoiceService.update.mockReset();
         invoiceService.pickupInvoice.mockReset();
+        invoiceService.findByPosting.mockReset();
+        invoiceService.findByPosting.mockResolvedValue({ invoice, mark: '', cancelled: false, closed: false });
+        invoiceService.isPickedUp.mockReset();
+        invoiceService.isPickedUp.mockResolvedValue(true);
         markScan.isReadyToFinish.mockReset();
+        markScan.assertLive.mockReset();
         orderService.submitFbsMarkCodesForInvoice.mockReset();
         orderService.prepareFbsMarksForInvoice.mockReset();
         orderService.getShipmentLabelForInvoice.mockReset();
@@ -112,12 +122,40 @@ describe('PickupController', () => {
             expect(invoiceService.pickupInvoice).not.toHaveBeenCalled();
         });
 
-        it('ready=true → pickupInvoice, { isSuccess: true }', async () => {
+        it('ready=true → pickupInvoice, ответ по фактическому состоянию счёта', async () => {
             markScan.isReadyToFinish.mockResolvedValueOnce(true);
             invoiceService.pickupInvoice.mockResolvedValueOnce(undefined);
+            invoiceService.findByPosting.mockResolvedValue({
+                invoice: { ...invoice, status: 4 },
+                mark: '',
+                cancelled: false,
+                closed: false,
+            });
+            invoiceService.isPickedUp.mockResolvedValueOnce(true);
             const r = await controller.pick(remarkDto as any);
             expect(invoiceService.pickupInvoice).toHaveBeenCalledWith(invoice, null);
-            expect(r).toEqual({ isSuccess: true });
+            expect(r).toEqual({ isSuccess: true, status: 4, picked: true });
+        });
+
+        it('подбор не сработал → isSuccess=false, а не всегдашнее true', async () => {
+            markScan.isReadyToFinish.mockResolvedValueOnce(true);
+            invoiceService.pickupInvoice.mockResolvedValueOnce(undefined);
+            invoiceService.findByPosting.mockResolvedValue({
+                invoice: { ...invoice, status: 3 },
+                mark: '',
+                cancelled: false,
+                closed: false,
+            });
+            invoiceService.isPickedUp.mockResolvedValueOnce(false);
+            const r = await controller.pick(remarkDto as any);
+            expect(r).toEqual({ isSuccess: false, status: 3, picked: false });
+        });
+
+        it('счёт отменён → гейт не пускает, подбора нет', async () => {
+            markScan.assertLive.mockRejectedValueOnce(new Error('Счёт отменён маркетплейсом'));
+            await expect(controller.pick(remarkDto as any)).rejects.toThrow('Счёт отменён маркетплейсом');
+            expect(markScan.isReadyToFinish).not.toHaveBeenCalled();
+            expect(invoiceService.pickupInvoice).not.toHaveBeenCalled();
         });
     });
 

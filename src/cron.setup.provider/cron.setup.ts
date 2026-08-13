@@ -138,19 +138,64 @@ export const cronConfig: Record<string, CronSetup> = {
             },
         },
     },
+    /**
+     * Сдвинут на +2 мин от observeFbsWideWindow: оба крона кормят один runner
+     * (общий буфер писем и потолок решений), одновременный старт — flush одного
+     * забирает письма и сбрасывает потолок другого.
+     */
     checkNewOrders: {
+        production: {
+            enabled: true,
+            settings: {
+                time: '0 2-57/5 * * * *',
+            },
+        },
+        development: {
+            enabled: false,
+            settings: {
+                time: '0 2-57/5 * * * *',
+            },
+        },
+    },
+    /**
+     * Суточный прогон FBO: отмены (окно 90 дней) и доставка. Руками — GET /order/update-ozonfbo.
+     * 04:03 — между пятиминутками (observe в :00/:05, checkNewOrders в :02/:07):
+     * тоже кормит runner, стартовать с ними в одну секунду нельзя.
+     */
+    checkFboOrdersDaily: {
+        production: {
+            enabled: true,
+            settings: {
+                time: '0 3 4 * * *',
+            },
+        },
+        development: false,
+    },
+    /**
+     * Наблюдение за расширенным окном FBS (итерация 2): ничего не делает, только пишет в лог.
+     * На dev выключено — кабинет и база там боевые, лишние запросы к Ozon не нужны.
+     */
+    observeFbsWideWindow: {
         production: {
             enabled: true,
             settings: {
                 time: CronExpression.EVERY_5_MINUTES,
             },
         },
-        development: {
-            enabled: false,
+        development: false,
+    },
+    /**
+     * Еженедельный отчёт «подвисшие коды» (итерация 5): один SELECT плюс письмо.
+     * На dev выключен — база там боевая, лишние письма не нужны.
+     */
+    weeklyStuckCodes: {
+        production: {
+            enabled: true,
             settings: {
-                time: CronExpression.EVERY_5_MINUTES,
+                time: '0 0 8 * * 1',
             },
         },
+        development: false,
     },
     updateTransactions: {
         production: false,
@@ -160,24 +205,6 @@ export const cronConfig: Record<string, CronSetup> = {
                 time: '0 30 15 * * *',
             },
         },
-    },
-    checkCanceledFboOrders: {
-        production: {
-            enabled: true,
-            settings: {
-                time: CronExpression.EVERY_MINUTE,
-            },
-        },
-        development: false,
-    },
-    checkCanceledOzonOrders: {
-        production: {
-            enabled: true,
-            settings: {
-                time: CronExpression.EVERY_MINUTE,
-            },
-        },
-        development: false,
     },
     checkCanceledWbOrders: {
         production: {

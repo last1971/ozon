@@ -159,6 +159,31 @@ describe('FboMarkMigrationService', () => {
         expect(emit).not.toHaveBeenCalled();
     });
 
+    it('на доноре только выведенный код (cntDead>0): штуки едут, письмо «возврат проданного»', async () => {
+        findFboPodbposCandidates.mockResolvedValueOnce([
+            { podbposcode: 1001, scode: 100, realpricecode: 100, quanAvail: 2, prim: 'W', cntNom: 0, cntLive: 0, cntTt3: 0, cntDead: 1 },
+        ]);
+        findLiveMigratableCodes.mockResolvedValueOnce([]);
+
+        const shortages = await service.migrate(
+            [{ price: '1', offer_id: '777', quantity: 2 }],
+            ['W'],
+            [line(901, '777', 2)],
+            SCODE_B,
+            null,
+            POSTING,
+        );
+
+        expect(shortages).toEqual([]);
+        expect(migrateMarkCode).not.toHaveBeenCalled();
+        expect(migratePodbpos).toHaveBeenCalledWith(1001, SCODE_B, 901, '777', 2, null);
+        expect(emit).toHaveBeenCalledWith(
+            'error.message',
+            expect.stringContaining('выведенный код'),
+            expect.stringContaining('unretire'),
+        );
+    });
+
     it('нет кандидатов → shortage на весь объём', async () => {
         findFboPodbposCandidates.mockResolvedValueOnce([]);
 

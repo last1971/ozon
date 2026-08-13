@@ -31,6 +31,7 @@ import { WithTransactions } from "../helpers/mixin/transaction.mixin";
 import { FboMigrationLinkDto } from "../posting.fbo/dto/fbo-migration-link.dto";
 import { InvoiceState } from '../helpers/accrual.distribution';
 import { OZON_INVOICE_CLOSED_SUFFIX, OZON_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
+import { InvoiceMatchDto } from '../invoice/dto/invoice.match.dto';
 
 @Injectable()
 export class Trade2006InvoiceService extends WithTransactions(class {}) implements IInvoice, ISuppliable {
@@ -131,6 +132,49 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         const res = await transaction.query(`SELECT * FROM S WHERE PRIM ${operator} ?`, [postingNumber], !t);
         return res.length > 0 ? InvoiceDto.map(res)[0] : null;
     }
+    /**
+     * Счёт по номеру отправления вместе с пометкой в `PRIM`.
+     *
+     * Предикат `PRIM = ? OR PRIM STARTING WITH (номер + пробел)` — ловит и переименованные
+     * счета (' отмена', ' отмена FBO', ' закрыт'), и при этом не цепляет чужие номера:
+     * `CONTAINING`/чистый префикс на проде врут — из 14 636 номеров 146 неоднозначны
+     * (расщеплённые заказы дают …-0026-1 и …-0026-11), 399 пар, и в 30 парах короткий
+     * номер имеет БОЛЬШИЙ SCODE, то есть порядок вставки не спасает.
+     *
+     * Дублей «два счёта на один номер» на проде нет (0 из 2953 проверенных), но если
+     * вдруг придут — точное совпадение приоритетнее переименованного.
+     */
+    async findByPosting(
+        posting: PostingDto | string,
+        t: FirebirdTransaction = null,
+    ): Promise<InvoiceMatchDto | null> {
+        const transaction = t ?? (await this.pool.getTransaction());
+        const postingNumber = typeof posting === 'string' ? posting : posting.posting_number;
+        const rows = await transaction.query(
+            'SELECT * FROM S WHERE PRIM = ? OR PRIM STARTING WITH ?',
+            [postingNumber, postingNumber + ' '],
+            !t,
+        );
+        if (!rows.length) return null;
+        const invoices = InvoiceDto.map(rows);
+        const exact = invoices.find((i) => (i.remark ?? '').trim() === postingNumber);
+        const invoice = exact ?? invoices[0];
+        if (invoices.length > 1) {
+            this.logger.warn(
+                `findByPosting ${postingNumber}: найдено ${invoices.length} счетов — ` +
+                    `взят ${invoice.id} (${invoices.map((i) => `${i.id}:${(i.remark ?? '').trim()}`).join(', ')})`,
+            );
+        }
+        const mark = (invoice.remark ?? '').trim().slice(postingNumber.length);
+        const cancelSuffixes: string[] = Object.values(OZON_ORDER_CANCELLATION_SUFFIX);
+        return {
+            invoice,
+            mark,
+            cancelled: cancelSuffixes.some((suffix) => mark.endsWith(suffix)),
+            closed: mark.endsWith(OZON_INVOICE_CLOSED_SUFFIX),
+        };
+    }
+
     async getByPostingNumbers(postingNumbers: string[]): Promise<InvoiceDto[]> {
         const invoices = flatten(
             await Promise.all(
@@ -556,16 +600,21 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
     }
 
     // Живой код к переносу: не отгружен фактически, не продан в розницу, не списан,
-    // передан маркету (TT=2 обычный FBO, TT=3 подвисший FBS).
+    // передан маркету. Гард несимметричный (итерация 6): у TT=2 STATUS всегда 6
+    // (УПД-2 выводит код самим фактом передачи) — плоское STATUS=5 убило бы их
+    // миграцию; а выведенный FBS-код (TT=3, STATUS=6) уезжать на новую FBO-продажу
+    // не должен — гейт вывода требует STATUS=5, товар был бы продан дважды,
+    // выведен один раз. Тот же гард стоит в MARKCODE_MIGRATE (37_fbs_sold_unsold_return.sql).
     private static readonly LIVE_CODE_FILTER =
-        'm.REALPRICEFCODE IS NULL AND m.SHOPLOGCODE IS NULL AND m.SPISID IS NULL AND m.TRANSFER_TYPE IN (2, 3)';
+        'm.REALPRICEFCODE IS NULL AND m.SHOPLOGCODE IS NULL AND m.SPISID IS NULL AND ' +
+        '(m.TRANSFER_TYPE = 2 OR (m.TRANSFER_TYPE = 3 AND m.STATUS = 5))';
 
     async findFboPodbposCandidates(
         goodscode: string,
         prims: string[],
         nominal: number,
         transaction: FirebirdTransaction = null,
-    ): Promise<{ podbposcode: number; scode: number; realpricecode: number; quanAvail: number; prim: string; cntNom: number; cntLive: number; cntTt3: number }[]> {
+    ): Promise<{ podbposcode: number; scode: number; realpricecode: number; quanAvail: number; prim: string; cntNom: number; cntLive: number; cntTt3: number; cntDead: number }[]> {
         if (prims.length === 0) return [];
         const t = transaction ?? (await this.getTransaction());
         const attribute = this.getStorageSS() === 1 ? 'SHOP' : 'SKLAD';
@@ -579,6 +628,11 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             `(SELECT COUNT(*) FROM MARKCODES m WHERE m.REALPRICECODE = rp.REALPRICECODE AND ${live} AND COALESCE(m.QUANTITY, 1) = ?) AS CNT_NOM, ` +
             `(SELECT COUNT(*) FROM MARKCODES m WHERE m.REALPRICECODE = rp.REALPRICECODE AND ${live}) AS CNT_LIVE, ` +
             `(SELECT COUNT(*) FROM MARKCODES m WHERE m.REALPRICECODE = rp.REALPRICECODE AND ${live} AND m.TRANSFER_TYPE = 3 AND COALESCE(m.QUANTITY, 1) = ?) AS CNT_TT3, ` +
+            // Выведенный FBS-код на строке (TT=3, STATUS=6): в миграцию не идёт (гард),
+            // но его присутствие на доноре — сигнал «возврат проданного, код не оживлён».
+            '(SELECT COUNT(*) FROM MARKCODES m WHERE m.REALPRICECODE = rp.REALPRICECODE AND ' +
+            'm.REALPRICEFCODE IS NULL AND m.SHOPLOGCODE IS NULL AND m.SPISID IS NULL AND ' +
+            'm.TRANSFER_TYPE = 3 AND m.STATUS = 6) AS CNT_DEAD, ' +
             `${lvlCase} ` +
             'FROM PODBPOS pp ' +
             'JOIN S s ON s.SCODE = pp.SCODE ' +
@@ -594,6 +648,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             cntNom: Number(r.CNT_NOM) || 0,
             cntLive: Number(r.CNT_LIVE) || 0,
             cntTt3: Number(r.CNT_TT3) || 0,
+            cntDead: Number(r.CNT_DEAD) || 0,
             lvl: Number(r.LVL),
         }));
         // Ярусы: (а) есть живые коды нужного номинала (вперёд — с TT=3), (б) кодов нет, (в) чужой номинал.
@@ -743,6 +798,48 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         const t = transaction ?? (await this.getTransaction());
         await t.execute('EXECUTE PROCEDURE MARKCODE_DETACH_FOR_FBS (?, ?, ?)', [ki, rpc, s_s]);
         if (!transaction) await t.commit(true);
+    }
+
+    /**
+     * Вернуть коды счёта на склад: `TT 3→0` через `MARKCODE_RETURN_TO_STOCK`.
+     *
+     * `REALPRICECODE` процедура НЕ трогает — код остаётся привязанным к строке счёта.
+     * Это принципиально: при расформировании в Дельфи `CountAttachedMarks` отбирает
+     * ровно `TRANSFER_TYPE = 0` по `REALPRICECODE` и по этому счётчику заставляет
+     * кладовщика отсканировать коды из коробки. Снимешь привязку заодно — Дельфи
+     * расформирует молча, и содержимое посылки никто не сверит.
+     *
+     * @returns сколько кодов вернули.
+     */
+    async returnMarkCodesToStock(scode: number, transaction: FirebirdTransaction = null): Promise<number> {
+        const t = transaction ?? (await this.getTransaction());
+        try {
+            const codes = await this.getAttachedMarkCodesByScode(scode, t);
+            const ss = this.getStorageSS();
+            for (const code of codes) {
+                await this.markCodeReturnToStock(code.ki, ss, t);
+            }
+            if (!transaction) await t.commit(true);
+            return codes.length;
+        } catch (e) {
+            if (!transaction) await t.rollback(true).catch(() => undefined);
+            throw e;
+        }
+    }
+
+    /** TT 3→0 одного кода (MARKCODE_RETURN_TO_STOCK): привязка остаётся, партийный резерв снимается. */
+    async markCodeReturnToStock(ki: string, s_s: 0 | 1, transaction: FirebirdTransaction): Promise<void> {
+        await transaction.execute('EXECUTE PROCEDURE MARKCODE_RETURN_TO_STOCK (?, ?)', [ki, s_s]);
+    }
+
+    /** Вывод кода по нашей FBS-продаже: 5→6, RETIRE_REASON=1, RETIRED_AT (MARKCODE_FBS_SOLD). */
+    async markCodeFbsSold(ki: string, transaction: FirebirdTransaction): Promise<void> {
+        await transaction.execute('EXECUTE PROCEDURE MARKCODE_FBS_SOLD (?)', [ki]);
+    }
+
+    /** Откат вывода по нашей продаже: 6→5 (MARKCODE_FBS_UNSOLD, только RETIRE_REASON=1). */
+    async markCodeFbsUnsold(ki: string, transaction: FirebirdTransaction): Promise<void> {
+        await transaction.execute('EXECUTE PROCEDURE MARKCODE_FBS_UNSOLD (?)', [ki]);
     }
 
     async countFreeMarkCodesForGood(
@@ -909,6 +1006,99 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             goodscode: String(r.GOODSCODE),
             realpricecode: r.REALPRICECODE,
             quantity: Number(r.QUANTITY) || 1,
+        }));
+    }
+
+    /**
+     * Полное состояние кодов счёта — вход слоя 2 решающей таблицы.
+     *
+     * В отличие от `getAttachedMarkCodesByScode` не фильтрует по `TRANSFER_TYPE`:
+     * решение зависит и от TT=2 (передан по УПД-2 — трогать нельзя), и от STATUS
+     * с RETIRE_REASON (выведен нашей продажей или по другой причине).
+     */
+    async getMarkCodesStateByScode(
+        scode: number,
+        transaction: FirebirdTransaction = null,
+    ): Promise<{ ki: string; status: number; transferType: number; retireReason: number | null; kmFull: string | null }[]> {
+        // Маркировка выключена (магазин) — таблицы MARKCODES нет.
+        if (!isMarkCodesEnabled(this.configService)) return [];
+        const t = transaction ?? (await this.getTransaction());
+        const rows = await t.query(
+            'SELECT m.KI, m.STATUS, m.TRANSFER_TYPE, m.RETIRE_REASON, m.KM_FULL FROM MARKCODES m ' +
+                'JOIN REALPRICE rp ON rp.REALPRICECODE = m.REALPRICECODE ' +
+                'WHERE rp.SCODE = ?',
+            [scode],
+            !transaction,
+        );
+        return rows.map((r) => ({
+            ki: String(r.KI),
+            status: Number(r.STATUS),
+            transferType: Number(r.TRANSFER_TYPE),
+            retireReason: r.RETIRE_REASON === null || r.RETIRE_REASON === undefined ? null : Number(r.RETIRE_REASON),
+            kmFull: r.KM_FULL ?? null,
+        }));
+    }
+
+    /**
+     * Подвисшие коды: ушли маркетплейсу (TT=2/3) и остались в обороте (STATUS=5)
+     * на счёте, которого уже нет в работе, — либо выведены нашей FBS-продажей
+     * (STATUS=6, RETIRE_REASON=1) на счёте, ставшем донором: товар вернулся и
+     * уехал новой продажей, а код не оживлён (unretire не случился — например,
+     * возврат разобрал старый путь, который кодов не знает).
+     *
+     * Счета в статусах 3 и 4 (создан-не-собран, подобран) исключены: код с TT=3
+     * на таком счёте — это нормальная сборка FBS, а не висяк. Отгруженные,
+     * списанные и проданные в розницу коды отсеиваются теми же полями, что
+     * и в LIVE_CODE_FILTER. Индекс IDX_MC_TRANSFER_STATUS (TRANSFER_TYPE, STATUS).
+     *
+     * Возраст считается по дате СЧЁТА: STATUS_UPDATED_AT для этого не годится —
+     * триггер MARKCODES_BU двигает его только при смене STATUS, а у висяка STATUS
+     * как раз и не менялся с момента ввода в оборот.
+     */
+    async findStuckMarkCodes(
+        minAgeDays = 3,
+        transaction: FirebirdTransaction = null,
+    ): Promise<
+        {
+            ki: string;
+            goodscode: string;
+            status: number;
+            transferType: number;
+            scode: number | null;
+            prim: string | null;
+            invoiceStatus: number | null;
+            invoiceDate: Date | null;
+        }[]
+    > {
+        if (!isMarkCodesEnabled(this.configService)) return [];
+        const t = transaction ?? (await this.getTransaction());
+        const edge = DateTime.now().minus({ day: minAgeDays }).startOf('day').toJSDate();
+        const rows = await t.query(
+            'SELECT m.KI, m.GOODSCODE, m.STATUS, m.TRANSFER_TYPE, s.SCODE, s.PRIM, s.STATUS AS S_STATUS, s.DATA ' +
+                'FROM MARKCODES m ' +
+                'LEFT JOIN REALPRICE rp ON rp.REALPRICECODE = m.REALPRICECODE ' +
+                'LEFT JOIN S s ON s.SCODE = rp.SCODE ' +
+                'WHERE m.TRANSFER_TYPE IN (2, 3) ' +
+                'AND m.REALPRICEFCODE IS NULL AND m.SHOPLOGCODE IS NULL AND m.SPISID IS NULL ' +
+                // Висяк в обороте: STATUS=5 на счёте вне работы. Висяк выведенный:
+                // STATUS=6 нашей продажей (RETIRE_REASON=1) на счёте-доноре («отмена»
+                // в PRIM) — товар вернулся и уехал заново, а код никто не оживил.
+                'AND ((m.STATUS = 5 AND (s.SCODE IS NULL OR s.STATUS NOT IN (3, 4))) ' +
+                'OR (m.STATUS = 6 AND m.RETIRE_REASON = 1 AND s.PRIM CONTAINING ?)) ' +
+                'AND (s.DATA IS NULL OR s.DATA < ?) ' +
+                'ORDER BY s.DATA',
+            ['отмена', edge],
+            !transaction,
+        );
+        return rows.map((r) => ({
+            ki: String(r.KI),
+            goodscode: String(r.GOODSCODE),
+            status: Number(r.STATUS),
+            transferType: Number(r.TRANSFER_TYPE),
+            scode: r.SCODE ?? null,
+            prim: r.PRIM ?? null,
+            invoiceStatus: r.S_STATUS === null || r.S_STATUS === undefined ? null : Number(r.S_STATUS),
+            invoiceDate: r.DATA ?? null,
         }));
     }
 

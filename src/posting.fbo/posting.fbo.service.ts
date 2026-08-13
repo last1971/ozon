@@ -1,27 +1,26 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
 import { IOrderable } from '../interfaces/IOrderable';
 import { PostingDto } from '../posting/dto/posting.dto';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { ProductService } from '../product/product.service';
 import { DateTime } from 'luxon';
 import { ConfigService } from '@nestjs/config';
-import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { FirebirdTransaction } from 'ts-firebird';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 // import { Cron } from '@nestjs/schedule';
 import { isMarkCodesEnabled } from '../helpers';
 import { OZON_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { FboInvoiceCreatorService } from './fbo-invoice-creator.service';
+import { MpEventService } from '../mp-event/mp-event.service';
 
 @Injectable()
 export class PostingFboService implements IOrderable {
+    private logger = new Logger(PostingFboService.name);
     constructor(
         private productService: ProductService,
         private configService: ConfigService,
-        @Inject(INVOICE_SERVICE) private invoiceService: IInvoice,
-        private eventEmitter: EventEmitter2,
         private fboInvoiceCreator: FboInvoiceCreatorService,
+        private mpEvent: MpEventService,
     ) {}
 
     isFbo(): boolean {
@@ -54,8 +53,17 @@ export class PostingFboService implements IOrderable {
     }
 
     async list(status: string, day = 2): Promise<PostingDto[]> {
+        // У FBO фильтр по дате смены статуса мёртвый (обмерено: окна 1 ч, 24 ч, 72 ч и
+        // заведомо пустое дают одни и те же записи), поэтому инкрементально сузить выборку
+        // нечем — окно по дате СОЗДАНИЯ читается целиком каждый раз. Журнал здесь нужен
+        // ровно для одного: если суточный прогон пропускался, окно РАСШИРЯЕТСЯ до перекрытия
+        // простоя. Поэтому берём то из двух начал, которое раньше.
+        const byDefault = DateTime.now().minus({ day }).startOf('day');
+        const byJournal = DateTime.fromJSDate(
+            await this.mpEvent.windowStart('OZON', 'POSTING_FBO', day, PostingFboService.OVERLAP_DAYS),
+        );
         const filter = {
-            since: DateTime.now().minus({ day }).startOf('day').toJSDate(),
+            since: (byJournal < byDefault ? byJournal : byDefault).toJSDate(),
             to: DateTime.now().endOf('day').toJSDate(),
             statuses: [status],
         };
@@ -84,8 +92,26 @@ export class PostingFboService implements IOrderable {
             cursor = nextCursor;
         }
 
+        // Журнал: на нём стоит расширение окна при пропущенном прогоне.
+        for (const posting of all) {
+            try {
+                await this.mpEvent.record({
+                    service: 'OZON',
+                    kind: 'POSTING_FBO',
+                    extId: posting.posting_number,
+                    state: status,
+                    posting: posting.posting_number,
+                });
+            } catch (e) {
+                this.logger.warn(`журнал: ${posting.posting_number}/${status} не записан — ${e.message}`);
+            }
+        }
+
         return all;
     }
+
+    /** Нахлёст окна при отсчёте от журнала. */
+    private static readonly OVERLAP_DAYS = 1;
     async listCanceled(): Promise<PostingDto[]> {
         return this.list('cancelled', 90);
     }
@@ -94,35 +120,6 @@ export class PostingFboService implements IOrderable {
     }
     async listAwaitingPackaging(): Promise<PostingDto[]> {
         return this.list('awaiting_packaging');
-    }
-
-    // deprecated remove method and checkCanceledFboOrders
-    // @Cron('0 */5 * * * *', { name: 'checkCanceledFboOrders' })
-    async checkCanceledOrders(): Promise<void> {
-        const orders = await this.listCanceled();
-        const cancelled = [];
-        const transaction = await this.invoiceService.getTransaction();
-        try {
-            for (const order of orders) {
-                if (await this.invoiceService.isExists(order.posting_number, transaction)) {
-                    const invoice = await this.invoiceService.getByPosting(order, transaction);
-                    await this.invoiceService.pickupInvoice(invoice, transaction);
-                    await this.invoiceService.updatePrim(
-                        order.posting_number,
-                        order.posting_number + OZON_ORDER_CANCELLATION_SUFFIX.FBO,
-                        transaction,
-                    );
-                    cancelled.push({ prim: order.posting_number, offer_id: order.products[0].offer_id });
-                }
-            }
-            if (cancelled.length > 0) {
-                this.eventEmitter.emit('wb.order.content', 'Отменены Ozon FBO заказы', cancelled);
-            }
-            await transaction.commit(true);
-        } catch (e) {
-            await transaction.rollback(true);
-            console.error(e);
-        }
     }
 
     async getByPostingNumber(postingNumber: string): Promise<PostingDto> {

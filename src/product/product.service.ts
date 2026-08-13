@@ -110,15 +110,38 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
             }
         );
     }
+    /**
+     * Сбой ручки списка — исключение, а не пустой ответ.
+     *
+     * `OzonApiService.method` на ошибке возвращает `{ result: null, error }`, и вызывающий
+     * читает `postings || []`, то есть «Ozon упал» неотличимо от «отправлений нет»:
+     * прогон молча ничего не делает и никто об этом не узнаёт. Общий `method` не трогаем —
+     * на его мягком поведении держатся другие ветки (цены, карточки); здесь, на пути
+     * заказов, тишина недопустима.
+     */
+    private assertNoApiError(endpoint: string, response: any): any {
+        if (response?.error) {
+            const { service_message, message } = response.error;
+            throw new Error(`${endpoint}: ${message || service_message || 'ошибка Ozon'}`);
+        }
+        return response;
+    }
+
     // v4 вместо v3 (v3 отключается 31.08.2026): ответ плоский, offset сломан — только cursor.
     async orderList(filter: PostingsRequestDto, limit = 100, cursor = ''): Promise<PostingsDto> {
+        const endpoint = '/v4/posting/fbs/list';
         // v4 отдаёт цену объектом {amount, currency} вместо строки — приводим к прежнему виду
-        return normalizePostingsPrices(await this.ozonApiService.method('/v4/posting/fbs/list', { filter, limit, cursor }));
+        return normalizePostingsPrices(
+            this.assertNoApiError(endpoint, await this.ozonApiService.method(endpoint, { filter, limit, cursor })),
+        );
     }
     // v3 вместо v2 (v2 отключается 31.08.2026): ответ плоский, курсор вместо offset, limit ≤ 100.
     async orderFboList(request: PostingsFboRequestDto): Promise<PostingsDto> {
+        const endpoint = '/v3/posting/fbo/list';
         // v3 отдаёт цену объектом {amount, currency} вместо строки — приводим к прежнему виду
-        return normalizePostingsPrices(await this.ozonApiService.method('/v3/posting/fbo/list', request));
+        return normalizePostingsPrices(
+            this.assertNoApiError(endpoint, await this.ozonApiService.method(endpoint, request)),
+        );
     }
     async getPrices(priceRequest: PriceRequestDto): Promise<ProductPriceListDto> {
         const options = {
