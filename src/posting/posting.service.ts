@@ -159,6 +159,10 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         // держится правило «пришла отмена, а записи о delivering нет → товар ещё у нас».
         // Он же дедуплицирует решающую таблицу: вхолостую считаем только события,
         // которых в журнале ещё не было, то есть одно решение на одно состояние.
+        // Построчный лог наблюдения — только по НОВЫМ событиям: окно смены статуса
+        // скользящее (~2 суток), и без этого одна и та же посылка печаталась бы
+        // каждый пятиминутный прогон (живая простыня с магазина 13.08).
+        const fresh = new Set<string>();
         for (const { status, postings } of found) {
             for (const posting of postings) {
                 const event: MpEventDto = {
@@ -175,6 +179,7 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
                     this.logger.warn(`журнал: ${posting.posting_number}/${status} не записан — ${e.message}`);
                     continue;
                 }
+                if (isNew) fresh.add(`${status}/${posting.posting_number}`);
                 // Продажа исполняется (итерация 7): недоделанное delivered-событие
                 // ретраится каждым проходом, пока не помечено в журнале. Остальные
                 // статусы — только наблюдение по новым событиям, как в итерации 5.
@@ -216,7 +221,7 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         }
         this.mpRunner.flush('observeFbsWideWindow');
 
-        await this.logObservationTail(found, actionEdge, apiErrors);
+        await this.logObservationTail(found, actionEdge, apiErrors, fresh);
     }
 
     /**
@@ -240,6 +245,7 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         found: { status: string; postings: PostingDto[] }[],
         actionEdge: DateTime,
         apiErrors: number,
+        fresh: Set<string>,
     ): Promise<void> {
         const all = found.flatMap((f) => f.postings);
         if (!all.length) {
@@ -247,6 +253,19 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
                 `наблюдение (окно ${PostingService.WIDE_WINDOW_DAYS} дн, смена статуса за ` +
                     `${PostingService.LCSD_OVERLAP_DAYS} дн): пусто, ошибок API ${apiErrors}`,
             );
+            return;
+        }
+
+        // Состав счетов читаем только под новые события — в устоявшемся прогоне их ноль.
+        if (!fresh.size) {
+            for (const { status, postings } of found) {
+                const tail = postings.filter((p) => DateTime.fromJSDate(new Date(p.in_process_at as any)) < actionEdge);
+                this.logger.log(
+                    `наблюдение ${status}: всего ${postings.length}, в рабочем окне ` +
+                        `${postings.length - tail.length}, из хвоста ${tail.length}, новых 0`,
+                );
+            }
+            this.logger.log(`наблюдение: ошибок API ${apiErrors}`);
             return;
         }
 
@@ -258,16 +277,17 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
             // in_process_at приходит строкой ISO, но в тестах и старых записях бывает Date —
             // fromJSDate(new Date(...)) переваривает оба.
             const tail = postings.filter((p) => DateTime.fromJSDate(new Date(p.in_process_at as any)) < actionEdge);
+            const freshHere = postings.filter((p) => fresh.has(`${status}/${p.posting_number}`));
             this.logger.log(
                 `наблюдение ${status}: всего ${postings.length}, в рабочем окне ` +
-                    `${postings.length - tail.length}, из хвоста ${tail.length}`,
+                    `${postings.length - tail.length}, из хвоста ${tail.length}, новых ${freshHere.length}`,
             );
-            for (const posting of postings) {
+            for (const posting of freshHere) {
                 const invoice = byRemark.get(posting.posting_number);
                 this.logger.log(
                     `наблюдение ${status} ${posting.posting_number}: ` +
                         (invoice
-                            ? `счёт ${invoice.id} статус ${invoice.status}, кодов ${marks.get(invoice.id) ?? 0}`
+                            ? `счёт №${invoice.number ?? '?'} (SCODE ${invoice.id}) статус ${invoice.status}, кодов ${marks.get(invoice.id) ?? 0}`
                             : 'счёта нет') +
                         (tail.includes(posting) ? ', из хвоста' : ''),
                 );
