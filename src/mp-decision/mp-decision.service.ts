@@ -223,6 +223,20 @@ export class MpDecisionService {
         }
 
         if (state === 'ReceivedBySeller') {
+            // Счёт уже расформирован (STATUS=0) — человек принял возврат до нас
+            // (живой случай: хвост первого прогона поднял 5 давно разобранных).
+            // Письмо тут — шум; коды при этом смотрим как обычно (слой 2 сам
+            // зашумит, если на счёте что-то осталось).
+            if (invoice.status === 0) {
+                return this.build(
+                    input,
+                    'return/received-by-seller/already-received',
+                    'none',
+                    false,
+                    'счёт уже расформирован — приём завершён до нас',
+                    this.decideCodesOnReturn(input, 'ReceivedBySeller'),
+                );
+            }
             return this.build(
                 input,
                 'return/received-by-seller',

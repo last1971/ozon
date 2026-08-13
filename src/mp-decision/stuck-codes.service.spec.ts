@@ -21,6 +21,7 @@ describe('StuckCodesService — еженедельный отчёт «подви
         status: 5,
         transferType: 3,
         scode: 91933,
+        invoiceNumber: 5577,
         prim: '33261943-0361-1 закрыт',
         invoiceStatus: 5,
         invoiceDate: new Date(Date.now() - 10 * 24 * 3600 * 1000),
@@ -67,7 +68,7 @@ describe('StuckCodesService — еженедельный отчёт «подви
         expect(subject).toBe('Подвисшие коды: 1');
         expect(body).toContain('0100400000013930215fajB');
         expect(body).toContain('TT=3');
-        expect(body).toContain('счёт 91933');
+        expect(body).toContain('счёт №5577 (SCODE 91933)');
         expect(body).toContain('возраст 10 дн');
     });
 

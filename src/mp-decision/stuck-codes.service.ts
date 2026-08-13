@@ -74,7 +74,8 @@ export class StuckCodesService {
                 : null;
             return (
                 `${row.ki} — товар ${row.goodscode}, TT=${row.transferType}, STATUS=${row.status}` +
-                `, счёт ${row.scode ?? 'нет'}${row.prim ? ` «${row.prim.trim()}»` : ''}` +
+                `, счёт ${row.scode ? `№${row.invoiceNumber ?? '?'} (SCODE ${row.scode})` : 'нет'}` +
+                `${row.prim ? ` «${row.prim.trim()}»` : ''}` +
                 `${row.invoiceStatus === null ? '' : ` (S.STATUS=${row.invoiceStatus})`}` +
                 `${age === null ? '' : `, возраст ${age} дн`}`
             );

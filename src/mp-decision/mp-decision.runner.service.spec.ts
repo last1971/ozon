@@ -25,7 +25,7 @@ describe('MpDecisionRunnerService', () => {
     const updatePrim = jest.fn();
 
     const match = (over: any = {}) => ({
-        invoice: { id: 91694, status: 3, remark: '72067989-0727-1' },
+        invoice: { id: 91694, number: 8144, status: 3, remark: '72067989-0727-1' },
         mark: '',
         cancelled: false,
         closed: false,
@@ -154,6 +154,9 @@ describe('MpDecisionRunnerService', () => {
 
         const [, , body] = emit.mock.calls[0];
         expect(body).not.toContain('бой сейчас делает донора сразу');
+        // шапка честная: флаги включены, исполнять было нечего — не «ВХОЛОСТУЮ»
+        expect(body).toContain('исполнять было нечего');
+        expect(body).not.toContain('ВХОЛОСТУЮ');
     });
 
     it('нечего показать → письма нет', async () => {

@@ -16,6 +16,8 @@ export type DecisionEventKind = 'delivered' | 'cancel' | 'return';
 /** Состояние счёта в момент события. */
 export interface DecisionInvoice {
     id: number;
+    /** Номер счёта (S.NS) — люди в Trade ищут по нему, SCODE им ни о чём. */
+    number: number | null;
     /** S.STATUS: 3 — создан и не собран, 4 — подобран, 1 — донор/сформирован, 5 — закрыт. */
     status: number;
     /** Пометка после номера в PRIM: ' отмена', ' отмена FBO', ' закрыт'. */

@@ -655,7 +655,7 @@ describe('OrderService', () => {
 
         it('отмена FBS при STATUS=4, посылка У НАС: коды на склад (TT→0), привязка остаётся, суффикс « отмена»', async () => {
             const order = { posting_number: '456', isFbo: false } as any;
-            const invoice = { id: 777, status: 4 };
+            const invoice = { id: 777, number: 1777, status: 4 };
             mockInvoiceService.getByPosting.mockResolvedValue(invoice);
             mockInvoiceService.returnMarkCodesToStock = jest.fn().mockResolvedValue(3);
 
@@ -673,14 +673,14 @@ describe('OrderService', () => {
             expect(eventEmitterEmit).toHaveBeenCalledWith(
                 'error.message',
                 'Отменён собранный заказ — разобрать посылку',
-                expect.stringContaining('расформировать счёт 777'),
+                expect.stringContaining('расформировать счёт №1777'),
             );
             expect(eventEmitterEmit.mock.calls[0][2]).toContain('отсканировать коды (их 3)');
         });
 
         it('магазин: собранная отмена без кодов (returned=0) → в письме нет строки про сканирование', async () => {
             const order = { posting_number: '456', isFbo: false } as any;
-            mockInvoiceService.getByPosting.mockResolvedValue({ id: 777, status: 4 });
+            mockInvoiceService.getByPosting.mockResolvedValue({ id: 777, number: 1777, status: 4 });
             mockInvoiceService.returnMarkCodesToStock = jest.fn().mockResolvedValue(0);
 
             const letter = await service.cancelOrder(order, mockTransaction);
@@ -688,7 +688,7 @@ describe('OrderService', () => {
 
             const body = eventEmitterEmit.mock.calls[0][2];
             expect(body).not.toContain('отсканировать');
-            expect(body).toContain('расформировать счёт 777');
+            expect(body).toContain('расформировать счёт №1777');
         });
 
         it('отмена FBO кодов НЕ трогает — TT=3 нужен, чтобы код уехал миграцией с донора', async () => {
@@ -723,7 +723,7 @@ describe('OrderService', () => {
 
         it('отмена FBS при STATUS=4 статус руками не двигает — его ставит updatePrim', async () => {
             const order = { posting_number: '456', isFbo: false } as any;
-            mockInvoiceService.getByPosting.mockResolvedValue({ id: 777, status: 4 });
+            mockInvoiceService.getByPosting.mockResolvedValue({ id: 777, number: 1777, status: 4 });
             mockInvoiceService.returnMarkCodesToStock = jest.fn().mockResolvedValue(0);
 
             await service.cancelOrder(order, mockTransaction);
