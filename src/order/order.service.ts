@@ -384,7 +384,7 @@ export class OrderService {
             },
             flushers,
         );
-        this.mpRunner.flush(`cancelOrders/${service.constructor.name}`);
+        await this.mpRunner.flush(`cancelOrders/${service.constructor.name}`);
     }
 
     // flushers больше не нужен: возвраты дедуплицируются журналом, а не Redis-кешем.
@@ -474,7 +474,7 @@ export class OrderService {
                 this.cycleFailures.push(`returns ${returnItem.posting_number} (${event.state}) — ${e.message}`);
             }
         }
-        this.mpRunner.flush('processReturns');
+        await this.mpRunner.flush('processReturns');
     }
 
     /**

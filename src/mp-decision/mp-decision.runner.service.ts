@@ -1,6 +1,7 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Workbook } from 'exceljs';
 import { FirebirdTransaction } from 'ts-firebird';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { OZON_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
@@ -8,10 +9,20 @@ import { MpEventService } from '../mp-event/mp-event.service';
 import { MpDecisionService } from './mp-decision.service';
 import { Decision, DecisionInput, MpScheme } from './mp-decision.types';
 
+/** Строка xlsx-вложения для ГИС МТ: КИ + цена строки счёта. */
+export interface KiRow {
+    ki: string;
+    price: number | null;
+}
+
 /** Что реально сделано по решению — уходит в письмо рядом с самим решением. */
 export interface ExecOutcome {
     done: string[];
     failed: string[];
+    /** Коды, выведенные из оборота этим решением, — для вложения «вывод». */
+    retired: KiRow[];
+    /** Коды, возвращённые в оборот, — для вложения «возврат». */
+    unretired: KiRow[];
 }
 
 /**
@@ -158,7 +169,11 @@ export class MpDecisionRunnerService {
      * и приходит на ретрай следующим прогоном.
      */
     async execute(decision: Decision, transaction: FirebirdTransaction = null): Promise<ExecOutcome> {
-        const outcome: ExecOutcome = { done: [], failed: [] };
+        const outcome: ExecOutcome = { done: [], failed: [], retired: [], unretired: [] };
+        const kiRow = (ki: string): KiRow => ({
+            ki,
+            price: decision.input.codes.find((c) => c.ki === ki)?.price ?? null,
+        });
         const entry = this.pending.find((p) => p.decision === decision);
         if (entry) entry.outcome = outcome;
         // Отмены исполняет cancelOrder — здесь только наблюдение.
@@ -182,7 +197,10 @@ export class MpDecisionRunnerService {
             if (this.returnsEnabled()) {
                 for (const code of decision.layer2) {
                     if (code.actions.includes('unretire')) {
-                        await act(`возврат в оборот ${code.ki}`, () => this.invoiceService.markCodeFbsUnsold(code.ki, t));
+                        await act(`возврат в оборот ${code.ki}`, async () => {
+                            await this.invoiceService.markCodeFbsUnsold(code.ki, t);
+                            outcome.unretired.push(kiRow(code.ki));
+                        });
                     }
                 }
                 if (decision.layer1 === 'make-donor') {
@@ -200,7 +218,10 @@ export class MpDecisionRunnerService {
             if (this.salesEnabled()) {
                 for (const code of decision.layer2) {
                     if (code.actions.includes('retire')) {
-                        await act(`вывод из оборота ${code.ki}`, () => this.invoiceService.markCodeFbsSold(code.ki, t));
+                        await act(`вывод из оборота ${code.ki}`, async () => {
+                            await this.invoiceService.markCodeFbsSold(code.ki, t);
+                            outcome.retired.push(kiRow(code.ki));
+                        });
                     }
                 }
             }
@@ -209,15 +230,18 @@ export class MpDecisionRunnerService {
         } catch (e) {
             if (!transaction) await t.rollback(true).catch(() => undefined);
             // Транзакция откачена (нами или владельцем) — «СДЕЛАНО» до сбоя откатилось
-            // вместе с ней, письмо не должно рапортовать о несделанном.
+            // вместе с ней, письмо не должно ни рапортовать о несделанном,
+            // ни класть откаченные коды во вложения.
             outcome.done = [];
+            outcome.retired = [];
+            outcome.unretired = [];
             outcome.failed.push(`сбой исполнения, транзакция откачена, событие уйдёт в ретрай: ${e.message}`);
             throw e;
         }
     }
 
     /** Одно письмо на прогон вместо письма на событие. Пусто — молчим. */
-    flush(cycle: string): void {
+    async flush(cycle: string): Promise<void> {
         const entries = this.pending;
         const skipped = this.skipped;
         this.pending = [];
@@ -237,7 +261,40 @@ export class MpDecisionRunnerService {
             'error.message',
             `Решающая таблица (${cycle}): ${loud.length}`,
             this.buildLetter(loud, skipped),
+            await this.buildAttachments(entries),
         );
+    }
+
+    /**
+     * xlsx-вложения для ГИС МТ: «вывод из оборота» и «возврат в оборот» отдельными
+     * файлами. Формат выверен живыми загрузками 14.08: один КИ (38 символов, без
+     * крипто-хвоста и GS) на строку, БЕЗ строки заголовка — заголовок ГИС МТ
+     * принимает за код; вторым столбцом цена строки счёта, «1234.00» с точкой.
+     * Кладём только то, что реально сделано (откат чистит retired/unretired).
+     */
+    private async buildAttachments(
+        entries: { decision: Decision; outcome?: ExecOutcome }[],
+    ): Promise<{ filename: string; content: Buffer }[]> {
+        const retired = entries.flatMap((e) => e.outcome?.retired ?? []);
+        const unretired = entries.flatMap((e) => e.outcome?.unretired ?? []);
+        const attachments: { filename: string; content: Buffer }[] = [];
+        if (retired.length) {
+            attachments.push({ filename: 'вывод_из_оборота.xlsx', content: await this.buildKiXlsx(retired) });
+        }
+        if (unretired.length) {
+            attachments.push({ filename: 'возврат_в_оборот.xlsx', content: await this.buildKiXlsx(unretired) });
+        }
+        return attachments;
+    }
+
+    private async buildKiXlsx(rows: KiRow[]): Promise<Buffer> {
+        const workbook = new Workbook();
+        const sheet = workbook.addWorksheet('Лист1');
+        for (const row of rows) {
+            // Цена строкой, а не числом: ГИС МТ ждёт «1234.00», Excel-число он бы показал как 1234.
+            sheet.addRow([row.ki, row.price === null ? '' : row.price.toFixed(2)]);
+        }
+        return Buffer.from(await workbook.xlsx.writeBuffer());
     }
 
     private countersToString(): string {

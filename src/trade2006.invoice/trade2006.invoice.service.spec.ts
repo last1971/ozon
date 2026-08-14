@@ -864,8 +864,8 @@ describe('Trade2006InvoiceService', () => {
             ]);
             const res = await service.getMarkCodesStateByScode(50, null);
             expect(res).toEqual([
-                { ki: 'A', status: 5, transferType: 3, retireReason: null, kmFull: 'KM-A' },
-                { ki: 'B', status: 6, transferType: 2, retireReason: 3, kmFull: null },
+                { ki: 'A', status: 5, transferType: 3, retireReason: null, kmFull: 'KM-A', price: null },
+                { ki: 'B', status: 6, transferType: 2, retireReason: 3, kmFull: null, price: null },
             ]);
             const sql = query.mock.calls[0][0];
             expect(sql).toContain('JOIN REALPRICE');

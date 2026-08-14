@@ -58,12 +58,17 @@ export class MailService {
     }
 
     @OnEvent('error.message', { async: true })
-    async errorMessage(subject: string, message: string): Promise<boolean> {
+    async errorMessage(
+        subject: string,
+        message: string,
+        attachments?: { filename: string; content: Buffer }[],
+    ): Promise<boolean> {
         return this.send({
             to: this.configService.get<string>('MAIL_LAST'),
             subject,
             template: 'error_message', // `.hbs` extension is appended automatically
             context: { message },
+            ...(attachments?.length ? { attachments } : {}),
         });
     }
 

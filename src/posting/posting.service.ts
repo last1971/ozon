@@ -222,7 +222,7 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
                 this.logger.warn(`добор доставленного из журнала не прошёл — ${e.message}`);
             }
         }
-        this.mpRunner.flush('observeFbsWideWindow');
+        await this.mpRunner.flush('observeFbsWideWindow');
 
         await this.logObservationTail(found, actionEdge, apiErrors, fresh);
     }

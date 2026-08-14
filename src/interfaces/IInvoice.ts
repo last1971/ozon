@@ -118,7 +118,15 @@ export interface IInvoice {
         scode: number,
         transaction: FirebirdTransaction,
     ): Promise<
-        { ki: string; status: number; transferType: number; retireReason: number | null; kmFull: string | null }[]
+        {
+            ki: string;
+            status: number;
+            transferType: number;
+            retireReason: number | null;
+            kmFull: string | null;
+            /** Цена строки счёта (с НДС) — уходит вторым столбцом в xlsx для ГИС МТ. */
+            price: number | null;
+        }[]
     >;
     /** Коды, ушедшие маркетплейсу и оставшиеся в обороте на счёте вне работы — еженедельный отчёт. */
     findStuckMarkCodes(

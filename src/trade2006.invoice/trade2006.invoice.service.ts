@@ -1019,12 +1019,14 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
     async getMarkCodesStateByScode(
         scode: number,
         transaction: FirebirdTransaction = null,
-    ): Promise<{ ki: string; status: number; transferType: number; retireReason: number | null; kmFull: string | null }[]> {
+    ): Promise<
+        { ki: string; status: number; transferType: number; retireReason: number | null; kmFull: string | null; price: number | null }[]
+    > {
         // Маркировка выключена (магазин) — таблицы MARKCODES нет.
         if (!isMarkCodesEnabled(this.configService)) return [];
         const t = transaction ?? (await this.getTransaction());
         const rows = await t.query(
-            'SELECT m.KI, m.STATUS, m.TRANSFER_TYPE, m.RETIRE_REASON, m.KM_FULL FROM MARKCODES m ' +
+            'SELECT m.KI, m.STATUS, m.TRANSFER_TYPE, m.RETIRE_REASON, m.KM_FULL, rp.PRICE FROM MARKCODES m ' +
                 'JOIN REALPRICE rp ON rp.REALPRICECODE = m.REALPRICECODE ' +
                 'WHERE rp.SCODE = ?',
             [scode],
@@ -1036,6 +1038,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             transferType: Number(r.TRANSFER_TYPE),
             retireReason: r.RETIRE_REASON === null || r.RETIRE_REASON === undefined ? null : Number(r.RETIRE_REASON),
             kmFull: r.KM_FULL ?? null,
+            price: r.PRICE === null || r.PRICE === undefined ? null : Number(r.PRICE),
         }));
     }
 
