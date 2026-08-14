@@ -136,9 +136,9 @@ describe('MpDecisionRunnerService', () => {
         const [, subject, body] = emit.mock.calls[0];
         expect(subject).toContain('Решающая таблица');
         expect(body).toContain('ВХОЛОСТУЮ');
-        expect(body).toContain('retire');
+        expect(body).toContain('вывести из оборота в ЧЗ');
         expect(body).toContain('KM_FULL: KM-1');
-        expect(body).toContain('delivered/normal: 2');
+        expect(body).toContain('2 — доставлен покупателю');
         // Возвраты выключены → шапка предупреждает: «ждём возврата» — план, а не бой.
         expect(body).toContain('бой сейчас делает донора сразу старым кодом');
         expect(service.getCounters()).toEqual({ 'delivered/normal': 2 });
@@ -217,11 +217,11 @@ describe('MpDecisionRunnerService', () => {
 
             expect(markCodeFbsSold).toHaveBeenCalledWith('KI-1', tx);
             expect(tx.commit).toHaveBeenCalled();
-            expect(outcome.done).toEqual(['retire KI-1']);
+            expect(outcome.done).toEqual(['вывод из оборота KI-1']);
 
             service.flush('observeFbsWideWindow');
             const [, , body] = emit.mock.calls[0];
-            expect(body).toContain('СДЕЛАНО: retire KI-1');
+            expect(body).toContain('СДЕЛАНО: вывод из оборота KI-1');
             expect(body).toContain('KM_FULL: KM-1');
         });
 
@@ -242,7 +242,7 @@ describe('MpDecisionRunnerService', () => {
             expect(markCodeFbsUnsold).toHaveBeenCalledWith('KI-1', tx);
             expect(updatePrim).toHaveBeenCalledWith('72067989-0727-1', '72067989-0727-1 отмена FBO', tx);
             expect(markCodeFbsUnsold.mock.invocationCallOrder[0]).toBeLessThan(updatePrim.mock.invocationCallOrder[0]);
-            expect(outcome.done).toEqual(['unretire KI-1', 'донор 72067989-0727-1']);
+            expect(outcome.done).toEqual(['возврат в оборот KI-1', 'донор 72067989-0727-1']);
         });
 
         it('итерация 8: ReceivedBySeller — unretire, затем TT 3→0; счёт не трогаем', async () => {
@@ -264,7 +264,7 @@ describe('MpDecisionRunnerService', () => {
                 markCodeReturnToStock.mock.invocationCallOrder[0],
             );
             expect(updatePrim).not.toHaveBeenCalled();
-            expect(outcome.done).toEqual(['unretire KI-1', 'TT 3->0 KI-1']);
+            expect(outcome.done).toEqual(['возврат в оборот KI-1', 'снятие с отгрузки KI-1']);
         });
 
         it('слои независимы: гард SP (ANY_EXCEPTION) не блокирует донора и уходит в письмо', async () => {
@@ -286,12 +286,12 @@ describe('MpDecisionRunnerService', () => {
             expect(updatePrim).toHaveBeenCalled();
             expect(tx.commit).toHaveBeenCalled();
             expect(outcome.failed).toEqual([
-                'unretire KI-1 — exception 1, ANY_EXCEPTION, КМ выведен не нашей продажей (RETIRE_REASON<>1)',
+                'возврат в оборот KI-1 — exception 1, ANY_EXCEPTION, КМ выведен не нашей продажей (RETIRE_REASON<>1)',
             ]);
 
             service.flush('processReturns');
             const [, , body] = emit.mock.calls[0];
-            expect(body).toContain('НЕ ПРОШЛО (разобрать): unretire KI-1 — exception 1, ANY_EXCEPTION');
+            expect(body).toContain('НЕ ПРОШЛО (разобрать): возврат в оборот KI-1 — exception 1, ANY_EXCEPTION');
         });
 
         it('настоящий сбой (без ANY_EXCEPTION) → откат, проброс наружу, в письме нет «СДЕЛАНО»', async () => {
@@ -317,7 +317,7 @@ describe('MpDecisionRunnerService', () => {
             service.flush('processReturns');
             const [, , body] = emit.mock.calls[0];
             // прошедший до сбоя unretire откатился — письмо не рапортует о нём как о сделанном
-            expect(body).not.toContain('СДЕЛАНО: unretire');
+            expect(body).not.toContain('СДЕЛАНО: возврат в оборот');
             expect(body).toContain('событие уйдёт в ретрай');
         });
 

@@ -15,6 +15,7 @@ import { SupplyDto } from '../supply/dto/supply.dto';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { SupplyPositionDto } from 'src/supply/dto/supply.position.dto';
 import { OzonApiService } from "../ozon.api/ozon.api.service";
+import { isShippedToOzon } from '../helpers/posting.shipped';
 import { ReturnsListDto } from './dto/returns.list.dto';
 import { ReturnDto } from './dto/return.dto';
 import { FbsPrepareDto, IMarkSubmittable, SubmitFailureDto, SubmitResultDto } from '../interfaces/IMarkSubmittable';
@@ -187,7 +188,9 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
                 if (!isNew && !saleLive) continue;
                 if (status === 'cancelled') {
                     // Схема FBS — по источнику события; отмены исполняет cancelOrder.
-                    await this.mpRunner.observePosting(posting.posting_number, 'FBS', 'cancel');
+                    // Признак отгрузки — из самого отправления, как в бою: журнал про
+                    // посылки, уехавшие до его старта, не знает и врал «лежит у нас».
+                    await this.mpRunner.observePosting(posting.posting_number, 'FBS', 'cancel', isShippedToOzon(posting));
                     continue;
                 }
                 if (status !== 'delivered') continue;

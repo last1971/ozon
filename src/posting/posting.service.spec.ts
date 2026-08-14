@@ -297,7 +297,7 @@ describe('PostingService', () => {
 
             await service.observeWideWindow();
 
-            expect(dryObservePosting).toHaveBeenCalledWith('123', 'FBS', 'cancel');
+            expect(dryObservePosting).toHaveBeenCalledWith('123', 'FBS', 'cancel', false);
             expect(dryObservePosting).toHaveBeenCalledWith('123', 'FBS', 'delivered');
             // awaiting_deliver и delivering — только наблюдение, решений по ним нет:
             // 2 отправления × 2 статуса, а не × 4
