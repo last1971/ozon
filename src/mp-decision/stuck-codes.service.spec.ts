@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { MpEventService } from '../mp-event/mp-event.service';
+import { Trade2006ChzService } from '../trade2006.chz/trade2006.chz.service';
 import { StuckCodesService } from './stuck-codes.service';
 
 describe('StuckCodesService — еженедельный отчёт «подвисшие коды»', () => {
@@ -12,6 +13,7 @@ describe('StuckCodesService — еженедельный отчёт «подви
     const emit = jest.fn();
     const listUnhandled = jest.fn();
     const listStatesForPosting = jest.fn();
+    const chzPending = jest.fn().mockResolvedValue([]);
     const markHandled = jest.fn();
     let markCodesEnabled = true;
 
@@ -42,6 +44,7 @@ describe('StuckCodesService — еженедельный отчёт «подви
                 { provide: ConfigService, useValue: { get: () => markCodesEnabled } },
                 { provide: EventEmitter2, useValue: { emit } },
                 { provide: MpEventService, useValue: { listUnhandled, listStatesForPosting, markHandled } },
+                { provide: Trade2006ChzService, useValue: { pending: chzPending } },
             ],
         }).compile();
         service = module.get(StuckCodesService);

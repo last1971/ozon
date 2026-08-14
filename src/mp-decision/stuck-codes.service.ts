@@ -6,6 +6,7 @@ import { DateTime } from 'luxon';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { isMarkCodesEnabled } from '../helpers/mark-codes.helper';
 import { MpEventService } from '../mp-event/mp-event.service';
+import { Trade2006ChzService } from '../trade2006.chz/trade2006.chz.service';
 import { CLAIM_RETURN_STATES, LOST_RETURN_STATES } from './mp-decision.types';
 
 /**
@@ -42,6 +43,7 @@ export class StuckCodesService {
         private configService: ConfigService,
         private eventEmitter: EventEmitter2,
         private mpEvent: MpEventService,
+        private chzDb: Trade2006ChzService,
     ) {}
 
     @Cron('0 0 8 * * 1', { name: 'weeklyStuckCodes' })
@@ -63,6 +65,12 @@ export class StuckCodesService {
             this.eventEmitter.emit('error.message', 'Отчёт «подвисшие коды» не собран', e.message);
             return;
         }
+
+        // Забытая передача в ЧЗ: выведено у нас, но пачка не подтверждена дольше
+        // порога. Тот же pending-запрос, что у вкладки «ЧЗ» — точка правды одна.
+        await this.reportUnsentChz().catch((e) => {
+            this.logger.error(`отчёт «не передано в ЧЗ» не собран — ${e.message}`);
+        });
 
         this.logger.log(`подвисших кодов: ${rows.length}`);
         if (!rows.length) return;
@@ -94,6 +102,33 @@ export class StuckCodesService {
                 `Старше ${StuckCodesService.MIN_AGE_DAYS} дн.`,
                 '',
                 ...lines,
+            ].join('\n'),
+        );
+    }
+
+    /**
+     * Страховка от забытого клика «Подтвердить» во вкладке «ЧЗ»: коды, ждущие
+     * передачи дольше порога, — отдельным письмом раз в неделю. Ежедневную
+     * работу делает утренняя напоминалка (ChzService), здесь только хвост.
+     */
+    private async reportUnsentChz(): Promise<void> {
+        const edge = DateTime.now().minus({ days: StuckCodesService.MIN_AGE_DAYS });
+        const old = (kind: 'retire' | 'return') =>
+            this.chzDb.pending(kind).then((codes) =>
+                codes.filter((code) => code.since && DateTime.fromJSDate(new Date(code.since)) < edge),
+            );
+        const retire = await old('retire');
+        const giveBack = await old('return');
+        if (!retire.length && !giveBack.length) return;
+        this.eventEmitter.emit(
+            'error.message',
+            `ЧЗ: не передано дольше ${StuckCodesService.MIN_AGE_DAYS} дн — ${retire.length + giveBack.length} КИ`,
+            [
+                'Коды ждут передачи в ЧЗ дольше порога — похоже, пачка скачана, но не подтверждена,',
+                'или выгрузка в ГИС МТ забыта. Админка, вкладка «ЧЗ».',
+                '',
+                ...(retire.length ? [`Вывести из оборота: ${retire.length} КИ.`] : []),
+                ...(giveBack.length ? [`Вернуть в оборот: ${giveBack.length} КИ.`] : []),
             ].join('\n'),
         );
     }
