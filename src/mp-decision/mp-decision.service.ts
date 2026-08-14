@@ -84,7 +84,13 @@ export class MpDecisionService {
         // 0.71 % доставленных: заказ отменяли, счёт отдали в доноры, а отправление
         // всё-таки доставили — коды могли уехать миграцией на чужую продажу.
         if (invoice.cancelled) {
-            return this.build(input, 'delivered/marked-invoice', 'none', true, `счёт помечен «${invoice.mark.trim()}»`);
+            return this.build(
+                input,
+                'delivered/marked-invoice',
+                'none',
+                true,
+                `заказ доставлен, но счёт уже помечен «${invoice.mark.trim()}» и отдан в доноры — разобрать руками`,
+            );
         }
         return this.build(input, 'delivered/normal', 'none', false, 'закрытие по комиссиям идёт своим путём');
     }
@@ -95,7 +101,13 @@ export class MpDecisionService {
         // Гейт закрытого счёта сильнее всего остального (обе схемы): закрытая
         // продажа проведена и оплачена, откатывать её статусом нельзя.
         if (invoice.closed || invoice.status === 5) {
-            return this.build(input, 'cancel/closed-invoice', 'none', true, `счёт закрыт (STATUS=${invoice.status})`);
+            return this.build(
+                input,
+                'cancel/closed-invoice',
+                'none',
+                true,
+                'счёт уже закрыт (проведённая продажа) — отмену не применяем, разобрать руками',
+            );
         }
         if (invoice.cancelled) {
             return this.build(input, 'cancel/already-marked', 'none', false, 'счёт уже помечен отменой');
@@ -112,7 +124,7 @@ export class MpDecisionService {
                     'cancel-fbo/picked',
                     'none',
                     false,
-                    'ждём запись возврата — она решит: склад Ozon → донор, к нам → приём',
+                    'заказ был собран — ждём запись возврата: она скажет, лёг товар на склад Ozon (счёт в доноры) или едет к нам (приём)',
                 );
             }
             if (invoice.status === 3) {
@@ -121,10 +133,16 @@ export class MpDecisionService {
                     'cancel-fbo/unpicked',
                     'make-donor',
                     false,
-                    'недобор (подборки нет) — « отмена FBO» + STATUS=1 сразу',
+                    'заказ не был собран (товара не хватило) — счёт помечен « отмена FBO» и отдан в доноры',
                 );
             }
-            return this.build(input, 'cancel-fbo/status-unexpected', 'none', true, `состояние счёта вне набора: STATUS=${invoice.status}`);
+            return this.build(
+                input,
+                'cancel-fbo/status-unexpected',
+                'none',
+                true,
+                `счёт в неожиданном состоянии (STATUS=${invoice.status}) — разобрать руками`,
+            );
         }
 
         // «Передано» — только по статусу отправления у Ozon, не по FINISH_PICKUP.
@@ -140,7 +158,8 @@ export class MpDecisionService {
                 'cancel-fbs/transferred',
                 'none',
                 false,
-                'товар уехал к Ozon — ждём запись возврата: она решит, донор (ReturnedToOzon) или приём у нас (ReceivedBySeller)',
+                'посылка уже уехала к Ozon, у нас её нет — счёт не трогаем, ждём запись возврата: ' +
+                    'она скажет, лёг товар на склад Ozon (счёт в доноры) или едет к нам (приём)',
             );
         }
         if (invoice.status === 4) {
@@ -149,7 +168,7 @@ export class MpDecisionService {
                 'cancel-fbs/picked',
                 'cancel-fbs-picked',
                 true,
-                'собрано и лежит у нас — коды TT 3→0 (привязка остаётся), счёт « отмена» + STATUS=1, ' +
+                'посылка собрана и лежит у нас — счёт помечен « отмена» и возвращён из подбора; ' +
                     'кладовщику письмо: вскрыть посылку, расформировать счёт, отсканировать коды',
             );
         }
@@ -159,11 +178,17 @@ export class MpDecisionService {
                 'cancel-fbs/in-pick',
                 'cancel-fbs-unpicked',
                 true,
-                'кладовщик не начинал или в процессе — отвязать коды, снять подборку, ' +
-                    'счёт → STATUS=0 + « отмена», кладовщику сообщение «положите товар на полку»',
+                'заказ ещё не был собран — коды отвязаны, подборка снята, счёт помечен « отмена» и погашен; ' +
+                    'кладовщику сообщение: положите товар обратно на полку',
             );
         }
-        return this.build(input, 'cancel-fbs/status-unexpected', 'none', true, `состояние счёта вне набора: STATUS=${invoice.status}`);
+        return this.build(
+            input,
+            'cancel-fbs/status-unexpected',
+            'none',
+            true,
+            `счёт в неожиданном состоянии (STATUS=${invoice.status}) — разобрать руками`,
+        );
     }
 
     private decideReturn(input: DecisionInput): Decision {
@@ -173,19 +198,19 @@ export class MpDecisionService {
         // Заявочные статусы физики не имеют вовсе. Если их не отбрасывать, получится
         // «вернулось больше, чем заказано».
         if (CLAIM_RETURN_STATES.includes(state)) {
-            return this.build(input, 'return/claim-state', 'none', false, `заявочный статус ${state} — физики нет`);
+            return this.build(input, 'return/claim-state', 'none', false, `пока только заявка на возврат (${state}) — товар никуда не поехал`);
         }
         if (IN_TRANSIT_RETURN_STATES.includes(state)) {
             return this.build(input, 'return/in-transit', 'none', false, `возврат в пути (${state})`);
         }
         if (LOST_RETURN_STATES.includes(state)) {
-            return this.build(input, 'return/lost', 'none', true, `товар до нас не доедет (${state})`);
+            return this.build(input, 'return/lost', 'none', true, `товар до нас не доедет — списан или потерян у Ozon (${state})`);
         }
         // Частичность определяется только сравнением ЧИСЛА ЗАПИСЕЙ возврата с составом
         // отправления (по type не определяется: PartialReturn только у 2 из 8).
         // Автоматики под неё нет — 8 случаев за 180 дней дешевле разобрать письмом.
         if (input.partial) {
-            return this.build(input, 'return/partial', 'none', true, 'вернулась часть состава отправления');
+            return this.build(input, 'return/partial', 'none', true, 'вернулась только часть отправления — разобрать руками');
         }
 
         if (state === 'ReturnedToOzon') {
@@ -198,7 +223,7 @@ export class MpDecisionService {
                     'return/returned-to-ozon/closed-invoice',
                     'none',
                     true,
-                    `счёт закрыт (STATUS=${invoice.status}) — донора не делаем, возврат оформляется руками`,
+                    'счёт уже закрыт — донора не делаем, возврат оформляется руками',
                     layer2,
                 );
             }
@@ -217,7 +242,7 @@ export class MpDecisionService {
                 'return/returned-to-ozon',
                 'make-donor',
                 false,
-                'товар лёг на склад Ozon — счёт в доноры FBO-пула',
+                'товар лёг на склад Ozon — счёт помечен « отмена FBO» и отдан в доноры',
                 layer2,
             );
         }
@@ -242,12 +267,12 @@ export class MpDecisionService {
                 'return/received-by-seller',
                 'none',
                 true,
-                'товар приехал к нам — приём и расформирование руками (экран приёма возврата, итерация 9)',
+                'товар приехал к нам — принять и расформировать счёт руками',
                 this.decideCodesOnReturn(input, 'ReceivedBySeller'),
             );
         }
 
-        return this.build(input, 'return/unknown-state', 'none', true, `статус возврата вне набора: ${state}`);
+        return this.build(input, 'return/unknown-state', 'none', true, `статус возврата неизвестен (${state}) — разобрать руками`);
     }
 
     /**
@@ -273,27 +298,27 @@ export class MpDecisionService {
             // у них layer2 посчитан отдельно. Остальные статусы возврата кодов не касаются:
             // товар либо не ехал, либо не доедет, и письмо по нему уже ушло слоем 1.
             if (input.kind === 'return') {
-                return this.code(code, [], false, `по статусу возврата ${input.returnState} действий над кодом нет`);
+                return this.code(code, [], false, `по этому статусу возврата с кодом ничего не делаем`);
             }
             if (input.scheme === 'FBO') {
                 // НЕ трогаем TT: код обязан остаться TT=3 на доноре, иначе миграция
                 // (TRANSFER_TYPE IN (2,3)) его не перенесёт на счёт FBO-продажи.
-                return this.code(code, [], false, 'отмена FBO — TT не трогаем, код уезжает миграцией');
+                return this.code(code, [], false, 'остаётся за счётом, уедет вместе с товаром на следующую FBO-продажу');
             }
             if (input.transferred) {
                 // Отгруженная отмена ждёт записи возврата — код остаётся TT=3
                 // на счёте до тех пор; висяк без возврата ловит недельный отчёт.
-                return this.code(code, [], false, 'ждём запись возврата — код остаётся TT=3');
+                return this.code(code, [], false, 'остаётся за счётом до записи возврата');
             }
             if (layer1 === 'make-donor') {
                 // Код обязан остаться TT=3 на доноре — иначе миграция
                 // (TRANSFER_TYPE IN (2,3)) его не перенесёт на FBO-продажу.
-                return this.code(code, [], false, 'счёт в доноры — код остаётся TT=3, уедет миграцией на FBO-продажу');
+                return this.code(code, [], false, 'остаётся за счётом, уедет вместе с товаром на следующую FBO-продажу');
             }
             if (layer1 === 'cancel-fbs-unpicked') {
                 return code.transferType === 3
-                    ? this.code(code, ['detach'], false, 'отвязать (MARKCODE_DETACH_FOR_FBS) — как кнопка «отвязать последний»')
-                    : this.code(code, [], true, `состояние вне набора: TT=${code.transferType}, STATUS=${code.status}`);
+                    ? this.code(code, ['detach'], false, 'отвязан от счёта, снова свободен')
+                    : this.code(code, [], true, this.unexpectedCode(code));
             }
             if (layer1 === 'cancel-fbs-picked') {
                 return code.transferType === 3 && code.status === 5
@@ -301,22 +326,27 @@ export class MpDecisionService {
                           code,
                           ['return-to-stock'],
                           false,
-                          'TT 3→0 (MARKCODE_RETURN_TO_STOCK) — привязка остаётся, Дельфи потребует скан при расформировании',
+                          'больше не числится ушедшим на маркет; при расформировании счёта Дельфи потребует его скан',
                       )
-                    : this.code(code, [], true, `состояние вне набора: TT=${code.transferType}, STATUS=${code.status}`);
+                    : this.code(code, [], true, this.unexpectedCode(code));
             }
-            return this.code(code, [], true, `действий не определено: TT=${code.transferType}, STATUS=${code.status}`);
+            return this.code(code, [], true, this.unexpectedCode(code));
         });
     }
 
     private decideCodeOnDelivered(code: DecisionCode): CodeDecision {
         if (code.transferType === 3 && code.status === 5) {
-            return this.code(code, ['retire'], true, '5→6, RETIRE_REASON=1 + письмо на вывод из оборота (KM_FULL в письме)');
+            return this.code(code, ['retire'], true, 'продан — вывести из оборота в ЧЗ (полный код ниже)');
         }
         if (code.status === 6) {
-            return this.code(code, [], false, 'код уже выведен — идемпотентность');
+            return this.code(code, [], false, 'уже выведен из оборота — повтор, ничего не делаем');
         }
-        return this.code(code, [], true, `состояние вне набора: TT=${code.transferType}, STATUS=${code.status}`);
+        return this.code(code, [], true, this.unexpectedCode(code));
+    }
+
+    /** Код в состоянии, под которое нет строки таблицы, — в письмо с сырыми полями для разбора. */
+    private unexpectedCode(code: DecisionCode): string {
+        return `состояние кода неожиданное (TT=${code.transferType}, STATUS=${code.status}) — разобрать руками`;
     }
 
     /**
@@ -330,22 +360,22 @@ export class MpDecisionService {
             // пока Ozon не оформил возвратный документ, значит развести базу с ГИС МТ.
             // Это корректировка УПД-2 в ЭДО, а не операция над кодом.
             if (code.transferType === 2) {
-                return this.code(code, [], true, 'TT=2 — откат только корректировкой УПД-2 в ЭДО, руками');
+                return this.code(code, [], true, 'передавался по УПД-2 — откат только корректировкой УПД-2 в ЭДО, руками');
             }
             if (code.status === 6 && code.retireReason !== 1) {
                 return this.code(
                     code,
                     [],
                     true,
-                    `вернулся товар с кодом, выведенным по причине ${code.retireReason ?? 'null'} — причина автоматике неизвестна`,
+                    `вернулся товар с кодом, выведенным не продажей (причина ${code.retireReason ?? 'не указана'}) — разобрать руками`,
                 );
             }
             if (state === 'ReturnedToOzon') {
                 if (code.transferType === 3 && code.status === 6 && code.retireReason === 1) {
-                    return this.code(code, ['unretire'], false, '6→5 (MARKCODE_FBS_UNSOLD) — до того, как счёт станет донором');
+                    return this.code(code, ['unretire'], false, 'возвращён в оборот (продажа не состоялась)');
                 }
                 if (code.transferType === 3 && code.status === 5) {
-                    return this.code(code, [], false, 'код уже в обороте');
+                    return this.code(code, [], false, 'уже в обороте, ничего не делаем');
                 }
             } else {
                 if (code.transferType === 3 && code.status === 6 && code.retireReason === 1) {
@@ -353,14 +383,19 @@ export class MpDecisionService {
                         code,
                         ['unretire', 'return-to-stock'],
                         true,
-                        '6→5, затем TT 3→0 (REALPRICECODE не трогаем) + письмо «изначально FBS»',
+                        'возвращён в оборот и снят с отгрузки; окончательно освободится при скане на приёме возврата',
                     );
                 }
                 if (code.transferType === 3 && code.status === 5) {
-                    return this.code(code, ['return-to-stock'], true, 'TT 3→0 (REALPRICECODE не трогаем) + письмо «изначально FBS»');
+                    return this.code(
+                        code,
+                        ['return-to-stock'],
+                        true,
+                        'снят с отгрузки; окончательно освободится при скане на приёме возврата',
+                    );
                 }
             }
-            return this.code(code, [], true, `состояние вне набора: TT=${code.transferType}, STATUS=${code.status}`);
+            return this.code(code, [], true, this.unexpectedCode(code));
         });
     }
 

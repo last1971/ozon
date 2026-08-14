@@ -77,16 +77,26 @@ export class MpDecisionRunnerService {
     /**
      * Событие по отправлению (отмена или доставка). Схему передаёт вызывающий —
      * она определяется источником события, а не полем в базе.
+     *
+     * @param shipped признак «уехал к Ozon» из данных самого отправления
+     *        (`isShippedToOzon`) — тот же, которым пользуется бой. Журнал один
+     *        этого не знает: он ведётся с 13.08, и по посылкам, отгруженным
+     *        раньше, записи о delivering нет — наблюдение писало «собрано и лежит
+     *        у нас» про посылки, месяц как уехавшие (живые случаи с магазина:
+     *        0111131991-0169-1, 97684792-0208-1). Журнал остаётся страховкой,
+     *        когда у вызывающего отправления на руках нет.
      */
-    async observePosting(postingNumber: string, scheme: MpScheme, kind: 'cancel' | 'delivered'): Promise<Decision | null> {
+    async observePosting(
+        postingNumber: string,
+        scheme: MpScheme,
+        kind: 'cancel' | 'delivered',
+        shipped?: boolean,
+    ): Promise<Decision | null> {
         return this.observe(async () => {
             const transferred =
                 kind === 'cancel' && scheme === 'FBS'
-                    ? // Журнал ведётся с итерации 4: по отправлениям, уехавшим до его появления,
-                      // записи о delivering может не быть, и «не передан» окажется ложным.
-                      // Наблюдательный крон перечитывает окно 45 дней каждые 5 минут, так что
-                      // расхождение живёт до первого прохода после выката.
-                      await this.mpEvent.hasAnyState('OZON', 'POSTING_FBS', postingNumber, ['delivering', 'delivered'])
+                    ? shipped === true ||
+                      (await this.mpEvent.hasAnyState('OZON', 'POSTING_FBS', postingNumber, ['delivering', 'delivered']))
                     : undefined;
             return this.buildInput({ kind, scheme, postingNumber, transferred });
         });
@@ -172,7 +182,7 @@ export class MpDecisionRunnerService {
             if (this.returnsEnabled()) {
                 for (const code of decision.layer2) {
                     if (code.actions.includes('unretire')) {
-                        await act(`unretire ${code.ki}`, () => this.invoiceService.markCodeFbsUnsold(code.ki, t));
+                        await act(`возврат в оборот ${code.ki}`, () => this.invoiceService.markCodeFbsUnsold(code.ki, t));
                     }
                 }
                 if (decision.layer1 === 'make-donor') {
@@ -183,14 +193,14 @@ export class MpDecisionRunnerService {
                 }
                 for (const code of decision.layer2) {
                     if (code.actions.includes('return-to-stock')) {
-                        await act(`TT 3->0 ${code.ki}`, () => this.invoiceService.markCodeReturnToStock(code.ki, ss, t));
+                        await act(`снятие с отгрузки ${code.ki}`, () => this.invoiceService.markCodeReturnToStock(code.ki, ss, t));
                     }
                 }
             }
             if (this.salesEnabled()) {
                 for (const code of decision.layer2) {
                     if (code.actions.includes('retire')) {
-                        await act(`retire ${code.ki}`, () => this.invoiceService.markCodeFbsSold(code.ki, t));
+                        await act(`вывод из оборота ${code.ki}`, () => this.invoiceService.markCodeFbsSold(code.ki, t));
                     }
                 }
             }
@@ -308,8 +318,8 @@ export class MpDecisionRunnerService {
             ...(this.returnsEnabled()
                 ? []
                 : [
-                      'Возвраты выкл: «ждём запись возврата» (cancel-fbs/transferred, cancel-fbo/picked) — ' +
-                          'план таблицы, а НЕ бой: бой сейчас делает донора сразу старым кодом.',
+                      'Возвраты выкл: строки «ждём запись возврата» — план таблицы, ' +
+                          'а НЕ бой: бой сейчас делает донора сразу старым кодом.',
                   ]),
             ...(skipped
                 ? [
@@ -324,30 +334,69 @@ export class MpDecisionRunnerService {
         const tail = [
             '',
             'Счётчик веток с момента старта сервиса:',
-            ...Object.entries(this.getCounters()).map(([branch, count]) => `  ${branch}: ${count}`),
+            ...Object.entries(this.getCounters()).map(([branch, count]) => `  ${count} — ${this.branchRu(branch)}`),
         ];
         return [...head, ...body, ...tail].join('\n');
+    }
+
+    /**
+     * Русские названия веток — для строк письма и счётчика. Слаг ветки живёт
+     * в коде, тестах и логах; читателю письма он не показывается (просьба
+     * владельца 14.08: письмо было нечитаемым). Неизвестный слаг печатается как есть.
+     */
+    private static readonly BRANCH_RU: Record<string, string> = {
+        'invoice-not-found': 'счёт не найден',
+        'delivered/normal': 'доставлен покупателю',
+        'delivered/marked-invoice': 'доставлен, но счёт был отдан в доноры',
+        'cancel/closed-invoice': 'отмена по закрытому счёту',
+        'cancel/already-marked': 'повторная отмена — счёт уже помечен',
+        'cancel-fbo/picked': 'отмена FBO собранного — ждём запись возврата',
+        'cancel-fbo/unpicked': 'отмена FBO несобранного — счёт в доноры',
+        'cancel-fbo/status-unexpected': 'отмена FBO — счёт в неожиданном состоянии',
+        'cancel-fbs/transferred': 'отмена FBS отгруженного — ждём запись возврата',
+        'cancel-fbs/picked': 'отмена FBS собранного — разбор посылки кладовщиком',
+        'cancel-fbs/in-pick': 'отмена FBS до сборки — автоматика разобрала сама',
+        'cancel-fbs/status-unexpected': 'отмена FBS — счёт в неожиданном состоянии',
+        'return/claim-state': 'заявка на возврат (товар пока не поехал)',
+        'return/in-transit': 'возврат в пути',
+        'return/lost': 'возврат не доедет (списан или потерян у Ozon)',
+        'return/partial': 'частичный возврат',
+        'return/returned-to-ozon': 'возврат лёг на склад Ozon — счёт в доноры',
+        'return/returned-to-ozon/already-donor': 'возврат лёг на склад Ozon — счёт уже донор',
+        'return/returned-to-ozon/closed-invoice': 'возврат на склад Ozon по закрытому счёту',
+        'return/received-by-seller': 'возврат приехал к нам',
+        'return/received-by-seller/already-received': 'возврат приехал к нам — счёт уже расформирован',
+        'return/unknown-state': 'возврат в неизвестном статусе',
+    };
+
+    /** Статус счёта словами — семантика S.STATUS из Trade2006. */
+    private static readonly S_STATUS_RU: Record<number, string> = {
+        0: 'расформирован',
+        1: 'сформирован, не в работе',
+        2: 'резерв',
+        3: 'создан, ещё не собран',
+        4: 'собран',
+        5: 'закрыт',
+    };
+
+    private branchRu(branch: string): string {
+        return MpDecisionRunnerService.BRANCH_RU[branch] ?? branch;
     }
 
     private describe(entry: { decision: Decision; outcome?: ExecOutcome }): string {
         const { decision, outcome } = entry;
         const { input } = decision;
-        const event = [input.kind, input.scheme, input.returnState].filter(Boolean).join('/');
-        const lines = [`${input.postingNumber} — ${event} [${decision.branch}]`];
-        lines.push(
-            input.invoice
-                ? `  счёт №${input.invoice.number ?? '?'} (SCODE ${input.invoice.id}), STATUS=${input.invoice.status}` +
-                      `${input.invoice.mark ? `, пометка «${input.invoice.mark.trim()}»` : ''}`
-                : '  счёт не найден',
-        );
-        lines.push(`  слой 1: ${this.layer1Text(decision)} — ${decision.reason}`);
-        for (const code of decision.layer2) {
-            const state = input.codes.find((c) => c.ki === code.ki);
-            const actions = code.actions.length ? code.actions.join(' → ') : code.letter ? 'письмо' : 'ничего';
+        const lines = [`${input.postingNumber} — ${this.branchRu(decision.branch)}`];
+        if (input.invoice) {
+            const status = MpDecisionRunnerService.S_STATUS_RU[input.invoice.status] ?? `STATUS=${input.invoice.status}`;
             lines.push(
-                `  код ${code.ki} (TT=${state?.transferType}, STATUS=${state?.status}` +
-                    `${state?.retireReason ? `, RETIRE_REASON=${state.retireReason}` : ''}): ${actions} — ${code.note}`,
+                `  счёт №${input.invoice.number ?? input.invoice.id} — ${status}` +
+                    `${input.invoice.mark ? `, пометка «${input.invoice.mark.trim()}»` : ''}`,
             );
+        }
+        lines.push(`  ${decision.reason}`);
+        for (const code of decision.layer2) {
+            lines.push(`  код ${code.ki}: ${code.note}`);
             if (code.actions.includes('retire') && code.kmFull) lines.push(`    KM_FULL: ${code.kmFull}`);
         }
         if (outcome) {
@@ -356,18 +405,5 @@ export class MpDecisionRunnerService {
             if (!outcome.done.length && !outcome.failed.length) lines.push('  действий по флагам не было');
         }
         return lines.join('\n');
-    }
-
-    private layer1Text(decision: Decision): string {
-        switch (decision.layer1) {
-            case 'make-donor':
-                return 'счёт → STATUS=1 + « отмена FBO» (донор)';
-            case 'cancel-fbs-unpicked':
-                return 'отвязать коды, снять подборку, счёт → STATUS=0 + « отмена»';
-            case 'cancel-fbs-picked':
-                return 'коды TT 3→0, счёт → STATUS=1 + « отмена», кладовщику письмо на разбор посылки';
-            default:
-                return decision.letter ? 'ничего, письмо' : 'ничего';
-        }
     }
 }
