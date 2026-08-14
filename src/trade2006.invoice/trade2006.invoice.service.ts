@@ -127,7 +127,9 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
 
     async getByPosting(posting: PostingDto | string, t: FirebirdTransaction = null, containing: boolean = false): Promise<InvoiceDto> {
         const transaction = t ?? (await this.pool.getTransaction());
-        const postingNumber = typeof posting === 'string' ? posting : posting.posting_number;
+        // String() обязателен: Яндекс отдавал номер заказа ЧИСЛОМ, а числовой параметр
+        // не матчит VARCHAR PRIM — «счёта нет» на существующем счёте и дубли создания.
+        const postingNumber = String(typeof posting === 'string' ? posting : posting.posting_number);
         const operator = containing ? 'CONTAINING' : '=';
         const res = await transaction.query(`SELECT * FROM S WHERE PRIM ${operator} ?`, [postingNumber], !t);
         return res.length > 0 ? InvoiceDto.map(res)[0] : null;
@@ -149,7 +151,9 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         t: FirebirdTransaction = null,
     ): Promise<InvoiceMatchDto | null> {
         const transaction = t ?? (await this.pool.getTransaction());
-        const postingNumber = typeof posting === 'string' ? posting : posting.posting_number;
+        // String() обязателен: Яндекс отдавал номер заказа ЧИСЛОМ, а числовой параметр
+        // не матчит VARCHAR PRIM — «счёта нет» на существующем счёте и дубли создания.
+        const postingNumber = String(typeof posting === 'string' ? posting : posting.posting_number);
         const rows = await transaction.query(
             'SELECT * FROM S WHERE PRIM = ? OR PRIM STARTING WITH ?',
             [postingNumber, postingNumber + ' '],
