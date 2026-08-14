@@ -1,8 +1,8 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Workbook } from 'exceljs';
 import { FirebirdTransaction } from 'ts-firebird';
+import { writeRows } from '../helpers/spreadsheet.util';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { OZON_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
 import { MpEventService } from '../mp-event/mp-event.service';
@@ -287,14 +287,9 @@ export class MpDecisionRunnerService {
         return attachments;
     }
 
-    private async buildKiXlsx(rows: KiRow[]): Promise<Buffer> {
-        const workbook = new Workbook();
-        const sheet = workbook.addWorksheet('Лист1');
-        for (const row of rows) {
-            // Цена строкой, а не числом: ГИС МТ ждёт «1234.00», Excel-число он бы показал как 1234.
-            sheet.addRow([row.ki, row.price === null ? '' : row.price.toFixed(2)]);
-        }
-        return Buffer.from(await workbook.xlsx.writeBuffer());
+    private buildKiXlsx(rows: KiRow[]): Promise<Buffer> {
+        // Цена строкой, а не числом: ГИС МТ ждёт «1234.00», Excel-число он бы показал как 1234.
+        return writeRows(rows.map((row) => [row.ki, row.price === null ? '' : row.price.toFixed(2)]));
     }
 
     private countersToString(): string {
