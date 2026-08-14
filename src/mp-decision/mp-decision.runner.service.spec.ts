@@ -124,7 +124,9 @@ describe('MpDecisionRunnerService', () => {
         await expect(service.observePosting('72067989-0727-1', 'FBS', 'cancel')).resolves.toBeNull();
     });
 
-    it('flush шлёт одно письмо на прогон и считает ветки', async () => {
+    it('рутина продаж молчит: retire-решение письма не даёт, счётчик считает', async () => {
+        // Решение владельца 14.08: писем слишком много — рутину видно во вкладке
+        // «ЧЗ», в счётчиках и в утренней напоминалке, а не в пятиминутках.
         getMarkCodesStateByScode.mockResolvedValue([
             { ki: 'KI-1', status: 5, transferType: 3, retireReason: null, kmFull: 'KM-1' },
         ]);
@@ -132,23 +134,28 @@ describe('MpDecisionRunnerService', () => {
         await service.observePosting('72067989-0727-2', 'FBS', 'delivered');
         await service.flush('observeFbsWideWindow');
 
+        expect(emit).not.toHaveBeenCalled();
+        expect(service.getCounters()).toEqual({ 'delivered/normal': 2 });
+    });
+
+    it('письмо-ветка: одна на прогон, по-русски, со счётчиком', async () => {
+        findByPosting.mockResolvedValue(null); // delivered без счёта — «разобрать руками»
+        await service.observePosting('72067989-0727-1', 'FBS', 'delivered');
+        await service.flush('observeFbsWideWindow');
+
         expect(emit).toHaveBeenCalledTimes(1);
         const [, subject, body] = emit.mock.calls[0];
         expect(subject).toContain('Решающая таблица');
         expect(body).toContain('ВХОЛОСТУЮ');
-        expect(body).toContain('вывести из оборота в ЧЗ');
-        expect(body).toContain('KM_FULL: KM-1');
-        expect(body).toContain('2 — доставлен покупателю');
+        expect(body).toContain('счёта нет, а физика уже случилась');
+        expect(body).toContain('1 — счёт не найден');
         // Возвраты выключены → шапка предупреждает: «ждём возврата» — план, а не бой.
         expect(body).toContain('бой сейчас делает донора сразу старым кодом');
-        expect(service.getCounters()).toEqual({ 'delivered/normal': 2 });
     });
 
     it('флаг возвратов включён → предупреждение о старом пути из шапки исчезает', async () => {
         flags.MP_RETURN_ACTIONS_ENABLED = true;
-        getMarkCodesStateByScode.mockResolvedValue([
-            { ki: 'KI-1', status: 5, transferType: 3, retireReason: null, kmFull: 'KM-1' },
-        ]);
+        findByPosting.mockResolvedValue(null);
         await service.observePosting('72067989-0727-1', 'FBS', 'delivered');
         await service.flush('observeFbsWideWindow');
 
@@ -206,7 +213,7 @@ describe('MpDecisionRunnerService', () => {
             expect(markCodeFbsSold).not.toHaveBeenCalled();
         });
 
-        it('итерация 7: retire по флагу продажи — MARKCODE_FBS_SOLD в транзакции, в письме «СДЕЛАНО»', async () => {
+        it('итерация 7: retire по флагу продажи — MARKCODE_FBS_SOLD в транзакции, письмо молчит (рутина)', async () => {
             flags.MP_SALE_ACTIONS_ENABLED = true;
             findByPosting.mockResolvedValue(match({ invoice: { id: 91694, status: 4, remark: '72067989-0727-1' } }));
             getMarkCodesStateByScode.mockResolvedValue([codeState()]);
@@ -219,40 +226,9 @@ describe('MpDecisionRunnerService', () => {
             expect(tx.commit).toHaveBeenCalled();
             expect(outcome.done).toEqual(['вывод из оборота KI-1']);
 
+            // Успешная продажа — не повод для письма: КИ уже ждёт во вкладке «ЧЗ».
             await service.flush('observeFbsWideWindow');
-            const [, , body] = emit.mock.calls[0];
-            expect(body).toContain('СДЕЛАНО: вывод из оборота KI-1');
-            expect(body).toContain('KM_FULL: KM-1');
-        });
-
-        it('вложение «вывод_из_оборота.xlsx»: КИ + цена, без заголовка — формат ГИС МТ', async () => {
-            flags.MP_SALE_ACTIONS_ENABLED = true;
-            findByPosting.mockResolvedValue(match({ invoice: { id: 91694, status: 4, remark: '72067989-0727-1' } }));
-            getMarkCodesStateByScode.mockResolvedValue([codeState({ price: 1854 })]);
-            const decision = await service.observePosting('72067989-0727-1', 'FBS', 'delivered');
-            await service.execute(decision);
-
-            await service.flush('observeFbsWideWindow');
-            const [, , , attachments] = emit.mock.calls[0];
-            expect(attachments).toHaveLength(1);
-            expect(attachments[0].filename).toBe('вывод_из_оборота.xlsx');
-
-            const { Workbook } = await import('exceljs');
-            const workbook = new Workbook();
-            await workbook.xlsx.load(attachments[0].content);
-            const sheet = workbook.worksheets[0];
-            // без строки заголовка: КИ в первой же строке, цена «1854.00» строкой
-            expect(sheet.rowCount).toBe(1);
-            expect(sheet.getRow(1).getCell(1).value).toBe('KI-1');
-            expect(sheet.getRow(1).getCell(2).value).toBe('1854.00');
-        });
-
-        it('исполнения не было → письмо уходит без вложений', async () => {
-            getMarkCodesStateByScode.mockResolvedValue([codeState()]);
-            await service.observePosting('72067989-0727-1', 'FBS', 'delivered');
-            await service.flush('observeFbsWideWindow');
-            const [, , , attachments] = emit.mock.calls[0];
-            expect(attachments).toEqual([]);
+            expect(emit).not.toHaveBeenCalled();
         });
 
         it('итерация 8: ReturnedToOzon — unretire РАНЬШЕ донора', async () => {

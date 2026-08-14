@@ -201,9 +201,9 @@ describe('MpDecisionService — решающая таблица', () => {
     });
 
     describe('слой 2 — коды', () => {
-        it('доставка, TT=3 STATUS=5 → 5→6 и письмо на вывод из оборота', () => {
+        it('доставка, TT=3 STATUS=5 → 5→6 без письма: КИ ждёт во вкладке «ЧЗ» (решение 14.08)', () => {
             const decision = service.decide(input({ kind: 'delivered', codes: [code()] }));
-            expect(decision.layer2[0]).toMatchObject({ actions: ['retire'], letter: true, kmFull: 'KM_FULL' });
+            expect(decision.layer2[0]).toMatchObject({ actions: ['retire'], letter: false, kmFull: 'KM_FULL' });
         });
 
         it('доставка, код уже выведен → ничего: идемпотентность', () => {

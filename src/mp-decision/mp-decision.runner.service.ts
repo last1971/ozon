@@ -2,27 +2,16 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FirebirdTransaction } from 'ts-firebird';
-import { writeRows } from '../helpers/spreadsheet.util';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { OZON_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
 import { MpEventService } from '../mp-event/mp-event.service';
 import { MpDecisionService } from './mp-decision.service';
 import { Decision, DecisionInput, MpScheme } from './mp-decision.types';
 
-/** Строка xlsx-вложения для ГИС МТ: КИ + цена строки счёта. */
-export interface KiRow {
-    ki: string;
-    price: number | null;
-}
-
 /** Что реально сделано по решению — уходит в письмо рядом с самим решением. */
 export interface ExecOutcome {
     done: string[];
     failed: string[];
-    /** Коды, выведенные из оборота этим решением, — для вложения «вывод». */
-    retired: KiRow[];
-    /** Коды, возвращённые в оборот, — для вложения «возврат». */
-    unretired: KiRow[];
 }
 
 /**
@@ -169,11 +158,7 @@ export class MpDecisionRunnerService {
      * и приходит на ретрай следующим прогоном.
      */
     async execute(decision: Decision, transaction: FirebirdTransaction = null): Promise<ExecOutcome> {
-        const outcome: ExecOutcome = { done: [], failed: [], retired: [], unretired: [] };
-        const kiRow = (ki: string): KiRow => ({
-            ki,
-            price: decision.input.codes.find((c) => c.ki === ki)?.price ?? null,
-        });
+        const outcome: ExecOutcome = { done: [], failed: [] };
         const entry = this.pending.find((p) => p.decision === decision);
         if (entry) entry.outcome = outcome;
         // Отмены исполняет cancelOrder — здесь только наблюдение.
@@ -197,10 +182,7 @@ export class MpDecisionRunnerService {
             if (this.returnsEnabled()) {
                 for (const code of decision.layer2) {
                     if (code.actions.includes('unretire')) {
-                        await act(`возврат в оборот ${code.ki}`, async () => {
-                            await this.invoiceService.markCodeFbsUnsold(code.ki, t);
-                            outcome.unretired.push(kiRow(code.ki));
-                        });
+                        await act(`возврат в оборот ${code.ki}`, () => this.invoiceService.markCodeFbsUnsold(code.ki, t));
                     }
                 }
                 if (decision.layer1 === 'make-donor') {
@@ -218,10 +200,7 @@ export class MpDecisionRunnerService {
             if (this.salesEnabled()) {
                 for (const code of decision.layer2) {
                     if (code.actions.includes('retire')) {
-                        await act(`вывод из оборота ${code.ki}`, async () => {
-                            await this.invoiceService.markCodeFbsSold(code.ki, t);
-                            outcome.retired.push(kiRow(code.ki));
-                        });
+                        await act(`вывод из оборота ${code.ki}`, () => this.invoiceService.markCodeFbsSold(code.ki, t));
                     }
                 }
             }
@@ -230,11 +209,8 @@ export class MpDecisionRunnerService {
         } catch (e) {
             if (!transaction) await t.rollback(true).catch(() => undefined);
             // Транзакция откачена (нами или владельцем) — «СДЕЛАНО» до сбоя откатилось
-            // вместе с ней, письмо не должно ни рапортовать о несделанном,
-            // ни класть откаченные коды во вложения.
+            // вместе с ней, письмо не должно рапортовать о несделанном.
             outcome.done = [];
-            outcome.retired = [];
-            outcome.unretired = [];
             outcome.failed.push(`сбой исполнения, транзакция откачена, событие уйдёт в ретрай: ${e.message}`);
             throw e;
         }
@@ -257,39 +233,7 @@ export class MpDecisionRunnerService {
         );
         if (!loud.length && !skipped) return;
 
-        this.eventEmitter.emit(
-            'error.message',
-            `Решающая таблица (${cycle}): ${loud.length}`,
-            this.buildLetter(loud, skipped),
-            await this.buildAttachments(entries),
-        );
-    }
-
-    /**
-     * xlsx-вложения для ГИС МТ: «вывод из оборота» и «возврат в оборот» отдельными
-     * файлами. Формат выверен живыми загрузками 14.08: один КИ (38 символов, без
-     * крипто-хвоста и GS) на строку, БЕЗ строки заголовка — заголовок ГИС МТ
-     * принимает за код; вторым столбцом цена строки счёта, «1234.00» с точкой.
-     * Кладём только то, что реально сделано (откат чистит retired/unretired).
-     */
-    private async buildAttachments(
-        entries: { decision: Decision; outcome?: ExecOutcome }[],
-    ): Promise<{ filename: string; content: Buffer }[]> {
-        const retired = entries.flatMap((e) => e.outcome?.retired ?? []);
-        const unretired = entries.flatMap((e) => e.outcome?.unretired ?? []);
-        const attachments: { filename: string; content: Buffer }[] = [];
-        if (retired.length) {
-            attachments.push({ filename: 'вывод_из_оборота.xlsx', content: await this.buildKiXlsx(retired) });
-        }
-        if (unretired.length) {
-            attachments.push({ filename: 'возврат_в_оборот.xlsx', content: await this.buildKiXlsx(unretired) });
-        }
-        return attachments;
-    }
-
-    private buildKiXlsx(rows: KiRow[]): Promise<Buffer> {
-        // Цена строкой, а не числом: ГИС МТ ждёт «1234.00», Excel-число он бы показал как 1234.
-        return writeRows(rows.map((row) => [row.ki, row.price === null ? '' : row.price.toFixed(2)]));
+        this.eventEmitter.emit('error.message', `Решающая таблица (${cycle}): ${loud.length}`, this.buildLetter(loud, skipped));
     }
 
     private countersToString(): string {
@@ -339,15 +283,15 @@ export class MpDecisionRunnerService {
         };
     }
 
-    /** В письмо идёт то, что требует внимания: действие (сделанное или бы-сделанное) или письмо-ветка. */
+    /**
+     * В письмо идёт только «требует рук»: письмо-ветка или сбой исполнения.
+     * Рутина (продажи, доноры, возвраты кодов) молчит — её видно в счётчиках,
+     * журнале и на вкладке «ЧЗ»; ежедневный итог даёт утренняя напоминалка
+     * (решение владельца 14.08 — писем и файлов было слишком много).
+     */
     private isLoud(entry: { decision: Decision; outcome?: ExecOutcome }): boolean {
         const { decision, outcome } = entry;
-        return (
-            decision.letter ||
-            decision.layer1 !== 'none' ||
-            decision.layer2.some((code) => code.letter || code.actions.length > 0) ||
-            Boolean(outcome && (outcome.done.length || outcome.failed.length))
-        );
+        return decision.letter || decision.layer2.some((code) => code.letter) || Boolean(outcome?.failed.length);
     }
 
     private buildLetter(entries: { decision: Decision; outcome?: ExecOutcome }[], skipped: number): string {
@@ -449,7 +393,6 @@ export class MpDecisionRunnerService {
         lines.push(`  ${decision.reason}`);
         for (const code of decision.layer2) {
             lines.push(`  код ${code.ki}: ${code.note}`);
-            if (code.actions.includes('retire') && code.kmFull) lines.push(`    KM_FULL: ${code.kmFull}`);
         }
         if (outcome) {
             if (outcome.done.length) lines.push(`  СДЕЛАНО: ${outcome.done.join('; ')}`);

@@ -336,7 +336,8 @@ export class MpDecisionService {
 
     private decideCodeOnDelivered(code: DecisionCode): CodeDecision {
         if (code.transferType === 3 && code.status === 5) {
-            return this.code(code, ['retire'], true, 'продан — вывести из оборота в ЧЗ (полный код ниже)');
+            // Рутина: КИ попадает во вкладку «ЧЗ» и утреннюю напоминалку, письмо не нужно.
+            return this.code(code, ['retire'], false, 'продан — вывод из оборота в ЧЗ через вкладку «ЧЗ»');
         }
         if (code.status === 6) {
             return this.code(code, [], false, 'уже выведен из оборота — повтор, ничего не делаем');
