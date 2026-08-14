@@ -24,6 +24,17 @@ export async function loadRows(buffer: Buffer): Promise<string[][]> {
     return rows;
 }
 
+/**
+ * Пишет матрицу строк в xlsx-буфер: один лист, без стилей, что передал — то и в ячейках.
+ * Единственная реализация записи простых строк — парная к loadRows.
+ */
+export async function writeRows(rows: (string | number)[][], sheetName = 'Лист1'): Promise<Buffer> {
+    const workbook = new Excel.Workbook();
+    const sheet = workbook.addWorksheet(sheetName);
+    for (const row of rows) sheet.addRow(row);
+    return Buffer.from(await workbook.xlsx.writeBuffer());
+}
+
 /** Индекс столбца по совпадению заголовка (первая строка матрицы). -1 если не найден. */
 export function findColumnIndex(header: string[], names: string[]): number {
     return header.findIndex((h) => names.includes(h));

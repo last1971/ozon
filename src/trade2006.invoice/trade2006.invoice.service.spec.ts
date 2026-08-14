@@ -370,6 +370,14 @@ describe('Trade2006InvoiceService', () => {
             ]);
         });
 
+        it('числовой posting_number приводится к строке (Яндекс, дубли 14.08.2026)', async () => {
+            query.mockResolvedValueOnce([{ SCODE: 1, NS: 70441, PRIM: '60327314179', STATUS: 3 }]);
+            const match = await service.findByPosting({ posting_number: 60327314179 } as any);
+            expect(query.mock.calls[0][1]).toEqual(['60327314179', '60327314179 ']);
+            expect(match).not.toBeNull();
+            expect(match.mark).toBe('');
+        });
+
         it('счёта нет → null', async () => {
             query.mockResolvedValueOnce([]);
             expect(await service.findByPosting('нет-такого')).toBeNull();
@@ -864,8 +872,8 @@ describe('Trade2006InvoiceService', () => {
             ]);
             const res = await service.getMarkCodesStateByScode(50, null);
             expect(res).toEqual([
-                { ki: 'A', status: 5, transferType: 3, retireReason: null, kmFull: 'KM-A' },
-                { ki: 'B', status: 6, transferType: 2, retireReason: 3, kmFull: null },
+                { ki: 'A', status: 5, transferType: 3, retireReason: null, kmFull: 'KM-A', price: null },
+                { ki: 'B', status: 6, transferType: 2, retireReason: 3, kmFull: null, price: null },
             ]);
             const sql = query.mock.calls[0][0];
             expect(sql).toContain('JOIN REALPRICE');

@@ -36,6 +36,8 @@ export interface DecisionCode {
     /** RETIRE_REASON=1 — выведен нашей продажей; иное — вывод по другой причине, автоматика не откатывает. */
     retireReason: number | null;
     kmFull: string | null;
+    /** Цена строки счёта (с НДС) — вторым столбцом в xlsx-вложении для ГИС МТ. */
+    price?: number | null;
 }
 
 export interface DecisionInput {

@@ -127,7 +127,9 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
 
     async getByPosting(posting: PostingDto | string, t: FirebirdTransaction = null, containing: boolean = false): Promise<InvoiceDto> {
         const transaction = t ?? (await this.pool.getTransaction());
-        const postingNumber = typeof posting === 'string' ? posting : posting.posting_number;
+        // String() обязателен: Яндекс отдавал номер заказа ЧИСЛОМ, а числовой параметр
+        // не матчит VARCHAR PRIM — «счёта нет» на существующем счёте и дубли создания.
+        const postingNumber = String(typeof posting === 'string' ? posting : posting.posting_number);
         const operator = containing ? 'CONTAINING' : '=';
         const res = await transaction.query(`SELECT * FROM S WHERE PRIM ${operator} ?`, [postingNumber], !t);
         return res.length > 0 ? InvoiceDto.map(res)[0] : null;
@@ -149,7 +151,9 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         t: FirebirdTransaction = null,
     ): Promise<InvoiceMatchDto | null> {
         const transaction = t ?? (await this.pool.getTransaction());
-        const postingNumber = typeof posting === 'string' ? posting : posting.posting_number;
+        // String() обязателен: Яндекс отдавал номер заказа ЧИСЛОМ, а числовой параметр
+        // не матчит VARCHAR PRIM — «счёта нет» на существующем счёте и дубли создания.
+        const postingNumber = String(typeof posting === 'string' ? posting : posting.posting_number);
         const rows = await transaction.query(
             'SELECT * FROM S WHERE PRIM = ? OR PRIM STARTING WITH ?',
             [postingNumber, postingNumber + ' '],
@@ -1019,12 +1023,14 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
     async getMarkCodesStateByScode(
         scode: number,
         transaction: FirebirdTransaction = null,
-    ): Promise<{ ki: string; status: number; transferType: number; retireReason: number | null; kmFull: string | null }[]> {
+    ): Promise<
+        { ki: string; status: number; transferType: number; retireReason: number | null; kmFull: string | null; price: number | null }[]
+    > {
         // Маркировка выключена (магазин) — таблицы MARKCODES нет.
         if (!isMarkCodesEnabled(this.configService)) return [];
         const t = transaction ?? (await this.getTransaction());
         const rows = await t.query(
-            'SELECT m.KI, m.STATUS, m.TRANSFER_TYPE, m.RETIRE_REASON, m.KM_FULL FROM MARKCODES m ' +
+            'SELECT m.KI, m.STATUS, m.TRANSFER_TYPE, m.RETIRE_REASON, m.KM_FULL, rp.PRICE FROM MARKCODES m ' +
                 'JOIN REALPRICE rp ON rp.REALPRICECODE = m.REALPRICECODE ' +
                 'WHERE rp.SCODE = ?',
             [scode],
@@ -1036,6 +1042,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             transferType: Number(r.TRANSFER_TYPE),
             retireReason: r.RETIRE_REASON === null || r.RETIRE_REASON === undefined ? null : Number(r.RETIRE_REASON),
             kmFull: r.KM_FULL ?? null,
+            price: r.PRICE === null || r.PRICE === undefined ? null : Number(r.PRICE),
         }));
     }
 

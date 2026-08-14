@@ -64,7 +64,8 @@ describe('YandexOrderService', () => {
         expect(res).toEqual([
             {
                 in_process_at: DateTime.fromFormat('16-07-2023 11:35:08', 'dd-LL-y HH:mm:ss').toJSDate().toString(),
-                posting_number: 125,
+                // строго СТРОКА: числовой order.id ломал дедуп (дубли счетов 14.08.2026)
+                posting_number: '125',
                 products: [{ offer_id: '1111', price: 1.11, quantity: 6 }],
                 status: 'HZ',
             },

@@ -58,7 +58,10 @@ export class YandexOrderService implements IOrderable, OnModuleInit {
         const res = await this.yandexApi.method(`campaigns/${this.campaignId}/orders`, 'get', data);
         return (res.orders || []).map(
             (order): PostingDto => ({
-                posting_number: order.id,
+                // order.id у Яндекса — ЧИСЛО. Голым числом оно ломало весь дедуп:
+                // findByPosting не матчил VARCHAR PRIM числовым параметром, а Set кэша
+                // хранит строки — заказ пересоздавался каждый прогон (25 дублей 14.08).
+                posting_number: String(order.id),
                 status: order.substatus,
                 in_process_at: DateTime.fromFormat(order.creationDate, 'dd-LL-y HH:mm:ss').toJSDate().toString(),
                 products: order.items.map(
