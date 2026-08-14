@@ -69,7 +69,11 @@ describe('Trade2006ChzService', () => {
             .mockResolvedValueOnce([{ ID: 7 }]);
         const batch = await service.createBatch('retire');
         expect(batch).toEqual({ id: 7, codes: expect.any(Array) });
-        expect(execute.mock.calls[0]).toEqual(['INSERT INTO CHZ_BATCH (ID, KIND, CNT) VALUES (?, ?, ?)', [7, 'retire', 2], false]);
+        expect(execute.mock.calls[0]).toEqual([
+            'INSERT INTO CHZ_BATCH (ID, KIND, CNT, SFCODE) VALUES (?, ?, ?, ?)',
+            [7, 'retire', 2, null],
+            false,
+        ]);
         expect(execute.mock.calls[1][1]).toEqual([7, 'KI-1']);
         expect(execute.mock.calls[2][1]).toEqual([7, 'KI-2']);
         expect(commit).toHaveBeenCalled();
@@ -111,5 +115,59 @@ describe('Trade2006ChzService', () => {
     it('confirmBatch: пачки нет → null', async () => {
         query.mockResolvedValueOnce([]);
         expect(await service.confirmBatch(99)).toBeNull();
+    });
+
+    it('pending(retire_upd): тот же вывод, но TT=1 — по УПД, а не по продаже маркетплейса', async () => {
+        query.mockResolvedValueOnce([]);
+        await service.pending('retire_upd');
+        expect(query.mock.calls[0][0]).toContain(
+            'm.STATUS = 6 AND m.RETIRE_REASON = 1 AND m.TRANSFER_TYPE = 1 AND m.CHZ_SENT_AT IS NULL',
+        );
+    });
+
+    it('pendingDocs: группировка по УПД, цена берётся из строки документа', async () => {
+        query.mockResolvedValueOnce([
+            { SFCODE: 97542, NSF: 6558, DATA: null, SHORTNAME: '  ООО Ромашка ', CNT: 2, SINCE: null },
+        ]);
+        const docs = await service.pendingDocs();
+        const sql = query.mock.calls[0][0];
+        expect(sql).toContain('GROUP BY sf.SFCODE');
+        expect(sql).toContain('m.TRANSFER_TYPE = 1');
+        expect(docs).toEqual([
+            { sfcode: 97542, nsf: 6558, date: null, buyer: 'ООО Ромашка', cnt: 2, since: null },
+        ]);
+    });
+
+    it('createDocBatch: снимок кодов ОДНОЙ УПД, в пачку пишется её SFCODE', async () => {
+        query
+            .mockResolvedValueOnce([{ KI: 'KI-1', GOODSCODE: 1, PRICE: 100, NS: 1, PRIM: 'p', SINCE: null }])
+            .mockResolvedValueOnce([{ ID: 9 }]);
+        const batch = await service.createDocBatch(97542);
+        expect(batch).toEqual({ id: 9, codes: expect.any(Array) });
+        expect(query.mock.calls[0][1]).toEqual([97542]); // отбор только по этому документу
+        expect(execute.mock.calls[0]).toEqual([
+            'INSERT INTO CHZ_BATCH (ID, KIND, CNT, SFCODE) VALUES (?, ?, ?, ?)',
+            [9, 'retire_upd', 1, 97542],
+            false,
+        ]);
+    });
+
+    it('createDocBatch: по документу выводить нечего → null, пачки нет', async () => {
+        query.mockResolvedValueOnce([]);
+        expect(await service.createDocBatch(97542)).toBeNull();
+        expect(execute).not.toHaveBeenCalled();
+    });
+
+    it('confirmBatch(retire_upd): ставит отметку передачи, как и обычный вывод', async () => {
+        query
+            .mockResolvedValueOnce([
+                { ID: 5, KIND: 'retire_upd', CREATED_AT: new Date(), CONFIRMED_AT: null, CNT: 1, SFCODE: 97542, NSF: 6558, DATA: null },
+            ])
+            .mockResolvedValueOnce([{ KI: 'KI-1' }])
+            .mockResolvedValueOnce([{ CNT: 1 }]);
+        const res = await service.confirmBatch(5);
+        expect(res).toEqual({ confirmed: 1, skipped: 0, already: false });
+        expect(execute.mock.calls[0][0]).toContain('SET CHZ_SENT_AT = CURRENT_TIMESTAMP');
+        expect(execute.mock.calls[0][0]).toContain('m.TRANSFER_TYPE = 1');
     });
 });

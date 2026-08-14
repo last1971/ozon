@@ -12,6 +12,13 @@ export class ChzController {
         return this.chzService.pending();
     }
 
+    @Post('batch/upd/:sfcode')
+    async createDocBatch(@Param('sfcode', ParseIntPipe) sfcode: number) {
+        const batch = await this.chzService.createDocBatch(sfcode);
+        if (!batch) throw new NotFoundException(`По УПД ${sfcode} выводить нечего`);
+        return batch;
+    }
+
     @Post('batch/:kind')
     async createBatch(@Param('kind') kind: string) {
         if (kind !== 'retire' && kind !== 'return') {
