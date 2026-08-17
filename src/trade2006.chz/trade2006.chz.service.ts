@@ -46,6 +46,12 @@ export interface ChzBatchInfo {
     sfcode: number | null;
     nsf: number | null;
     date: Date | null;
+    /**
+     * Номер документа из ЛК Честного знака (выдаёт ГИС МТ при оформлении).
+     * Вводится владельцем при подтверждении пачки — чтобы номер не терялся
+     * и был виден в истории.
+     */
+    docUuid: string | null;
 }
 
 /**
@@ -225,7 +231,10 @@ export class Trade2006ChzService {
      * скачиванием и кликом), пропускается и попадёт в следующую пачку
      * противоположного вида. Повторное подтверждение — тихий no-op.
      */
-    async confirmBatch(id: number): Promise<{ confirmed: number; skipped: number; already: boolean } | null> {
+    async confirmBatch(
+        id: number,
+        docNumber: string | null = null,
+    ): Promise<{ confirmed: number; skipped: number; already: boolean } | null> {
         if (!isMarkCodesEnabled(this.configService)) return null;
         const t = await this.pool.getTransaction();
         try {
@@ -260,7 +269,12 @@ export class Trade2006ChzService {
                     false,
                 );
             }
-            await t.execute('UPDATE CHZ_BATCH SET CONFIRMED_AT = CURRENT_TIMESTAMP WHERE ID = ?', [id], false);
+            // Номер документа из ЛК ЧЗ — сохраняем вместе с подтверждением.
+            await t.execute(
+                'UPDATE CHZ_BATCH SET CONFIRMED_AT = CURRENT_TIMESTAMP, DOC_UUID = COALESCE(?, DOC_UUID) WHERE ID = ?',
+                [docNumber ? docNumber.trim().substring(0, 64) : null, id],
+                false,
+            );
             await t.commit(true);
             return { confirmed, skipped: kis.length - confirmed, already: false };
         } catch (e) {
@@ -279,7 +293,7 @@ export class Trade2006ChzService {
     /** Пачка + реквизиты её документа (для retire_upd; у остальных NULL). */
     private batchSelect(tail: string, first?: number): string {
         return (
-            `SELECT ${first ? `FIRST ${first} ` : ''}b.ID, b.KIND, b.CREATED_AT, b.CONFIRMED_AT, b.CNT, b.SFCODE, ` +
+            `SELECT ${first ? `FIRST ${first} ` : ''}b.ID, b.KIND, b.CREATED_AT, b.CONFIRMED_AT, b.CNT, b.SFCODE, b.DOC_UUID, ` +
             'sf.NSF, sf.DATA FROM CHZ_BATCH b LEFT JOIN SF sf ON sf.SFCODE = b.SFCODE ' +
             tail
         );
@@ -306,6 +320,7 @@ export class Trade2006ChzService {
             sfcode: r.SFCODE === null || r.SFCODE === undefined ? null : Number(r.SFCODE),
             nsf: r.NSF === null || r.NSF === undefined ? null : Number(r.NSF),
             date: r.DATA ?? null,
+            docUuid: r.DOC_UUID === null || r.DOC_UUID === undefined ? null : String(r.DOC_UUID),
         };
     }
 }

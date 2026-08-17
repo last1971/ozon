@@ -30,7 +30,7 @@ import { plainToClass } from "class-transformer";
 import { WithTransactions } from "../helpers/mixin/transaction.mixin";
 import { FboMigrationLinkDto } from "../posting.fbo/dto/fbo-migration-link.dto";
 import { InvoiceState } from '../helpers/accrual.distribution';
-import { OZON_INVOICE_CLOSED_SUFFIX, OZON_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
+import { ALL_CANCELLATION_SUFFIXES, OZON_INVOICE_CLOSED_SUFFIX } from '../helpers/order.cancellation.constants';
 import { InvoiceMatchDto } from '../invoice/dto/invoice.match.dto';
 
 @Injectable()
@@ -170,7 +170,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             );
         }
         const mark = (invoice.remark ?? '').trim().slice(postingNumber.length);
-        const cancelSuffixes: string[] = Object.values(OZON_ORDER_CANCELLATION_SUFFIX);
+        const cancelSuffixes: readonly string[] = ALL_CANCELLATION_SUFFIXES;
         return {
             invoice,
             mark,
@@ -212,7 +212,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         const states = new Map<string, InvoiceState>(
             unique.map((n) => [n, { exact: false, cancelled: false, closed: false }]),
         );
-        const cancelSuffixes: string[] = Object.values(OZON_ORDER_CANCELLATION_SUFFIX);
+        const cancelSuffixes: readonly string[] = ALL_CANCELLATION_SUFFIXES;
 
         await Promise.all(
             chunk(unique, 40).map(async (part: string[]) => {
@@ -1054,9 +1054,11 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
      * возврат разобрал старый путь, который кодов не знает).
      *
      * Счета в статусах 3 и 4 (создан-не-собран, подобран) исключены: код с TT=3
-     * на таком счёте — это нормальная сборка FBS, а не висяк. Отгруженные,
-     * списанные и проданные в розницу коды отсеиваются теми же полями, что
-     * и в LIVE_CODE_FILTER. Индекс IDX_MC_TRANSFER_STATUS (TRANSFER_TYPE, STATUS).
+     * на таком счёте — это нормальная сборка FBS, а не висяк. НО счёт в 4 старше
+     * 30 дней — уже не сборка (дальняя доставка + недельный цикл выплат укладываются
+     * с запасом): 93 ВБ-счёта с июльскими кодами стояли в 4 и были невидимы отчёту.
+     * Отгруженные, списанные и проданные в розницу коды отсеиваются теми же полями,
+     * что и в LIVE_CODE_FILTER. Индекс IDX_MC_TRANSFER_STATUS (TRANSFER_TYPE, STATUS).
      *
      * Возраст считается по дате СЧЁТА: STATUS_UPDATED_AT для этого не годится —
      * триггер MARKCODES_BU двигает его только при смене STATUS, а у висяка STATUS
@@ -1081,6 +1083,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         if (!isMarkCodesEnabled(this.configService)) return [];
         const t = transaction ?? (await this.getTransaction());
         const edge = DateTime.now().minus({ day: minAgeDays }).startOf('day').toJSDate();
+        const pickedEdge = DateTime.now().minus({ day: 30 }).startOf('day').toJSDate();
         const rows = await t.query(
             'SELECT m.KI, m.GOODSCODE, m.STATUS, m.TRANSFER_TYPE, s.SCODE, s.NS, s.PRIM, s.STATUS AS S_STATUS, s.DATA ' +
                 'FROM MARKCODES m ' +
@@ -1088,14 +1091,16 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
                 'LEFT JOIN S s ON s.SCODE = rp.SCODE ' +
                 'WHERE m.TRANSFER_TYPE IN (2, 3) ' +
                 'AND m.REALPRICEFCODE IS NULL AND m.SHOPLOGCODE IS NULL AND m.SPISID IS NULL ' +
-                // Висяк в обороте: STATUS=5 на счёте вне работы. Висяк выведенный:
-                // STATUS=6 нашей продажей (RETIRE_REASON=1) на счёте-доноре («отмена»
-                // в PRIM) — товар вернулся и уехал заново, а код никто не оживил.
-                'AND ((m.STATUS = 5 AND (s.SCODE IS NULL OR s.STATUS NOT IN (3, 4))) ' +
+                // Висяк в обороте: STATUS=5 на счёте вне работы, либо на счёте,
+                // «собранном» дольше месяца (S.STATUS=4 старше 30 дн — не сборка).
+                // Висяк выведенный: STATUS=6 нашей продажей (RETIRE_REASON=1) на
+                // счёте-доноре («отмена» в PRIM) — товар вернулся и уехал заново,
+                // а код никто не оживил.
+                'AND ((m.STATUS = 5 AND (s.SCODE IS NULL OR s.STATUS NOT IN (3, 4) OR (s.STATUS = 4 AND s.DATA < ?))) ' +
                 'OR (m.STATUS = 6 AND m.RETIRE_REASON = 1 AND s.PRIM CONTAINING ?)) ' +
                 'AND (s.DATA IS NULL OR s.DATA < ?) ' +
                 'ORDER BY s.DATA',
-            ['отмена', edge],
+            [pickedEdge, 'отмена', edge],
             !transaction,
         );
         return rows.map((r) => ({

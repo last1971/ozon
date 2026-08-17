@@ -80,8 +80,11 @@ export class ChzService {
         return `vyvod_UPD-${nsf}${date ? `_${date}` : ''}.xlsx`;
     }
 
-    async confirmBatch(id: number): Promise<{ confirmed: number; skipped: number; already: boolean } | null> {
-        const result = await this.chzDb.confirmBatch(id);
+    async confirmBatch(
+        id: number,
+        docNumber: string | null = null,
+    ): Promise<{ confirmed: number; skipped: number; already: boolean } | null> {
+        const result = await this.chzDb.confirmBatch(id, docNumber);
         if (result && !result.already) {
             this.logger.log(`ЧЗ: пачка №${id} подтверждена — ${result.confirmed} КИ, пропущено ${result.skipped}`);
         }

@@ -3,8 +3,8 @@ import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FirebirdTransaction } from 'ts-firebird';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
-import { OZON_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
-import { MpEventService } from '../mp-event/mp-event.service';
+import { donorSuffixFor } from '../helpers/order.cancellation.constants';
+import { MpEventDto, MpEventService, MpService } from '../mp-event/mp-event.service';
 import { MpDecisionService } from './mp-decision.service';
 import { Decision, DecisionInput, MpScheme } from './mp-decision.types';
 
@@ -79,7 +79,7 @@ export class MpDecisionRunnerService {
      * она определяется источником события, а не полем в базе.
      *
      * @param shipped признак «уехал к Ozon» из данных самого отправления
-     *        (`isShippedToOzon`) — тот же, которым пользуется бой. Журнал один
+     *        (`isShippedToMarketplace`) — тот же, которым пользуется бой. Журнал один
      *        этого не знает: он ведётся с 13.08, и по посылкам, отгруженным
      *        раньше, записи о delivering нет — наблюдение писало «собрано и лежит
      *        у нас» про посылки, месяц как уехавшие (живые случаи с магазина:
@@ -91,15 +91,43 @@ export class MpDecisionRunnerService {
         scheme: MpScheme,
         kind: 'cancel' | 'delivered',
         shipped?: boolean,
+        service: MpService = 'OZON',
     ): Promise<Decision | null> {
         return this.observe(async () => {
             const transferred =
                 kind === 'cancel' && scheme === 'FBS'
                     ? shipped === true ||
-                      (await this.mpEvent.hasAnyState('OZON', 'POSTING_FBS', postingNumber, ['delivering', 'delivered']))
+                      (await this.mpEvent.hasAnyState(service, 'POSTING_FBS', postingNumber, [
+                          'delivering',
+                          'delivered',
+                      ]))
                     : undefined;
-            return this.buildInput({ kind, scheme, postingNumber, transferred });
+            return this.buildInput({ kind, scheme, service, postingNumber, transferred });
         });
+    }
+
+    /**
+     * Продажа по доставленному отправлению: решение → действия → пометка в журнале.
+     * Общая точка для всех маркетплейсов (Ozon wide-window, ВБ-наблюдатель, доборы
+     * из журнала). Пометки нет ни при потолке прогона, ни при сбое — событие
+     * останется в журнале необработанным, и его подберёт добор следующего прогона.
+     */
+    async handleDelivered(event: MpEventDto): Promise<void> {
+        try {
+            if (await this.mpEvent.isHandled(event)) return;
+            const decision = await this.observePosting(
+                event.posting ?? event.extId,
+                'FBS',
+                'delivered',
+                undefined,
+                event.service,
+            );
+            if (!decision) return;
+            if (this.needsExecution(decision)) await this.execute(decision);
+            await this.mpEvent.markHandled(event);
+        } catch (e) {
+            this.logger.warn(`продажа ${event.posting ?? event.extId}: действия не выполнены — ${e.message}`);
+        }
     }
 
     /**
@@ -114,13 +142,20 @@ export class MpDecisionRunnerService {
      *        счёта для этого не годится, он в штуках с коэффициентом кратности.
      */
     async observeReturn(
-        item: { id: number; posting_number: string; schema?: string; visual?: { status?: { sys_name?: string } } },
+        item: {
+            id: number | string;
+            posting_number: string;
+            schema?: string;
+            visual?: { status?: { sys_name?: string } };
+        },
         counts?: { returnedRows: number; postingUnits: number },
+        service: MpService = 'OZON',
     ): Promise<Decision | null> {
         return this.observe(async () => {
             const input = await this.buildInput({
                 kind: 'return',
                 scheme: item.schema === 'Fbo' ? 'FBO' : 'FBS',
+                service,
                 postingNumber: item.posting_number,
                 returnState: item.visual?.status?.sys_name ?? 'unknown',
             });
@@ -187,9 +222,10 @@ export class MpDecisionRunnerService {
                 }
                 if (decision.layer1 === 'make-donor') {
                     const posting = decision.input.postingNumber;
-                    await act(`донор ${posting}`, () =>
-                        this.invoiceService.updatePrim(posting, posting + OZON_ORDER_CANCELLATION_SUFFIX.FBO, t),
-                    );
+                    // Суффикс — по маркетплейсу события: чужая пометка отдала бы партию
+                    // и код донорскому пулу другого маркетплейса.
+                    const suffix = donorSuffixFor(decision.input.service);
+                    await act(`донор ${posting}`, () => this.invoiceService.updatePrim(posting, posting + suffix, t));
                 }
                 for (const code of decision.layer2) {
                     if (code.actions.includes('return-to-stock')) {

@@ -90,8 +90,20 @@ describe('Trade2006ChzService', () => {
         expect(update[0]).toContain('SET CHZ_SENT_AT = CURRENT_TIMESTAMP');
         expect(update[0]).toContain('m.STATUS = 6 AND m.RETIRE_REASON = 1');
         const close = execute.mock.calls.find(([sql]) => sql.includes('UPDATE CHZ_BATCH'));
-        expect(close[1]).toEqual([7]);
+        // номер документа из ЛК не передан — DOC_UUID не трогаем (COALESCE с null)
+        expect(close[1]).toEqual([null, 7]);
         expect(commit).toHaveBeenCalled();
+    });
+
+    it('confirmBatch с номером документа из ЛК ЧЗ — номер сохраняется в пачке', async () => {
+        query
+            .mockResolvedValueOnce([{ ID: 7, KIND: 'retire', CREATED_AT: new Date(), CONFIRMED_AT: null, CNT: 1 }])
+            .mockResolvedValueOnce([{ KI: 'KI-1' }])
+            .mockResolvedValueOnce([{ CNT: 1 }]);
+        await service.confirmBatch(7, '  2978ecc8-4f63-4ab4-b0d6-05f444bd0f44  ');
+        const close = execute.mock.calls.find(([sql]) => sql.includes('UPDATE CHZ_BATCH'));
+        expect(close[0]).toContain('DOC_UUID = COALESCE(?, DOC_UUID)');
+        expect(close[1]).toEqual(['2978ecc8-4f63-4ab4-b0d6-05f444bd0f44', 7]);
     });
 
     it('confirmBatch(return): снимает отметку — SET CHZ_SENT_AT = NULL по гварду возврата', async () => {

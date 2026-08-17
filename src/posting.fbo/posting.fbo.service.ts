@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { FirebirdTransaction } from 'ts-firebird';
 // import { Cron } from '@nestjs/schedule';
 import { isMarkCodesEnabled } from '../helpers';
-import { OZON_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
+import { MP_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { FboInvoiceCreatorService } from './fbo-invoice-creator.service';
 import { MpEventService } from '../mp-event/mp-event.service';
@@ -34,7 +34,7 @@ export class PostingFboService implements IOrderable {
     ): Promise<InvoiceDto | null> {
         const warehouseName = posting.analytics_data?.warehouse_name;
         const clusterFrom = posting.financial_data?.cluster_from;
-        const suffix = OZON_ORDER_CANCELLATION_SUFFIX.FBO.trim();
+        const suffix = MP_ORDER_CANCELLATION_SUFFIX.FBO.trim();
         const prims = [warehouseName, clusterFrom, suffix].filter((p): p is string => Boolean(p));
 
         return this.fboInvoiceCreator.create({

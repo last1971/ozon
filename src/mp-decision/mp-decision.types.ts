@@ -43,6 +43,8 @@ export interface DecisionCode {
 export interface DecisionInput {
     kind: DecisionEventKind;
     scheme: MpScheme;
+    /** Маркетплейс события ('OZON' | 'WB' | 'YANDEX'). Отсутствует — 'OZON' (события до параметризации). */
+    service?: import('../mp-event/mp-event.service').MpService;
     postingNumber: string;
     /** sys_name возврата — только для kind='return'. */
     returnState?: string;

@@ -1,5 +1,6 @@
 export class ReturnDto {
-    id: number;
+    /** Ozon — числовой id возврата, ВБ — UUID заявки. В журнал уходит строкой. */
+    id: number | string;
     posting_number: string;
     schema: 'Fbs' | 'Fbo';
     order_number: string;

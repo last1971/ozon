@@ -5,7 +5,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DateTime } from 'luxon';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { isMarkCodesEnabled } from '../helpers/mark-codes.helper';
-import { MpEventService } from '../mp-event/mp-event.service';
+import { MpEventService, MpService } from '../mp-event/mp-event.service';
 import { Trade2006ChzService } from '../trade2006.chz/trade2006.chz.service';
 import { CLAIM_RETURN_STATES, LOST_RETURN_STATES } from './mp-decision.types';
 
@@ -146,47 +146,56 @@ export class StuckCodesService {
      * двух недель → завис в пути.
      */
     private async reportCancelWaits(): Promise<void> {
-        const waits = await this.mpEvent.listUnhandled('OZON', 'CANCEL_WAIT');
-        if (!waits.length) return;
-
+        // ВБ ожиданий не пишет (отказник остаётся на складе ВБ — счёт сразу донор),
+        // но сервис в цикле, чтобы хардкода 'OZON' здесь не осталось: появись
+        // ожидание у другого маркетплейса — оно не потеряется.
+        const services: MpService[] = ['OZON', 'WB'];
         const lines: string[] = [];
-        for (const wait of waits) {
-            const posting = wait.posting ?? wait.extId;
-            const match = await this.invoiceService.findByPosting(posting, null);
-            if (!match) {
-                this.logger.warn(`CANCEL_WAIT ${posting}: счёт не найден — пропускаю`);
-                continue;
-            }
-            if (match.mark || match.invoice.status === 0) {
-                // Возврат разобрал счёт (донор) либо его расформировали руками — ожидание закрыто.
-                await this.mpEvent.markHandled({ service: 'OZON', kind: 'CANCEL_WAIT', extId: wait.extId, state: 'waiting' });
-                continue;
-            }
-            const age = Math.floor(-DateTime.fromJSDate(wait.firstSeen).diffNow('days').days);
-            const states = await this.mpEvent.listStatesForPosting('OZON', 'RETURN', posting);
-            if (states.some((s) => LOST_RETURN_STATES.includes(s))) {
-                // Товар до нас не доедет (списан/утилизирован/потерян): письмо об этом
-                // уже уходило веткой return/lost, ждать больше нечего — иначе строка
-                // «завис в пути» про несуществующий товар повторялась бы вечно.
-                await this.mpEvent.markHandled({ service: 'OZON', kind: 'CANCEL_WAIT', extId: wait.extId, state: 'waiting' });
-                continue;
-            }
-            if (states.includes('ReceivedBySeller')) {
-                // Не закрываем: напоминание погаснет само, когда счёт расформируют (STATUS=0).
-                lines.push(`${posting} — возврат ПРИЕХАЛ к нам, счёт ждёт расформирования (отменён ${age} дн назад)`);
-                continue;
-            }
-            // Заявочные записи (отклонена, деньги вернули без товара) физики не обещают —
-            // для ожидания их нет: считаем, что живой заявки возврата не появилось.
-            const hasReturn = states.some((s) => !CLAIM_RETURN_STATES.includes(s));
-            if (!hasReturn && age >= StuckCodesService.WAIT_NO_RETURN_DAYS) {
-                lines.push(`${posting} — отменён ${age} дн назад, живой заявки возврата НЕТ — проверить в кабинете Ozon`);
-            } else if (hasReturn && age >= StuckCodesService.WAIT_IN_TRANSIT_DAYS) {
-                lines.push(`${posting} — отменён ${age} дн назад, возврат завис в пути (заявка есть, склада не достигла)`);
+        let total = 0;
+        for (const svc of services) {
+            const waits = await this.mpEvent.listUnhandled(svc, 'CANCEL_WAIT');
+            total += waits.length;
+            for (const wait of waits) {
+                const posting = wait.posting ?? wait.extId;
+                const match = await this.invoiceService.findByPosting(posting, null);
+                if (!match) {
+                    this.logger.warn(`CANCEL_WAIT ${posting}: счёт не найден — пропускаю`);
+                    continue;
+                }
+                if (match.mark || match.invoice.status === 0) {
+                    // Возврат разобрал счёт (донор) либо его расформировали руками — ожидание закрыто.
+                    await this.mpEvent.markHandled({ service: svc, kind: 'CANCEL_WAIT', extId: wait.extId, state: 'waiting' });
+                    continue;
+                }
+                const age = Math.floor(-DateTime.fromJSDate(wait.firstSeen).diffNow('days').days);
+                const states = await this.mpEvent.listStatesForPosting(svc, 'RETURN', posting);
+                if (states.some((s) => LOST_RETURN_STATES.includes(s))) {
+                    // Товар до нас не доедет (списан/утилизирован/потерян): письмо об этом
+                    // уже уходило веткой return/lost, ждать больше нечего — иначе строка
+                    // «завис в пути» про несуществующий товар повторялась бы вечно.
+                    await this.mpEvent.markHandled({ service: svc, kind: 'CANCEL_WAIT', extId: wait.extId, state: 'waiting' });
+                    continue;
+                }
+                if (states.includes('ReceivedBySeller')) {
+                    // Не закрываем: напоминание погаснет само, когда счёт расформируют (STATUS=0).
+                    lines.push(`${posting} — возврат ПРИЕХАЛ к нам, счёт ждёт расформирования (отменён ${age} дн назад)`);
+                    continue;
+                }
+                // Заявочные записи (отклонена, деньги вернули без товара) физики не обещают —
+                // для ожидания их нет: считаем, что живой заявки возврата не появилось.
+                const hasReturn = states.some((s) => !CLAIM_RETURN_STATES.includes(s));
+                if (!hasReturn && age >= StuckCodesService.WAIT_NO_RETURN_DAYS) {
+                    lines.push(
+                        `${posting} — отменён ${age} дн назад, живой заявки возврата НЕТ — проверить в кабинете маркетплейса`,
+                    );
+                } else if (hasReturn && age >= StuckCodesService.WAIT_IN_TRANSIT_DAYS) {
+                    lines.push(`${posting} — отменён ${age} дн назад, возврат завис в пути (заявка есть, склада не достигла)`);
+                }
             }
         }
+        if (!total) return;
 
-        this.logger.log(`отменённых в ожидании возврата: ${waits.length}, в письмо: ${lines.length}`);
+        this.logger.log(`отменённых в ожидании возврата: ${total}, в письмо: ${lines.length}`);
         if (!lines.length) return;
 
         this.eventEmitter.emit(

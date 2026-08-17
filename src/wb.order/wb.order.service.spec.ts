@@ -15,6 +15,9 @@ import { FboInvoiceCreatorService } from '../posting.fbo/fbo-invoice-creator.ser
 import { ProcessedCacheService } from '../processed-cache/processed-cache.service';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { clearRateLimitCache } from '../helpers/decorators/rate-limit.decorator';
+import { WbCustomerService } from '../wb.customer/wb.customer.service';
+import { MpEventService } from '../mp-event/mp-event.service';
+import { MpDecisionRunnerService } from '../mp-decision/mp-decision.runner.service';
 
 describe('WbOrderService', () => {
     let service: WbOrderService;
@@ -23,6 +26,16 @@ describe('WbOrderService', () => {
     const method = jest.fn();
     const updateByCommissions = jest.fn();
     const emit = jest.fn();
+    const getClaims = jest.fn().mockResolvedValue({ claims: [], total: 0 });
+    const mpRecord = jest.fn().mockResolvedValue(true);
+    const mpFirstSeen = jest.fn().mockResolvedValue(null);
+    const mpIsHandled = jest.fn().mockResolvedValue(false);
+    const mpMarkHandled = jest.fn().mockResolvedValue(undefined);
+    const mpListUnhandled = jest.fn().mockResolvedValue([]);
+    const mpObservePosting = jest.fn().mockResolvedValue(null);
+    const mpHandleDelivered = jest.fn().mockResolvedValue(undefined);
+    const mpSalesEnabled = jest.fn().mockReturnValue(false);
+    const mpFlush = jest.fn().mockResolvedValue(undefined);
     const isExists = jest.fn();
     const pickupInvoice = jest.fn();
     const getTransaction = jest.fn();
@@ -40,6 +53,7 @@ describe('WbOrderService', () => {
     const clearInvoiceReserve = jest.fn();
     const getStorageSS = jest.fn();
     let markCodesEnabled = false;
+    let servicesEnabled: string[] = [GoodServiceEnum.WB];
     const fetchSalesByStickerExecute = jest.fn();
     const fetchOrdersByStickerExecute = jest.fn();
     const fetchTransactionsExecute = jest.fn();
@@ -54,6 +68,7 @@ describe('WbOrderService', () => {
         // Clear rate limit cache before each test to prevent timeouts
         clearRateLimitCache();
         markCodesEnabled = false;
+        servicesEnabled = [GoodServiceEnum.WB];
         getStorageSS.mockReturnValue(1);
         [
             findFboPodbposCandidates,
@@ -100,6 +115,7 @@ describe('WbOrderService', () => {
                     useValue: {
                         get: (key: string) => {
                             if (key === 'MARK_CODES_ENABLED') return markCodesEnabled;
+                            if (key === 'SERVICES') return servicesEnabled;
                             return 123456;
                         },
                     },
@@ -135,6 +151,29 @@ describe('WbOrderService', () => {
                 {
                     provide: FboInvoiceCreatorService,
                     useValue: { create: fboCreate },
+                },
+                {
+                    provide: WbCustomerService,
+                    useValue: { getClaims: getClaims },
+                },
+                {
+                    provide: MpEventService,
+                    useValue: {
+                        record: mpRecord,
+                        firstSeen: mpFirstSeen,
+                        isHandled: mpIsHandled,
+                        markHandled: mpMarkHandled,
+                        listUnhandled: mpListUnhandled,
+                    },
+                },
+                {
+                    provide: MpDecisionRunnerService,
+                    useValue: {
+                        observePosting: mpObservePosting,
+                        handleDelivered: mpHandleDelivered,
+                        salesEnabled: mpSalesEnabled,
+                        flush: mpFlush,
+                    },
                 },
             ],
         }).compile();
@@ -235,6 +274,7 @@ describe('WbOrderService', () => {
             {
                 in_process_at: '1',
                 posting_number: '1',
+                service: GoodServiceEnum.WB,
                 products: [
                     {
                         offer_id: '11-1',
@@ -293,6 +333,7 @@ describe('WbOrderService', () => {
             {
                 in_process_at: '2',
                 posting_number: '2',
+                service: GoodServiceEnum.WB,
                 products: [{ offer_id: '22-1', price: '0.020099999999999996', quantity: 1 }],
                 status: 'complete',
             },
@@ -519,15 +560,16 @@ describe('WbOrderService', () => {
                     { rid: '5', id: 15 },
                 ],
             });
-        isExists.mockResolvedValueOnce(true).mockResolvedValueOnce(false).mockResolvedValueOnce(true);
+        isExists.mockResolvedValueOnce(true);
         await service.checkCanceledOrders();
-        expect(isExists.mock.calls).toHaveLength(3);
-        expect(updatePrim.mock.calls).toHaveLength(2);
-        expect(updatePrim.mock.calls[0]).toEqual(['1', '1 возврат WBFBO', null]);
-        expect(updatePrim.mock.calls[1]).toEqual(['14', '14 возврат WBFBO', null]);
+        // srid 2 и 4 матчатся с FBS-заказами (rid) — их ведёт конвейер cancelOrders,
+        // легаси обрабатывает только чистые FBO; суффикс — из единого объекта.
+        expect(isExists.mock.calls).toHaveLength(1);
+        expect(updatePrim.mock.calls).toHaveLength(1);
+        expect(updatePrim.mock.calls[0]).toEqual(['1', '1 отмена WBFBO', null]);
         // обработанные prim сохранены в кеш
         expect(processedCacheSave).toHaveBeenCalledWith(
-            'fbo-cancellations', 'WbOrderService', new Set(['1', '14']),
+            'fbo-cancellations', 'WbOrderService', new Set(['1']),
         );
     });
 
@@ -566,6 +608,7 @@ describe('WbOrderService', () => {
             posting_number: order.id.toString(),
             status: status,
             in_process_at: order.createdAt,
+            service: GoodServiceEnum.WB,
             products: [{
                 price: (order.convertedPrice / 100).toString(),
                 offer_id: order.article,
@@ -869,6 +912,195 @@ describe('WbOrderService', () => {
             expect(res.skipRetry).toBe(true);
             expect(res.failed?.[0]?.reason).toContain('>100 КМ');
             expect(method).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('наблюдатель observeWbFbs и отмены listCanceled (план ВБ)', () => {
+        const ordersPage = (orders: any[]) => ({ orders, next: 0 });
+
+        beforeEach(() => {
+            mpRecord.mockReset().mockResolvedValue(true);
+            mpFirstSeen.mockReset().mockResolvedValue(null);
+            mpListUnhandled.mockReset().mockResolvedValue([]);
+            mpObservePosting.mockReset().mockResolvedValue(null);
+            mpHandleDelivered.mockReset().mockResolvedValue(undefined);
+            mpSalesEnabled.mockReset().mockReturnValue(false);
+            mpFlush.mockReset().mockResolvedValue(undefined);
+            getClaims.mockReset().mockResolvedValue({ claims: [], total: 0 });
+        });
+
+        it('гейт SERVICES: без ВБ в конфиге наблюдатель не ходит в API', async () => {
+            servicesEnabled = ['ozon'];
+
+            await service.observeWbFbs();
+
+            expect(method).not.toHaveBeenCalled();
+            expect(mpFlush).not.toHaveBeenCalled();
+        });
+
+        it('sold при включённых продажах → журнал + общий handleDelivered; отмена → наблюдение с shipped и WB', async () => {
+            mpSalesEnabled.mockReturnValue(true);
+            method
+                .mockResolvedValueOnce(
+                    ordersPage([
+                        { id: 101, createdAt: '2026-08-10', article: 'a1', convertedPrice: 100, rid: 'r101' },
+                        { id: 102, createdAt: '2026-08-01', article: 'a2', convertedPrice: 200, rid: 'r102' },
+                    ]),
+                )
+                .mockResolvedValueOnce({
+                    orders: [
+                        { id: 101, supplierStatus: 'complete', wbStatus: 'sold' },
+                        { id: 102, supplierStatus: 'complete', wbStatus: 'canceled' },
+                    ],
+                });
+
+            await service.observeWbFbs();
+
+            expect(mpRecord).toHaveBeenCalledWith(
+                expect.objectContaining({ service: 'WB', kind: 'POSTING_FBS', extId: '101', state: 'delivered' }),
+            );
+            expect(mpHandleDelivered).toHaveBeenCalledWith(
+                expect.objectContaining({ extId: '101', state: 'delivered' }),
+            );
+            // отмена: наблюдение решающей таблицей, отгрузка из supplierStatus, сервис WB
+            expect(mpObservePosting).toHaveBeenCalledWith('102', 'FBS', 'cancel', true, 'WB');
+            expect(mpFlush).toHaveBeenCalledWith('observeWbFbs');
+        });
+
+        it('добор из журнала: осевший sold исполняется даже без заказа в окне', async () => {
+            mpSalesEnabled.mockReturnValue(true);
+            method.mockResolvedValueOnce(ordersPage([]));
+            mpListUnhandled.mockResolvedValueOnce([{ extId: '99', posting: '99', firstSeen: new Date() }]);
+
+            await service.observeWbFbs();
+
+            expect(mpListUnhandled).toHaveBeenCalledWith('WB', 'POSTING_FBS', 'delivered');
+            expect(mpHandleDelivered).toHaveBeenCalledWith(
+                expect.objectContaining({ service: 'WB', extId: '99', state: 'delivered' }),
+            );
+        });
+
+        it('listCanceled: до первого посева наблюдателем действий нет вовсе', async () => {
+            mpFirstSeen.mockResolvedValue(null); // маркера посева нет
+
+            const res = await service.listCanceled();
+
+            expect(res).toEqual([]);
+            expect(method).not.toHaveBeenCalled(); // в API за заказами не ходим
+            expect(mpRecord).not.toHaveBeenCalled(); // журнал только читаем
+        });
+
+        it('listCanceled: живая отмена в выборке, хвост до посева и старая — отфильтрованы', async () => {
+            const day = 24 * 3600 * 1000;
+            const seededAt = new Date(Date.now() - 8 * day);
+            method
+                .mockResolvedValueOnce(
+                    ordersPage([
+                        { id: 201, createdAt: '2026-07-01', article: 'a1', convertedPrice: 100, rid: 'r201' },
+                        { id: 202, createdAt: '2026-07-01', article: 'a2', convertedPrice: 200, rid: 'r202' },
+                        { id: 203, createdAt: '2026-07-01', article: 'a3', convertedPrice: 300, rid: 'r203' },
+                    ]),
+                )
+                .mockResolvedValueOnce({
+                    orders: [
+                        { id: 201, supplierStatus: 'complete', wbStatus: 'canceled_by_client' },
+                        { id: 202, supplierStatus: 'complete', wbStatus: 'canceled' },
+                        { id: 203, supplierStatus: 'complete', wbStatus: 'canceled' },
+                    ],
+                });
+            // 201 — живая (вчера), 202 — хвост (посеяна вместе с маркером),
+            // 203 — позже посева, но старше окна действий (7 дней) — только наблюдение.
+            mpFirstSeen.mockImplementation(async (ev: any) => {
+                if (ev.extId === '__OBSERVE_SEED__') return seededAt;
+                if (ev.extId === '201') return new Date(Date.now() - 1 * day);
+                if (ev.extId === '202') return seededAt;
+                return new Date(Date.now() - 7.5 * day);
+            });
+
+            const res = await service.listCanceled();
+
+            expect(res).toHaveLength(1);
+            expect(res[0]).toEqual(
+                expect.objectContaining({
+                    posting_number: '201',
+                    status: 'canceled_by_client',
+                    service: GoodServiceEnum.WB,
+                    shipped: true,
+                }),
+            );
+            expect(mpRecord).not.toHaveBeenCalled(); // журнал пишет только наблюдатель
+        });
+
+        it('наблюдатель после полного посева ставит маркер', async () => {
+            method.mockResolvedValueOnce(ordersPage([]));
+
+            await service.observeWbFbs();
+
+            expect(mpRecord).toHaveBeenCalledWith(
+                expect.objectContaining({ extId: '__OBSERVE_SEED__', state: 'seeded' }),
+            );
+        });
+    });
+
+    describe('возвраты после выкупа listReturns (IReturnable)', () => {
+        beforeEach(() => {
+            getClaims.mockReset();
+            method.mockClear();
+        });
+
+        it('заявка матчится по srid → номер задания, состояние нормализовано', async () => {
+            getClaims
+                .mockResolvedValueOnce({
+                    claims: [{ id: 'uuid-1', status: 2, status_ex: 8, srid: 'sr-1', order_dt: '2026-08-01T10:00:00' }],
+                    total: 1,
+                })
+                .mockResolvedValueOnce({ claims: [], total: 0 });
+            method.mockResolvedValueOnce({
+                orders: [{ id: 301, createdAt: '2026-08-01', article: 'a1', convertedPrice: 100, rid: 'sr-1' }],
+                next: 0,
+            });
+
+            const res = await service.listReturns();
+
+            expect(res).toHaveLength(1);
+            expect(res[0]).toEqual(
+                expect.objectContaining({
+                    id: 'uuid-1',
+                    posting_number: '301',
+                    schema: 'Fbs',
+                    visual: { status: expect.objectContaining({ sys_name: 'ReturnedToOzon' }) },
+                }),
+            );
+        });
+
+        it('заявка на рассмотрении события не порождает; несматченная — пропускается', async () => {
+            getClaims
+                .mockResolvedValueOnce({
+                    claims: [
+                        { id: 'uuid-2', status: 0, status_ex: 0, srid: 'sr-2', order_dt: '2026-08-01T10:00:00' },
+                        { id: 'uuid-3', status: 2, status_ex: 10, srid: 'sr-NEMATCH', order_dt: '2026-08-01T10:00:00' },
+                    ],
+                    total: 2,
+                })
+                .mockResolvedValueOnce({ claims: [], total: 0 });
+            method.mockResolvedValueOnce({ orders: [], next: 0 });
+
+            const res = await service.listReturns();
+
+            expect(res).toEqual([]);
+        });
+
+        it('заявок нет → в заказы не ходим', async () => {
+            getClaims.mockResolvedValue({ claims: [], total: 0 });
+
+            const res = await service.listReturns();
+
+            expect(res).toEqual([]);
+            expect(method).not.toHaveBeenCalled();
+        });
+
+        it('returnCounts всегда undefined: одно задание = одна единица, частичности нет', async () => {
+            expect(await service.returnCounts({} as any)).toBeUndefined();
         });
     });
 });

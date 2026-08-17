@@ -1,4 +1,4 @@
-import { BadRequestException, Controller, Get, NotFoundException, Param, ParseIntPipe, Post, Res } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, NotFoundException, Param, ParseIntPipe, Post, Res } from '@nestjs/common';
 import { Response } from 'express';
 import { ChzService } from './chz.service';
 import { ChzBatchKind } from '../trade2006.chz/trade2006.chz.service';
@@ -39,8 +39,8 @@ export class ChzController {
     }
 
     @Post('batch/:id/confirm')
-    async confirmBatch(@Param('id', ParseIntPipe) id: number) {
-        const result = await this.chzService.confirmBatch(id);
+    async confirmBatch(@Param('id', ParseIntPipe) id: number, @Body() body?: { docNumber?: string }) {
+        const result = await this.chzService.confirmBatch(id, body?.docNumber?.trim() || null);
         if (!result) throw new NotFoundException(`Пачка ${id} не найдена`);
         return result;
     }

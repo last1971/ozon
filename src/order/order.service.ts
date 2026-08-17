@@ -14,12 +14,13 @@ import { ConfigService } from '@nestjs/config';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { FirebirdTransaction } from 'ts-firebird';
 import { PostingDto } from '../posting/dto/posting.dto';
-import { ReturnDto } from '../posting/dto/return.dto';
 import { find } from 'lodash';
 import { ProcessedCacheService } from '../processed-cache/processed-cache.service';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
-import { OZON_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
-import { isShippedToOzon } from '../helpers/posting.shipped';
+import { MP_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
+import { isShippedToMarketplace } from '../helpers/posting.shipped';
+import { isReturnable } from '../interfaces/IReturnable';
+import { MpService } from '../mp-event/mp-event.service';
 import { DateTime } from 'luxon';
 import { AccrualWeekService } from '../trade2006.accrual/accrual.week.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -69,6 +70,15 @@ export class OrderService {
 
     getServiceByName(name: GoodServiceEnum): IOrderable | null {
         return find(this.orderServices, (service) => service.constructor.name === this.serviceNames[name]) || null;
+    }
+
+    /** Маркетплейс сервиса для журнала MP_EVENT ('OZON' | 'WB' | 'YANDEX'). */
+    private mpService(service: IOrderable): MpService {
+        const entry = Object.entries(this.serviceNames).find(([, name]) => name === service.constructor.name);
+        const key = entry?.[0] as GoodServiceEnum | undefined;
+        if (key === GoodServiceEnum.WB) return 'WB';
+        if (key === GoodServiceEnum.YANDEX) return 'YANDEX';
+        return 'OZON';
     }
 
     getServiceByBuyerId(buyerId: number, isFbs = true): IOrderable | null {
@@ -389,12 +399,15 @@ export class OrderService {
 
     // flushers больше не нужен: возвраты дедуплицируются журналом, а не Redis-кешем.
     async processReturns(service: IOrderable, _flushers: (() => Promise<void>)[]): Promise<void> {
-        if (service.constructor.name !== 'PostingService') {
+        // Возвраты умеет тот, кто реализует IReturnable (Озон, ВБ). Яндекс и FBO-сервисы
+        // не реализуют — для них шаг пустой, как и раньше (до интерфейса решалось
+        // проверкой имени класса).
+        if (!isReturnable(service)) {
             return;
         }
 
-        const postingService = service as PostingService;
-        const returns = await postingService.listReturns();
+        const mpSvc = this.mpService(service);
+        const returns = await service.listReturns();
 
         // Дедуп возвратов переехал с Redis на журнал MP_EVENT (итерация 4). Ключ включает
         // СОСТОЯНИЕ возврата, поэтому переход MovingToOzon → ReturnedToOzon — это новое
@@ -403,7 +416,7 @@ export class OrderService {
         // проход возьмёт снова, а не похоронит, как это делал Redis.
         for (const returnItem of returns) {
             const event: MpEventDto = {
-                service: 'OZON',
+                service: mpSvc,
                 kind: 'RETURN',
                 extId: String(returnItem.id),
                 state: returnItem.visual?.status?.sys_name ?? 'unknown',
@@ -421,10 +434,16 @@ export class OrderService {
                 if (isNew || (returnsLive && !handled)) {
                     decision = await this.mpRunner.observeReturn(
                         returnItem,
-                        await this.returnCounts(postingService, returnItem),
+                        await service.returnCounts(returnItem),
+                        mpSvc,
                     );
                 }
                 if (handled) continue;
+
+                // Легаси-путь ниже (донор « отмена FBO») — озоновский: для других
+                // маркетплейсов при выключенных возвратах событие копится в журнале
+                // без пометки и будет разобрано таблицей после включения флага.
+                if (!returnsLive && mpSvc !== 'OZON') continue;
 
                 if (returnsLive) {
                     // Итерация 8: возвраты исполняет решающая таблица (unretire ДО донора,
@@ -478,43 +497,6 @@ export class OrderService {
     }
 
     /**
-     * Числитель и знаменатель признака частичности — оба со стороны Ozon.
-     *
-     * Наш счёт для этого не годится: количества в нём в штуках с коэффициентом
-     * кратности (упаковка `570615-10` лежит как `QUAN=10`), и полный возврат
-     * кратного товара выглядел бы частичным. Считаем ЗАПИСИ возврата за всю
-     * историю отправления против единиц в самом отправлении.
-     *
-     * Спрашиваем только там, где ответ может что-то изменить: физический статус
-     * возврата и схема FBS. Частичных возвратов FBO за 180 дней не нашлось ни одного
-     * (§2 плана), а `/v3/posting/fbs/get` по FBO отвечает 404 — тратить на них
-     * два вызова API незачем.
-     */
-    private async returnCounts(
-        postingService: PostingService,
-        item: ReturnDto,
-    ): Promise<{ returnedRows: number; postingUnits: number } | undefined> {
-        const state = item.visual?.status?.sys_name ?? '';
-        if (item.schema !== 'Fbs' || !['ReturnedToOzon', 'ReceivedBySeller'].includes(state)) return undefined;
-        try {
-            const [rows, postingUnits] = await Promise.all([
-                postingService.listReturnsByPosting(item.posting_number),
-                postingService.getPostingUnits(item.posting_number),
-            ]);
-            if (postingUnits === null) return undefined;
-            // Заявочные записи в числитель не идут: физики за ними нет, иначе
-            // получится «вернулось больше, чем заказано».
-            const returnedRows = rows.filter(
-                (row) => !CLAIM_RETURN_STATES.includes(row.visual?.status?.sys_name ?? ''),
-            ).length;
-            return { returnedRows, postingUnits };
-        } catch (e) {
-            this.logger.warn(`частичность ${item.posting_number} не посчитана — ${e.message}`);
-            return undefined;
-        }
-    }
-
-    /**
      * Возврат по подобранному счёту: счёт → « отмена FBO» + `STATUS=1`, то есть в доноры.
      *
      * Суффикс здесь именно FBO: товар лёг на склад Ozon, и оттуда он уедет FBO-продажей —
@@ -529,7 +511,7 @@ export class OrderService {
         if (invoice.status === 4) {
             await this.invoiceService.updatePrim(
                 postingNumber,
-                postingNumber + OZON_ORDER_CANCELLATION_SUFFIX.FBO,
+                postingNumber + MP_ORDER_CANCELLATION_SUFFIX.FBO,
                 transaction,
             );
             this.logger.log(`Return ${postingNumber} was returned`);
@@ -556,7 +538,7 @@ export class OrderService {
         this.logger.log(`FBS (pickuped) order ${postingNumber} was cancelled, кодов на склад: ${returned}`);
         await this.invoiceService.updatePrim(
             postingNumber,
-            postingNumber + OZON_ORDER_CANCELLATION_SUFFIX.REGULAR,
+            postingNumber + MP_ORDER_CANCELLATION_SUFFIX.REGULAR,
             transaction,
         );
         // На магазине кодов нет (returned=0) — про сканирование не пишем, иначе
@@ -577,10 +559,14 @@ export class OrderService {
      * и не появился (решение владельца 2026-08-11). Идемпотентна: повтор
      * отмены двигает LAST_SEEN, второй строки не будет.
      */
-    private async recordCancelWait(postingNumber: string, transaction: FirebirdTransaction): Promise<void> {
+    private async recordCancelWait(
+        postingNumber: string,
+        transaction: FirebirdTransaction,
+        service: MpService = 'OZON',
+    ): Promise<void> {
         await this.mpEvent.record(
             {
-                service: 'OZON',
+                service,
                 kind: 'CANCEL_WAIT',
                 extId: postingNumber,
                 state: 'waiting',
@@ -596,6 +582,15 @@ export class OrderService {
     /** Возвращает письмо-замыкание (если есть) — вызывающий шлёт его ПОСЛЕ коммита. */
     async cancelOrder(order: PostingDto, transaction: FirebirdTransaction): Promise<(() => void) | undefined> {
         const invoice = await this.invoiceService.getByPosting(order, transaction);
+        if (!invoice) {
+            // Гейт cancelOrders нашёл счёт хвосто-устойчивым findByPosting, а точный
+            // поиск — нет: PRIM с неизвестным хвостом (не из объекта суффиксов).
+            // Бросаем: элемент попадает в письмо сбоев и НЕ помечается в Redis —
+            // молчаливый скип похоронил бы отмену навсегда.
+            throw new Error(
+                `${order.posting_number}: счёт по точному PRIM не найден (неизвестный хвост?) — разобрать руками`,
+            );
+        }
         if (order.isFbo) {
             // Решение владельца 2026-08-11: подобранный FBO-счёт при отмене ЖДЁТ
             // записи возврата — только она знает, куда поедет товар (склад Ozon →
@@ -620,7 +615,7 @@ export class OrderService {
                 await this.invoiceService.pickupInvoice(invoice, transaction);
                 await this.invoiceService.updatePrim(
                     order.posting_number,
-                    order.posting_number + OZON_ORDER_CANCELLATION_SUFFIX.FBO,
+                    order.posting_number + MP_ORDER_CANCELLATION_SUFFIX.FBO,
                     transaction,
                 );
                 this.logger.log(`FBO order ${order.posting_number} was cancelled`);
@@ -633,7 +628,28 @@ export class OrderService {
                     `${order.posting_number}: счёт №${invoice.number ?? '?'} (SCODE ${invoice.id}) в STATUS=${invoice.status} — не трогаем, глянуть глазами`,
                 );
             }
-        } else if (isShippedToOzon(order)) {
+        } else if (order.service === GoodServiceEnum.WB && isShippedToMarketplace(order)) {
+            // ВБ: отказник/отмена после отгрузки НЕ едет к нам — товар остаётся на
+            // складе ВБ и продаётся оттуда (решение владельца 17.08). Ждать записи
+            // возврата нечего: claims у ВБ — только возвраты после выкупа, по
+            // отказнику заявка не создаётся. Счёт сразу в доноры WBFBO-пула;
+            // коды остаются на нём (TT=3) и уедут миграцией при FBO-продаже.
+            if (invoice.status === 4) {
+                await this.invoiceService.updatePrim(
+                    order.posting_number,
+                    order.posting_number + MP_ORDER_CANCELLATION_SUFFIX.WBFBO,
+                    transaction,
+                );
+                this.logger.log(`WB order ${order.posting_number} отменён после отгрузки — счёт в доноры WBFBO`);
+            } else {
+                this.eventEmitter.emit(
+                    'error.message',
+                    'Отмена отгруженного ВБ-заказа при неожиданном статусе счёта',
+                    `${order.posting_number}: счёт №${invoice.number ?? '?'} (SCODE ${invoice.id}) в STATUS=${invoice.status}, ` +
+                        'а заказ отгружен — не трогаем, глянуть глазами',
+                );
+            }
+        } else if (isShippedToMarketplace(order)) {
             // Товар уже уехал к Ozon. Проверка идёт ПЕРВОЙ: иначе отгруженная
             // посылка со STATUS=3 попала бы в отвязку кодов.
             // Решение владельца 2026-08-11 (заменяет «донор сразу» от 10.08):
@@ -658,7 +674,7 @@ export class OrderService {
             const detached = await this.markScanService.detachAll(invoice, transaction);
             await this.invoiceService.updatePrim(
                 order.posting_number,
-                order.posting_number + OZON_ORDER_CANCELLATION_SUFFIX.REGULAR,
+                order.posting_number + MP_ORDER_CANCELLATION_SUFFIX.REGULAR,
                 transaction,
             );
             await this.invoiceService.bulkSetStatus([invoice], 0, transaction);

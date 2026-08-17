@@ -120,6 +120,24 @@ export class MpEventService {
     }
 
     /**
+     * Когда событие увидели впервые. Нет записи — null.
+     *
+     * На этом стоит окно ДЕЙСТВИЙ по отменам ВБ: у ВБ статус отмены терминальный
+     * и виден всё окно заказов, а отказ при вручении случается через недели после
+     * создания заказа — окно по дате создания систематически теряло бы именно его.
+     */
+    async firstSeen(event: MpEventDto, t: FirebirdTransaction = null): Promise<Date | null> {
+        return this.withTransaction(t, async (transaction) => {
+            const rows = await transaction.query(
+                'SELECT FIRST_SEEN FROM MP_EVENT WHERE SERVICE = ? AND KIND = ? AND EXT_ID = ? AND STATE = ?',
+                [event.service, event.kind, event.extId, event.state],
+                false,
+            );
+            return rows.length && rows[0].FIRST_SEEN ? new Date(rows[0].FIRST_SEEN) : null;
+        });
+    }
+
+    /**
      * Видели ли по этому идентификатору хоть одно из состояний.
      *
      * Отсюда берётся признак «товар передан Ozon»: запись о `delivering` (и дальше)

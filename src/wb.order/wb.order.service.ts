@@ -34,9 +34,28 @@ import { FboInvoiceCreatorService } from '../posting.fbo/fbo-invoice-creator.ser
 import { ProcessedCacheService } from '../processed-cache/processed-cache.service';
 import { isMarkCodesEnabled } from '../helpers';
 import { GoodServiceEnum } from '../good/good.service.enum';
+import { MP_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
+import { MpEventDto, MpEventService } from '../mp-event/mp-event.service';
+import { MpDecisionRunnerService } from '../mp-decision/mp-decision.runner.service';
+import { IReturnable } from '../interfaces/IReturnable';
+import { ReturnDto } from '../posting/dto/return.dto';
+import { WbCustomerService } from '../wb.customer/wb.customer.service';
+import { WbClaimDto } from '../wb.customer/dto/wb.claim.dto';
+import { wbClaimState, wbEventState, wbShipped } from './wb.status.helper';
+
+/** Событие наблюдателя ВБ: заказ + статусы, нормализованные в журнал. */
+interface WbOrderEvent {
+    order: WbOrderDto;
+    wbStatus: string;
+    supplierStatus: string;
+    /** 'delivered' | 'cancelled' | сырой wbStatus. */
+    state: string;
+    shipped: boolean;
+    event: MpEventDto;
+}
 
 @Injectable()
-export class WbOrderService implements IOrderable, IMarkSubmittable {
+export class WbOrderService implements IOrderable, IMarkSubmittable, IReturnable {
     private readonly logger = new Logger(WbOrderService.name);
     private postingDtos: Map<string, PostingDto>;
     constructor(
@@ -51,6 +70,9 @@ export class WbOrderService implements IOrderable, IMarkSubmittable {
         private readonly fetchInvoiceByRemarkCommand: FetchInvoiceByRemarkCommand,
         private readonly fboInvoiceCreator: FboInvoiceCreatorService,
         private readonly processedCache: ProcessedCacheService,
+        private readonly wbCustomer: WbCustomerService,
+        private readonly mpEvent: MpEventService,
+        private readonly mpRunner: MpDecisionRunnerService,
     ) {
         this.postingDtos = new Map<string, PostingDto>();
     }
@@ -180,6 +202,13 @@ export class WbOrderService implements IOrderable, IMarkSubmittable {
         return isMarkCodesEnabled(this.configService);
     }
 
+    /**
+     * Отмены ВБ-FBO (статистика, окно 90 дней). ТОЛЬКО FBO: отмены FBS ведёт общий
+     * конвейер `cancelOrders` через `listCanceled()` — прежняя подмена srid→номер
+     * задания и пометка FBS-счетов отсюда убраны, чтобы отмена шла одним путём.
+     * Суффикс — из единого объекта (легаси ` возврат WBFBO` больше не пишется,
+     * но распознаётся как отменённый).
+     */
     @Cron('0 */5 * * * *', { name: 'checkCanceledWbOrders' })
     async checkCanceledOrders(): Promise<void> {
         const allFboOrders = await this.getAllFboOrders(90);
@@ -191,31 +220,24 @@ export class WbOrderService implements IOrderable, IMarkSubmittable {
                 .map((date) => DateTime.fromISO(date).toUnixInteger()),
         );
         const orders = await this.list(dateFrom);
+        const fbsSrids = new Set(orders.map((o) => o.rid));
+        const fboCancels = allCanceledFboOrders.filter((order) => !fbsSrids.has(order.srid));
         const processed = await this.processedCache.load('fbo-cancellations', WbOrderService.name);
         const offerIds = new Map<string, string>();
-        const prims: string[] = allCanceledFboOrders.map((order) => {
-            const fbs = orders.find((o) => o.rid === order.srid);
-            const prim = fbs ? fbs.id.toString() : order.srid;
-            offerIds.set(prim, order.supplierArticle);
-            return prim;
-        });
-        for (const prim of prims) {
-            if (processed.has(prim)) {
-                offerIds.delete(prim);
-                continue;
-            }
+        for (const order of fboCancels) {
+            const prim = order.srid;
+            if (processed.has(prim)) continue;
             if (await this.invoiceService.isExists(prim, null)) {
-                await this.invoiceService.updatePrim(prim, prim + ' возврат WBFBO', null);
+                await this.invoiceService.updatePrim(prim, prim + MP_ORDER_CANCELLATION_SUFFIX.WBFBO, null);
                 processed.add(prim);
-            } else {
-                offerIds.delete(prim);
+                offerIds.set(prim, order.supplierArticle);
             }
         }
         await this.processedCache.save('fbo-cancellations', WbOrderService.name, processed);
         if (offerIds.size > 0) {
             this.eventEmitter.emit(
                 'wb.order.content',
-                'Отменены WB заказы',
+                'Отменены WB FBO заказы',
                 Array.from(offerIds.keys()).map((prim) => ({ prim, offer_id: offerIds.get(prim) })),
             );
         }
@@ -226,16 +248,135 @@ export class WbOrderService implements IOrderable, IMarkSubmittable {
         return this.list(dateFrom);
     }
 
+    /** Окно наблюдения по дате создания заказа: отказ при вручении приходит и через недели. */
+    private static readonly OBSERVE_WINDOW_DAYS = 30;
+    /** Окно ДЕЙСТВИЙ по отменам: от «отмена впервые увидена» (журнал), не от createdAt. */
+    private static readonly CANCEL_ACTION_WINDOW_DAYS = 7;
+    /**
+     * Маркер завершённого посева журнала наблюдателем. Отмены, впервые увиденные
+     * НЕ ПОЗЖЕ его FIRST_SEEN, — накопленный хвост: первый прогон после выката
+     * поднял бы весь месяц отмен в действия одним махом (доноры, отвязки, письма).
+     * Хвост остаётся наблюдению и недельному отчёту.
+     */
+    private static readonly SEED_EVENT: MpEventDto = {
+        service: 'WB',
+        kind: 'POSTING_FBS',
+        extId: '__OBSERVE_SEED__',
+        state: 'seeded',
+    };
+
+    /**
+     * Наблюдатель продаж и отмен ВБ-FBS — аналог `observeFbsWideWindow` Озона.
+     * Заказы окна → статусы батчами ≤1000 → журнал MP_EVENT → продажи исполняет
+     * общий `handleDelivered` (retire под MP_SALE_ACTIONS_ENABLED), отмены только
+     * наблюдаются (исполняет конвейер `cancelOrders`).
+     *
+     * Минута :03 — своя: :00/:05 и :02/:07 заняты кронами, кормящими тот же
+     * runner-буфер (общий flush и потолок решений). Боевое время задаёт cron.setup.ts.
+     */
+    @Cron('0 3-58/5 * * * *', { name: 'observeWbFbs' })
+    async observeWbFbs(): Promise<void> {
+        if (!this.configService.get<GoodServiceEnum[]>('SERVICES', []).includes(GoodServiceEnum.WB)) return;
+        try {
+            const events = await this.fetchOrderEvents();
+            for (const ev of events) {
+                let isNew = false;
+                try {
+                    isNew = await this.mpEvent.record(ev.event);
+                } catch (e) {
+                    this.logger.warn(`журнал: ${ev.event.extId}/${ev.state} не записан — ${e.message}`);
+                    continue;
+                }
+                // Только НОВЫЕ события: sold у ВБ терминален и висит всё окно —
+                // без гейта каждый прогон гонял бы isHandled-SELECT по сотням
+                // заказов. Ретрай недоделанного делает добор из журнала ниже.
+                if (!isNew) continue;
+                if (ev.state === 'delivered') {
+                    if (!this.mpRunner.salesEnabled()) {
+                        await this.mpRunner.observePosting(ev.event.extId, 'FBS', 'delivered', ev.shipped, 'WB');
+                        continue;
+                    }
+                    await this.mpRunner.handleDelivered(ev.event);
+                } else if (ev.state === 'cancelled') {
+                    // Отмены исполняет конвейер cancelOrders — здесь наблюдение.
+                    // Наблюдатель — ЕДИНСТВЕННЫЙ писатель WB-событий (listCanceled
+                    // журнал только читает), поэтому isNew здесь надёжен.
+                    await this.mpRunner.observePosting(ev.event.extId, 'FBS', 'cancel', ev.shipped, 'WB');
+                }
+            }
+            // Маркер «посев состоялся»: его FIRST_SEEN — граница между накопленным
+            // хвостом отмен (разбор руками/отчётом) и живыми отменами (конвейер).
+            // Ставится ПОСЛЕ полного посева окна; record идемпотентен.
+            await this.mpEvent.record(WbOrderService.SEED_EVENT);
+            // Добор из журнала: sold, осевший необработанным (например, простой сервиса
+            // дольше окна заказов). Журнал — единственная память о таком событии.
+            if (this.mpRunner.salesEnabled()) {
+                try {
+                    const tail = await this.mpEvent.listUnhandled('WB', 'POSTING_FBS', 'delivered');
+                    for (const row of tail) {
+                        await this.mpRunner.handleDelivered({
+                            service: 'WB',
+                            kind: 'POSTING_FBS',
+                            extId: row.extId,
+                            state: 'delivered',
+                            posting: row.posting ?? row.extId,
+                        });
+                    }
+                } catch (e) {
+                    this.logger.warn(`ВБ: добор проданного из журнала не прошёл — ${e.message}`);
+                }
+            }
+        } finally {
+            await this.mpRunner.flush('observeWbFbs');
+        }
+    }
+
+    /** Заказы окна наблюдения со статусами, нормализованные в события журнала. */
+    private async fetchOrderEvents(): Promise<WbOrderEvent[]> {
+        const orders = await this.list(DateTime.now().minus({ days: WbOrderService.OBSERVE_WINDOW_DAYS }).toUnixInteger());
+        const statuses: WbOrderStatusDto[] = (
+            await Promise.all(
+                chunk(orders, 1000).map((chunkOrders: WbOrderDto[]) =>
+                    this.orderStatuses(chunkOrders.map((order) => order.id)),
+                ),
+            )
+        ).flat();
+        const byId = new Map(statuses.map((s) => [s.id, s]));
+        return orders.flatMap((order) => {
+            const st = byId.get(order.id);
+            if (!st) return [];
+            const state = wbEventState(st.wbStatus);
+            return [
+                {
+                    order,
+                    wbStatus: st.wbStatus,
+                    supplierStatus: st.supplierStatus,
+                    state,
+                    shipped: wbShipped(st.supplierStatus),
+                    event: {
+                        service: 'WB',
+                        kind: 'POSTING_FBS',
+                        extId: String(order.id),
+                        state,
+                        posting: String(order.id),
+                    } as MpEventDto,
+                },
+            ];
+        });
+    }
+
     async orderStatuses(orders: number[]): Promise<WbOrderStatusDto[]> {
         const res = await this.api.method('/api/v3/orders/status', 'post', { orders });
         return res.orders;
     }
 
-    public transformToPostingDto(order: WbOrderDto, status: string): PostingDto {
-        const res = {
+    public transformToPostingDto(order: WbOrderDto, status: string, shipped?: boolean): PostingDto {
+        const res: PostingDto = {
             posting_number: order.id.toString(),
             status: status,
             in_process_at: order.createdAt,
+            service: GoodServiceEnum.WB,
+            ...(shipped === undefined ? {} : { shipped }),
             products: [
                 {
                     price: (order.convertedPrice / 100).toString(),
@@ -244,6 +385,8 @@ export class WbOrderService implements IOrderable, IMarkSubmittable {
                 },
             ],
         };
+        // Кэш живёт для getByPostingNumber; без предела он растёт бесконечно.
+        if (this.postingDtos.size > 5000) this.postingDtos.clear();
         this.postingDtos.set(res.posting_number, res);
         return res;
     }
@@ -351,8 +494,108 @@ export class WbOrderService implements IOrderable, IMarkSubmittable {
     async getOrders(dateFrom: string, flag: number = 0): Promise<any> {
         return this.api.method('/api/v1/supplier/orders', 'statistics', { dateFrom, flag });
     }
+    /**
+     * Отмены ВБ-FBS для общего конвейера `cancelOrders`.
+     *
+     * Журнал только ЧИТАЕМ — единственный писатель WB-событий это наблюдатель
+     * (`observeWbFbs`): двух писателей разнесённые минуты не спасают от гонки
+     * SELECT-then-INSERT по первичному ключу.
+     *
+     * Окно действий считается от «отмена впервые увидена» (FIRST_SEEN журнала),
+     * а НЕ от даты создания заказа: статус отмены у ВБ терминальный и виден всё
+     * окно заказов, а отказ при вручении случается через 1–3+ недели после
+     * создания — окно по createdAt систематически теряло бы именно его.
+     *
+     * Гейты по порядку:
+     *  - посева ещё не было (маркер пуст) → действий нет вовсе;
+     *  - отмена не посеяна наблюдателем → придёт следующим прогоном (≤5 мин);
+     *  - отмена увидена не позже посева → накопленный хвост, разбор руками/отчётом;
+     *  - старше окна действий → только наблюдение.
+     */
     async listCanceled(): Promise<PostingDto[]> {
-        return [];
+        const seededAt = await this.mpEvent.firstSeen(WbOrderService.SEED_EVENT);
+        if (!seededAt) return [];
+        const events = await this.fetchOrderEvents();
+        const res: PostingDto[] = [];
+        for (const ev of events) {
+            if (ev.state !== 'cancelled') continue;
+            const firstSeen = await this.mpEvent.firstSeen(ev.event);
+            if (!firstSeen || firstSeen <= seededAt) continue;
+            const ageDays = -DateTime.fromJSDate(firstSeen).diffNow('days').days;
+            if (ageDays > WbOrderService.CANCEL_ACTION_WINDOW_DAYS) continue;
+            res.push(this.transformToPostingDto(ev.order, ev.wbStatus, ev.shipped));
+        }
+        return res;
+    }
+
+    /**
+     * Возвраты после выкупа (IReturnable): заявки покупателей с returns-api
+     * (активные и архив — терминальные статусы только в архиве), нормализованные
+     * в озоновский словарь состояний (`wb.status.helper`). Матчинг заявки к счёту:
+     * `srid` заявки === `rid` заказа → номер задания (он в S.PRIM у FBS-счетов).
+     */
+    /** Глубина, на которую /api/v3/orders реально отдаёт историю (проверено боем). */
+    private static readonly ORDERS_DEPTH_DAYS = 120;
+
+    /** Все заявки одного среза (активные или архив) с пагинацией — обрезать архив молча нельзя. */
+    private async listClaims(isArchive: boolean): Promise<{ claim: WbClaimDto; isArchive: boolean }[]> {
+        const pageSize = 200;
+        const res: { claim: WbClaimDto; isArchive: boolean }[] = [];
+        for (let offset = 0; ; offset += pageSize) {
+            const page = await this.wbCustomer.getClaims({ is_archive: isArchive, limit: pageSize, offset });
+            const claims = page?.claims ?? [];
+            res.push(...claims.map((claim) => ({ claim, isArchive })));
+            const total = page?.total ?? res.length;
+            if (!claims.length || res.length >= total) return res;
+        }
+    }
+
+    async listReturns(): Promise<ReturnDto[]> {
+        const [active, archived] = await Promise.all([this.listClaims(false), this.listClaims(true)]);
+        const claims = [...active, ...archived];
+        if (!claims.length) return [];
+
+        // Заказы с даты самой ранней заявки (order_dt в заявке есть всегда), но не
+        // глубже отдачи /api/v3/orders: древний архив и битые даты не должны
+        // превращать каждый прогон в выкачку всей истории.
+        const depthEdge = DateTime.now().minus({ days: WbOrderService.ORDERS_DEPTH_DAYS });
+        const orderDts = claims
+            .map(({ claim }) => DateTime.fromISO(claim.order_dt).minus({ day: 1 }))
+            .filter((dt) => dt.isValid);
+        const from = min(orderDts.map((dt) => (dt < depthEdge ? depthEdge : dt).toUnixInteger())) ?? depthEdge.toUnixInteger();
+        const orders = await this.list(from);
+        const bySrid = new Map(orders.map((o) => [o.rid, o]));
+
+        const res: ReturnDto[] = [];
+        for (const { claim, isArchive } of claims) {
+            const state = wbClaimState(claim, isArchive);
+            if (state === null) continue; // заявка на рассмотрении — события ещё нет
+            const order = bySrid.get(claim.srid);
+            if (!order) {
+                const tooDeep = DateTime.fromISO(claim.order_dt) < depthEdge;
+                // Глубже отдачи заказов заявка не сматчится уже никогда — не warn'им
+                // о ней каждые 5 минут (архив «живёт» в выборке вечно).
+                if (!tooDeep) {
+                    this.logger.warn(
+                        `ВБ возврат ${claim.id}: заказ по srid ${claim.srid} не найден в окне заказов — пропускаю`,
+                    );
+                }
+                continue;
+            }
+            res.push({
+                id: claim.id,
+                posting_number: String(order.id),
+                schema: 'Fbs',
+                order_number: claim.srid,
+                visual: { status: { id: claim.status_ex, sys_name: state, display_name: state } },
+            });
+        }
+        return res;
+    }
+
+    /** Частичность возвратов ВБ не судим: одно задание = одна единица товара. */
+    async returnCounts(_item: ReturnDto): Promise<{ returnedRows: number; postingUnits: number } | undefined> {
+        return undefined;
     }
 
     async getByPostingNumber(postingNumber: string): Promise<PostingDto> {

@@ -579,6 +579,58 @@ describe('OrderService', () => {
             expect(mockInvoiceService.updatePrim).toHaveBeenCalledWith('456', '456 отмена FBO', mockTransaction);
         });
 
+        it('ВБ: отгруженная отмена → донор « отмена WBFBO» сразу, без CANCEL_WAIT (даже при включённых возвратах)', async () => {
+            // Отказник ВБ остаётся на складе ВБ (решение владельца 17.08): заявки
+            // возврата не будет, ждать нечего — чужой (озоновский) суффикс отдал бы
+            // партию донорскому пулу Ozon.
+            mpReturnsEnabled.mockReturnValue(true);
+            const order = { posting_number: '9002', isFbo: false, service: GoodServiceEnum.WB, shipped: true } as any;
+            mockInvoiceService.getByPosting.mockResolvedValue({ id: 900, status: 4 });
+
+            await service.cancelOrder(order, mockTransaction);
+
+            expect(mockInvoiceService.updatePrim).toHaveBeenCalledWith('9002', '9002 отмена WBFBO', mockTransaction);
+            expect(mpRecord).not.toHaveBeenCalledWith(
+                expect.objectContaining({ kind: 'CANCEL_WAIT' }),
+                expect.anything(),
+            );
+            expect(mockInvoiceService.returnMarkCodesToStock).not.toHaveBeenCalled();
+            expect(detachAll).not.toHaveBeenCalled();
+            mpReturnsEnabled.mockReturnValue(false);
+        });
+
+        it('ВБ: отгруженная отмена при неожиданном статусе счёта → письмо, счёт не трогаем', async () => {
+            const order = { posting_number: '9003', isFbo: false, service: GoodServiceEnum.WB, shipped: true } as any;
+            mockInvoiceService.getByPosting.mockResolvedValue({ id: 901, status: 1 });
+
+            await service.cancelOrder(order, mockTransaction);
+
+            expect(mockInvoiceService.updatePrim).not.toHaveBeenCalled();
+            expect(eventEmitterEmit).toHaveBeenCalledWith(
+                'error.message',
+                'Отмена отгруженного ВБ-заказа при неожиданном статусе счёта',
+                expect.stringContaining('9003'),
+            );
+        });
+
+        it('ВБ: НЕотгруженная отмена идёт общими ветками (STATUS=3 → отвязка кодов, « отмена»)', async () => {
+            const order = { posting_number: '9004', isFbo: false, service: GoodServiceEnum.WB, shipped: false } as any;
+            const invoice = { id: 902, status: 3 };
+            mockInvoiceService.getByPosting.mockResolvedValue(invoice);
+
+            await service.cancelOrder(order, mockTransaction);
+
+            expect(detachAll).toHaveBeenCalledWith(invoice, mockTransaction);
+            expect(mockInvoiceService.updatePrim).toHaveBeenCalledWith('9004', '9004 отмена', mockTransaction);
+        });
+
+        it('счёт по точному PRIM не найден (неизвестный хвост) → ошибка, а не молчаливый скип', async () => {
+            const order = { posting_number: '9005', isFbo: false } as any;
+            mockInvoiceService.getByPosting.mockResolvedValue(null);
+
+            await expect(service.cancelOrder(order, mockTransaction)).rejects.toThrow('разобрать руками');
+        });
+
         it('отгруженная отмена при включённых возвратах → счёт не трогаем, в журнал ложится CANCEL_WAIT', async () => {
             mpReturnsEnabled.mockReturnValue(true);
             const order = { posting_number: '456', isFbo: false, delivering_date: '2026-08-08T10:00:00Z' } as any;
@@ -1032,12 +1084,21 @@ describe('OrderService', () => {
     });
 
     describe('возвраты: дедуп журналом вместо Redis (итерация 4)', () => {
-        const makeService = (returns: any[]) => ({
-            constructor: { name: 'PostingService' },
-            isFbo: () => false,
-            getBuyerId: () => 11,
-            listReturns: jest.fn().mockResolvedValue(returns),
-        });
+        // returnCounts — БОЕВАЯ реализация PostingService поверх моков ручек:
+        // подсчёт частичности проверяется здесь же, без дублирования логики в спеке.
+        const makeService = (returns: any[]) => {
+            const svc: any = {
+                constructor: { name: 'PostingService' },
+                isFbo: () => false,
+                getBuyerId: () => 11,
+                logger: { warn: jest.fn() },
+                listReturns: jest.fn().mockResolvedValue(returns),
+                listReturnsByPosting: jest.fn().mockResolvedValue([]),
+                getPostingUnits: jest.fn().mockResolvedValue(null),
+            };
+            svc.returnCounts = PostingService.prototype.returnCounts.bind(svc);
+            return svc;
+        };
 
         beforeEach(() => {
             mpRecord.mockReset().mockResolvedValue(true);
@@ -1096,7 +1157,7 @@ describe('OrderService', () => {
             svc.getPostingUnits = jest.fn().mockResolvedValue(null);
 
             await service.processReturns(svc, []);
-            expect(dryObserveReturn).toHaveBeenCalledWith(expect.objectContaining({ id: 4 }), undefined);
+            expect(dryObserveReturn).toHaveBeenCalledWith(expect.objectContaining({ id: 4 }), undefined, 'OZON');
 
             dryObserveReturn.mockClear();
             mpRecord.mockResolvedValue(false);
@@ -1144,7 +1205,7 @@ describe('OrderService', () => {
 
             await service.processReturns(svc, []);
 
-            expect(dryObserveReturn).toHaveBeenCalledWith(expect.objectContaining({ id: 8 }), undefined);
+            expect(dryObserveReturn).toHaveBeenCalledWith(expect.objectContaining({ id: 8 }), undefined, 'OZON');
         });
 
         it('заявочный статус при выключенном флаге: счёт не трогаем, событие закрыто', async () => {
