@@ -23,6 +23,8 @@ describe('MpDecisionRunnerService', () => {
     const markCodeFbsUnsold = jest.fn();
     const markCodeReturnToStock = jest.fn();
     const updatePrim = jest.fn();
+    const evIsHandled = jest.fn();
+    const evMarkHandled = jest.fn();
 
     const match = (over: any = {}) => ({
         invoice: { id: 91694, number: 8144, status: 3, remark: '72067989-0727-1' },
@@ -46,6 +48,8 @@ describe('MpDecisionRunnerService', () => {
         getMarkCodesStateByScode.mockResolvedValue([]);
         getRealpriceLinesByScode.mockResolvedValue([{ realpricecode: 1, goodscode: '531557', quantity: 1 }]);
         hasAnyState.mockResolvedValue(false);
+        evIsHandled.mockReset().mockResolvedValue(false);
+        evMarkHandled.mockReset().mockResolvedValue(undefined);
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 MpDecisionRunnerService,
@@ -64,7 +68,7 @@ describe('MpDecisionRunnerService', () => {
                         updatePrim,
                     },
                 },
-                { provide: MpEventService, useValue: { hasAnyState } },
+                { provide: MpEventService, useValue: { hasAnyState, isHandled: evIsHandled, markHandled: evMarkHandled } },
                 { provide: EventEmitter2, useValue: { emit } },
                 { provide: ConfigService, useValue: { get: configGet } },
             ],
@@ -249,6 +253,72 @@ describe('MpDecisionRunnerService', () => {
             expect(updatePrim).toHaveBeenCalledWith('72067989-0727-1', '72067989-0727-1 отмена FBO', tx);
             expect(markCodeFbsUnsold.mock.invocationCallOrder[0]).toBeLessThan(updatePrim.mock.invocationCallOrder[0]);
             expect(outcome.done).toEqual(['возврат в оборот KI-1', 'донор 72067989-0727-1']);
+        });
+
+        it('ВБ-возврат ReturnedToOzon → донор с СВОИМ суффиксом « отмена WBFBO», не озоновским', async () => {
+            flags.MP_RETURN_ACTIONS_ENABLED = true;
+            findByPosting.mockResolvedValue(match({ invoice: { id: 91694, status: 4, remark: '568746' } }));
+            getMarkCodesStateByScode.mockResolvedValue([codeState({ status: 6, retireReason: 1 })]);
+            const decision = await service.observeReturn(
+                {
+                    id: 'uuid-claim-1',
+                    posting_number: '568746',
+                    schema: 'Fbs',
+                    visual: { status: { sys_name: 'ReturnedToOzon' } },
+                },
+                undefined,
+                'WB',
+            );
+
+            await service.execute(decision);
+
+            // Чужой суффикс отдал бы партию и код донорскому пулу Ozon.
+            expect(updatePrim).toHaveBeenCalledWith('568746', '568746 отмена WBFBO', tx);
+        });
+
+        it('handleDelivered: решение → retire → пометка в журнале; сервис события уходит в решение', async () => {
+            flags.MP_SALE_ACTIONS_ENABLED = true;
+            findByPosting.mockResolvedValue(match({ invoice: { id: 91694, status: 4, remark: '568746' } }));
+            getMarkCodesStateByScode.mockResolvedValue([codeState({ status: 5, transferType: 3 })]);
+            const event = { service: 'WB', kind: 'POSTING_FBS', extId: '568746', state: 'delivered', posting: '568746' } as any;
+
+            await service.handleDelivered(event);
+
+            expect(markCodeFbsSold).toHaveBeenCalledWith('KI-1', tx);
+            expect(evMarkHandled).toHaveBeenCalledWith(event);
+        });
+
+        it('handleDelivered: уже обработанное событие не пересчитывается', async () => {
+            flags.MP_SALE_ACTIONS_ENABLED = true;
+            evIsHandled.mockResolvedValue(true);
+
+            await service.handleDelivered({
+                service: 'WB',
+                kind: 'POSTING_FBS',
+                extId: '568746',
+                state: 'delivered',
+                posting: '568746',
+            } as any);
+
+            expect(findByPosting).not.toHaveBeenCalled();
+            expect(evMarkHandled).not.toHaveBeenCalled();
+        });
+
+        it('handleDelivered: сбой исполнения — событие НЕ помечено, придёт на ретрай', async () => {
+            flags.MP_SALE_ACTIONS_ENABLED = true;
+            findByPosting.mockResolvedValue(match({ invoice: { id: 91694, status: 4, remark: '568746' } }));
+            getMarkCodesStateByScode.mockResolvedValue([codeState({ status: 5, transferType: 3 })]);
+            markCodeFbsSold.mockRejectedValue(new Error('DB down'));
+
+            await service.handleDelivered({
+                service: 'WB',
+                kind: 'POSTING_FBS',
+                extId: '568746',
+                state: 'delivered',
+                posting: '568746',
+            } as any);
+
+            expect(evMarkHandled).not.toHaveBeenCalled();
         });
 
         it('итерация 8: ReceivedBySeller — unretire, затем TT 3→0; счёт не трогаем', async () => {

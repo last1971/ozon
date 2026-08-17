@@ -1,13 +1,18 @@
 import { PostingDto } from '../posting/dto/posting.dto';
 
 /**
- * Товар уже уехал к Ozon?
+ * Товар уже уехал к маркетплейсу?
  *
  * Признак нужен там, где решение зависит от того, где физически лежит товар:
  * отмена собранной посылки, которая ещё у нас, разбирается кладовщиком,
  * а отмена уже отгруженной — превращает счёт в донора FBO-пула.
  *
- * `FINISH_PICKUP` для этого не годится (говорит лишь, что сборка закончена,
+ * Явное поле `shipped` заполняет нормализатор маркетплейса, у которого нет
+ * озоновских полей отправления (ВБ: `supplierStatus === 'complete'` — наш же
+ * статус передачи в доставку, переживает отмену; либо отказ при вручении,
+ * который по определению после отгрузки).
+ *
+ * Озон: `FINISH_PICKUP` для этого не годится (говорит лишь, что сборка закончена,
  * коробка может стоять у нас), а `status` у отменённого отправления всегда
  * `cancelled` — истории в нём нет. Берём поля самого отправления: дату передачи
  * в доставку и подстатус.
@@ -17,6 +22,7 @@ import { PostingDto } from '../posting/dto/posting.dto';
  * « отмена FBO» (то есть собраны и отданы в доноры), а все неотгруженные были либо
  * `STATUS=0`, либо теми семью, что собраны и остались у нас.
  */
-export function isShippedToOzon(posting: PostingDto): boolean {
+export function isShippedToMarketplace(posting: PostingDto): boolean {
+    if (posting?.shipped !== undefined) return posting.shipped;
     return Boolean(posting?.delivering_date) || posting?.substatus === 'posting_transferred_to_delivery';
 }

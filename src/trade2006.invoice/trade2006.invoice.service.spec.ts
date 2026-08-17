@@ -919,11 +919,13 @@ describe('Trade2006InvoiceService', () => {
             const sql = query.mock.calls[0][0];
             expect(sql).toContain('m.TRANSFER_TYPE IN (2, 3)');
             expect(sql).toContain('m.REALPRICEFCODE IS NULL');
-            expect(sql).toContain('m.STATUS = 5 AND (s.SCODE IS NULL OR s.STATUS NOT IN (3, 4))');
+            // Счета «в сборке» исключены, но собранный дольше 30 дней — уже висяк.
+            expect(sql).toContain('m.STATUS = 5 AND (s.SCODE IS NULL OR s.STATUS NOT IN (3, 4) OR (s.STATUS = 4 AND s.DATA < ?))');
             // Зеркальный висяк: выведенный нашей продажей код на счёте-доноре.
             expect(sql).toContain('m.STATUS = 6 AND m.RETIRE_REASON = 1 AND s.PRIM CONTAINING ?');
-            expect(query.mock.calls[0][1][0]).toBe('отмена');
-            expect(query.mock.calls[0][1][1]).toBeInstanceOf(Date);
+            expect(query.mock.calls[0][1][0]).toBeInstanceOf(Date);
+            expect(query.mock.calls[0][1][1]).toBe('отмена');
+            expect(query.mock.calls[0][1][2]).toBeInstanceOf(Date);
         });
 
         it('findStuckMarkCodes — MARK_CODES_ENABLED=false → [] без запроса', async () => {

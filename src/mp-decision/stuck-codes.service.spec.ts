@@ -90,6 +90,10 @@ describe('StuckCodesService — еженедельный отчёт «подви
     });
 
     describe('напоминалка «отменённые без возврата» (CANCEL_WAIT)', () => {
+        // Ожидания лежат только у Озона: сервис-цикл (OZON, WB) не должен их дублировать.
+        const mockCancelWaits = (waits: any[]) =>
+            listUnhandled.mockImplementation((svc: string) => Promise.resolve(svc === 'OZON' ? waits : []));
+
         const wait = (over: any = {}) => ({
             extId: '72067989-0727-1',
             posting: '72067989-0727-1',
@@ -110,7 +114,7 @@ describe('StuckCodesService — еженедельный отчёт «подви
         });
 
         it('заявки возврата нет дольше порога → письмо «проверить в кабинете»', async () => {
-            listUnhandled.mockResolvedValue([wait()]);
+            mockCancelWaits([wait()]);
             listStatesForPosting.mockResolvedValue([]);
 
             await service.report();
@@ -121,7 +125,7 @@ describe('StuckCodesService — еженедельный отчёт «подви
         });
 
         it('заявка отклонена (Rejected) — физики не будет: считаем как «заявки нет»', async () => {
-            listUnhandled.mockResolvedValue([wait()]);
+            mockCancelWaits([wait()]);
             listStatesForPosting.mockResolvedValue(['Rejected']);
 
             await service.report();
@@ -131,7 +135,7 @@ describe('StuckCodesService — еженедельный отчёт «подви
         });
 
         it('товар не доедет (Utilized) → ожидание закрывается навсегда, письма нет', async () => {
-            listUnhandled.mockResolvedValue([wait({ firstSeen: new Date(Date.now() - 30 * 24 * 3600 * 1000) })]);
+            mockCancelWaits([wait({ firstSeen: new Date(Date.now() - 30 * 24 * 3600 * 1000) })]);
             listStatesForPosting.mockResolvedValue(['MovingToOzon', 'Utilized']);
 
             await service.report();
@@ -143,7 +147,7 @@ describe('StuckCodesService — еженедельный отчёт «подви
         });
 
         it('возврат приехал к нам (ReceivedBySeller) → «ждёт расформирования», ожидание живо', async () => {
-            listUnhandled.mockResolvedValue([wait()]);
+            mockCancelWaits([wait()]);
             listStatesForPosting.mockResolvedValue(['MovingToSeller', 'ReceivedBySeller']);
 
             await service.report();
@@ -155,7 +159,7 @@ describe('StuckCodesService — еженедельный отчёт «подви
         });
 
         it('заявка есть и едет в пределах двух недель → не шумим', async () => {
-            listUnhandled.mockResolvedValue([wait()]);
+            mockCancelWaits([wait()]);
             listStatesForPosting.mockResolvedValue(['MovingToOzon']);
 
             await service.report();
@@ -164,7 +168,7 @@ describe('StuckCodesService — еженедельный отчёт «подви
         });
 
         it('заявка есть, но склада не достигла за две недели → письмо «завис в пути»', async () => {
-            listUnhandled.mockResolvedValue([wait({ firstSeen: new Date(Date.now() - 15 * 24 * 3600 * 1000) })]);
+            mockCancelWaits([wait({ firstSeen: new Date(Date.now() - 15 * 24 * 3600 * 1000) })]);
             listStatesForPosting.mockResolvedValue(['MovingToOzon']);
 
             await service.report();
@@ -174,7 +178,7 @@ describe('StuckCodesService — еженедельный отчёт «подви
         });
 
         it('счёт помечен (возврат разобрал) → ожидание закрывается, письма нет', async () => {
-            listUnhandled.mockResolvedValue([wait()]);
+            mockCancelWaits([wait()]);
             findByPosting.mockResolvedValue(match({ mark: ' отмена FBO', cancelled: true, invoice: { id: 91694, status: 1 } }));
 
             await service.report();
@@ -186,7 +190,7 @@ describe('StuckCodesService — еженедельный отчёт «подви
         });
 
         it('счёт погашен ручным расформированием → тоже закрываем', async () => {
-            listUnhandled.mockResolvedValue([wait()]);
+            mockCancelWaits([wait()]);
             findByPosting.mockResolvedValue(match({ invoice: { id: 91694, status: 0 } }));
 
             await service.report();
@@ -196,7 +200,7 @@ describe('StuckCodesService — еженедельный отчёт «подви
         });
 
         it('свежая отмена без заявки (моложе порога) → пока не шумим', async () => {
-            listUnhandled.mockResolvedValue([wait({ firstSeen: new Date(Date.now() - 2 * 24 * 3600 * 1000) })]);
+            mockCancelWaits([wait({ firstSeen: new Date(Date.now() - 2 * 24 * 3600 * 1000) })]);
             listStatesForPosting.mockResolvedValue([]);
 
             await service.report();

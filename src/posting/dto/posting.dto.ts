@@ -35,6 +35,14 @@ export class PostingDto {
     @ApiProperty({ description: 'Флаг FBO', required: false })
     isFbo?: boolean;
 
+    @ApiProperty({
+        description:
+            'Явный признак «товар передан в доставку» — заполняет нормализатор маркетплейса, ' +
+            'у которого нет озоновских delivering_date/substatus (ВБ: supplierStatus=complete или отказ при вручении)',
+        required: false,
+    })
+    shipped?: boolean;
+
     @ApiProperty({ description: 'Маркетплейс (WB/OZON/YANDEX) — фронт ветвит флоу по нему', required: false, enum: GoodServiceEnum })
     service?: GoodServiceEnum;
 }

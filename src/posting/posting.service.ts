@@ -15,7 +15,7 @@ import { SupplyDto } from '../supply/dto/supply.dto';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { SupplyPositionDto } from 'src/supply/dto/supply.position.dto';
 import { OzonApiService } from "../ozon.api/ozon.api.service";
-import { isShippedToOzon } from '../helpers/posting.shipped';
+import { isShippedToMarketplace } from '../helpers/posting.shipped';
 import { ReturnsListDto } from './dto/returns.list.dto';
 import { ReturnDto } from './dto/return.dto';
 import { FbsPrepareDto, IMarkSubmittable, SubmitFailureDto, SubmitResultDto } from '../interfaces/IMarkSubmittable';
@@ -34,9 +34,11 @@ import { ShipExemplarsCommand } from './commands/ship-exemplars.command';
 import { firstPageOnly } from '../helpers/pdf/pdf.helpers';
 import { MpEventDto, MpEventService } from '../mp-event/mp-event.service';
 import { MpDecisionRunnerService } from '../mp-decision/mp-decision.runner.service';
+import { IReturnable } from '../interfaces/IReturnable';
+import { CLAIM_RETURN_STATES } from '../mp-decision/mp-decision.types';
 
 @Injectable()
-export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable {
+export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable, IReturnable {
     private readonly logger = new Logger(PostingService.name);
     constructor(
         private productService: ProductService,
@@ -190,7 +192,7 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
                     // Схема FBS — по источнику события; отмены исполняет cancelOrder.
                     // Признак отгрузки — из самого отправления, как в бою: журнал про
                     // посылки, уехавшие до его старта, не знает и врал «лежит у нас».
-                    await this.mpRunner.observePosting(posting.posting_number, 'FBS', 'cancel', isShippedToOzon(posting));
+                    await this.mpRunner.observePosting(posting.posting_number, 'FBS', 'cancel', isShippedToMarketplace(posting));
                     continue;
                 }
                 if (status !== 'delivered') continue;
@@ -198,7 +200,7 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
                     await this.mpRunner.observePosting(posting.posting_number, 'FBS', 'delivered');
                     continue;
                 }
-                await this.executeDeliveredSale(event);
+                await this.mpRunner.handleDelivered(event);
             }
         }
 
@@ -210,7 +212,7 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
             try {
                 const tail = await this.mpEvent.listUnhandled('OZON', 'POSTING_FBS', 'delivered');
                 for (const row of tail) {
-                    await this.executeDeliveredSale({
+                    await this.mpRunner.handleDelivered({
                         service: 'OZON',
                         kind: 'POSTING_FBS',
                         extId: row.extId,
@@ -225,23 +227,6 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         await this.mpRunner.flush('observeFbsWideWindow');
 
         await this.logObservationTail(found, actionEdge, apiErrors, fresh);
-    }
-
-    /**
-     * Продажа по доставленному отправлению: решение → действия → пометка в журнале.
-     * Пометки нет ни при потолке прогона, ни при сбое — событие останется в журнале
-     * необработанным, и его подберёт добор следующего прогона.
-     */
-    private async executeDeliveredSale(event: MpEventDto): Promise<void> {
-        try {
-            if (await this.mpEvent.isHandled(event)) return;
-            const decision = await this.mpRunner.observePosting(event.posting, 'FBS', 'delivered');
-            if (!decision) return;
-            if (this.mpRunner.needsExecution(decision)) await this.mpRunner.execute(decision);
-            await this.mpEvent.markHandled(event);
-        } catch (e) {
-            this.logger.warn(`продажа ${event.posting}: действия не выполнены — ${e.message}`);
-        }
     }
 
     private async logObservationTail(
@@ -353,7 +338,7 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
 
             hasNext = result?.has_next || false;
             if (returns.length > 0) {
-                lastId = returns[returns.length - 1].id;
+                lastId = Number(returns[returns.length - 1].id);
             }
         }
 
@@ -399,6 +384,40 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         } catch (e) {
             this.logger.warn(`состав отправления ${postingNumber} не получен — ${e.message}`);
             return null;
+        }
+    }
+
+    /**
+     * Числитель и знаменатель признака частичности возврата — оба со стороны Ozon.
+     *
+     * Наш счёт для этого не годится: количества в нём в штуках с коэффициентом
+     * кратности (упаковка `570615-10` лежит как `QUAN=10`), и полный возврат
+     * кратного товара выглядел бы частичным. Считаем ЗАПИСИ возврата за всю
+     * историю отправления против единиц в самом отправлении.
+     *
+     * Спрашиваем только там, где ответ может что-то изменить: физический статус
+     * возврата и схема FBS. Частичных возвратов FBO за 180 дней не нашлось ни одного
+     * (§2 плана), а `/v3/posting/fbs/get` по FBO отвечает 404 — тратить на них
+     * два вызова API незачем.
+     */
+    async returnCounts(item: ReturnDto): Promise<{ returnedRows: number; postingUnits: number } | undefined> {
+        const state = item.visual?.status?.sys_name ?? '';
+        if (item.schema !== 'Fbs' || !['ReturnedToOzon', 'ReceivedBySeller'].includes(state)) return undefined;
+        try {
+            const [rows, postingUnits] = await Promise.all([
+                this.listReturnsByPosting(item.posting_number),
+                this.getPostingUnits(item.posting_number),
+            ]);
+            if (postingUnits === null) return undefined;
+            // Заявочные записи в числитель не идут: физики за ними нет, иначе
+            // получится «вернулось больше, чем заказано».
+            const returnedRows = rows.filter(
+                (row) => !CLAIM_RETURN_STATES.includes(row.visual?.status?.sys_name ?? ''),
+            ).length;
+            return { returnedRows, postingUnits };
+        } catch (e) {
+            this.logger.warn(`частичность ${item.posting_number} не посчитана — ${e.message}`);
+            return undefined;
         }
     }
 

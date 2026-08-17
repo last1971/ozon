@@ -220,6 +220,22 @@ export const cronConfig: Record<string, CronSetup> = {
             },
         },
     },
+    /**
+     * Наблюдатель продаж и отмен ВБ-FBS (план ВБ, этап 2): журнал MP_EVENT +
+     * retire по sold. Минута :03 — своя: :00/:05 (observeFbsWideWindow) и
+     * :02/:07 (checkNewOrders) кормят тот же runner (общий буфер писем и
+     * потолок решений), одновременный старт недопустим.
+     * На dev выключен — кабинет и база боевые.
+     */
+    observeWbFbs: {
+        production: {
+            enabled: true,
+            settings: {
+                time: '0 3-58/5 * * * *',
+            },
+        },
+        development: false,
+    },
     checkCanceledWbOrders: {
         production: {
             enabled: true,

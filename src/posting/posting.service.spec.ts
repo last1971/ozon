@@ -41,6 +41,19 @@ describe('PostingService', () => {
     const mpSalesEnabled = jest.fn().mockReturnValue(false);
     const mpNeedsExecution = jest.fn().mockReturnValue(false);
     const mpExecute = jest.fn().mockResolvedValue({ done: [], failed: [] });
+    // Зеркало реального runner.handleDelivered поверх моков: сценарии ретрая/пометки
+    // остаются проверяемыми здесь, оркестровку в бою тестирует спек runner'а.
+    const mpHandleDelivered = jest.fn(async (event: any) => {
+        try {
+            if (await mpIsHandled(event)) return;
+            const decision = await dryObservePosting(event.posting ?? event.extId, 'FBS', 'delivered');
+            if (!decision) return;
+            if (mpNeedsExecution(decision)) await mpExecute(decision);
+            await mpMarkHandled(event);
+        } catch (e) {
+            /* как в бою: сбой не роняет прогон и не помечает событие */
+        }
+    });
     let markMigrationEnabled = false;
     let nodeEnv: string | undefined;
     let services: string[] = [];
@@ -124,6 +137,7 @@ describe('PostingService', () => {
                     provide: MpDecisionRunnerService,
                     useValue: {
                         observePosting: dryObservePosting,
+                        handleDelivered: mpHandleDelivered,
                         flush: dryFlush,
                         salesEnabled: mpSalesEnabled,
                         needsExecution: mpNeedsExecution,
@@ -140,6 +154,7 @@ describe('PostingService', () => {
 
         orderList.mockClear();
         dryObservePosting.mockClear();
+        mpHandleDelivered.mockClear();
         dryFlush.mockClear();
         mpRecord.mockReset().mockResolvedValue(true);
         ozonApiMethod.mockClear();
