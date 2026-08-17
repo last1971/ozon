@@ -38,6 +38,8 @@ interface BatchInfo {
     sfcode: number | null;
     nsf: number | null;
     date: string | null;
+    /** Номер документа из ЛК Честного знака — вводится при подтверждении пачки. */
+    docUuid: string | null;
 }
 
 const retire = ref<PendingCode[]>([]);
@@ -70,7 +72,15 @@ const kindTitle = (kind: BatchInfo['kind']) =>
     kind === 'retire' ? 'вывод из оборота' : kind === 'retire_upd' ? 'вывод по УПД' : 'возврат в оборот';
 const fmtDate = (value: string | null) => (value ? new Date(value).toLocaleString('ru-RU') : '');
 const fmtDay = (value: string | null) => (value ? new Date(value).toLocaleDateString('ru-RU') : '');
-const batchDoc = (batch: BatchInfo) => (batch.kind === 'retire_upd' ? `№${batch.nsf ?? batch.sfcode} от ${fmtDay(batch.date)}` : '');
+// Документ пачки: у УПД — её номер и дата, у остальных — номер документа
+// из ЛК Честного знака (введён при подтверждении).
+const batchDoc = (batch: BatchInfo) => {
+    if (batch.kind === 'retire_upd') return `№${batch.nsf ?? batch.sfcode} от ${fmtDay(batch.date)}`;
+    return batch.docUuid ?? '';
+};
+
+// Черновики номеров документов (по id пачки) — вводятся до клика «Подтвердить».
+const docNumbers = ref<Record<number, string>>({});
 
 async function refresh() {
     error.value = '';
@@ -105,7 +115,9 @@ async function download(kind: 'retire' | 'return') {
     try {
         const batch = await axios.post<{ id: number; cnt: number }>(`/api/chz/batch/${kind}`);
         await fetchFile(batch.data.id, `${kind === 'retire' ? 'vyvod_iz_oborota' : 'vozvrat_v_oborot'}_${batch.data.id}.xlsx`);
-        message.value = `Пачка №${batch.data.id}: ${batch.data.cnt} КИ. Выгрузи файл в ГИС МТ и нажми «Подтвердить» в истории.`;
+        message.value =
+            `Пачка №${batch.data.id}: ${batch.data.cnt} КИ. Выгрузи файл в ГИС МТ, номер документа из ЛК ` +
+            'впиши при нажатии «Подтвердить» в истории.';
         await refresh();
     } catch (e: any) {
         error.value = e?.response?.data?.message ?? e?.message ?? 'Ошибка';
@@ -132,11 +144,13 @@ async function downloadDoc(doc: PendingDoc) {
 }
 
 async function confirm(batch: BatchInfo) {
+    const docNumber = (docNumbers.value[batch.id] ?? '').trim();
     busy.value = true;
     error.value = '';
     try {
         const res = await axios.post<{ confirmed: number; skipped: number; already: boolean }>(
             `/api/chz/batch/${batch.id}/confirm`,
+            { docNumber: docNumber || undefined },
         );
         message.value = res.data.already
             ? `Пачка №${batch.id} уже была подтверждена.`
@@ -212,9 +226,18 @@ onMounted(refresh);
                         <td>{{ batch.cnt }}</td>
                         <td>
                             <span v-if="batch.confirmedAt">подтверждена {{ fmtDate(batch.confirmedAt) }}</span>
-                            <v-btn v-else size="small" color="success" :disabled="busy" @click="confirm(batch)">
-                                Подтвердить
-                            </v-btn>
+                            <div v-else class="d-flex align-center" style="gap: 8px; min-width: 340px">
+                                <v-text-field
+                                    v-model="docNumbers[batch.id]"
+                                    density="compact"
+                                    hide-details
+                                    placeholder="№ документа из ЛК ЧЗ"
+                                    style="max-width: 320px"
+                                />
+                                <v-btn size="small" color="success" :disabled="busy" @click="confirm(batch)">
+                                    Подтвердить
+                                </v-btn>
+                            </div>
                         </td>
                     </tr>
                     <tr v-if="!batches.length"><td colspan="6">Пачек ещё не было</td></tr>
