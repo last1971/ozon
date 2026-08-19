@@ -263,9 +263,14 @@ export class MpDecisionRunnerService {
 
         const loud = entries.filter((e) => this.isLoud(e));
         const executed = entries.filter((e) => e.outcome && (e.outcome.done.length || e.outcome.failed.length)).length;
+        // Разрез по веткам — счётчики НАКОПИТЕЛЬНЫЕ за время жизни сервиса: при нулевом
+        // действии это одна и та же простыня каждые пять минут. Печатаем её, только когда
+        // что-то произошло; счётчики никуда не делись и доступны через getCounters().
+        const acted = executed || loud.length || skipped;
         this.logger.log(
             `${cycle}: решающая таблица — событий ${entries.length}, исполнено ${executed}, в письмо ${loud.length}` +
-                `${skipped ? `, не разобрано по потолку ${skipped}` : ''}; ветки: ${this.countersToString()}`,
+                `${skipped ? `, не разобрано по потолку ${skipped}` : ''}` +
+                `${acted ? `; ветки: ${this.countersToString()}` : ''}`,
         );
         if (!loud.length && !skipped) return;
 

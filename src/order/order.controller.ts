@@ -73,7 +73,9 @@ export class OrderController {
         // Раньше здесь звался PostingFboService.checkCanceledOrders — отдельная реализация
         // со своей транзакцией на весь батч, мимо гейтов, дедупа и письма о сбоях.
         // Ручной прогон обязан идти тем же путём, что и крон, иначе руками чиним не то.
-        await this.orderService.checkFboOrdersDaily();
+        // Без сверки зависших: она подбирает счета пачками и должна идти по расписанию,
+        // а не случайным GET-ом (ручка без гардов).
+        await this.orderService.checkFboOrdersDaily(false);
         return { isSuccess: true };
     }
 

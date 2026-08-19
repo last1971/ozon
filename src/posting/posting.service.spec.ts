@@ -4,7 +4,7 @@ import { INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { ConfigService } from '@nestjs/config';
 import { ProductService } from '../product/product.service';
 import { DateTime } from 'luxon';
-import { OzonApiService } from "../ozon.api/ozon.api.service";
+import { OzonApiService } from '../ozon.api/ozon.api.service';
 import { CreateOrGetExemplarsCommand } from './commands/create-or-get-exemplars.command';
 import { BuildExemplarsPayloadCommand } from './commands/build-exemplars-payload.command';
 import { ValidateExemplarsCommand } from './commands/validate-exemplars.command';
@@ -170,9 +170,11 @@ describe('PostingService', () => {
         getByPostingNumbers.mockReset();
         mpRecord.mockReset().mockResolvedValue(true);
         mpListUnhandled.mockClear().mockResolvedValue([]);
-        mpWindowStart.mockReset().mockImplementation(async (_s: any, _k: any, days: number) =>
-            DateTime.now().minus({ days }).startOf('day').toJSDate(),
-        );
+        mpWindowStart
+            .mockReset()
+            .mockImplementation(async (_s: any, _k: any, days: number) =>
+                DateTime.now().minus({ days }).startOf('day').toJSDate(),
+            );
         getByPostingNumbers.mockResolvedValue([]);
         markMigrationEnabled = false;
         nodeEnv = undefined;
@@ -539,7 +541,12 @@ describe('PostingService', () => {
 
     describe('getByPostingNumber', () => {
         it('returns Ozon result when posting found', async () => {
-            const posting = { posting_number: 'P-1', status: 'awaiting_packaging', in_process_at: date.toISOString(), products: [] };
+            const posting = {
+                posting_number: 'P-1',
+                status: 'awaiting_packaging',
+                in_process_at: date.toISOString(),
+                products: [],
+            };
             ozonApiMethod.mockResolvedValueOnce({ result: posting });
 
             const res = await service.getByPostingNumber('P-1');
@@ -662,7 +669,10 @@ describe('PostingService', () => {
                             quantity: 2,
                             is_mandatory_mark_needed: false,
                             is_gtd_needed: true,
-                            exemplars: [{ exemplar_id: 111, marks: [] }, { exemplar_id: 112, marks: [] }],
+                            exemplars: [
+                                { exemplar_id: 111, marks: [] },
+                                { exemplar_id: 112, marks: [] },
+                            ],
                         },
                     ],
                 })
@@ -681,8 +691,20 @@ describe('PostingService', () => {
                         {
                             product_id: 999,
                             exemplars: [
-                                { exemplar_id: 111, marks: [], gtd: '10228010/260326/5094327', is_gtd_absent: false, is_rnpt_absent: true },
-                                { exemplar_id: 112, marks: [], gtd: '10228010/260326/5094327', is_gtd_absent: false, is_rnpt_absent: true },
+                                {
+                                    exemplar_id: 111,
+                                    marks: [],
+                                    gtd: '10228010/260326/5094327',
+                                    is_gtd_absent: false,
+                                    is_rnpt_absent: true,
+                                },
+                                {
+                                    exemplar_id: 112,
+                                    marks: [],
+                                    gtd: '10228010/260326/5094327',
+                                    is_gtd_absent: false,
+                                    is_rnpt_absent: true,
+                                },
                             ],
                         },
                     ],
@@ -725,7 +747,13 @@ describe('PostingService', () => {
                         {
                             product_id: 999,
                             exemplars: [
-                                { exemplar_id: 111, marks: [], gtd: '10228010/260326/5094327', is_gtd_absent: false, is_rnpt_absent: true },
+                                {
+                                    exemplar_id: 111,
+                                    marks: [],
+                                    gtd: '10228010/260326/5094327',
+                                    is_gtd_absent: false,
+                                    is_rnpt_absent: true,
+                                },
                             ],
                         },
                     ],
@@ -773,11 +801,9 @@ describe('PostingService', () => {
             const res = await service.submitFbsMarkCodes(invoice);
 
             expect(res).toEqual({ ok: true, shipped: true });
-            expect(ozonApiMethod).toHaveBeenNthCalledWith(
-                1,
-                '/v6/fbs/posting/product/exemplar/create-or-get',
-                { posting_number: 'P-1' },
-            );
+            expect(ozonApiMethod).toHaveBeenNthCalledWith(1, '/v6/fbs/posting/product/exemplar/create-or-get', {
+                posting_number: 'P-1',
+            });
             expect(ozonApiMethod).toHaveBeenNthCalledWith(
                 3,
                 '/v5/fbs/posting/product/exemplar/validate',
@@ -945,7 +971,10 @@ describe('PostingService', () => {
                             product_id: 999,
                             quantity: 2,
                             is_mandatory_mark_needed: true,
-                            exemplars: [{ exemplar_id: 111, marks: [] }, { exemplar_id: 112, marks: [] }],
+                            exemplars: [
+                                { exemplar_id: 111, marks: [] },
+                                { exemplar_id: 112, marks: [] },
+                            ],
                         },
                     ],
                 })
@@ -955,6 +984,87 @@ describe('PostingService', () => {
             const res = await service.submitFbsMarkCodes(invoice);
             expect(res.ok).toBe(false);
             expect(res.failed[0].reason).toContain('привязано кодов 1');
+        });
+
+        it('мультипаки одного товара (569593-5 / 569593-10) → коды расходятся по своим product_id', async () => {
+            // Живой кейс 0135585655-0073-1: раньше ключ по goodscode схлопывал обе позиции,
+            // все 6 кодов уезжали в один product_id («привязано 6, ждёт 4» + «кодов нет»).
+            getAttachedMarkCodesByScode.mockResolvedValueOnce([
+                { ki: 'KI-5A', goodscode: '569593', realpricecode: 1, quantity: 5 },
+                { ki: 'KI-5B', goodscode: '569593', realpricecode: 1, quantity: 5 },
+                { ki: 'KI-10A', goodscode: '569593', realpricecode: 2, quantity: 10 },
+                { ki: 'KI-10B', goodscode: '569593', realpricecode: 2, quantity: 10 },
+            ]);
+            getKmFullByKi.mockImplementation(async (ki: string) => `01FULL-${ki}`);
+            ozonApiMethod
+                .mockResolvedValueOnce({
+                    posting_number: 'P-1',
+                    multi_box_qty: 1,
+                    products: [
+                        {
+                            product_id: 3322439191,
+                            quantity: 2,
+                            is_mandatory_mark_needed: true,
+                            exemplars: [
+                                { exemplar_id: 111, marks: [] },
+                                { exemplar_id: 112, marks: [] },
+                            ],
+                        },
+                        {
+                            product_id: 3322440371,
+                            quantity: 2,
+                            is_mandatory_mark_needed: true,
+                            exemplars: [
+                                { exemplar_id: 221, marks: [] },
+                                { exemplar_id: 222, marks: [] },
+                            ],
+                        },
+                    ],
+                })
+                .mockResolvedValueOnce({
+                    result: {
+                        products: [
+                            { offer_id: '569593-5', sku: 3322439191 },
+                            { offer_id: '569593-10', sku: 3322440371 },
+                        ],
+                    },
+                })
+                .mockResolvedValueOnce(VALIDATE_OK)
+                .mockResolvedValueOnce({ result: true })
+                .mockResolvedValueOnce({ posting_number: 'P-1', status: 'ship_available', products: [] })
+                .mockResolvedValueOnce({ result: ['P-1'] });
+            const res = await service.submitFbsMarkCodes(invoice);
+            expect(res).toEqual({ ok: true, shipped: true });
+            expect(ozonApiMethod).toHaveBeenNthCalledWith(
+                4,
+                '/v6/fbs/posting/product/exemplar/set',
+                expect.objectContaining({
+                    products: [
+                        expect.objectContaining({
+                            product_id: 3322439191,
+                            exemplars: [
+                                expect.objectContaining({
+                                    marks: [{ mark: '01FULL-KI-5A', mark_type: 'mandatory_mark' }],
+                                }),
+                                expect.objectContaining({
+                                    marks: [{ mark: '01FULL-KI-5B', mark_type: 'mandatory_mark' }],
+                                }),
+                            ],
+                        }),
+                        expect.objectContaining({
+                            product_id: 3322440371,
+                            exemplars: [
+                                expect.objectContaining({
+                                    marks: [{ mark: '01FULL-KI-10A', mark_type: 'mandatory_mark' }],
+                                }),
+                                expect.objectContaining({
+                                    marks: [{ mark: '01FULL-KI-10B', mark_type: 'mandatory_mark' }],
+                                }),
+                            ],
+                        }),
+                    ],
+                }),
+            );
         });
 
         it('createOrGet вернул пустой ответ → skipRetry=true', async () => {
@@ -1053,11 +1163,9 @@ describe('PostingService', () => {
                 .mockResolvedValueOnce({ result: ['P-1'] });
             const res = await service.submitFbsMarkCodes(invoice);
             expect(res).toEqual({ ok: true, shipped: true });
-            expect(ozonApiMethod).toHaveBeenNthCalledWith(
-                5,
-                '/v5/fbs/posting/product/exemplar/status',
-                { posting_number: 'P-1' },
-            );
+            expect(ozonApiMethod).toHaveBeenNthCalledWith(5, '/v5/fbs/posting/product/exemplar/status', {
+                posting_number: 'P-1',
+            });
             expect(ozonApiMethod).toHaveBeenNthCalledWith(6, '/v4/posting/fbs/ship', expect.any(Object));
         });
 

@@ -34,6 +34,8 @@ export interface IInvoice {
         transaction: FirebirdTransaction,
     ): Promise<void>;
     isInFboShortage(posting: string, transaction: FirebirdTransaction): Promise<boolean>;
+    /** Зависшие FBO-счета (STATUS=3, IGK=NOT1C, без пометок и недоборов) для суточной сверки. */
+    getStuckFboInvoices(buyerId: number, since: Date, transaction: FirebirdTransaction): Promise<InvoiceDto[]>;
     pickupFboUnlessShortage(invoice: InvoiceDto, transaction: FirebirdTransaction): Promise<void>;
     logMigrationLink(link: FboMigrationLinkDto, transaction: FirebirdTransaction): Promise<void>;
     findFboPodbposCandidates(

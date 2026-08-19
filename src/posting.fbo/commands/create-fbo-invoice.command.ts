@@ -6,6 +6,7 @@ import { FboMarkMigrationService } from '../fbo-mark-migration.service';
 import { FboShortageDto } from '../dto/fbo-shortage.dto';
 import { InvoiceDto } from '../../invoice/dto/invoice.dto';
 import { goodCode, goodQuantityCoeff } from '../../helpers';
+import { FBO_INVOICE_IGK } from '../../helpers/fbo.invoice.constants';
 
 /**
  * Создаёт FBO-счёт (всегда) и разносит товар с подборки, собирая недостачи в контекст:
@@ -77,7 +78,7 @@ export class CreateFboInvoiceCommand implements ICommandAsync<IFboCreateContext>
             }
         }
 
-        if (context.setIgkNot1c) await this.invoiceService.update(invoice, { IGK: 'NOT1C' }, transaction);
+        if (context.setIgkNot1c) await this.invoiceService.update(invoice, { IGK: FBO_INVOICE_IGK }, transaction);
         // Подбор (для WB) вынесен в PickupFboCommand — после записи журнала недобора.
         return { ...context, invoice, shortages };
     }

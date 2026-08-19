@@ -26,6 +26,8 @@ import { ExemplarStatusResponseDto } from './dto/exemplar.status.dto';
 import { ShipPostingRequestDto, ShipPostingResponseDto } from './dto/ship.posting.dto';
 import { CommandChainAsync } from '../helpers/command/command.chain.async';
 import { IFbsSubmitContext } from './interfaces/fbs-submit.context';
+import { PostingPackLine } from './interfaces/posting-pack-line';
+import { goodCode, goodQuantityCoeff } from '../helpers';
 import { CreateOrGetExemplarsCommand } from './commands/create-or-get-exemplars.command';
 import { BuildExemplarsPayloadCommand } from './commands/build-exemplars-payload.command';
 import { ValidateExemplarsCommand } from './commands/validate-exemplars.command';
@@ -246,14 +248,13 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
 
         // Состав счетов читаем только под новые события — в устоявшемся прогоне их ноль.
         if (!fresh.size) {
-            for (const { status, postings } of found) {
+            // Пять строк каждые пять минут (1440 в сутки) при нулевом действии — шум,
+            // в котором тонут настоящие события. Пульс оставляем, простыню сворачиваем в строку.
+            const parts = found.map(({ status, postings }) => {
                 const tail = postings.filter((p) => DateTime.fromJSDate(new Date(p.in_process_at as any)) < actionEdge);
-                this.logger.log(
-                    `наблюдение ${status}: всего ${postings.length}, в рабочем окне ` +
-                        `${postings.length - tail.length}, из хвоста ${tail.length}, новых 0`,
-                );
-            }
-            this.logger.log(`наблюдение: ошибок API ${apiErrors}`);
+                return `${status} ${postings.length}/${tail.length}`;
+            });
+            this.logger.log(`наблюдение: новых нет; всего/из хвоста — ${parts.join(', ')}; ошибок API ${apiErrors}`);
             return;
         }
 
@@ -529,18 +530,24 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         return res?.result?.barcodes?.upper_barcode ?? '';
     }
 
-    async getPostingProductMap(postingNumber: string): Promise<Map<string, number>> {
+    /**
+     * Позиции отправления с разложенным артикулом (goodscode + фасовка).
+     * Ключом по одному goodscode пользоваться нельзя: мультипаки одного товара
+     * (569593-5 и 569593-10) схлопнутся в одну позицию.
+     */
+    async getPostingPackLines(postingNumber: string): Promise<PostingPackLine[]> {
         const res = await this.ozonApiService.method('/v3/posting/fbs/get', {
             posting_number: postingNumber,
         });
         const products = res?.result?.products ?? [];
-        const map = new Map<string, number>();
-        for (const p of products) {
-            const goodscode = String(p.offer_id ?? '').split('-')[0];
-            const productId = Number(p.sku);
-            if (goodscode && productId) map.set(goodscode, productId);
-        }
-        return map;
+        return products
+            .filter((p) => p.offer_id && Number(p.sku))
+            .map((p) => ({
+                offerId: String(p.offer_id),
+                goodscode: goodCode(p),
+                pieces: goodQuantityCoeff(p),
+                productId: Number(p.sku),
+            }));
     }
 
     /** Фаза 1: create-or-get → флаги марка/ГТД по строкам (для скан-гейта и диалога на фронте). */

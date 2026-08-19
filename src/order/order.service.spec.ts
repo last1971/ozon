@@ -42,6 +42,15 @@ describe('OrderService', () => {
         .mockResolvedValueOnce(2);
     const updatePrim = jest.fn();
     const pickupInvoice = jest.fn();
+    const getStuckFboInvoices = jest.fn().mockResolvedValue([]);
+    const pickupFboUnlessShortage = jest.fn().mockResolvedValue(undefined);
+    const findByPostingDefault = async (posting: any) => {
+        const remark = typeof posting === 'string' ? posting : posting.posting_number;
+        return remark === '123' || remark === '111'
+            ? { invoice: { id: 1, status: 3, remark }, mark: '', cancelled: false, closed: false }
+            : null;
+    };
+    const findByPosting = jest.fn(findByPostingDefault);
     const commit = jest.fn();
     const rollback = jest.fn();
     const getTransaction = () => ({ commit, rollback });
@@ -55,10 +64,17 @@ describe('OrderService', () => {
     let nodeEnv = 'development';
     let markCodesEnabled = false;
     let cancelActionsEnabled = true;
+    let reconcileDry = false;
+    let reconcileLimit = 200;
     beforeEach(async () => {
         nodeEnv = 'development';
         markCodesEnabled = false;
         cancelActionsEnabled = true;
+        reconcileDry = false;
+        reconcileLimit = 200;
+        getStuckFboInvoices.mockReset().mockResolvedValue([]);
+        pickupFboUnlessShortage.mockReset().mockResolvedValue(undefined);
+        findByPosting.mockReset().mockImplementation(findByPostingDefault);
         commit.mockReset();
         rollback.mockReset();
         createInvoice.mockClear();
@@ -81,13 +97,10 @@ describe('OrderService', () => {
                         update: jest.fn(),
                         isExists: async (remark: string) => remark === '123' || remark === '111',
                         // предикат вместо булева isExists: те же номера, но с пометкой счёта
-                        findByPosting: async (posting: any) => {
-                            const remark = typeof posting === 'string' ? posting : posting.posting_number;
-                            return remark === '123' || remark === '111'
-                                ? { invoice: { id: 1, status: 3, remark }, mark: '', cancelled: false, closed: false }
-                                : null;
-                        },
+                        findByPosting,
                         listFbsAwaitingShip,
+                        getStuckFboInvoices,
+                        pickupFboUnlessShortage,
                     },
                 },
                 {
@@ -184,6 +197,8 @@ describe('OrderService', () => {
                             if (key === 'NODE_ENV') return nodeEnv;
                             if (key === 'MARK_CODES_ENABLED') return markCodesEnabled;
                             if (key === 'MP_CANCEL_ACTIONS_ENABLED') return cancelActionsEnabled;
+                            if (key === 'FBO_RECONCILE_DRY') return reconcileDry;
+                            if (key === 'FBO_RECONCILE_LIMIT') return reconcileLimit;
                             return defaultValue;
                         }
                     }
@@ -1445,6 +1460,116 @@ describe('OrderService', () => {
             await expect(service.runFboPackageForTesting(posting)).rejects.toThrow(/development/);
             expect(createInvoice).not.toHaveBeenCalled();
             expect(commit).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('reconcileStuckFbo — сверка зависших FBO-счетов', () => {
+        const date = new Date('2026-08-15T00:00:00.000Z');
+        const stuckInvoice = (id: number, remark: string) => ({ id, number: id + 100, remark, status: 3, date });
+        const fboService = (shipped: Map<string, string>) => ({
+            getBuyerId: () => 24416,
+            isFbo: () => true,
+            listShippedSince: jest.fn().mockResolvedValue(shipped),
+        });
+
+        // Боевые commit/rollback возвращают промис (perItem делает rollback(true).catch(...)),
+        // а общий mockReset в внешнем beforeEach оставляет undefined.
+        beforeEach(() => {
+            commit.mockResolvedValue(undefined);
+            rollback.mockResolvedValue(undefined);
+        });
+
+        it('сервис без listShippedSince (ВБ, Яндекс, Ozon FBS) шаг не выполняет вовсе', async () => {
+            await service.reconcileStuckFbo({ getBuyerId: () => 22, isFbo: () => false } as any);
+            expect(getStuckFboInvoices).not.toHaveBeenCalled();
+        });
+
+        it('долга нет — в маркетплейс не ходим', async () => {
+            const fbo = fboService(new Map());
+            await service.reconcileStuckFbo(fbo as any);
+            expect(fbo.listShippedSince).not.toHaveBeenCalled();
+        });
+
+        it('подбирает счёт, который маркетплейс уже собрал и повёз', async () => {
+            getStuckFboInvoices.mockResolvedValue([stuckInvoice(1, '123')]);
+            await service.reconcileStuckFbo(fboService(new Map([['123', 'awaiting_deliver']])) as any);
+            expect(pickupFboUnlessShortage).toHaveBeenCalledTimes(1);
+            expect(commit).toHaveBeenCalled();
+        });
+
+        it('не подбирает счёт, который ещё не уехал', async () => {
+            getStuckFboInvoices.mockResolvedValue([stuckInvoice(1, '123')]);
+            await service.reconcileStuckFbo(fboService(new Map()) as any);
+            expect(pickupFboUnlessShortage).not.toHaveBeenCalled();
+        });
+
+        // Гонка: между выборкой списка и подбором параллельная ветка увела счёт в доноры.
+        it('не подбирает счёт, помеченный отменой после выборки', async () => {
+            getStuckFboInvoices.mockResolvedValue([stuckInvoice(1, '123')]);
+            findByPosting.mockResolvedValueOnce({
+                invoice: { id: 1, status: 1, remark: '123' },
+                mark: ' отмена FBO',
+                cancelled: true,
+                closed: false,
+            } as any);
+            await service.reconcileStuckFbo(fboService(new Map([['123', 'delivering']])) as any);
+            expect(pickupFboUnlessShortage).not.toHaveBeenCalled();
+        });
+
+        // Тот же гард на случай, когда счёт успели подобрать между выборкой и подбором.
+        it('не подбирает счёт, ушедший из STATUS=3 после выборки', async () => {
+            getStuckFboInvoices.mockResolvedValue([stuckInvoice(1, '123')]);
+            findByPosting.mockResolvedValueOnce({
+                invoice: { id: 1, status: 4, remark: '123' },
+                mark: '',
+                cancelled: false,
+                closed: false,
+            } as any);
+            await service.reconcileStuckFbo(fboService(new Map([['123', 'delivered']])) as any);
+            expect(pickupFboUnlessShortage).not.toHaveBeenCalled();
+        });
+
+        it('сухой прогон считает, но не подбирает', async () => {
+            reconcileDry = true;
+            getStuckFboInvoices.mockResolvedValue([stuckInvoice(1, '123')]);
+            await service.reconcileStuckFbo(fboService(new Map([['123', 'delivered']])) as any);
+            expect(pickupFboUnlessShortage).not.toHaveBeenCalled();
+            expect(eventEmitterEmit).toHaveBeenCalledWith(
+                'error.message',
+                'Сверка зависших FBO',
+                expect.stringContaining('сухой прогон'),
+            );
+        });
+
+        it('за прогон берёт не больше потолка, остаток ждёт следующего', async () => {
+            reconcileLimit = 1;
+            getStuckFboInvoices.mockResolvedValue([stuckInvoice(1, '123'), stuckInvoice(2, '111')]);
+            await service.reconcileStuckFbo(
+                fboService(
+                    new Map([
+                        ['123', 'delivered'],
+                        ['111', 'delivered'],
+                    ]),
+                ) as any,
+            );
+            expect(pickupFboUnlessShortage).toHaveBeenCalledTimes(1);
+        });
+
+        // Дедлок на триггерах PODBPOS/RESERVEDPOS ловился живьём при ручном разборе 19.08.
+        it('повторяет попытку при конфликте блокировки', async () => {
+            getStuckFboInvoices.mockResolvedValue([stuckInvoice(1, '123')]);
+            pickupFboUnlessShortage
+                .mockRejectedValueOnce(new Error('Deadlock, Update conflicts with concurrent update'))
+                .mockResolvedValueOnce(undefined);
+            await service.reconcileStuckFbo(fboService(new Map([['123', 'delivered']])) as any);
+            expect(pickupFboUnlessShortage).toHaveBeenCalledTimes(2);
+        });
+
+        it('ошибку, не связанную с блокировкой, не повторяет, а копит в сбои прогона', async () => {
+            getStuckFboInvoices.mockResolvedValue([stuckInvoice(1, '123')]);
+            pickupFboUnlessShortage.mockRejectedValue(new Error('boom'));
+            await service.reconcileStuckFbo(fboService(new Map([['123', 'delivered']])) as any);
+            expect(pickupFboUnlessShortage).toHaveBeenCalledTimes(1);
         });
     });
 });

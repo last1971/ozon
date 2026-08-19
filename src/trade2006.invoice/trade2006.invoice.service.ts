@@ -31,6 +31,7 @@ import { WithTransactions } from "../helpers/mixin/transaction.mixin";
 import { FboMigrationLinkDto } from "../posting.fbo/dto/fbo-migration-link.dto";
 import { InvoiceState } from '../helpers/accrual.distribution';
 import { ALL_CANCELLATION_SUFFIXES, OZON_INVOICE_CLOSED_SUFFIX } from '../helpers/order.cancellation.constants';
+import { FBO_INVOICE_IGK } from '../helpers/fbo.invoice.constants';
 import { InvoiceMatchDto } from '../invoice/dto/invoice.match.dto';
 
 @Injectable()
@@ -560,6 +561,47 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             !transaction,
         );
         return rows.length > 0;
+    }
+
+    /**
+     * Зависшие FBO-счета для сверки: подборка идёт (`STATUS=3`), но так и не завершилась.
+     *
+     * `IGK='NOT1C'` — единственный надёжный признак FBO в этой таблице: покупатель у Ozon FBO и
+     * Ozon FBS ОДИН (`OZON_BUYER_ID`), номера отправлений одного формата, и по PRIM их не отличить.
+     * Замер на магазине 19.08.2026: среди `STATUS=3` — 106 с `NOT1C` (FBO) и 9 с `NULL`, все девять
+     * оказались FBS в `awaiting_packaging`. Без этого условия сверка тянула бы счета, которые
+     * кладовщик собирает прямо сейчас, а подбор такого счёта запрещает отвязку КМ.
+     *
+     * Из выборки вычтены:
+     * - помеченные (« отмена», « отмена FBO», « закрыт») — у них своя ветка;
+     * - недоборные (`FBO_SHORTAGE`) — `pickupFboUnlessShortage` их всё равно пропустит, а в выборке
+     *   они копились бы вечно и раздували счётчик;
+     * - старше окна — оживлять древние счета подбором нельзя.
+     */
+    async getStuckFboInvoices(
+        buyerId: number,
+        since: Date,
+        transaction: FirebirdTransaction = null,
+    ): Promise<InvoiceDto[]> {
+        const t = transaction ?? (await this.getTransaction());
+        const rows = await t.query(
+            'SELECT s.* FROM S s ' +
+                'WHERE s.POKUPATCODE = ? AND s.STATUS = 3 AND s.IGK = ? ' +
+                'AND s.PRIM IS NOT NULL AND s.DATA >= ? ' +
+                ALL_CANCELLATION_SUFFIXES.map(() => 'AND s.PRIM NOT CONTAINING ? ').join('') +
+                `AND s.PRIM NOT CONTAINING ? ` +
+                'AND NOT EXISTS (SELECT 1 FROM FBO_SHORTAGE f WHERE f.POSTING = s.PRIM) ' +
+                'ORDER BY s.DATA',
+            [
+                buyerId,
+                FBO_INVOICE_IGK,
+                since,
+                ...ALL_CANCELLATION_SUFFIXES.map((suffix) => suffix.trim()),
+                OZON_INVOICE_CLOSED_SUFFIX.trim(),
+            ],
+            !transaction,
+        );
+        return InvoiceDto.map(rows);
     }
 
     /**

@@ -244,6 +244,35 @@ class EnvironmentVariables {
     @Transform(({ obj }) => obj.MP_RETURN_ACTIONS_ENABLED === 'true' || obj.MP_RETURN_ACTIONS_ENABLED === true)
     MP_RETURN_ACTIONS_ENABLED: boolean;
 
+    /** Сверка зависших FBO: глубина окна в днях. Счета старше в сверку не берутся. */
+    @IsOptional()
+    @IsNumber()
+    @Transform(({ obj }) => (obj.FBO_RECONCILE_DAYS === undefined ? undefined : Number(obj.FBO_RECONCILE_DAYS)))
+    FBO_RECONCILE_DAYS: number;
+
+    /** Сверка зависших FBO: потолок счетов за прогон. Остаток доберётся следующим прогоном. */
+    @IsOptional()
+    @IsNumber()
+    @Transform(({ obj }) => (obj.FBO_RECONCILE_LIMIT === undefined ? undefined : Number(obj.FBO_RECONCILE_LIMIT)))
+    FBO_RECONCILE_LIMIT: number;
+
+    /**
+     * Отменён после отгрузки, а заявки возврата нет — через столько дней зовём руками.
+     * По умолчанию 10 (решение владельца 19.08.2026), в .env ставить не обязательно.
+     */
+    @IsOptional()
+    @IsNumber()
+    @Transform(({ obj }) =>
+        obj.CANCEL_WAIT_NO_RETURN_DAYS === undefined ? undefined : Number(obj.CANCEL_WAIT_NO_RETURN_DAYS),
+    )
+    CANCEL_WAIT_NO_RETURN_DAYS: number;
+
+    /** Сверка зависших FBO: сухой прогон — считает и печатает, ничего не подбирает. */
+    @IsOptional()
+    @IsBoolean()
+    @Transform(({ obj }) => obj.FBO_RECONCILE_DRY === 'true' || obj.FBO_RECONCILE_DRY === true)
+    FBO_RECONCILE_DRY: boolean;
+
     @IsOptional()
     @IsNumber()
     VAT_RATE: number;
