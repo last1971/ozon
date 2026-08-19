@@ -5,6 +5,7 @@ import { IFbsSubmitContext } from '../interfaces/fbs-submit.context';
 import { PostingService } from '../posting.service';
 import { ExemplarProductDto } from '../dto/exemplar.create-or-get.dto';
 import { ExemplarSetItemDto, ExemplarSetProductDto } from '../dto/exemplar.set.dto';
+import { findPackLine } from '../pack-line.util';
 
 /**
  * Шаг 2: строим payload set по КАЖДОЙ строке (product_id), ветвясь на знак/без-знака.
@@ -22,8 +23,8 @@ export class BuildExemplarsPayloadCommand implements ICommandAsync<IFbsSubmitCon
     ) {}
 
     async execute(ctx: IFbsSubmitContext): Promise<IFbsSubmitContext> {
-        const productMap = await this.postingService.getPostingProductMap(ctx.postingNumber);
-        if (productMap.size === 0) {
+        const packLines = await this.postingService.getPostingPackLines(ctx.postingNumber);
+        if (packLines.length === 0) {
             ctx.stopChain = true;
             ctx.result = {
                 ok: false,
@@ -32,21 +33,27 @@ export class BuildExemplarsPayloadCommand implements ICommandAsync<IFbsSubmitCon
             };
             return ctx;
         }
-        const goodscodeByProduct = new Map<number, string>();
-        for (const [gc, pid] of productMap) goodscodeByProduct.set(pid, gc);
+        const packByProduct = new Map(packLines.map((l) => [l.productId, l]));
 
-        // Привязанные КМ (маркированные строки) по product_id.
+        // Привязанные КМ (маркированные строки) по product_id: позиция ищется по фасовке кода,
+        // иначе мультипаки одного товара сольются и все коды уедут в одну позицию.
         const attachedByProduct = new Map<number, { ki: string; mark: string; quantity: number }[]>();
         for (const a of ctx.attached) {
             const mark = ctx.kmFullByKi.get(a.ki);
             if (!mark) continue;
-            const productId = productMap.get(a.goodscode);
-            if (!productId) {
-                ctx.failed.push({ ki: a.ki, reason: `goodscode ${a.goodscode} не найден в posting` });
+            const line = findPackLine(packLines, a.goodscode, a.quantity);
+            if (!line) {
+                const known = packLines.some((l) => l.goodscode === a.goodscode);
+                ctx.failed.push({
+                    ki: a.ki,
+                    reason: known
+                        ? `goodscode ${a.goodscode}: фасовка кода ${a.quantity} не сопоставлена с позицией posting`
+                        : `goodscode ${a.goodscode} не найден в posting`,
+                });
                 continue;
             }
-            if (!attachedByProduct.has(productId)) attachedByProduct.set(productId, []);
-            attachedByProduct.get(productId).push({ ki: a.ki, mark, quantity: a.quantity });
+            if (!attachedByProduct.has(line.productId)) attachedByProduct.set(line.productId, []);
+            attachedByProduct.get(line.productId).push({ ki: a.ki, mark, quantity: a.quantity });
         }
 
         // ГТД немаркированных строк — из фактического подбора (лениво, один запрос).
@@ -54,6 +61,8 @@ export class BuildExemplarsPayloadCommand implements ICommandAsync<IFbsSubmitCon
             null;
         const getParties = async () =>
             (pickedParties ??= await this.invoiceService.getPickedPartiesGtdByScode(ctx.invoice.id, null));
+        /** Съеденные штуки пула подбора по goodscode (мультипаки идут по одному пулу). */
+        const gtdCursor = new Map<string, number>();
 
         const setProducts: ExemplarSetProductDto[] = [];
         for (const exProduct of ctx.exResp.products as ExemplarProductDto[]) {
@@ -74,20 +83,16 @@ export class BuildExemplarsPayloadCommand implements ICommandAsync<IFbsSubmitCon
                     });
                     continue;
                 }
-                const exemplars: ExemplarSetItemDto[] = exProduct.exemplars
-                    .slice(0, group.length)
-                    .map((ex, i) => {
-                        const gtd = needGtd ? ctx.gtdByKi.get(group[i].ki) ?? '' : '';
-                        return {
-                            exemplar_id: ex.exemplar_id,
-                            marks: needMark
-                                ? [{ mark: group[i].mark, mark_type: 'mandatory_mark' as const }]
-                                : [],
-                            gtd,
-                            is_gtd_absent: !gtd,
-                            is_rnpt_absent: true as const,
-                        };
-                    });
+                const exemplars: ExemplarSetItemDto[] = exProduct.exemplars.slice(0, group.length).map((ex, i) => {
+                    const gtd = needGtd ? (ctx.gtdByKi.get(group[i].ki) ?? '') : '';
+                    return {
+                        exemplar_id: ex.exemplar_id,
+                        marks: needMark ? [{ mark: group[i].mark, mark_type: 'mandatory_mark' as const }] : [],
+                        gtd,
+                        is_gtd_absent: !gtd,
+                        is_rnpt_absent: true as const,
+                    };
+                });
                 setProducts.push({ product_id: exProduct.product_id, exemplars });
                 continue;
             }
@@ -116,21 +121,29 @@ export class BuildExemplarsPayloadCommand implements ICommandAsync<IFbsSubmitCon
                 continue;
             }
             // Нужна ГТД: берём поштучно из подбора (старые→новые).
-            const gc = goodscodeByProduct.get(exProduct.product_id);
+            const pack = packByProduct.get(exProduct.product_id);
+            const gc = pack?.goodscode ?? '';
             const parties = (await getParties()).filter((p) => p.goodscode === gc);
             const gtdUnits: (string | null)[] = [];
             for (const p of parties) for (let k = 0; k < p.quantity; k++) gtdUnits.push(p.gtd);
             // Подбор в штуках склада (invoice QUAN = ozon_qty * коэффициент), exProduct.quantity — единицы Озона.
-            // Нужно ГТД по экземпляру (единице Озона): достаточно, чтобы штук подбора хватило; берём поштучно.
-            if (gtdUnits.length < exProduct.quantity) {
+            // Мультипаки одного товара делят общий пул подбора: курсор двигаем на съеденные штуки,
+            // иначе второй мультипак получит те же ГТД, что и первый.
+            const pieces = pack?.pieces ?? 1;
+            const need = exProduct.quantity * pieces;
+            const from = gtdCursor.get(gc) ?? 0;
+            const gtdSlice = gtdUnits.slice(from, from + need);
+            if (gtdSlice.length < need) {
                 ctx.failed.push({
                     ki: '*',
-                    reason: `product_id ${exProduct.product_id}: подбор дал ${gtdUnits.length} ГТД-ед., нужно ${exProduct.quantity}`,
+                    reason: `product_id ${exProduct.product_id}: подбор дал ${gtdSlice.length} ГТД-ед., нужно ${need}`,
                 });
                 continue;
             }
+            gtdCursor.set(gc, from + need);
             const exemplars: ExemplarSetItemDto[] = exProduct.exemplars.slice(0, exProduct.quantity).map((ex, i) => {
-                const gtd = gtdUnits[i] ?? '';
+                // ГТД первой штуки упаковки — экземпляр Озона равен pieces штукам склада.
+                const gtd = gtdSlice[i * pieces] ?? '';
                 return {
                     exemplar_id: ex.exemplar_id,
                     marks: [],
