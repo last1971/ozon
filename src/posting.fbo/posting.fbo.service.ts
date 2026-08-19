@@ -12,9 +12,10 @@ import { MP_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.cons
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { FboInvoiceCreatorService } from './fbo-invoice-creator.service';
 import { MpEventService } from '../mp-event/mp-event.service';
+import { IFboReconcilable } from '../interfaces/IFboReconcilable';
 
 @Injectable()
-export class PostingFboService implements IOrderable {
+export class PostingFboService implements IOrderable, IFboReconcilable {
     private logger = new Logger(PostingFboService.name);
     constructor(
         private productService: ProductService,
@@ -125,6 +126,43 @@ export class PostingFboService implements IOrderable {
     async getByPostingNumber(postingNumber: string): Promise<PostingDto> {
         return Promise.resolve(undefined);
     }
+
+    /**
+     * IFboReconcilable: отправления, уже собранные и уехавшие, за окно по дате СОЗДАНИЯ заказа.
+     *
+     * Отдельно от `list()` намеренно: та пишет журнал `MP_EVENT` (по нему считается её окно) —
+     * сверке это не нужно, а на широком окне дало бы тысячи записей в сутки.
+     */
+    async listShippedSince(since: Date): Promise<Map<string, string>> {
+        const shipped = new Map<string, string>();
+        const to = DateTime.now().endOf('day').toJSDate();
+        for (const status of PostingFboService.SHIPPED_STATUSES) {
+            let cursor = '';
+            let hasMore = true;
+            while (hasMore) {
+                const orders = await this.productService.orderFboList({
+                    limit: 100,
+                    cursor,
+                    filter: { since, to, statuses: [status] },
+                    with: { analytics_data: false },
+                });
+                for (const posting of orders?.postings ?? []) {
+                    shipped.set(posting.posting_number, posting.status ?? status);
+                }
+                const nextCursor = orders?.cursor || '';
+                hasMore = Boolean(orders?.has_next) && nextCursor !== '' && nextCursor !== cursor;
+                cursor = nextCursor;
+            }
+        }
+        return shipped;
+    }
+
+    /**
+     * «Озон собрал и повёз» — всё после сборки. Решение владельца 19.08.2026:
+     * критерий подбора — не «доставлено», а «уехало»; ждать конца доставки нельзя,
+     * счёт должен быть подобран в тот же день.
+     */
+    private static readonly SHIPPED_STATUSES = ['awaiting_deliver', 'delivering', 'delivered'];
 
     getBuyerId(): number {
         return this.configService.get<number>('OZON_BUYER_ID', 24416);

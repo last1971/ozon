@@ -20,6 +20,7 @@ import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { MP_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
 import { isShippedToMarketplace } from '../helpers/posting.shipped';
 import { isReturnable } from '../interfaces/IReturnable';
+import { isFboReconcilable } from '../interfaces/IFboReconcilable';
 import { MpService } from '../mp-event/mp-event.service';
 import { DateTime } from 'luxon';
 import { AccrualWeekService } from '../trade2006.accrual/accrual.week.service';
@@ -31,7 +32,7 @@ import { MpDecisionRunnerService } from '../mp-decision/mp-decision.runner.servi
 import { MarkScanFbsService } from '../invoice/mark-scan-fbs.service';
 import { CLAIM_RETURN_STATES, Decision } from '../mp-decision/mp-decision.types';
 
-type OrderStep = 'cancel' | 'returns' | 'package' | 'delivery';
+type OrderStep = 'cancel' | 'returns' | 'package' | 'delivery' | 'reconcile';
 
 @Injectable()
 export class OrderService {
@@ -144,13 +145,24 @@ export class OrderService {
         this.reportCycleFailures('checkNewOrders');
     }
 
-    /** Суточный проход по FBO: отмены (окно 90 дней) и доставка. */
+    /**
+     * Суточный проход по FBO: отмены (окно 90 дней), доставка и сверка зависших.
+     *
+     * Порядок шагов значим: `cancel` уводит отменённые счета в доноры (`STATUS=1`), и до сверки
+     * они не доживают; `delivery` — штатный путь; `reconcile` последним добирает то, что оба
+     * пропустили. Именно `reconcile` закрывает регресс 14–19.08.2026: `delivery` видит только тех,
+     * кто в момент прогона висит в `awaiting_deliver`, а этот статус у FBO живёт часы.
+     *
+     * `withReconcile=false` — для ручного прогона из контроллера: сверка подбирает счета пачками
+     * и запускаться должна по расписанию, а не случайным GET-ом.
+     */
     // 04:03 — между пятиминутками runner-кронов, см. cron.setup.ts.
     @Cron('0 3 4 * * *', { name: 'checkFboOrdersDaily' })
-    async checkFboOrdersDaily(): Promise<void> {
+    async checkFboOrdersDaily(withReconcile = true): Promise<void> {
         this.cycleFailures = [];
+        const steps: OrderStep[] = withReconcile ? ['cancel', 'delivery', 'reconcile'] : ['cancel', 'delivery'];
         for (const service of this.orderServices.filter((s) => s.isFbo())) {
-            await this.runSteps(service, ['cancel', 'delivery']);
+            await this.runSteps(service, steps);
         }
         this.reportCycleFailures('checkFboOrdersDaily');
     }
@@ -181,6 +193,7 @@ export class OrderService {
             if (steps.includes('returns')) await this.processReturns(service, flushers);
             if (steps.includes('package')) await this.packageOrders(service, flushers);
             if (steps.includes('delivery')) await this.deliveryOrders(service, flushers);
+            if (steps.includes('reconcile')) await this.reconcileStuckFbo(service);
         } catch (e) {
             // Сюда падают только сбои самих ручек-списков: сбой элемента ловится внутри.
             this.logger.error(e.message + ' IN ' + service.constructor.name);
@@ -319,6 +332,107 @@ export class OrderService {
             flushers,
         );
     }
+
+    /**
+     * Сверка зависших FBO-счетов: идём от НАШЕГО долга, а не от списка маркетплейса.
+     *
+     * Штатный `deliveryOrders` спрашивает «кто у тебя сейчас в `awaiting_deliver`» — статус живёт
+     * часы, между суточными прогонами посылка проскакивает, и счёт не подберётся уже никогда
+     * (регресс 14–19.08.2026, 498 счетов). Здесь наоборот: берём свои неподобранные счета и
+     * спрашиваем, уехали ли они. Пока счёт висит — он попадёт в следующий прогон.
+     *
+     * Redis-дедупа тут нет и быть не должно: он и есть половина причины, по которой те 498
+     * счетов не восстановились сами. Дедуп — сам факт, что подобранный счёт уходит из `STATUS=3`.
+     */
+    async reconcileStuckFbo(service: IOrderable): Promise<void> {
+        // ВБ, Яндекс и Ozon FBS интерфейс не реализуют — для них шаг не существует.
+        if (!isFboReconcilable(service)) return;
+
+        const days = this.configService.get<number>('FBO_RECONCILE_DAYS', 30);
+        const limit = this.configService.get<number>('FBO_RECONCILE_LIMIT', 200);
+        const dry = this.configService.get<boolean>('FBO_RECONCILE_DRY', false) === true;
+        const floor = DateTime.now().minus({ days }).startOf('day').toJSDate();
+
+        const stuck = await this.invoiceService.getStuckFboInvoices(service.getBuyerId(), floor, null);
+        // Долга нет — в маркетплейс не ходим вовсе.
+        if (!stuck.length) return;
+
+        // Окно запроса задаёт наш долг: от самого старого зависшего счёта (выборка уже
+        // отсортирована по дате) минус сутки на расхождение даты счёта и даты заказа.
+        const since = DateTime.fromJSDate(new Date(stuck[0].date)).minus({ days: 1 }).toJSDate();
+        const shipped = await service.listShippedSince(since);
+
+        const batch = stuck.slice(0, limit);
+        const picked: string[] = [];
+        let skipped = 0;
+        for (const invoice of batch) {
+            const remark = String(invoice.remark ?? '').trim();
+            const status = shipped.get(remark);
+            // Не уехал (ещё собирается), отменён или не наш — не трогаем: у каждого своя ветка.
+            if (!status) {
+                skipped++;
+                continue;
+            }
+            try {
+                const done = await this.pickupWithRetry(remark);
+                if (done) picked.push(`${invoice.id}/№${invoice.number ?? '?'} ${remark} — ${status}`);
+            } catch (e) {
+                this.cycleFailures.push(`reconcile ${remark} — ${e?.message ?? e}`);
+            }
+        }
+
+        const head =
+            `Сверка FBO${dry ? ' (сухой прогон)' : ''}: висело ${stuck.length}, ` +
+            `взято в прогон ${batch.length}, уехало у маркетплейса ${batch.length - skipped}, ` +
+            `подобрано ${picked.length}`;
+        this.logger.log(head);
+        // Построчно — иначе потом нечем сверить, что именно шаг сделал.
+        for (const line of picked) this.logger.log(`  подобран ${line}`);
+
+        // Молчание при «долг есть, подобрано 0» неотличимо от «всё хорошо» — говорим об этом вслух.
+        if (picked.length || (batch.length !== skipped && !picked.length)) {
+            this.eventEmitter.emit('error.message', 'Сверка зависших FBO', `${head}\n${picked.join('\n')}`);
+        }
+    }
+
+    /**
+     * Подбор одного счёта с перечитыванием состояния В ТОЙ ЖЕ транзакции.
+     *
+     * Между выборкой списка и подбором проходят минуты (страницы маркетплейса, цикл по счетам),
+     * а параллельно работают пятиминутки и решающая таблица: счёт мог уже уехать в доноры.
+     * Тот же гард стоит в `deliveryOrders` — сверка обязана его повторять, а не доверять снимку.
+     *
+     * Дедлок на триггерах `PODBPOS`/`RESERVEDPOS` наблюдался живьём при ручном разборе 19.08
+     * (кладовщик работает в Дельфи параллельно), поэтому конфликт блокировки — не ошибка, а повтор.
+     */
+    private async pickupWithRetry(remark: string): Promise<boolean> {
+        const dry = this.configService.get<boolean>('FBO_RECONCILE_DRY', false) === true;
+        for (let attempt = 1; attempt <= OrderService.RECONCILE_ATTEMPTS; attempt++) {
+            try {
+                let done = false;
+                await this.perItem(async (transaction) => {
+                    const match = await this.invoiceService.findByPosting(remark, transaction);
+                    if (!match || match.cancelled || match.closed) return;
+                    if (match.invoice.status !== 3) return;
+                    if (dry) {
+                        done = true;
+                        return;
+                    }
+                    await this.invoiceService.pickupFboUnlessShortage(match.invoice, transaction);
+                    done = true;
+                });
+                return done;
+            } catch (e) {
+                const message = e?.message ?? String(e);
+                const conflict = /deadlock|conflict|lock/i.test(message);
+                if (!conflict || attempt === OrderService.RECONCILE_ATTEMPTS) throw e;
+                this.logger.warn(`reconcile ${remark}: конфликт блокировки, попытка ${attempt + 1}`);
+            }
+        }
+        return false;
+    }
+
+    private static readonly RECONCILE_ATTEMPTS = 3;
 
     async packageOrders(service: IOrderable, flushers: (() => Promise<void>)[]): Promise<void> {
         const packagingPostings = await service.listAwaitingPackaging();
