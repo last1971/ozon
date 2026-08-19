@@ -33,8 +33,16 @@ export class StuckCodesService {
     /** В письмо больше не влезает по-человечески; сколько осталось — пишем строкой. */
     private static readonly LETTER_LIMIT = 200;
 
-    /** Отменён, а заявки возврата всё нет — подозрительно уже через столько дней. */
-    private static readonly WAIT_NO_RETURN_DAYS = 5;
+    /**
+     * Отменён, а заявки возврата всё нет — столько дней ждём, прежде чем звать руками.
+     * Решение владельца 19.08.2026: 10 дней вместо прежних 5. Переопределяется
+     * `CANCEL_WAIT_NO_RETURN_DAYS` в .env, но по умолчанию править ничего не надо.
+     *
+     * Порог стал важнее с суточной сверкой зависших FBO: она подбирает счёт в день
+     * отгрузки, поэтому отмена после отгрузки теперь чаще попадает на подобранный счёт
+     * и уходит именно в это ожидание.
+     */
+    private static readonly WAIT_NO_RETURN_DAYS_DEFAULT = 10;
     /** Заявка есть, но склада не достигла — напоминаем, когда едет неприлично долго. */
     private static readonly WAIT_IN_TRANSIT_DAYS = 14;
 
@@ -150,6 +158,10 @@ export class StuckCodesService {
         // но сервис в цикле, чтобы хардкода 'OZON' здесь не осталось: появись
         // ожидание у другого маркетплейса — оно не потеряется.
         const services: MpService[] = ['OZON', 'WB'];
+        const noReturnDays = this.configService.get<number>(
+            'CANCEL_WAIT_NO_RETURN_DAYS',
+            StuckCodesService.WAIT_NO_RETURN_DAYS_DEFAULT,
+        );
         const lines: string[] = [];
         let total = 0;
         for (const svc of services) {
@@ -184,7 +196,7 @@ export class StuckCodesService {
                 // Заявочные записи (отклонена, деньги вернули без товара) физики не обещают —
                 // для ожидания их нет: считаем, что живой заявки возврата не появилось.
                 const hasReturn = states.some((s) => !CLAIM_RETURN_STATES.includes(s));
-                if (!hasReturn && age >= StuckCodesService.WAIT_NO_RETURN_DAYS) {
+                if (!hasReturn && age >= noReturnDays) {
                     lines.push(
                         `${posting} — отменён ${age} дн назад, живой заявки возврата НЕТ — проверить в кабинете маркетплейса`,
                     );

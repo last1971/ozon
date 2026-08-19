@@ -16,6 +16,8 @@ describe('StuckCodesService — еженедельный отчёт «подви
     const chzPending = jest.fn().mockResolvedValue([]);
     const markHandled = jest.fn();
     let markCodesEnabled = true;
+    /** undefined — берётся дефолт сервиса (10 дней). */
+    let noReturnDays: number | undefined;
 
     const row = (over: any = {}) => ({
         ki: '0100400000013930215fajB',
@@ -32,6 +34,7 @@ describe('StuckCodesService — еженедельный отчёт «подви
 
     beforeEach(async () => {
         markCodesEnabled = true;
+        noReturnDays = undefined;
         [findStuckMarkCodes, findByPosting, emit, listUnhandled, listStatesForPosting, markHandled].forEach((m) =>
             m.mockReset(),
         );
@@ -41,7 +44,18 @@ describe('StuckCodesService — еженедельный отчёт «подви
             providers: [
                 StuckCodesService,
                 { provide: INVOICE_SERVICE, useValue: { findStuckMarkCodes, findByPosting } },
-                { provide: ConfigService, useValue: { get: () => markCodesEnabled } },
+                {
+                    // Ключ и дефолт учитываем: прежний мок отдавал одно значение на всё подряд,
+                    // из-за чего порог ожидания подменялся флагом маркировки.
+                    provide: ConfigService,
+                    useValue: {
+                        get: (key: string, defaultValue?: any) => {
+                            if (key === 'MARK_CODES_ENABLED') return markCodesEnabled;
+                            if (key === 'CANCEL_WAIT_NO_RETURN_DAYS') return noReturnDays ?? defaultValue;
+                            return defaultValue;
+                        },
+                    },
+                },
                 { provide: EventEmitter2, useValue: { emit } },
                 { provide: MpEventService, useValue: { listUnhandled, listStatesForPosting, markHandled } },
                 { provide: Trade2006ChzService, useValue: { pending: chzPending } },
@@ -97,7 +111,8 @@ describe('StuckCodesService — еженедельный отчёт «подви
         const wait = (over: any = {}) => ({
             extId: '72067989-0727-1',
             posting: '72067989-0727-1',
-            firstSeen: new Date(Date.now() - 7 * 24 * 3600 * 1000),
+            // Старше порога «заявки возврата нет» (по умолчанию 10 дней).
+            firstSeen: new Date(Date.now() - 12 * 24 * 3600 * 1000),
             ...over,
         });
         const match = (over: any = {}) => ({
@@ -122,6 +137,30 @@ describe('StuckCodesService — еженедельный отчёт «подви
             const call = emit.mock.calls.find((c) => String(c[1]).startsWith('Отменённые без возврата'));
             expect(call[1]).toBe('Отменённые без возврата: 1');
             expect(call[2]).toContain('заявки возврата НЕТ');
+        });
+
+        // Порог владельца от 19.08.2026: раньше десятого дня не зовём руками.
+        it('по умолчанию молчим до 10 дней и пишем после', async () => {
+            listStatesForPosting.mockResolvedValue([]);
+            const letters = () => emit.mock.calls.filter((c) => String(c[1]).startsWith('Отменённые без возврата'));
+
+            mockCancelWaits([wait({ firstSeen: new Date(Date.now() - 9 * 24 * 3600 * 1000) })]);
+            await service.report();
+            expect(letters()).toHaveLength(0);
+
+            mockCancelWaits([wait({ firstSeen: new Date(Date.now() - 10 * 24 * 3600 * 1000) })]);
+            await service.report();
+            expect(letters()).toHaveLength(1);
+        });
+
+        it('порог переопределяется из .env', async () => {
+            noReturnDays = 3;
+            mockCancelWaits([wait({ firstSeen: new Date(Date.now() - 4 * 24 * 3600 * 1000) })]);
+            listStatesForPosting.mockResolvedValue([]);
+
+            await service.report();
+
+            expect(emit.mock.calls.some((c) => String(c[1]).startsWith('Отменённые без возврата'))).toBe(true);
         });
 
         it('заявка отклонена (Rejected) — физики не будет: считаем как «заявки нет»', async () => {

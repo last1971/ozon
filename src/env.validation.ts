@@ -256,6 +256,17 @@ class EnvironmentVariables {
     @Transform(({ obj }) => (obj.FBO_RECONCILE_LIMIT === undefined ? undefined : Number(obj.FBO_RECONCILE_LIMIT)))
     FBO_RECONCILE_LIMIT: number;
 
+    /**
+     * Отменён после отгрузки, а заявки возврата нет — через столько дней зовём руками.
+     * По умолчанию 10 (решение владельца 19.08.2026), в .env ставить не обязательно.
+     */
+    @IsOptional()
+    @IsNumber()
+    @Transform(({ obj }) =>
+        obj.CANCEL_WAIT_NO_RETURN_DAYS === undefined ? undefined : Number(obj.CANCEL_WAIT_NO_RETURN_DAYS),
+    )
+    CANCEL_WAIT_NO_RETURN_DAYS: number;
+
     /** Сверка зависших FBO: сухой прогон — считает и печатает, ничего не подбирает. */
     @IsOptional()
     @IsBoolean()
