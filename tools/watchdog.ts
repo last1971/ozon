@@ -13,6 +13,7 @@ const CONFIG = {
     API_URL: `http://${process.env.APP_HOST || 'localhost'}:${process.env.APP_PORT || '3002'}/api`,
     CPU_THRESHOLD: 90,
     CHECK_INTERVAL: 60000, // 1 минута
+    SUMMARY_INTERVAL: 3600000, // сводка раз в час вместо строки на каждый тик
     RESTART_DELAY: 5000,   // 5 секунд после рестарта
     MAX_RETRIES: 3,        // количество попыток проверки перед рестартом
 };
@@ -20,6 +21,11 @@ const CONFIG = {
 class Watchdog {
     private lastRestartTime: number = 0;
     private failedChecks: number = 0;
+    /** Печатаем СОБЫТИЕ, а не тик: молчим, пока состояние не изменилось. */
+    private lastHealthy: boolean | null = null;
+    private lastSummaryAt = 0;
+    private ticks = 0;
+    private maxCpu = 0;
 
     async getCpuUsage(pid: string): Promise<number> {
         try {
@@ -95,27 +101,51 @@ class Watchdog {
         }
 
         const cpuUsage = await this.getCpuUsage(pid);
-        console.log(`[${new Date().toISOString()}] Current CPU usage: ${cpuUsage}%`);
+        this.ticks++;
+        this.maxCpu = Math.max(this.maxCpu, cpuUsage);
 
         // Всегда проверяем health независимо от CPU
         const isHealthy = await this.checkHealth();
 
         if (!isHealthy) {
             this.failedChecks++;
-            console.log(`[${new Date().toISOString()}] Health check failed (attempt ${this.failedChecks}/${CONFIG.MAX_RETRIES})`);
+            console.log(
+                `[${new Date().toISOString()}] Health check failed (attempt ${this.failedChecks}/${CONFIG.MAX_RETRIES}), CPU ${cpuUsage}%`,
+            );
 
             if (this.failedChecks >= CONFIG.MAX_RETRIES) {
                 await this.restartApp();
             }
         } else {
-            console.log(`[${new Date().toISOString()}] Health check passed`);
+            // Раньше «passed» печатался каждую минуту — 1440 строк в сутки, в которых
+            // тонет всё остальное. Печатаем только ВОЗВРАТ к здоровью после сбоя.
+            if (this.lastHealthy === false) {
+                console.log(`[${new Date().toISOString()}] Health check passed — восстановился`);
+            }
             this.failedChecks = 0;
         }
+        this.lastHealthy = isHealthy;
 
         // Дополнительная проверка при высоком CPU
         if (cpuUsage > CONFIG.CPU_THRESHOLD) {
             console.log(`[${new Date().toISOString()}] High CPU usage detected: ${cpuUsage}%`);
         }
+
+        this.reportSummary();
+    }
+
+    /** Часовая сводка — доказательство, что сторож жив, вместо поминутного «passed». */
+    private reportSummary(): void {
+        const now = Date.now();
+        if (!this.lastSummaryAt) this.lastSummaryAt = now;
+        if (now - this.lastSummaryAt < CONFIG.SUMMARY_INTERVAL) return;
+        console.log(
+            `[${new Date().toISOString()}] Сводка за час: проверок ${this.ticks}, ` +
+                `состояние ${this.lastHealthy ? 'здоров' : 'СБОЙ'}, максимум CPU ${this.maxCpu}%`,
+        );
+        this.lastSummaryAt = now;
+        this.ticks = 0;
+        this.maxCpu = 0;
     }
 
     start(): void {

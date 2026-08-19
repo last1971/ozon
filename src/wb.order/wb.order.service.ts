@@ -266,6 +266,13 @@ export class WbOrderService implements IOrderable, IMarkSubmittable, IReturnable
     };
 
     /**
+     * Служебное состояние журнала: заявка возврата есть, а заказа по её srid в окне нет.
+     * Ключ журнала — (SERVICE, KIND, EXT_ID, STATE), поэтому со статусами заявок ВБ
+     * не пересекается и в выборки по состояниям возврата не попадает.
+     */
+    private static readonly SRID_NOT_MATCHED = 'srid-not-matched';
+
+    /**
      * Наблюдатель продаж и отмен ВБ-FBS — аналог `observeFbsWideWindow` Озона.
      * Заказы окна → статусы батчами ≤1000 → журнал MP_EVENT → продажи исполняет
      * общий `handleDelivered` (retire под MP_SALE_ACTIONS_ENABLED), отмены только
@@ -576,9 +583,21 @@ export class WbOrderService implements IOrderable, IMarkSubmittable, IReturnable
                 // Глубже отдачи заказов заявка не сматчится уже никогда — не warn'им
                 // о ней каждые 5 минут (архив «живёт» в выборке вечно).
                 if (!tooDeep) {
-                    this.logger.warn(
-                        `ВБ возврат ${claim.id}: заказ по srid ${claim.srid} не найден в окне заказов — пропускаю`,
-                    );
+                    // Заявка моложе границы кричала каждый прогон, пока за неё не провалится:
+                    // одна и та же пара строк 288 раз в сутки. Предупреждаем ОДИН раз на заявку —
+                    // память держит журнал, а не процесс, поэтому рестарт её не воскрешает.
+                    const isNew = await this.mpEvent.record({
+                        service: 'WB',
+                        kind: 'RETURN',
+                        extId: String(claim.id),
+                        state: WbOrderService.SRID_NOT_MATCHED,
+                        posting: null,
+                    });
+                    if (isNew) {
+                        this.logger.warn(
+                            `ВБ возврат ${claim.id}: заказ по srid ${claim.srid} не найден в окне заказов — пропускаю`,
+                        );
+                    }
                 }
                 continue;
             }

@@ -248,14 +248,13 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
 
         // Состав счетов читаем только под новые события — в устоявшемся прогоне их ноль.
         if (!fresh.size) {
-            for (const { status, postings } of found) {
+            // Пять строк каждые пять минут (1440 в сутки) при нулевом действии — шум,
+            // в котором тонут настоящие события. Пульс оставляем, простыню сворачиваем в строку.
+            const parts = found.map(({ status, postings }) => {
                 const tail = postings.filter((p) => DateTime.fromJSDate(new Date(p.in_process_at as any)) < actionEdge);
-                this.logger.log(
-                    `наблюдение ${status}: всего ${postings.length}, в рабочем окне ` +
-                        `${postings.length - tail.length}, из хвоста ${tail.length}, новых 0`,
-                );
-            }
-            this.logger.log(`наблюдение: ошибок API ${apiErrors}`);
+                return `${status} ${postings.length}/${tail.length}`;
+            });
+            this.logger.log(`наблюдение: новых нет; всего/из хвоста — ${parts.join(', ')}; ошибок API ${apiErrors}`);
             return;
         }
 

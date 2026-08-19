@@ -1090,6 +1090,30 @@ describe('WbOrderService', () => {
             expect(res).toEqual([]);
         });
 
+        // Раньше несматченная заявка кричала в лог каждые 5 минут, пока не провалится
+        // за глубину заказов: одна и та же пара строк 288 раз в сутки.
+        it('несматченная заявка предупреждает один раз: журнал знает — молчим', async () => {
+            const warn = jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
+            const claim = { id: 'uuid-9', status: 2, status_ex: 10, srid: 'sr-NEMATCH', order_dt: '2026-08-01T10:00:00' };
+            const run = async () => {
+                getClaims
+                    .mockResolvedValueOnce({ claims: [claim], total: 1 })
+                    .mockResolvedValueOnce({ claims: [], total: 0 });
+                method.mockResolvedValueOnce({ orders: [], next: 0 });
+                await service.listReturns();
+            };
+
+            mpRecord.mockReset().mockResolvedValueOnce(true).mockResolvedValueOnce(false);
+            await run();
+            await run();
+
+            expect(mpRecord).toHaveBeenCalledWith(
+                expect.objectContaining({ service: 'WB', kind: 'RETURN', extId: 'uuid-9', state: 'srid-not-matched' }),
+            );
+            expect(warn.mock.calls.filter((c) => String(c[0]).includes('не найден в окне заказов'))).toHaveLength(1);
+            warn.mockRestore();
+        });
+
         it('заявок нет → в заказы не ходим', async () => {
             getClaims.mockResolvedValue({ claims: [], total: 0 });
 
