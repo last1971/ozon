@@ -928,12 +928,21 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
      * Озон принимает ГТД строго 3 частями (8/6/7 цифр, regex ^[0-9]{8}/[0-9]{6}/[0-9]{7}$).
      * В БД ГТД бывает с хвостом (номер позиции), напр. 10228010/260326/5094327/2 — обрезаем до 3 частей.
      * Пусто → null (тогда is_gtd_absent=true).
+     *
+     * Не попавшее в формат Озона тоже отдаём null: у старых партий (до ~2011) номер декларации
+     * содержит литеру — 10210090/160910/п014454, семи цифр там нет и не будет. Слать такое нельзя:
+     * exemplar/set проходит, а validate валится regex-ошибкой и отгрузка встаёт целиком.
      */
     private normalizeGtd(raw: unknown): string | null {
         if (raw == null) return null;
         const s = String(raw).trim();
         if (!s) return null;
-        return s.split('/').slice(0, 3).join('/') || null;
+        const gtd = s.split('/').slice(0, 3).join('/');
+        if (!/^[0-9]{8}\/[0-9]{6}\/[0-9]{7}$/.test(gtd)) {
+            this.logger.warn(`ГТД "${s}" не в формате Озона — отправляем как is_gtd_absent`);
+            return null;
+        }
+        return gtd;
     }
 
     /**

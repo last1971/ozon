@@ -780,6 +780,18 @@ describe('Trade2006InvoiceService', () => {
             expect(await service.getGtdByKi('KI-3', null)).toBeNull();
         });
 
+        it.each([
+            ['10210090/160910/п014454/13', 'литера в номере (партия до 2011)'],
+            ['10132160/26115/5241506/2', 'дата 5 цифр'],
+            ['10702070/010425/511644/10', 'номер 6 цифр'],
+            ['------', 'мусор'],
+            ['/', 'мусор'],
+        ])('getGtdByKi — не формат Озона (%s) → null', async (gtd) => {
+            query.mockResolvedValueOnce([{ SKLADINCODE: 285013, SHOPINCODE: null }]);
+            query.mockResolvedValueOnce([{ GTD: gtd }]);
+            expect(await service.getGtdByKi('KI-4', null)).toBeNull();
+        });
+
         it('getPickedPartiesGtdByScode — партии из FIFO_T + обрезка ГТД, магазинный источник', async () => {
             query.mockResolvedValueOnce([
                 { REALPRICECODE: 601391, GOODSCODE: 376743, PARTY_QUAN: 1, GTD: '10005030/260623/3170340/1' },
