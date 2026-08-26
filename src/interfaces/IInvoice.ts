@@ -1,5 +1,6 @@
 import { InvoiceCreateDto } from '../invoice/dto/invoice.create.dto';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
+import { InvoiceDonorsDto } from '../invoice/dto/invoice-donors.dto';
 import { PostingDto } from '../posting/dto/posting.dto';
 import { TransactionDto } from '../posting/dto/transaction.dto';
 import { ResultDto } from '../helpers/dto/result.dto';
@@ -156,5 +157,7 @@ export interface IInvoice {
     bulkSetStatus(invoices: InvoiceDto[], status: number, transaction: FirebirdTransaction): Promise<void>;
     update(invoice: InvoiceDto, invoiceUpdateDto: InvoiceUpdateDto, t?: FirebirdTransaction): Promise<boolean>;
     distributePaymentByUPD(updNumber: number, updDate: string, amount: number): Promise<ResultDto>;
+    /** Счета по подстроке в примечании + доноры под каждую их строку (тот же покупатель, STATUS=1, подобрано > 0). */
+    findDonorsByPrim(prim: string, transaction?: FirebirdTransaction): Promise<InvoiceDonorsDto[]>;
 }
 export const INVOICE_SERVICE = 'INVOICE_SERVICE';

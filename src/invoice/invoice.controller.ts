@@ -10,6 +10,7 @@ import { MarkScanFbsService } from "./mark-scan-fbs.service";
 import { MarkScanDto } from "./dto/mark-scan.dto";
 import { MarkScanProgressDto } from "./dto/mark-scan-progress.dto";
 import { MarkScanResultDto } from "./dto/mark-scan-result.dto";
+import { InvoiceDonorsDto } from "./dto/invoice-donors.dto";
 
 @ApiExtraModels(InvoiceDto, InvoiceLineDto)
 @ApiTags("invoice")
@@ -50,6 +51,13 @@ export class InvoiceController {
         @Param('ki') ki: string,
     ): Promise<MarkScanProgressDto> {
         return this.markScanService.unscan(remarkDto.invoice, ki);
+    }
+
+    @Get('donors/:posting')
+    @ApiParam({ name: 'posting', type: 'string', description: 'Номер заказа — ищется подстрокой в примечании счёта' })
+    @ApiOkResponse({ type: [InvoiceDonorsDto] })
+    async donors(@Param('posting') posting: string): Promise<InvoiceDonorsDto[]> {
+        return this.invoiceService.findDonorsByPrim(posting);
     }
 
     @Post('distribute-payment')

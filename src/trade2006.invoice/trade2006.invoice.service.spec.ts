@@ -1499,4 +1499,50 @@ describe('Trade2006InvoiceService', () => {
             );
         });
     });
+
+    describe('findDonorsByPrim', () => {
+        it('отдаёт номер счёта и доноров того же покупателя по каждой строке', async () => {
+            query
+                .mockResolvedValueOnce([
+                    { SCODE: 100, NS: 16771, DATA: new Date('2026-08-26'), PRIM: '555-1 отмена FBO', POKUPATCODE: 24231 },
+                ])
+                .mockResolvedValueOnce([
+                    { REALPRICECODE: 1, GOODSCODE: '111', QUAN: 2, NAME: 'товар А' },
+                    { REALPRICECODE: 2, GOODSCODE: '222', QUAN: 1, NAME: 'товар Б' },
+                ])
+                .mockResolvedValueOnce([
+                    { GOODSCODE: '111', PODBPOSCODE: 7, QUANAVAIL: 5, SCODE: 200, NS: 16000, DATA: new Date('2026-08-20'), PRIM: 'донор' },
+                ]);
+
+            const res = await service.findDonorsByPrim('555-1');
+
+            expect(res).toHaveLength(1);
+            expect(res[0].invoiceNumber).toBe(16771);
+            expect(res[0].lines[0].donors).toEqual([
+                {
+                    invoiceNumber: 16000,
+                    scode: 200,
+                    date: new Date('2026-08-20'),
+                    prim: 'донор',
+                    podbposcode: 7,
+                    quantity: 5,
+                },
+            ]);
+            // у второй строки доноров нет — пустой массив, а не отсутствующее поле
+            expect(res[0].lines[1].donors).toEqual([]);
+            // доноры ищутся по покупателю счёта, со статусом 1 и подбором > 0, сам счёт исключён
+            expect(query.mock.calls[0][0]).toContain('PRIM CONTAINING');
+            const donorSql = query.mock.calls[2][0];
+            expect(donorSql).toContain('s.POKUPATCODE = ?');
+            expect(donorSql).toContain('s.STATUS = 1');
+            expect(donorSql).toContain('s.SCODE <> ?');
+            expect(query.mock.calls[2][1]).toEqual(['111', '222', 24231, 100]);
+        });
+
+        it('счёт по подстроке не найден — пустой ответ, за товарами не ходим', async () => {
+            query.mockResolvedValueOnce([]);
+            await expect(service.findDonorsByPrim('нет такого')).resolves.toEqual([]);
+            expect(query).toHaveBeenCalledTimes(1);
+        });
+    });
 });
