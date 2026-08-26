@@ -8,6 +8,8 @@ import {
     IN_TRANSIT_RETURN_STATES,
     Layer1Action,
     LOST_RETURN_STATES,
+    PhysicalReturnState,
+    RETURN_STATE,
 } from './mp-decision.types';
 
 /**
@@ -226,8 +228,8 @@ export class MpDecisionService {
             return this.build(input, 'return/partial', 'none', true, 'вернулась только часть отправления — разобрать руками');
         }
 
-        if (state === 'ReturnedToOzon') {
-            const layer2 = this.decideCodesOnReturn(input, 'ReturnedToOzon');
+        if (state === RETURN_STATE.ARRIVED_AT_MARKETPLACE) {
+            const layer2 = this.decideCodesOnReturn(input, RETURN_STATE.ARRIVED_AT_MARKETPLACE);
             if (invoice.closed || invoice.status === 5) {
                 // Шаги над КОДОМ выполняются (это состояние кода, счёта не касается),
                 // а донора из закрытого счёта не делаем — ручной путь через MAKE_VOZVR.
@@ -260,7 +262,7 @@ export class MpDecisionService {
             );
         }
 
-        if (state === 'ReceivedBySeller') {
+        if (state === RETURN_STATE.RECEIVED_BY_SELLER) {
             // Счёт уже расформирован (STATUS=0) — человек принял возврат до нас
             // (живой случай: хвост первого прогона поднял 5 давно разобранных).
             // Письмо тут — шум; коды при этом смотрим как обычно (слой 2 сам
@@ -272,7 +274,7 @@ export class MpDecisionService {
                     'none',
                     false,
                     'счёт уже расформирован — приём завершён до нас',
-                    this.decideCodesOnReturn(input, 'ReceivedBySeller'),
+                    this.decideCodesOnReturn(input, RETURN_STATE.RECEIVED_BY_SELLER),
                 );
             }
             return this.build(
@@ -281,7 +283,7 @@ export class MpDecisionService {
                 'none',
                 true,
                 'товар приехал к нам — принять и расформировать счёт руками',
-                this.decideCodesOnReturn(input, 'ReceivedBySeller'),
+                this.decideCodesOnReturn(input, RETURN_STATE.RECEIVED_BY_SELLER),
             );
         }
 
@@ -376,7 +378,7 @@ export class MpDecisionService {
      * иначе код в состоянии 6 уедет миграцией на следующую FBO-продажу, гейт вывода
      * требует STATUS=5, и товар окажется продан дважды, а выведен один раз.
      */
-    private decideCodesOnReturn(input: DecisionInput, state: 'ReturnedToOzon' | 'ReceivedBySeller'): CodeDecision[] {
+    private decideCodesOnReturn(input: DecisionInput, state: PhysicalReturnState): CodeDecision[] {
         return input.codes.map((code) => {
             // TT=2 — код на балансе маркета в ГИС МТ. Поставить ему STATUS=5 у себя,
             // пока Ozon не оформил возвратный документ, значит развести базу с ГИС МТ.
@@ -392,7 +394,7 @@ export class MpDecisionService {
                     `вернулся товар с кодом, выведенным не продажей (причина ${code.retireReason ?? 'не указана'}) — разобрать руками`,
                 );
             }
-            if (state === 'ReturnedToOzon') {
+            if (state === RETURN_STATE.ARRIVED_AT_MARKETPLACE) {
                 if (code.transferType === 3 && code.status === 6 && code.retireReason === 1) {
                     return this.code(code, ['unretire'], false, 'возвращён в оборот (продажа не состоялась)');
                 }

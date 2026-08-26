@@ -211,6 +211,22 @@ export const cronConfig: Record<string, CronSetup> = {
         },
         development: false,
     },
+    /**
+     * Суточная сверка «коробка уехала, а счёт помечен « отмена»»: выборка живых
+     * помеченных счетов плюс один-два запроса к маркетплейсу по их номерам.
+     * 04:22 — после суточного FBO-прохода (04:03) и мимо пятиминуток: ровно в :20 и :25
+     * стартуют observeFbsWideWindow и оба ВБ-крона, и залп в API маркетплейсов совпал бы.
+     * Ничего не меняет, только письмо. На dev выключена — кабинет и база боевые.
+     */
+    reconcileCancelledBoxes: {
+        production: {
+            enabled: true,
+            settings: {
+                time: '0 22 4 * * *',
+            },
+        },
+        development: false,
+    },
     updateTransactions: {
         production: false,
         development: {

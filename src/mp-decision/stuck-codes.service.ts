@@ -7,7 +7,7 @@ import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { isMarkCodesEnabled } from '../helpers/mark-codes.helper';
 import { MpEventService, MpService } from '../mp-event/mp-event.service';
 import { Trade2006ChzService } from '../trade2006.chz/trade2006.chz.service';
-import { CLAIM_RETURN_STATES, LOST_RETURN_STATES } from './mp-decision.types';
+import { CLAIM_RETURN_STATES, LOST_RETURN_STATES, RETURN_STATE } from './mp-decision.types';
 
 /**
  * Еженедельный отчёт «подвисшие коды» (Этап 5, перенесён в итерацию 5).
@@ -188,7 +188,7 @@ export class StuckCodesService {
                     await this.mpEvent.markHandled({ service: svc, kind: 'CANCEL_WAIT', extId: wait.extId, state: 'waiting' });
                     continue;
                 }
-                if (states.includes('ReceivedBySeller')) {
+                if (states.includes(RETURN_STATE.RECEIVED_BY_SELLER)) {
                     // Не закрываем: напоминание погаснет само, когда счёт расформируют (STATUS=0).
                     lines.push(`${posting} — возврат ПРИЕХАЛ к нам, счёт ждёт расформирования (отменён ${age} дн назад)`);
                     continue;

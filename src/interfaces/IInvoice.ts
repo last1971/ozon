@@ -159,5 +159,13 @@ export interface IInvoice {
     distributePaymentByUPD(updNumber: number, updDate: string, amount: number): Promise<ResultDto>;
     /** Счета по подстроке в примечании + доноры под каждую их строку (тот же покупатель, STATUS=1, подобрано > 0). */
     findDonorsByPrim(prim: string, transaction?: FirebirdTransaction): Promise<InvoiceDonorsDto[]>;
+    /**
+     * Счета с пометкой « отмена» («товар у нас»), которые ещё живы, — вход суточной сверки.
+     * Расформированные (STATUS=0) и закрытые (STATUS=5) не берём: там уже нечего исправлять.
+     */
+    findPlainCancelledInvoices(
+        days: number,
+        transaction?: FirebirdTransaction,
+    ): Promise<{ scode: number; number: number | null; prim: string; posting: string; status: number; date: Date | null }[]>;
 }
 export const INVOICE_SERVICE = 'INVOICE_SERVICE';

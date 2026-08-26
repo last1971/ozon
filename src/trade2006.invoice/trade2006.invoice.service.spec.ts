@@ -946,6 +946,36 @@ describe('Trade2006InvoiceService', () => {
             expect(query).not.toHaveBeenCalled();
         });
 
+        it('findPlainCancelledInvoices — только « отмена», живые счета, номер отправления из PRIM', async () => {
+            query.mockResolvedValueOnce([
+                {
+                    SCODE: 93651,
+                    NS: 16713,
+                    PRIM: '01713732-0274-1 отмена',
+                    STATUS: 1,
+                    DATA: new Date('2026-08-26'),
+                },
+            ]);
+            const res = await service.findPlainCancelledInvoices(90, null);
+            expect(res).toEqual([
+                {
+                    scode: 93651,
+                    number: 16713,
+                    prim: '01713732-0274-1 отмена',
+                    posting: '01713732-0274-1',
+                    status: 1,
+                    date: new Date('2026-08-26'),
+                },
+            ]);
+            const sql = query.mock.calls[0][0];
+            // Закрытый счёт не берём, а расформированный — берём: по нему возможен фантом.
+            expect(sql).toContain('s.STATUS <> 5');
+            expect(sql).not.toContain('NOT IN (0, 5)');
+            // Пометка — из единой точки правды, и « отмена FBO» под неё не подпадает.
+            expect(query.mock.calls[0][1][0]).toBe('% отмена');
+            expect(query.mock.calls[0][1][1]).toBeInstanceOf(Date);
+        });
+
         it('getRealpriceLinesByScode — все строки счёта', async () => {
             query.mockResolvedValueOnce([
                 { REALPRICECODE: 100, GOODSCODE: 444, QUAN: 2 },

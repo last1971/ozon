@@ -1,4 +1,5 @@
 import { WbClaimDto } from '../wb.customer/dto/wb.claim.dto';
+import { RETURN_STATE } from '../mp-decision/mp-decision.types';
 
 /**
  * Нормализация статусов ВБ в словарь конвейера — ЕДИНСТВЕННАЯ точка истины.
@@ -60,11 +61,11 @@ export function wbClaimState(claim: WbClaimDto, isArchive: boolean): string | nu
         case 8:
             // Возврат в реализацию: товар остаётся на складе ВБ — как ReturnedToOzon
             // (код возвращается в оборот, счёт уходит в доноры WBFBO-пула).
-            return 'ReturnedToOzon';
+            return RETURN_STATE.ARRIVED_AT_MARKETPLACE;
         case 10:
             // Возврат продавцу: активная заявка — товар едет, архивная — ВБ закрыл
             // заявку, считаем товар доехавшим (письмо кладовщику «принять» и так ручное).
-            return isArchive ? 'ReceivedBySeller' : 'MovingToSeller';
+            return isArchive ? RETURN_STATE.RECEIVED_BY_SELLER : 'MovingToSeller';
         default:
             return 'unknown';
     }

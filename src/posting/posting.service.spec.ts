@@ -471,6 +471,26 @@ describe('PostingService', () => {
             });
         });
 
+        it('listReturnsByPostings спрашивает пачками по 50 и склеивает ответы', async () => {
+            const postings = Array.from({ length: 120 }, (_, i) => `posting-${i}`);
+            ozonApiMethod
+                .mockResolvedValueOnce({ returns: [{ id: 1 }] })
+                .mockResolvedValueOnce({ returns: [{ id: 2 }] })
+                .mockResolvedValueOnce({ returns: [{ id: 3 }] });
+
+            const res = await service.listReturnsByPostings(postings);
+
+            expect(res).toEqual([{ id: 1 }, { id: 2 }, { id: 3 }]);
+            expect(ozonApiMethod).toHaveBeenCalledTimes(3);
+            expect(ozonApiMethod.mock.calls[0][1].filter.posting_numbers).toHaveLength(50);
+            expect(ozonApiMethod.mock.calls[2][1].filter.posting_numbers).toHaveLength(20);
+        });
+
+        it('listReturnsByPostings на пустом списке в Ozon не ходит', async () => {
+            await expect(service.listReturnsByPostings([])).resolves.toEqual([]);
+            expect(ozonApiMethod).not.toHaveBeenCalled();
+        });
+
         it('getPostingUnits считает единицы отправления по данным Ozon', async () => {
             ozonApiMethod.mockResolvedValueOnce({ result: { products: [{ quantity: 2 }, { quantity: 1 }] } });
 

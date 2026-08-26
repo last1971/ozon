@@ -16,6 +16,7 @@ import { GoodServiceEnum } from '../good/good.service.enum';
 import { SupplyPositionDto } from 'src/supply/dto/supply.position.dto';
 import { OzonApiService } from "../ozon.api/ozon.api.service";
 import { isShippedToMarketplace } from '../helpers/posting.shipped';
+import { chunk } from 'lodash';
 import { ReturnsListDto } from './dto/returns.list.dto';
 import { ReturnDto } from './dto/return.dto';
 import { FbsPrepareDto, IMarkSubmittable, SubmitFailureDto, SubmitResultDto } from '../interfaces/IMarkSubmittable';
@@ -37,7 +38,7 @@ import { firstPageOnly } from '../helpers/pdf/pdf.helpers';
 import { MpEventDto, MpEventService } from '../mp-event/mp-event.service';
 import { MpDecisionRunnerService } from '../mp-decision/mp-decision.runner.service';
 import { IReturnable } from '../interfaces/IReturnable';
-import { CLAIM_RETURN_STATES } from '../mp-decision/mp-decision.types';
+import { CLAIM_RETURN_STATES, PhysicalReturnState, PHYSICAL_RETURN_STATES } from '../mp-decision/mp-decision.types';
 
 @Injectable()
 export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable, IReturnable {
@@ -356,13 +357,45 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
      * и отдаёт первые 100 возвратов подряд.
      */
     async listReturnsByPosting(postingNumber: string): Promise<ReturnDto[]> {
-        const result: ReturnsListDto = await this.ozonApiService.method('/v1/returns/list', {
-            filter: { posting_numbers: [postingNumber] },
-            limit: 500,
-            last_id: 0,
-        });
-        return result?.returns ?? [];
+        return this.listReturnsByPostings([postingNumber]);
     }
+
+    /**
+     * То же самое пачками: `posting_numbers[]` принимает список, и спрашивать
+     * по одному номеру незачем. Размер пачки — 50: у отправления бывает несколько
+     * записей возврата (по записи на единицу), а `limit` тут общий на ответ.
+     */
+    async listReturnsByPostings(postingNumbers: string[]): Promise<ReturnDto[]> {
+        const all: ReturnDto[] = [];
+        for (const part of chunk(postingNumbers, PostingService.RETURNS_BY_POSTING_CHUNK)) {
+            // Пагинация обязательна: у отправления бывает несколько записей возврата
+            // (по одной на единицу товара), и пачка номеров легко перебирает лимит.
+            // Молча обрезанная выдача здесь опаснее пустой — тревога просто не придёт.
+            let lastId = 0;
+            let hasNext = true;
+            // Потолок страниц — защита от «вечного has_next»: если Ozon отдаст ту же
+            // страницу с тем же last_id, цикл иначе крутился бы бесконечно прямо
+            // внутри боевого подсчёта частичности возврата.
+            for (let page = 0; hasNext && page < PostingService.RETURNS_MAX_PAGES; page++) {
+                const result: ReturnsListDto = await this.ozonApiService.method('/v1/returns/list', {
+                    filter: { posting_numbers: part },
+                    limit: 500,
+                    last_id: lastId,
+                });
+                const returns = result?.returns ?? [];
+                all.push(...returns);
+                const nextId = returns.length ? Number(returns[returns.length - 1].id) : lastId;
+                // Курсор не сдвинулся — страница та же, дальше идти некуда.
+                hasNext = Boolean(result?.has_next) && returns.length > 0 && nextId !== lastId;
+                lastId = nextId;
+            }
+        }
+        return all;
+    }
+
+    private static readonly RETURNS_BY_POSTING_CHUNK = 50;
+    /** 50 отправлений × 500 записей на страницу — 25 000 записей, дальше идти незачем. */
+    private static readonly RETURNS_MAX_PAGES = 50;
 
     /**
      * Сколько единиц в отправлении ПО ДАННЫМ OZON. Знаменатель признака частичности.
@@ -403,7 +436,7 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
      */
     async returnCounts(item: ReturnDto): Promise<{ returnedRows: number; postingUnits: number } | undefined> {
         const state = item.visual?.status?.sys_name ?? '';
-        if (item.schema !== 'Fbs' || !['ReturnedToOzon', 'ReceivedBySeller'].includes(state)) return undefined;
+        if (item.schema !== 'Fbs' || !PHYSICAL_RETURN_STATES.includes(state as PhysicalReturnState)) return undefined;
         try {
             const [rows, postingUnits] = await Promise.all([
                 this.listReturnsByPosting(item.posting_number),
