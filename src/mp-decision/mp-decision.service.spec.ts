@@ -1,6 +1,15 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { MpDecisionService } from './mp-decision.service';
-import { DecisionCode, DecisionInput } from './mp-decision.types';
+import {
+    DecisionCode,
+    DecisionInput,
+    IN_TRANSIT_RETURN_STATES,
+    TO_MARKETPLACE_TRANSIT_STATES,
+    TO_SELLER_TRANSIT_STATES,
+    TOWARDS_SELLER_STATES,
+    UNKNOWN_DIRECTION_TRANSIT_STATES,
+    returnWhereabouts,
+} from './mp-decision.types';
 
 describe('MpDecisionService — решающая таблица', () => {
     let service: MpDecisionService;
@@ -146,6 +155,48 @@ describe('MpDecisionService — решающая таблица', () => {
 
         it.each(['MovingToOzon', 'WaitingShipment', 'MovingToSeller'])('%s → только запись в журнал', (state) => {
             expect(ret(state)).toMatchObject({ branch: 'return/in-transit', layer1: 'none', letter: false });
+        });
+
+        // Наборы разведены по направлению (26.08.2026), но состав «в пути» обязан
+        // остаться прежним: решения по нему те же, изменилась только структура.
+        it('наборы направлений в сумме дают прежний состав «в пути»', () => {
+            expect([...IN_TRANSIT_RETURN_STATES].sort()).toEqual(
+                ['MovingToOzon', 'MovingToSeller', 'WaitingShipment'].sort(),
+            );
+            expect(TO_MARKETPLACE_TRANSIT_STATES).toEqual(['MovingToOzon']);
+            expect(TO_SELLER_TRANSIT_STATES).toEqual(['MovingToSeller']);
+            // Направление по имени не определяется — держим отдельно и решений не принимаем.
+            expect(UNKNOWN_DIRECTION_TRANSIT_STATES).toEqual(['WaitingShipment']);
+            // «Товар у нас или едет к нам» = путь к нам, приезд к нам и наш пункт возврата.
+            expect([...TOWARDS_SELLER_STATES].sort()).toEqual(
+                ['MovingToSeller', 'ReceivedBySeller', 'ArrivedAtReturnPlace'].sort(),
+            );
+            // Но в «в пути» пункт возврата НЕ входит: по нему решающая таблица шлёт письмо.
+            expect(IN_TRANSIT_RETURN_STATES).not.toContain('ArrivedAtReturnPlace');
+        });
+
+        it.each([
+            ['Cancelled', 'claim'],
+            ['MovingToOzon', 'towards-marketplace'],
+            ['ReturnedToOzon', 'at-marketplace'],
+            ['MovingToSeller', 'towards-seller'],
+            ['ReceivedBySeller', 'towards-seller'],
+            ['WriteOff', 'lost'],
+            // Направление по имени не определяется: выходит и к Ozon, и к нам.
+            ['WaitingShipment', 'unknown'],
+            // Незнакомое состояние — тоже unknown: действий по нему принимать нельзя.
+            // Пункт возврата ПРОДАВЦА: коробка ждёт нас, а не едет к маркетплейсу.
+            ['ArrivedAtReturnPlace', 'towards-seller'],
+            ['Чепуха', 'unknown'],
+        ])('returnWhereabouts(%s) = %s — единственное место, где решается «где товар»', (state, expected) => {
+            expect(returnWhereabouts(state)).toBe(expected);
+        });
+
+        // ArrivedAtReturnPlace — пункт возврата ПРОДАВЦА (place = target_place = ТОМСК_70
+        // на всех трёх живых случаях). В «в пути» он намеренно НЕ попал: сегодня это
+        // единственный сигнал «коробка ждёт, заберите», и глушить его нечем.
+        it('ArrivedAtReturnPlace по-прежнему просит рук, а не молчит', () => {
+            expect(ret('ArrivedAtReturnPlace')).toMatchObject({ branch: 'return/unknown-state', letter: true });
         });
 
         it.each(['WriteOff', 'PotentiallyLost', 'Utilized'])('%s → ничего, письмо', (state) => {

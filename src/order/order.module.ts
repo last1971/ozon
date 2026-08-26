@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { OrderService } from './order.service';
+import { CancelledBoxReconcilerService } from './cancelled-box-reconciler.service';
 import { ProductModule } from '../product/product.module';
 import { InvoiceModule } from '../invoice/invoice.module';
 import { OrderController } from './order.controller';
@@ -27,7 +28,7 @@ import { MpDecisionModule } from '../mp-decision/mp-decision.module';
         MpDecisionModule,
         Trade2006AccrualModule,
     ],
-    providers: [OrderService],
+    providers: [OrderService, CancelledBoxReconcilerService],
     controllers: [OrderController],
     exports: [OrderService],
 })

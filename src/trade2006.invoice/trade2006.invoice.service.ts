@@ -31,7 +31,12 @@ import { plainToClass } from "class-transformer";
 import { WithTransactions } from "../helpers/mixin/transaction.mixin";
 import { FboMigrationLinkDto } from "../posting.fbo/dto/fbo-migration-link.dto";
 import { InvoiceState } from '../helpers/accrual.distribution';
-import { ALL_CANCELLATION_SUFFIXES, OZON_INVOICE_CLOSED_SUFFIX } from '../helpers/order.cancellation.constants';
+import {
+    ALL_CANCELLATION_SUFFIXES,
+    MP_ORDER_CANCELLATION_SUFFIX,
+    OZON_INVOICE_CLOSED_SUFFIX,
+    splitInvoicePrim,
+} from '../helpers/order.cancellation.constants';
 import { FBO_INVOICE_IGK } from '../helpers/fbo.invoice.constants';
 import { InvoiceMatchDto } from '../invoice/dto/invoice.match.dto';
 
@@ -1243,7 +1248,9 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
                 'OR (m.STATUS = 6 AND m.RETIRE_REASON = 1 AND s.PRIM CONTAINING ?)) ' +
                 'AND (s.DATA IS NULL OR s.DATA < ?) ' +
                 'ORDER BY s.DATA',
-            [pickedEdge, 'отмена', edge],
+            // Литерал пометки не пишем: единая точка правды — MP_ORDER_CANCELLATION_SUFFIX.
+            // CONTAINING по « отмена» ловит и « отмена FBO» — так и задумано, это счёт-донор.
+            [pickedEdge, MP_ORDER_CANCELLATION_SUFFIX.REGULAR.trim(), edge],
             !transaction,
         );
         return rows.map((r) => ({
@@ -1257,6 +1264,53 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             invoiceStatus: r.S_STATUS === null || r.S_STATUS === undefined ? null : Number(r.S_STATUS),
             invoiceDate: r.DATA ?? null,
         }));
+    }
+
+    /**
+     * Счета с пометкой « отмена» — той, что значит «товар физически у нас».
+     *
+     * Вход суточной сверки: по каждому такому счёту спрашиваем маркетплейс, не завёл ли
+     * он возврат — то есть не уехала ли коробка к нему вопреки пометке (живые случаи
+     * 26.08.2026: счета №16713 и №16559).
+     *
+     * Расформированные (STATUS=0) БЕРЁМ, хотя «исправлять» там уже нечего: письмо отмены
+     * прямым текстом велит кладовщику расформировать счёт, и если коробки он не нашёл, а
+     * она уехала к маркетплейсу — на полке появился фантомный остаток. Молчать об этом
+     * нельзя, сверка покажет их отдельным разделом. Закрытые (STATUS=5) не берём: счёт
+     * проведён и оплачен, трогать его отчётом смысла нет. На проде за три месяца из 84
+     * помеченных 65 расформированы и 17 закрыты, и записей возврата у них нет ни одной —
+     * то есть расширение выборки шума не добавляет.
+     *
+     * Суффикс берётся из единой точки правды (`MP_ORDER_CANCELLATION_SUFFIX`), а не литералом:
+     * `LIKE '% отмена'` намеренно не ловит ` отмена FBO` — тот счёт уже донор, он исправлен.
+     */
+    async findPlainCancelledInvoices(
+        days: number,
+        transaction: FirebirdTransaction = null,
+    ): Promise<{ scode: number; number: number | null; prim: string; posting: string; status: number; date: Date | null }[]> {
+        const t = transaction ?? (await this.getTransaction());
+        const suffix = MP_ORDER_CANCELLATION_SUFFIX.REGULAR;
+        const edge = DateTime.now().minus({ day: days }).startOf('day').toJSDate();
+        const rows = await t.query(
+            'SELECT s.SCODE, s.NS, s.PRIM, s.STATUS, s.DATA FROM S s ' +
+                'WHERE s.PRIM LIKE ? AND s.DATA >= ? AND s.STATUS <> 5 ' +
+                'ORDER BY s.DATA',
+            [`%${suffix}`, edge],
+            !transaction,
+        );
+        return rows.map((r) => {
+            // Разбор PRIM — единой функцией из order.cancellation.constants:
+            // своего slice по длине суффикса здесь быть не должно.
+            const { posting } = splitInvoicePrim(String(r.PRIM ?? ''));
+            return {
+                scode: Number(r.SCODE),
+                number: r.NS ?? null,
+                prim: String(r.PRIM ?? '').trim(),
+                posting,
+                status: Number(r.STATUS),
+                date: r.DATA ?? null,
+            };
+        });
     }
 
     async getRealpriceLinesByScode(

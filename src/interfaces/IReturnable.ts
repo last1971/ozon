@@ -20,3 +20,23 @@ export function isReturnable(service: unknown): service is IReturnable {
     const s = service as IReturnable;
     return typeof s?.listReturns === 'function' && typeof s?.returnCounts === 'function';
 }
+
+/**
+ * Умеет спросить возвраты по конкретным отправлениям — ТОЧЕЧНОЙ ручкой маркетплейса,
+ * за всю историю (окно прогона тут не годится). Отдельно от `IReturnable`: конвейеру
+ * возвратов этот метод не нужен, и требовать его от всех — значит ломать тех, кому он
+ * не сдался. Нужен суточной сверке отменённых счетов.
+ *
+ * Реализуют только те, у кого такая ручка ЕСТЬ. У ВБ её нет: там заявки приходят пачкой
+ * и матчатся на заказы уже у нас, окном в 120 дней и по `srid`. Изобразить контракт
+ * фильтром поверх общего списка — значит пообещать «за всю историю» и тихо пропускать
+ * то, что в окно не попало, да ещё и выкачивать все заявки ради нескольких номеров.
+ * Поэтому ВБ сверкой не покрыт, и это лучше, чем покрыт на словах.
+ */
+export interface IReturnsByPostings {
+    listReturnsByPostings(postingNumbers: string[]): Promise<ReturnDto[]>;
+}
+
+export function hasReturnsByPostings(service: unknown): service is IReturnsByPostings {
+    return typeof (service as IReturnsByPostings)?.listReturnsByPostings === 'function';
+}
