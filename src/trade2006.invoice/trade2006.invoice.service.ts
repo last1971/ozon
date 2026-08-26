@@ -7,6 +7,7 @@ import { DateTime } from 'luxon';
 import { ConfigService } from '@nestjs/config';
 import { PostingDto } from '../posting/dto/posting.dto';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
+import { InvoiceDonorsDto } from '../invoice/dto/invoice-donors.dto';
 import { TransactionDto } from '../posting/dto/transaction.dto';
 import { ResultDto } from '../helpers/dto/result.dto';
 import { goodCode, goodQuantityCoeff, isMarkCodesEnabled } from '../helpers';
@@ -628,8 +629,100 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         );
     }
 
+    /** Сторона подбора этой инсталляции: магазин или склад. */
+    private quanAttr(): 'SHOP' | 'SKLAD' {
+        return this.getStorageSS() === 1 ? 'SHOP' : 'SKLAD';
+    }
+
+    /** Откуда берутся доноры — счёт с подборкой. */
+    private static readonly PODBPOS_SOURCE = 'FROM PODBPOS pp JOIN S s ON s.SCODE = pp.SCODE ';
+
+    /** Донор жив: счёт сформирован и по товару что-то подобрано. Одно место на все поиски доноров. */
+    private donorAliveWhere(): string {
+        return `s.STATUS = 1 AND pp.QUAN${this.quanAttr()} > 0`;
+    }
+
     getStorageSS(): 0 | 1 {
         return this.configService.get<string>('STORAGE_TYPE', 'SHOPSKLAD').toUpperCase() === 'SHOPSKLAD' ? 1 : 0;
+    }
+
+    /**
+     * Доноры под счёт, найденный по подстроке в примечании (номер отправления
+     * маркетплейса лежит в S.PRIM).
+     *
+     * Донор — счёт ТОГО ЖЕ покупателя со статусом 1 (сформирован), где по нужному
+     * товару уже что-то подобрано. Сторона подбора (QUANSHOP/QUANSKLAD) берётся
+     * из режима инсталляции — тем же {@link getStorageSS}, что и FBO-поиск доноров.
+     * Сам счёт из доноров исключён.
+     *
+     * Подстрока может совпасть с несколькими счетами — возвращаем все, каждый со
+     * своим номером; пусто, если не нашлось ни одного.
+     */
+    async findDonorsByPrim(prim: string, transaction: FirebirdTransaction = null): Promise<InvoiceDonorsDto[]> {
+        const t = transaction ?? (await this.getTransaction());
+        const attribute = this.quanAttr();
+
+        const invoices = await this.getPrimContaining(prim, t);
+        if (invoices.length === 0) {
+            if (!transaction) await t.commit(true);
+            return [];
+        }
+
+        const result: InvoiceDonorsDto[] = [];
+        for (const inv of invoices) {
+            // Строки берём своим запросом: getInvoiceLinesByInvoiceId отдаёт InvoiceLineDto
+            // без REALPRICECODE и наименования, а они здесь и нужны.
+            const lines = await t.query(
+                'SELECT r.REALPRICECODE, r.GOODSCODE, r.QUAN, n.NAME ' +
+                    'FROM REALPRICE r ' +
+                    'LEFT JOIN GOODS g ON g.GOODSCODE = r.GOODSCODE ' +
+                    'LEFT JOIN NAME n ON n.NAMECODE = g.NAMECODE ' +
+                    'WHERE r.SCODE = ? ORDER BY r.REALPRICECODE',
+                [inv.id],
+                false,
+            );
+
+            const goodscodes = lines.map((l) => l.GOODSCODE);
+            const donors = goodscodes.length
+                ? await t.query(
+                      `SELECT pp.GOODSCODE, pp.PODBPOSCODE, pp.QUAN${attribute} AS QUANAVAIL, ` +
+                          's.SCODE, s.NS, s.DATA, s.PRIM ' +
+                          Trade2006InvoiceService.PODBPOS_SOURCE +
+                          `WHERE pp.GOODSCODE IN (${goodscodes.map(() => '?').join(',')}) ` +
+                          `AND s.POKUPATCODE = ? AND ${this.donorAliveWhere()} AND s.SCODE <> ? ` +
+                          'ORDER BY s.DATA',
+                      [...goodscodes, inv.buyerId, inv.id],
+                      false,
+                  )
+                : [];
+
+            result.push({
+                invoiceNumber: inv.number,
+                scode: inv.id,
+                date: inv.date ?? null,
+                prim: inv.remark ?? null,
+                buyerCode: inv.buyerId,
+                lines: lines.map((l) => ({
+                    realpricecode: l.REALPRICECODE,
+                    goodscode: l.GOODSCODE,
+                    name: l.NAME ?? null,
+                    quantity: l.QUAN,
+                    donors: donors
+                        .filter((d) => d.GOODSCODE === l.GOODSCODE)
+                        .map((d) => ({
+                            invoiceNumber: d.NS,
+                            scode: d.SCODE,
+                            date: d.DATA ?? null,
+                            prim: d.PRIM ?? null,
+                            podbposcode: d.PODBPOSCODE,
+                            quantity: d.QUANAVAIL,
+                        })),
+                })),
+            });
+        }
+
+        if (!transaction) await t.commit(true);
+        return result;
     }
 
     async findRealpriceCodes(
@@ -663,7 +756,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
     ): Promise<{ podbposcode: number; scode: number; realpricecode: number; quanAvail: number; prim: string; cntNom: number; cntLive: number; cntTt3: number; cntDead: number }[]> {
         if (prims.length === 0) return [];
         const t = transaction ?? (await this.getTransaction());
-        const attribute = this.getStorageSS() === 1 ? 'SHOP' : 'SKLAD';
+        const attribute = this.quanAttr();
         const live = Trade2006InvoiceService.LIVE_CODE_FILTER;
         // Уровень склада считается в SQL: CONTAINING регистронезависим, JS includes() — нет.
         const lvlCase =
@@ -680,10 +773,9 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             'm.REALPRICEFCODE IS NULL AND m.SHOPLOGCODE IS NULL AND m.SPISID IS NULL AND ' +
             'm.TRANSFER_TYPE = 3 AND m.STATUS = 6) AS CNT_DEAD, ' +
             `${lvlCase} ` +
-            'FROM PODBPOS pp ' +
-            'JOIN S s ON s.SCODE = pp.SCODE ' +
+            Trade2006InvoiceService.PODBPOS_SOURCE +
             'JOIN REALPRICE rp ON rp.REALPRICECODE = pp.REALPRICECODE ' +
-            `WHERE pp.GOODSCODE = ? AND pp.QUAN${attribute} > 0 AND pp.SKLAD_ID IS NULL AND s.STATUS = 1 AND (${containingClauses})`;
+            `WHERE pp.GOODSCODE = ? AND pp.SKLAD_ID IS NULL AND ${this.donorAliveWhere()} AND (${containingClauses})`;
         const rows = await t.query(sql, [nominal, nominal, ...prims, goodscode, ...prims], !transaction);
         const candidates = rows.map((r) => ({
             podbposcode: r.PODBPOSCODE,
@@ -716,13 +808,13 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
     ): Promise<{ podbposcode: number; scode: number; realpricecode: number; quanAvail: number } | null> {
         if (prims.length === 0) return null;
         const t = transaction ?? (await this.getTransaction());
-        const attribute = this.getStorageSS() === 1 ? 'SHOP' : 'SKLAD';
+        const attribute = this.quanAttr();
         const lvlCase =
             'CASE ' + prims.map((_, i) => `WHEN s.PRIM CONTAINING ? THEN ${i} `).join('') + 'ELSE 99 END AS LVL';
         const containing = prims.map(() => 's.PRIM CONTAINING ?').join(' OR ');
         const sql =
             `SELECT FIRST 1 pp.PODBPOSCODE, pp.SCODE, pp.REALPRICECODE, pp.QUAN${attribute} AS QUANAVAIL, ${lvlCase} ` +
-            'FROM PODBPOS pp JOIN S s ON s.SCODE = pp.SCODE ' +
+            Trade2006InvoiceService.PODBPOS_SOURCE +
             `WHERE pp.GOODSCODE = ? AND pp.QUAN${attribute} >= ? AND s.STATUS = 1 AND (${containing}) ORDER BY LVL`;
         const rows = await t.query(sql, [...prims, goodscode, quantity, ...prims], !transaction);
         if (rows.length === 0) return null;
@@ -811,7 +903,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         transaction: FirebirdTransaction = null,
     ): Promise<void> {
         const t = transaction ?? (await this.getTransaction());
-        const attribute = this.getStorageSS() === 1 ? 'SHOP' : 'SKLAD';
+        const attribute = this.quanAttr();
         await t.execute(
             `UPDATE PODBPOS SET QUAN${attribute} = QUAN${attribute} - ? WHERE PODBPOSCODE = ?`,
             [take, podbposcode],
@@ -928,12 +1020,21 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
      * Озон принимает ГТД строго 3 частями (8/6/7 цифр, regex ^[0-9]{8}/[0-9]{6}/[0-9]{7}$).
      * В БД ГТД бывает с хвостом (номер позиции), напр. 10228010/260326/5094327/2 — обрезаем до 3 частей.
      * Пусто → null (тогда is_gtd_absent=true).
+     *
+     * Не попавшее в формат Озона тоже отдаём null: у старых партий (до ~2011) номер декларации
+     * содержит литеру — 10210090/160910/п014454, семи цифр там нет и не будет. Слать такое нельзя:
+     * exemplar/set проходит, а validate валится regex-ошибкой и отгрузка встаёт целиком.
      */
     private normalizeGtd(raw: unknown): string | null {
         if (raw == null) return null;
         const s = String(raw).trim();
         if (!s) return null;
-        return s.split('/').slice(0, 3).join('/') || null;
+        const gtd = s.split('/').slice(0, 3).join('/');
+        if (!/^[0-9]{8}\/[0-9]{6}\/[0-9]{7}$/.test(gtd)) {
+            this.logger.warn(`ГТД "${s}" не в формате Озона — отправляем как is_gtd_absent`);
+            return null;
+        }
+        return gtd;
     }
 
     /**
