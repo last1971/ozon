@@ -1,5 +1,6 @@
 import { IProductCoeffsable } from '../interfaces/i.product.coeffsable';
 import { GoodAvitoDto } from '../good/dto/good.avito.dto';
+import { avitoSku } from '../avito.card/avito.sku';
 
 export class AvitoPriceCoeffsAdapter implements IProductCoeffsable {
     constructor(
@@ -12,8 +13,7 @@ export class AvitoPriceCoeffsAdapter implements IProductCoeffsable {
     }
 
     getSku(): string {
-        const { goodsCode, coeff } = this.goodAvitoDto;
-        return coeff === 1 ? goodsCode : `${goodsCode}-${coeff}`;
+        return avitoSku(this.goodAvitoDto);
     }
 
     getTransMaxAmount(): number {

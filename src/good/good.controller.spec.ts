@@ -1,6 +1,7 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { GoodController } from './good.controller';
 import { GOOD_SERVICE } from '../interfaces/IGood';
+import { AVITO_GOOD_STORE } from '../interfaces/i.avito.good.store';
 import { ExtraGoodService } from './extra.good.service';
 import { GoodServiceEnum } from './good.service.enum';
 
@@ -24,6 +25,7 @@ describe('GoodController', () => {
             controllers: [GoodController],
             providers: [
                 { provide: GOOD_SERVICE, useValue: {} },
+                { provide: AVITO_GOOD_STORE, useValue: {} },
                 { provide: ExtraGoodService, useValue: mockExtraGoodService },
             ],
         }).compile();

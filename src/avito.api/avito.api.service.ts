@@ -3,6 +3,8 @@ import { HttpService } from '@nestjs/axios';
 import { firstValueFrom, map } from 'rxjs';
 import { AxiosError } from 'axios';
 import { VaultService } from 'vault-module/lib/vault.service';
+import { formatAxiosError } from '../helpers/http/format-axios-error';
+import { AvitoItemProbe, toAvitoItemProbe } from './avito.item.status';
 
 type HttpVerb = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
@@ -17,6 +19,8 @@ export class AvitoApiService {
     private readonly logger = new Logger(AvitoApiService.name);
     private accessToken: string | null = null;
     private accessTokenExpiresAt: number | null = null; // epoch ms
+    /** Кэш id кабинета, ключ — CLIENT_ID: смена кабинета в Vault не должна оставить старый id. */
+    private accountId: { clientId: string; id: number } | null = null;
 
     constructor(
         private readonly http: HttpService,
@@ -37,8 +41,14 @@ export class AvitoApiService {
             if (this.isUnauthorized(axiosErr)) {
                 // Refresh token and retry ONCE
                 token = await this.getAccessToken(avito, /*forceRefresh*/ true);
-                return await this.makeAxiosRequest<T>(url, method, data, token);
+                try {
+                    return await this.makeAxiosRequest<T>(url, method, data, token);
+                } catch (retryErr) {
+                    this.logger.error(formatAxiosError(retryErr, { url, method, body: data }));
+                    throw retryErr;
+                }
             }
+            this.logger.error(formatAxiosError(axiosErr, { url, method, body: data }));
             throw err;
         }
     }
@@ -57,6 +67,35 @@ export class AvitoApiService {
                 return await this.makeFetchRequest<T>(url, method, body, token);
             }
             throw err;
+        }
+    }
+
+    /** Id кабинета — нужен для адреса объявления. Спрашивается один раз на кабинет. */
+    async getAccountId(): Promise<number> {
+        const avito = (await this.vault.get('avito')) as unknown as AvitoVaultConfig;
+        if (this.accountId?.clientId === avito.CLIENT_ID) return this.accountId.id;
+        const self = await this.request<{ id: number }>('/core/v1/accounts/self', undefined, 'get');
+        this.accountId = { clientId: avito.CLIENT_ID, id: self.id };
+        return self.id;
+    }
+
+    /**
+     * Статус объявления. Наружу не бросает: «не смогли спросить» — это ответ, а не авария.
+     */
+    async getItemStatus(itemId: string): Promise<AvitoItemProbe> {
+        try {
+            const accountId = await this.getAccountId();
+            const item = await this.request<{ status: string }>(
+                `/core/v1/accounts/${accountId}/items/${itemId}/`,
+                undefined,
+                'get',
+            );
+            return toAvitoItemProbe(item?.status);
+        } catch (err) {
+            const status = (err as any)?.response?.status;
+            const message = `${status ?? '-'} ${(err as Error)?.message ?? 'unknown error'}`.trim();
+            this.logger.warn(`Авито ${itemId}: статус объявления не получен (${message})`);
+            return { kind: 'unreachable', message };
         }
     }
 

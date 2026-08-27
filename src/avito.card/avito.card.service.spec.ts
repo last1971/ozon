@@ -2,22 +2,32 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { AvitoCardService } from './avito.card.service';
 import { AvitoApiService } from '../avito.api/avito.api.service';
-import { GOOD_SERVICE } from '../interfaces/IGood';
+import { AVITO_GOOD_STORE } from '../interfaces/i.avito.good.store';
+import { AvitoLinkMaintenanceService } from './avito.link.maintenance.service';
 import { GoodServiceEnum } from '../good/good.service.enum';
 
 describe('AvitoCardService', () => {
     let service: AvitoCardService;
     let avitoApiService: jest.Mocked<AvitoApiService>;
-    let goodService: any;
+    let store: any;
+    let maintenance: any;
     let configService: jest.Mocked<ConfigService>;
 
     beforeEach(async () => {
         const mockAvitoApi = {
             request: jest.fn(),
+            getItemStatus: jest.fn(),
         };
 
-        const mockGoodService = {
+        const mockStore = {
             getAllAvitoGoods: jest.fn(),
+            disableAvitoGoods: jest.fn(),
+        };
+
+        const mockMaintenance = {
+            disableDeadLinks: jest
+                .fn()
+                .mockImplementation(async (links: Array<{ id: string }>) => links.map((link) => link.id)),
         };
 
         const mockConfigService = {
@@ -28,14 +38,16 @@ describe('AvitoCardService', () => {
             providers: [
                 AvitoCardService,
                 { provide: AvitoApiService, useValue: mockAvitoApi },
-                { provide: GOOD_SERVICE, useValue: mockGoodService },
+                { provide: AVITO_GOOD_STORE, useValue: mockStore },
+                { provide: AvitoLinkMaintenanceService, useValue: mockMaintenance },
                 { provide: ConfigService, useValue: mockConfigService },
             ],
         }).compile();
 
         service = module.get<AvitoCardService>(AvitoCardService);
         avitoApiService = module.get(AvitoApiService);
-        goodService = module.get(GOOD_SERVICE);
+        store = module.get(AVITO_GOOD_STORE);
+        maintenance = module.get(AvitoLinkMaintenanceService);
         configService = module.get(ConfigService);
     });
 
@@ -79,11 +91,11 @@ describe('AvitoCardService', () => {
 
     describe('getGoodIds', () => {
         it('should return empty map when no avito ids exist', async () => {
-            goodService.getAllAvitoGoods.mockResolvedValue([]);
+            store.getAllAvitoGoods.mockResolvedValue([]);
 
             const result = await service.getGoodIds(null);
 
-            expect(goodService.getAllAvitoGoods).toHaveBeenCalled();
+            expect(store.getAllAvitoGoods).toHaveBeenCalled();
             expect(result).toEqual({
                 goods: new Map(),
                 nextArgs: null,
@@ -91,7 +103,7 @@ describe('AvitoCardService', () => {
         });
 
         it('should process avito ids and return quantities', async () => {
-            goodService.getAllAvitoGoods.mockResolvedValue([
+            store.getAllAvitoGoods.mockResolvedValue([
                 { id: '123', goodsCode: '456', coeff: 1, commission: 10.0 },
                 { id: '456', goodsCode: '789', coeff: 1, commission: 10.0 },
                 { id: '789', goodsCode: '101', coeff: 1, commission: 10.0 },
@@ -106,7 +118,7 @@ describe('AvitoCardService', () => {
 
             const result = await service.getGoodIds(null);
 
-            expect(goodService.getAllAvitoGoods).toHaveBeenCalled();
+            expect(store.getAllAvitoGoods).toHaveBeenCalled();
             expect(avitoApiService.request).toHaveBeenCalledWith(
                 '/stock-management/1/info',
                 { item_ids: [123, 456, 789], strong_consistency: true },
@@ -129,7 +141,7 @@ describe('AvitoCardService', () => {
                 coeff: 1,
                 commission: 10.0
             }));
-            goodService.getAllAvitoGoods.mockResolvedValue(largeIdArray);
+            store.getAllAvitoGoods.mockResolvedValue(largeIdArray);
 
             avitoApiService.request
                 .mockResolvedValueOnce({
@@ -319,6 +331,174 @@ describe('AvitoCardService', () => {
                 'put'
             );
             expect(result).toBe(1);
+        });
+    });
+
+    describe('getGoodIds: битые объявления', () => {
+        const goods = (count: number, from = 1) =>
+            Array.from({ length: count }, (_, i) => ({
+                id: (from + i).toString(),
+                goodsCode: `goods${from + i}`,
+                coeff: 1,
+                commission: 10.0,
+            }));
+        const stock = (id: number, quantity: number) => ({
+            item_id: id,
+            quantity,
+            is_out_of_stock: false,
+            is_unlimited: false,
+            is_multiple: true,
+        });
+
+        it('перебирает пачку поштучно и не теряет живые позиции', async () => {
+            store.getAllAvitoGoods.mockResolvedValue(goods(10));
+            avitoApiService.request.mockImplementation(async (_url, options: any) => {
+                const ids: number[] = options.item_ids;
+                if (ids.length > 1) throw new Error('400');
+                if (ids[0] === 5) throw new Error('400');
+                return { stocks: [stock(ids[0], ids[0] * 10)] };
+            });
+
+            const result = await service.getGoodIds(null);
+
+            expect(result.goods.size).toBe(9);
+            expect(result.goods.get('goods1')).toBe(10);
+            expect(result.goods.has('goods5')).toBe(false);
+        });
+
+        it('после падения пачки продолжает со следующей', async () => {
+            store.getAllAvitoGoods.mockResolvedValue(goods(20));
+            avitoApiService.request.mockImplementation(async (_url, options: any) => {
+                const ids: number[] = options.item_ids;
+                if (ids.includes(3) && ids.length > 1) throw new Error('400');
+                if (ids[0] === 3) throw new Error('400');
+                return { stocks: ids.map((id) => stock(id, id * 10)) };
+            });
+
+            const result = await service.getGoodIds(null);
+
+            expect(result.goods.size).toBe(19);
+            expect(result.goods.get('goods20')).toBe(200);
+        });
+
+        it('передаёт упавшие привязки в обслуживание справочника', async () => {
+            store.getAllAvitoGoods.mockResolvedValue(goods(10));
+            avitoApiService.request.mockImplementation(async (_url, options: any) => {
+                const ids: number[] = options.item_ids;
+                if (ids.includes(2)) throw new Error('400');
+                return { stocks: ids.map((id) => stock(id, 1)) };
+            });
+
+            await service.getGoodIds(null);
+
+            expect(maintenance.disableDeadLinks).toHaveBeenCalledWith([
+                expect.objectContaining({ id: '2' }),
+            ]);
+        });
+
+        it('необъяснённый провал (объявление живо) роняет прогон', async () => {
+            store.getAllAvitoGoods.mockResolvedValue(goods(10));
+            avitoApiService.request.mockImplementation(async (_url, options: any) => {
+                const ids: number[] = options.item_ids;
+                if (ids.includes(5)) throw new Error('429');
+                return { stocks: ids.map((id) => stock(id, id * 10)) };
+            });
+            maintenance.disableDeadLinks.mockResolvedValue([]); // статус не removed — привязка сохранена
+
+            await expect(service.getGoodIds(null)).rejects.toThrow('прогон не засчитан');
+        });
+
+        it('порог из конфига позволяет пережить единичный необъяснённый провал', async () => {
+            store.getAllAvitoGoods.mockResolvedValue(goods(10));
+            configService.get.mockReturnValue(0.2);
+            avitoApiService.request.mockImplementation(async (_url, options: any) => {
+                const ids: number[] = options.item_ids;
+                if (ids.includes(5)) throw new Error('429');
+                return { stocks: ids.map((id) => stock(id, id * 10)) };
+            });
+            maintenance.disableDeadLinks.mockResolvedValue([]);
+
+            const result = await service.getGoodIds(null);
+
+            expect(result.goods.size).toBe(9);
+        });
+
+        it('мусорный AVITO_FAIL_RATIO не ослабляет порог', async () => {
+            store.getAllAvitoGoods.mockResolvedValue(goods(10));
+            configService.get.mockReturnValue('');
+            avitoApiService.request.mockImplementation(async (_url, options: any) => {
+                const ids: number[] = options.item_ids;
+                if (ids.includes(5)) throw new Error('429');
+                return { stocks: ids.map((id) => stock(id, id * 10)) };
+            });
+            maintenance.disableDeadLinks.mockResolvedValue([]);
+
+            await expect(service.getGoodIds(null)).rejects.toThrow('прогон не засчитан');
+        });
+
+        it('справочник не пуст, но все id нечисловые — авария', async () => {
+            store.getAllAvitoGoods.mockResolvedValue([
+                { id: 'avito1', goodsCode: 'goodsA', coeff: 1, commission: 10 },
+            ]);
+
+            await expect(service.getGoodIds(null)).rejects.toThrow('не пригоден для запроса');
+            expect(avitoApiService.request).not.toHaveBeenCalled();
+        });
+
+        it('пары sku↔id не пропадают на время прогона', async () => {
+            store.getAllAvitoGoods.mockResolvedValueOnce(goods(1));
+            avitoApiService.request.mockResolvedValueOnce({ stocks: [stock(1, 5)] });
+            await service.getGoodIds(null);
+
+            store.getAllAvitoGoods.mockResolvedValueOnce(goods(1));
+            avitoApiService.request.mockImplementationOnce(async () => {
+                // во время следующего прогона прежняя пара обязана оставаться видимой
+                expect(service.getAvitoId('goods1')).toBe('1');
+                return { stocks: [stock(1, 6)] };
+            });
+
+            await service.getGoodIds(null);
+            expect(service.getAvitoId('goods1')).toBe('1');
+        });
+
+        it('массовый отвал остаётся аварией — бросает наружу', async () => {
+            store.getAllAvitoGoods.mockResolvedValue(goods(10));
+            avitoApiService.request.mockRejectedValue(new Error('400'));
+            maintenance.disableDeadLinks.mockResolvedValue([]);
+
+            await expect(service.getGoodIds(null)).rejects.toThrow('прогон не засчитан');
+        });
+
+        it('не тащит sku прошлого прогона', async () => {
+            store.getAllAvitoGoods.mockResolvedValueOnce(goods(1));
+            avitoApiService.request.mockResolvedValueOnce({ stocks: [stock(1, 5)] });
+            await service.getGoodIds(null);
+            expect(service.getAvitoId('goods1')).toBe('1');
+
+            store.getAllAvitoGoods.mockResolvedValueOnce(goods(1, 2));
+            avitoApiService.request.mockResolvedValueOnce({ stocks: [stock(2, 5)] });
+            await service.getGoodIds(null);
+
+            expect(service.getAvitoId('goods1')).toBeUndefined();
+            expect(service.getAvitoId('goods2')).toBe('2');
+        });
+
+        it('нечисловой id в API не уходит и привязку не теряет', async () => {
+            store.getAllAvitoGoods.mockResolvedValue([
+                { id: 'avito123', goodsCode: 'goodsX', coeff: 1, commission: 10.0 },
+                ...goods(1),
+            ]);
+            avitoApiService.request.mockResolvedValue({ stocks: [stock(1, 7)] });
+
+            const result = await service.getGoodIds(null);
+
+            expect(avitoApiService.request).toHaveBeenCalledWith(
+                '/stock-management/1/info',
+                { item_ids: [1], strong_consistency: true },
+                'post',
+            );
+            expect(result.goods.get('goods1')).toBe(7);
+            expect(maintenance.disableDeadLinks).not.toHaveBeenCalled();
         });
     });
 });

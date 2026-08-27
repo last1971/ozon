@@ -2,6 +2,7 @@ import { Body, Controller, Delete, Get, Inject, Param, ParseEnumPipe, Post, Put,
 import { FileInterceptor } from "@nestjs/platform-express";
 import { ApiBody, ApiConsumes, ApiOperation, ApiParam, ApiProperty, ApiResponse, ApiTags } from "@nestjs/swagger";
 import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
+import { AVITO_GOOD_STORE, IAvitoGoodStore } from '../interfaces/i.avito.good.store';
 import { GoodPercentDto } from './dto/good.percent.dto';
 import { ResultDto } from '../helpers/dto/result.dto';
 import { GoodWbDto } from './dto/good.wb.dto';
@@ -28,6 +29,7 @@ class UpdateServiceParams {
 export class GoodController {
     constructor(
         @Inject(GOOD_SERVICE) private goodService: IGood,
+        @Inject(AVITO_GOOD_STORE) private avitoStore: IAvitoGoodStore,
         private extraService: ExtraGoodService,
     ) {}
     @Post('percent')
@@ -65,7 +67,7 @@ export class GoodController {
         description: 'Данные успешно сохранены',
     })
     async setAvito(@Body() dto: GoodAvitoDto): Promise<void> {
-        await this.goodService.setAvitoData(dto, null);
+        await this.avitoStore.setAvitoData(dto, null);
     }
 
     @Post('avito/data')
@@ -93,7 +95,7 @@ export class GoodController {
         type: [GoodAvitoDto],
     })
     async getAvitoData(@Body('ids') ids: string[]): Promise<GoodAvitoDto[]> {
-        return this.goodService.getAvitoData(ids);
+        return this.avitoStore.getAvitoData(ids);
     }
 
     @Post('is-switched')

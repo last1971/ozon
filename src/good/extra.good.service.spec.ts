@@ -1,5 +1,6 @@
 import { Test, TestingModule } from "@nestjs/testing";
 import { GOOD_SERVICE } from "../interfaces/IGood";
+import { AVITO_GOOD_STORE } from "../interfaces/i.avito.good.store";
 import { YandexOfferService } from "../yandex.offer/yandex.offer.service";
 import { ExpressOfferService } from "../yandex.offer/express.offer.service";
 import { ProductService } from "../product/product.service";
@@ -55,7 +56,8 @@ describe('ExtraGoodService', () => {
                 ApplyDisabledCommand,
                 KeepChangedOnlyCommand,
                 PushCountsCommand,
-                { provide: GOOD_SERVICE, useValue: { updateCountForService, in: mockIn, setWbData, setAvitoData, setPercents, setGoodsDisabled, clearGoodsDisabled, getDisabledCodes } },
+                { provide: GOOD_SERVICE, useValue: { updateCountForService, in: mockIn, setWbData, setPercents, setGoodsDisabled, clearGoodsDisabled, getDisabledCodes } },
+                { provide: AVITO_GOOD_STORE, useValue: { setAvitoData, getAvitoData: jest.fn(), getAllAvitoGoods: jest.fn(), disableAvitoGoods: jest.fn() } },
                 { provide: YandexOfferService, useValue: { test: "Yandex", skuList: [], getGoodIds } },
                 { provide: ExpressOfferService, useValue: { skuList: [], getGoodIds } },
                 { provide: ProductService, useValue: { skuList: ["222", "222-10"], updateGoodCounts, getGoodIds } },
