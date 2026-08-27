@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { IGood } from '../interfaces/IGood';
+import { IAvitoGoodStore } from '../interfaces/i.avito.good.store';
 import { GoodDto } from '../good/dto/good.dto';
 import { FIREBIRD } from '../firebird/firebird.module';
 import { FirebirdPool, FirebirdTransaction } from 'ts-firebird';
@@ -29,7 +30,7 @@ import { WithTransactions } from '../helpers/mixin/transaction.mixin';
 import { PriceCalculationHelper } from '../helpers/price/price.calculation.helper';
 
 @Injectable()
-export class Trade2006GoodService extends WithTransactions(class {}) implements IGood {
+export class Trade2006GoodService extends WithTransactions(class {}) implements IGood, IAvitoGoodStore {
 
     private storageTable: string;
     private readonly logger = new Logger(Trade2006GoodService.name);
@@ -222,7 +223,9 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
     async setAvitoData(data: GoodAvitoDto, t: FirebirdTransaction = null): Promise<void> {
         return this.withTransaction(async (transaction) => {
             await transaction.execute(
-                'UPDATE OR INSERT INTO AVITO_GOOD (ID, GOODSCODE, COEFF, COMMISSION) VALUES (?, ?, ?, ?) MATCHING (ID)',
+                // DISABLED сбрасывается: заново заведённая привязка обязана снова попадать в выгрузку.
+                `UPDATE OR INSERT INTO AVITO_GOOD (ID, GOODSCODE, COEFF, COMMISSION, DISABLED, DISABLED_AT, DISABLED_REASON)
+                 VALUES (?, ?, ?, ?, 0, NULL, NULL) MATCHING (ID)`,
                 [data.id, data.goodsCode, data.coeff, data.commission],
                 false,
             );
@@ -430,7 +433,11 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
 
     async getAllAvitoGoods(): Promise<GoodAvitoDto[]> {
         return this.withTransaction(async (transaction) => {
-            const result = await transaction.query('SELECT * FROM AVITO_GOOD', [], false);
+            const result = await transaction.query(
+                'SELECT ID, GOODSCODE, COEFF, COMMISSION FROM AVITO_GOOD WHERE COALESCE(DISABLED, 0) = 0',
+                [],
+                false,
+            );
             return result.map((row: any) => ({
                 id: row.ID,
                 goodsCode: row.GOODSCODE,
@@ -438,6 +445,25 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                 commission: row.COMMISSION,
             }));
         });
+    }
+
+    /**
+     * Помечает привязки отключёнными (объявление удалено на Авито).
+     * ID в AVITO_GOOD — VARCHAR(20), поэтому биндим строки как есть, без приведения к числу.
+     */
+    async disableAvitoGoods(ids: string[], reason: string, t: FirebirdTransaction = null): Promise<void> {
+        if (ids.length === 0) return;
+        return this.withTransaction(async (transaction) => {
+            for (const part of chunk(ids, 50)) {
+                await transaction.execute(
+                    `UPDATE AVITO_GOOD
+                     SET DISABLED = 1, DISABLED_AT = CURRENT_TIMESTAMP, DISABLED_REASON = ?
+                     WHERE ID IN (${'?'.repeat(part.length).split('').join()})`,
+                    [reason, ...part],
+                    false,
+                );
+            }
+        }, t);
     }
 
     async getQuantities(goodCodes: string[], t: FirebirdTransaction = null): Promise<Map<string, number>> {

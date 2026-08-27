@@ -750,11 +750,11 @@ describe('Trade2006GoodService', () => {
         
         await service.setAvitoData(avitoData);
         
-        expect(execute).toHaveBeenCalledWith(
-            'UPDATE OR INSERT INTO AVITO_GOOD (ID, GOODSCODE, COEFF, COMMISSION) VALUES (?, ?, ?, ?) MATCHING (ID)',
-            ['avito123', '456', 2, 15.5],
-            false
-        );
+        const [sql, params] = execute.mock.calls[0];
+        expect(sql).toContain('UPDATE OR INSERT INTO AVITO_GOOD');
+        expect(sql).toContain('DISABLED, DISABLED_AT, DISABLED_REASON');
+        expect(sql).toContain('0, NULL, NULL'); // повторное заведение оживляет привязку
+        expect(params).toEqual(['avito123', '456', 2, 15.5]);
     });
 
     it('getDisabledCodes', async () => {
@@ -819,12 +819,28 @@ describe('Trade2006GoodService', () => {
         await service.setAvitoData(avitoData, mockTransaction as any);
         
         expect(mockTransaction.execute).toHaveBeenCalledWith(
-            'UPDATE OR INSERT INTO AVITO_GOOD (ID, GOODSCODE, COEFF, COMMISSION) VALUES (?, ?, ?, ?) MATCHING (ID)',
+            expect.stringContaining('DISABLED, DISABLED_AT, DISABLED_REASON'),
             ['avito456', '789', 1, 10.0],
             false
         );
         
         // Should not call the service's execute
+        expect(execute).not.toHaveBeenCalled();
+    });
+
+    it('disableAvitoGoods помечает строки, id уходят строками', async () => {
+        await service.disableAvitoGoods(['avito123', 'avito456'], 'removed');
+
+        const [sql, params] = execute.mock.calls[0];
+        expect(sql).toContain('DISABLED = 1');
+        expect(sql).toContain('DISABLED_AT = CURRENT_TIMESTAMP');
+        expect(sql.match(/\?/g)).toHaveLength(3); // reason + два id
+        expect(params).toEqual(['removed', 'avito123', 'avito456']);
+    });
+
+    it('disableAvitoGoods на пустом списке в базу не ходит', async () => {
+        await service.disableAvitoGoods([], 'removed');
+
         expect(execute).not.toHaveBeenCalled();
     });
 
@@ -837,7 +853,11 @@ describe('Trade2006GoodService', () => {
 
         const result = await service.getAllAvitoGoods();
 
-        expect(query).toHaveBeenCalledWith('SELECT * FROM AVITO_GOOD', [], false);
+        expect(query).toHaveBeenCalledWith(
+            'SELECT ID, GOODSCODE, COEFF, COMMISSION FROM AVITO_GOOD WHERE COALESCE(DISABLED, 0) = 0',
+            [],
+            false,
+        );
         expect(result).toEqual([
             { id: 'avito123', goodsCode: '456', coeff: 2, commission: 15.5 },
             { id: 'avito456', goodsCode: '789', coeff: 1, commission: 10.0 },

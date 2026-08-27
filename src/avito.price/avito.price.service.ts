@@ -5,6 +5,7 @@ import { IProductCoeffsable } from '../interfaces/i.product.coeffsable';
 import { UpdatePriceDto } from '../price/dto/update.price.dto';
 import { ConfigService } from '@nestjs/config';
 import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
+import { AVITO_GOOD_STORE, IAvitoGoodStore } from '../interfaces/i.avito.good.store';
 import { AvitoApiService } from '../avito.api/avito.api.service';
 import { AvitoCardService } from '../avito.card/avito.card.service';
 import { AvitoPriceCoeffsAdapter } from './avito.price.coeffs.adapter';
@@ -17,6 +18,7 @@ export class AvitoPriceService implements IPriceUpdateable {
     constructor(
         private configService: ConfigService,
         @Inject(GOOD_SERVICE) private goodService: IGood,
+        @Inject(AVITO_GOOD_STORE) private avitoStore: IAvitoGoodStore,
         private api: AvitoApiService,
         private avitoCardService: AvitoCardService,
     ) {}
@@ -34,7 +36,7 @@ export class AvitoPriceService implements IPriceUpdateable {
 
     async getProductsWithCoeffs(skus: string[]): Promise<IProductCoeffsable[]> {
         const ids = skus.map((sku) => this.avitoCardService.getAvitoId(sku));
-        const avitoData = await this.goodService.getAvitoData(ids);
+        const avitoData = await this.avitoStore.getAvitoData(ids);
 
         if (!avitoData || avitoData.length === 0) {
             return [];

@@ -6,6 +6,7 @@ import { WbCardService } from "../wb.card/wb.card.service";
 import { AvitoCardService } from "../avito.card/avito.card.service";
 import { SyliusProductService } from "../sylius/sylius.product.service";
 import { GOOD_SERVICE, IGood } from "../interfaces/IGood";
+import { AVITO_GOOD_STORE, IAvitoGoodStore } from "../interfaces/i.avito.good.store";
 import { ICountUpdateable } from "../interfaces/ICountUpdatebale";
 import { GoodServiceEnum } from "./good.service.enum";
 import { ResultDto } from "../helpers/dto/result.dto";
@@ -42,6 +43,7 @@ export class ExtraGoodService implements OnApplicationBootstrap {
         private avitoCard: AvitoCardService,
         private syliusProduct: SyliusProductService,
         @Inject(GOOD_SERVICE) private goodService: IGood,
+        @Inject(AVITO_GOOD_STORE) private avitoStore: IAvitoGoodStore,
         private configService: ConfigService,
         private eventEmitter: EventEmitter2,
         private resolveDisableTokensCommand: ResolveDisableTokensCommand,
@@ -363,7 +365,7 @@ export class ExtraGoodService implements OnApplicationBootstrap {
                     coeff: Number(row[2]) || 0,
                     commission: Number(row[3]) || 0,
                 };
-                this.goodService.setAvitoData(dto, null);
+                this.avitoStore.setAvitoData(dto, null);
                 updated++;
             } catch (e) {
                 errors++;

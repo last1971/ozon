@@ -28,6 +28,7 @@ import { DistributeMarkedCountsCommand } from '../helpers/good/commands/distribu
 import { ApplyDisabledCommand } from '../helpers/good/commands/apply-disabled.command';
 import { KeepChangedOnlyCommand } from '../helpers/good/commands/keep-changed-only.command';
 import { PushCountsCommand } from '../helpers/good/commands/push-counts.command';
+import { AVITO_GOOD_STORE } from '../interfaces/i.avito.good.store';
 
 @Module({
     imports: [FirebirdModule, ProductModule, YandexOfferModule, WbCardModule, HelpersModule, forwardRef(() => AvitoCardModule), SyliusModule],
@@ -43,6 +44,7 @@ import { PushCountsCommand } from '../helpers/good/commands/push-counts.command'
             ) => new Trade2006GoodService(pool, configService, eventEmitter, cacheManager, priceCalculationHelper),
             inject: [FIREBIRD, ConfigService, EventEmitter2, CACHE_MANAGER, PriceCalculationHelper],
         },
+        { provide: AVITO_GOOD_STORE, useExisting: GOOD_SERVICE },
         ExtraGoodService,
         GoodsCountProcessor,
         LoadSnapshotCommand,
@@ -58,7 +60,7 @@ import { PushCountsCommand } from '../helpers/good/commands/push-counts.command'
         PushZeroCountsCommand,
         RestoreCountsCommand,
     ],
-    exports: [GOOD_SERVICE, ExtraGoodService],
+    exports: [GOOD_SERVICE, AVITO_GOOD_STORE, ExtraGoodService],
     controllers: [GoodController],
 })
 export class GoodModule {}
