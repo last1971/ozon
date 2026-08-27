@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom } from 'rxjs';
 import { AxiosError } from 'axios';
+import { formatAxiosError } from './format-axios-error';
 
 @Injectable()
 export class HttpWrapperService {
@@ -54,18 +55,7 @@ export class HttpWrapperService {
                 url: err.config?.url,
             };
 
-            this.logger.error(
-                `[${method.toUpperCase()}] ${url}: ${err.message}`,
-                {
-                    error: errorDetails,
-                    request: {
-                        method,
-                        url,
-                        params: options.params,
-                        data: options.data,
-                    },
-                },
-            );
+            this.logger.error(formatAxiosError(err, { url, method, body: options.data ?? options.params }));
 
             return {
                 result: null,

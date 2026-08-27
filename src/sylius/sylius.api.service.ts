@@ -3,6 +3,7 @@ import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
 import { firstValueFrom, map } from 'rxjs';
 import { AxiosError } from 'axios';
+import { formatAxiosError } from '../helpers/http/format-axios-error';
 
 type HttpVerb = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
@@ -29,6 +30,7 @@ export class SyliusApiService {
                 token = await this.getAccessToken(true);
                 return await this.makeRequest<T>(url, method, data, token);
             }
+            this.logger.error(formatAxiosError(axiosErr, { url, method, body: data }));
             throw err;
         }
     }

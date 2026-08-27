@@ -4,6 +4,7 @@ import { catchError, firstValueFrom, map } from 'rxjs';
 import { AxiosError } from 'axios';
 import { VaultService } from 'vault-module/lib/vault.service';
 import JSONbig from 'json-bigint';
+import { formatAxiosError } from '../helpers/http/format-axios-error';
 
 @Injectable()
 export class OzonApiService {
@@ -95,19 +96,8 @@ export class OzonApiService {
 
     private handleApiError(error: AxiosError, url: string, method: string, body: any, headers: any) {
         const responseData = error?.response?.data;
-        const errorDetails = {
-            message: error.message,
-            status: error?.response?.status,
-            statusText: error?.response?.statusText,
-            responseData: responseData,
-            responseHeaders: error?.response?.headers,
-            requestBody: body,
-            requestHeaders: headers,
-        };
 
-        this.logger.error(
-            `API Error | URL: ${url} | Method: ${method} | Status: ${error?.response?.status} | Details: ${JSON.stringify(errorDetails, null, 2)}`
-        );
+        this.logger.error(formatAxiosError(error, { url, method, body }));
 
         return {
             result: null,
