@@ -85,6 +85,76 @@ describe('MarkScanFbsService', () => {
             expect(invoiceService.attachMarkCodeForFbs).toHaveBeenCalledWith(KI, 501, '444', 0, KI, tx);
         });
 
+        it('фасовка: пачечная и штучная строки одного товара — код на 1 шт идёт в штучную', async () => {
+            invoiceService.getMarkCodeInfoByKi.mockResolvedValueOnce({ goodscode: '444', quantity: 1 });
+            invoiceService.getRealpriceLinesByScode.mockResolvedValue([
+                { realpricecode: 500, goodscode: '444', quantity: 3, pieces: 3 },
+                { realpricecode: 501, goodscode: '444', quantity: 1, pieces: 1 },
+            ]);
+            invoiceService.getAttachedMarkCodesByScode.mockResolvedValue([]);
+            invoiceService.countFreeMarkCodesForGood.mockResolvedValue(5);
+
+            await service.scan(invoice, KI);
+
+            // без фасовки код на 1 шт сел бы в строку 500 (влезает по штукам) и запер бы её
+            expect(invoiceService.attachMarkCodeForFbs).toHaveBeenCalledWith(KI, 501, '444', 0, KI, tx);
+        });
+
+        it('фасовка: код на 3 шт идёт в пачечную строку, а не в штучную', async () => {
+            invoiceService.getMarkCodeInfoByKi.mockResolvedValueOnce({ goodscode: '444', quantity: 3 });
+            invoiceService.getRealpriceLinesByScode.mockResolvedValue([
+                { realpricecode: 500, goodscode: '444', quantity: 3, pieces: 3 },
+                { realpricecode: 501, goodscode: '444', quantity: 1, pieces: 1 },
+            ]);
+            invoiceService.getAttachedMarkCodesByScode.mockResolvedValue([]);
+            invoiceService.countFreeMarkCodesForGood.mockResolvedValue(5);
+
+            await service.scan(invoice, KI);
+
+            expect(invoiceService.attachMarkCodeForFbs).toHaveBeenCalledWith(KI, 500, '444', 0, KI, tx);
+        });
+
+        it('фасовка: код на 3 шт на штучную позицию → 409 «поделите код»', async () => {
+            invoiceService.getMarkCodeInfoByKi.mockResolvedValueOnce({ goodscode: '444', quantity: 3 });
+            invoiceService.getRealpriceLinesByScode.mockResolvedValue([
+                { realpricecode: 500, goodscode: '444', quantity: 3, pieces: 1 },
+            ]);
+            invoiceService.getAttachedMarkCodesByScode.mockResolvedValue([]);
+
+            await expect(service.scan(invoice, KI)).rejects.toThrow(/поделите код/);
+            expect(invoiceService.attachMarkCodeForFbs).not.toHaveBeenCalled();
+            expect(tx.rollback).toHaveBeenCalled();
+        });
+
+        it('фасовка: две строки с одинаковой фасовкой — первая занята, код идёт во вторую', async () => {
+            invoiceService.getMarkCodeInfoByKi.mockResolvedValueOnce({ goodscode: '444', quantity: 1 });
+            invoiceService.getRealpriceLinesByScode.mockResolvedValue([
+                { realpricecode: 500, goodscode: '444', quantity: 1, pieces: 1 },
+                { realpricecode: 501, goodscode: '444', quantity: 1, pieces: 1 },
+            ]);
+            invoiceService.getAttachedMarkCodesByScode.mockResolvedValue([
+                { ki: 'OLD', goodscode: '444', realpricecode: 500, quantity: 1 },
+            ]);
+            invoiceService.countFreeMarkCodesForGood.mockResolvedValue(2);
+
+            await service.scan(invoice, KI);
+
+            expect(invoiceService.attachMarkCodeForFbs).toHaveBeenCalledWith(KI, 501, '444', 0, KI, tx);
+        });
+
+        it('старые строки (pieces=null) — прежнее поведение по остатку штук', async () => {
+            invoiceService.getMarkCodeInfoByKi.mockResolvedValueOnce({ goodscode: '444', quantity: 3 });
+            invoiceService.getRealpriceLinesByScode.mockResolvedValue([
+                { realpricecode: 500, goodscode: '444', quantity: 3, pieces: null },
+            ]);
+            invoiceService.getAttachedMarkCodesByScode.mockResolvedValue([]);
+            invoiceService.countFreeMarkCodesForGood.mockResolvedValue(3);
+
+            await service.scan(invoice, KI);
+
+            expect(invoiceService.attachMarkCodeForFbs).toHaveBeenCalledWith(KI, 500, '444', 0, KI, tx);
+        });
+
         it('КМ не найден → 404', async () => {
             invoiceService.getMarkCodeInfoByKi.mockResolvedValueOnce(null);
             await expect(service.scan(invoice, KI)).rejects.toThrow(NotFoundException);

@@ -74,12 +74,13 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             );
             const scode = (await transaction.query('SELECT GEN_ID(SCODE_GEN, 0) from rdb$database', []))[0].GEN_ID;
             for (const invoiceLine of invoice.invoiceLines) {
-                await transaction.execute('INSERT INTO REALPRICE (SCODE, GOODSCODE, QUAN, PRICE) VALUES (?, ?, ?, ?)', [
-                    scode,
-                    invoiceLine.goodCode,
-                    invoiceLine.quantity,
-                    invoiceLine.price,
-                ]);
+                // PIECES пишем прямо здесь: сшивать строки со списком REALPRICECODE вторым
+                // проходом нельзя — при двух строках одного товара порядок вставки и порядок
+                // генератора совпадать не обязаны.
+                await transaction.execute(
+                    'INSERT INTO REALPRICE (SCODE, GOODSCODE, QUAN, PRICE, PIECES) VALUES (?, ?, ?, ?, ?)',
+                    [scode, invoiceLine.goodCode, invoiceLine.quantity, invoiceLine.price, invoiceLine.pieces ?? null],
+                );
             }
             await transaction.execute('UPDATE S SET STATUS = 3 WHERE SCODE = ?', [scode]);
             const realpriceCodes = await this.findRealpriceCodes(scode, transaction);
@@ -521,6 +522,11 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
                     quantity: product.quantity * goodQuantityCoeff(product),
                     price: (parseFloat(product.price) / goodQuantityCoeff(product)).toString(),
                     originalCode: product.offer_id,
+                    // Фасовка позиции: наших штук в одном юните маркетплейса. Единственное
+                    // место, где она вычисляется — дальше её только читают из строки счёта.
+                    // Мусорный суффикс (артикул вида «444-0») даёт 0 — пишем NULL «неизвестна»,
+                    // иначе страж отверг бы по такой позиции вообще любой код.
+                    pieces: goodQuantityCoeff(product) > 0 ? goodQuantityCoeff(product) : undefined,
                 })),
             },
             t,
@@ -1316,10 +1322,10 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
     async getRealpriceLinesByScode(
         scode: number,
         transaction: FirebirdTransaction = null,
-    ): Promise<{ realpricecode: number; goodscode: string; quantity: number }[]> {
+    ): Promise<{ realpricecode: number; goodscode: string; quantity: number; pieces: number | null }[]> {
         const t = transaction ?? (await this.getTransaction());
         const rows = await t.query(
-            'SELECT REALPRICECODE, GOODSCODE, QUAN FROM REALPRICE WHERE SCODE = ?',
+            'SELECT REALPRICECODE, GOODSCODE, QUAN, PIECES FROM REALPRICE WHERE SCODE = ?',
             [scode],
             !transaction,
         );
@@ -1327,6 +1333,9 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             realpricecode: r.REALPRICECODE,
             goodscode: String(r.GOODSCODE),
             quantity: r.QUAN,
+            // null — фасовка неизвестна: строка создана до появления поля либо записана
+            // мусором (0/отрицательное). Решения по такой строке принимаются по-старому.
+            pieces: Number(r.PIECES) > 0 ? Number(r.PIECES) : null,
         }));
     }
 
