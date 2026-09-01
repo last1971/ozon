@@ -177,6 +177,18 @@ export class MarkScanFbsService {
         return (await this.getProgress(invoice)).isReadyToFinish;
     }
 
+    /**
+     * Строка счёта под сканируемый код.
+     *
+     * Позиция маркетплейса продаётся юнитами, и Озон ждёт РОВНО ОДИН экземпляр на юнит:
+     * у пачечного артикула (552601-3) юнит закрывается одним кодом на 3 шт, у штучного —
+     * тремя кодами по 1 шт. Поэтому строка выбирается по ФАСОВКЕ (`PIECES`), а не по тому,
+     * влезает ли код в остаток штук: иначе штучный код садится в пачечную строку, и
+     * правильный код на 3 шт потом деть некуда — сборка встаёт при полном комплекте кодов.
+     *
+     * `PIECES = null` — строка создана до появления поля: работаем по-старому (по остатку
+     * штук), иначе бы встали все счета, живущие на момент выката.
+     */
     private async pickTargetRpc(
         scode: number,
         goodscode: string,
@@ -196,6 +208,28 @@ export class MarkScanFbsService {
         // код неделим: его QUANTITY должно целиком поместиться в остаток строки
         const remainingOf = (l: { realpricecode: number; quantity: number }) =>
             l.quantity - (scannedByRpc.get(l.realpricecode) ?? 0);
+        // != null: и null (нет данных из базы), и undefined (строка собрана без поля)
+        const known = matching.filter((l) => l.pieces != null);
+        // Фасовка известна хотя бы у одной строки — решаем по ней. Остальные строки этого
+        // товара со старой (пустой) фасовкой в выбор не берём: там фасовка неизвестна, а
+        // не «любая», и код мог бы уехать в чужую позицию.
+        if (known.length > 0) {
+            const fitting = known.filter((l) => l.pieces === codeQty);
+            if (fitting.length === 0) {
+                const sizes = Array.from(new Set(known.map((l) => l.pieces))).sort((a, b) => a - b);
+                throw new ConflictException(
+                    `Код на ${codeQty} шт не подходит позициям этого товара (фасовка ${sizes.join(', ')} шт) — ` +
+                        'поделите код (MARKCODE_SPLIT / деление в ЛК ЧЗ)',
+                );
+            }
+            // Строки с одинаковой фасовкой взаимозаменяемы (Озон дробит позицию по ценам) —
+            // берём первую незакрытую.
+            const target = fitting.find((l) => remainingOf(l) >= codeQty);
+            if (!target) {
+                throw new ConflictException('Лимит КМ для этого товара исчерпан');
+            }
+            return target.realpricecode;
+        }
         const target = matching.find((l) => remainingOf(l) >= codeQty);
         if (!target) {
             const maxRemaining = Math.max(...matching.map(remainingOf));

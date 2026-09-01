@@ -115,7 +115,7 @@ export interface IInvoice {
     getRealpriceLinesByScode(
         scode: number,
         transaction: FirebirdTransaction,
-    ): Promise<{ realpricecode: number; goodscode: string; quantity: number }[]>;
+    ): Promise<{ realpricecode: number; goodscode: string; quantity: number; pieces: number | null }[]>;
     /** Полное состояние кодов счёта (без фильтра по TT) — вход слоя 2 решающей таблицы. */
     getMarkCodesStateByScode(
         scode: number,

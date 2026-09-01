@@ -33,6 +33,16 @@ export class InvoiceLineDto {
     })
     whereOrdered?: string;
 
+
+    @ApiProperty({
+        description:
+            'Фасовка позиции маркетплейса: наших штук в одном юните (артикул 552601-3 → 3). ' +
+            'Не задана — фасовка неизвестна (строки, созданные до появления поля)',
+        example: 3,
+        required: false,
+    })
+    pieces?: number;
+
     @ApiProperty({
         description: 'Код строки счёта в Trade2006 (REALPRICECODE), заполняется после создания',
         example: 987654,

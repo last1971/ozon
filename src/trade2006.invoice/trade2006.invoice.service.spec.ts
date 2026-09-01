@@ -497,16 +497,24 @@ describe('Trade2006InvoiceService', () => {
         };
         query
             .mockResolvedValueOnce([{ MAX: 1, SUMMAP: 1, SCODE: 2, PRIM: '2-2' }])
-            .mockResolvedValueOnce([{ GEN_ID: 3 }]);
+            .mockResolvedValueOnce([{ GEN_ID: 3 }])
+            // findRealpriceCodes: без этого мока create() падал на res.map и возвращал null
+            .mockResolvedValueOnce([{ REALPRICECODE: 700 }]);
         const res = await service.createInvoiceFromPostingDto(1111, posting);
         expect(res).toEqual({
             buyerId: 1111,
             date: date,
             id: 3,
-            invoiceLines: [{ goodCode: '444', originalCode: '444', price: '1.11', quantity: 2 }],
+            invoiceLines: [
+                { goodCode: '444', originalCode: '444', price: '1.11', quantity: 2, pieces: 1, realpricecode: 700 },
+            ],
             remark: '321',
             status: 3,
         });
+        // фасовка ушла в INSERT строки (штучный артикул → 1)
+        const insertLine = execute.mock.calls.find((c) => String(c[0]).startsWith('INSERT INTO REALPRICE'));
+        expect(insertLine[0]).toContain('PIECES');
+        expect(insertLine[1]).toEqual([3, '444', 2, '1.11', 1]);
         expect(emit.mock.calls[0]).toEqual(['reserve.created', ['444']]);
     });
     it('getByBuyerAndStatus', async () => {
@@ -976,18 +984,20 @@ describe('Trade2006InvoiceService', () => {
             expect(query.mock.calls[0][1][1]).toBeInstanceOf(Date);
         });
 
-        it('getRealpriceLinesByScode — все строки счёта', async () => {
+        it('getRealpriceLinesByScode — все строки счёта, фасовка null у старых и у мусора', async () => {
             query.mockResolvedValueOnce([
-                { REALPRICECODE: 100, GOODSCODE: 444, QUAN: 2 },
-                { REALPRICECODE: 101, GOODSCODE: 555, QUAN: 1 },
+                { REALPRICECODE: 100, GOODSCODE: 444, QUAN: 2, PIECES: 2 },
+                { REALPRICECODE: 101, GOODSCODE: 555, QUAN: 1, PIECES: null },
+                { REALPRICECODE: 102, GOODSCODE: 666, QUAN: 1, PIECES: 0 },
             ]);
             const res = await service.getRealpriceLinesByScode(50, null);
             expect(res).toEqual([
-                { realpricecode: 100, goodscode: '444', quantity: 2 },
-                { realpricecode: 101, goodscode: '555', quantity: 1 },
+                { realpricecode: 100, goodscode: '444', quantity: 2, pieces: 2 },
+                { realpricecode: 101, goodscode: '555', quantity: 1, pieces: null },
+                { realpricecode: 102, goodscode: '666', quantity: 1, pieces: null },
             ]);
             expect(query.mock.calls[0]).toEqual([
-                'SELECT REALPRICECODE, GOODSCODE, QUAN FROM REALPRICE WHERE SCODE = ?',
+                'SELECT REALPRICECODE, GOODSCODE, QUAN, PIECES FROM REALPRICE WHERE SCODE = ?',
                 [50],
                 true,
             ]);
