@@ -11,6 +11,8 @@ export class DonorDto {
     @ApiProperty() podbposcode: number;
     @ApiProperty({ description: 'Сколько штук подобрано на доноре по этому товару' })
     quantity: number;
+    @ApiProperty({ required: false, description: 'Покупатель донора — нужен там, где ищем не в рамках одного счёта' })
+    buyerCode?: number;
 }
 
 /** Строка исходного счёта и доноры под неё. */
@@ -33,4 +35,12 @@ export class InvoiceDonorsDto {
     @ApiProperty({ nullable: true }) prim: string | null;
     @ApiProperty() buyerCode: number;
     @ApiProperty({ type: [DonorLineDto] }) lines: DonorLineDto[];
+}
+
+/** Ответ поиска по артикулу: счёта-получателя тут нет, поэтому только товар и его доноры. */
+export class GoodDonorsDto {
+    @ApiProperty({ description: 'Код товара, в который развернулся артикул' })
+    goodscode: string;
+    @ApiProperty({ nullable: true }) name: string | null;
+    @ApiProperty({ type: [DonorDto] }) donors: DonorDto[];
 }

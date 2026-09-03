@@ -7,7 +7,7 @@ import { DateTime } from 'luxon';
 import { ConfigService } from '@nestjs/config';
 import { PostingDto } from '../posting/dto/posting.dto';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
-import { InvoiceDonorsDto } from '../invoice/dto/invoice-donors.dto';
+import { DonorDto, GoodDonorsDto, InvoiceDonorsDto } from '../invoice/dto/invoice-donors.dto';
 import { TransactionDto } from '../posting/dto/transaction.dto';
 import { ResultDto } from '../helpers/dto/result.dto';
 import { goodCode, goodQuantityCoeff, isMarkCodesEnabled } from '../helpers';
@@ -653,6 +653,52 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         return `s.STATUS = 1 AND pp.QUAN${this.quanAttr()} > 0`;
     }
 
+    /**
+     * Живые подборки по списку товаров — единственное место, где это спрашивается у базы.
+     * Покупателя и исключаемый счёт задаёт вызывающий: поиск по счёту сужает доноров до
+     * того же покупателя и выкидывает сам счёт, поиск по артикулу не сужает ничем.
+     */
+    private async queryDonors(
+        goodscodes: string[],
+        opts: { buyerCode?: number; excludeScode?: number },
+        t: FirebirdTransaction,
+    ): Promise<any[]> {
+        if (goodscodes.length === 0) return [];
+        const attribute = this.quanAttr();
+        const where = [`pp.GOODSCODE IN (${goodscodes.map(() => '?').join(',')})`];
+        const params: any[] = [...goodscodes];
+        if (opts.buyerCode !== undefined) {
+            where.push('s.POKUPATCODE = ?');
+            params.push(opts.buyerCode);
+        }
+        where.push(this.donorAliveWhere());
+        if (opts.excludeScode !== undefined) {
+            where.push('s.SCODE <> ?');
+            params.push(opts.excludeScode);
+        }
+        return t.query(
+            `SELECT pp.GOODSCODE, pp.PODBPOSCODE, pp.QUAN${attribute} AS QUANAVAIL, ` +
+                's.SCODE, s.NS, s.DATA, s.PRIM, s.POKUPATCODE ' +
+                Trade2006InvoiceService.PODBPOS_SOURCE +
+                `WHERE ${where.join(' AND ')} ORDER BY s.DATA`,
+            params,
+            false,
+        );
+    }
+
+    /** Строка донора из базы в DTO — одна на обе ручки. */
+    private static toDonorDto(row: any): DonorDto {
+        return {
+            invoiceNumber: row.NS,
+            scode: row.SCODE,
+            date: row.DATA ?? null,
+            prim: row.PRIM ?? null,
+            podbposcode: row.PODBPOSCODE,
+            quantity: row.QUANAVAIL,
+            buyerCode: row.POKUPATCODE,
+        };
+    }
+
     getStorageSS(): 0 | 1 {
         return this.configService.get<string>('STORAGE_TYPE', 'SHOPSKLAD').toUpperCase() === 'SHOPSKLAD' ? 1 : 0;
     }
@@ -671,7 +717,6 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
      */
     async findDonorsByPrim(prim: string, transaction: FirebirdTransaction = null): Promise<InvoiceDonorsDto[]> {
         const t = transaction ?? (await this.getTransaction());
-        const attribute = this.quanAttr();
 
         const invoices = await this.getPrimContaining(prim, t);
         if (invoices.length === 0) {
@@ -694,18 +739,11 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             );
 
             const goodscodes = lines.map((l) => l.GOODSCODE);
-            const donors = goodscodes.length
-                ? await t.query(
-                      `SELECT pp.GOODSCODE, pp.PODBPOSCODE, pp.QUAN${attribute} AS QUANAVAIL, ` +
-                          's.SCODE, s.NS, s.DATA, s.PRIM ' +
-                          Trade2006InvoiceService.PODBPOS_SOURCE +
-                          `WHERE pp.GOODSCODE IN (${goodscodes.map(() => '?').join(',')}) ` +
-                          `AND s.POKUPATCODE = ? AND ${this.donorAliveWhere()} AND s.SCODE <> ? ` +
-                          'ORDER BY s.DATA',
-                      [...goodscodes, inv.buyerId, inv.id],
-                      false,
-                  )
-                : [];
+            const donors = await this.queryDonors(
+                goodscodes,
+                { buyerCode: inv.buyerId, excludeScode: inv.id },
+                t,
+            );
 
             result.push({
                 invoiceNumber: inv.number,
@@ -720,20 +758,42 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
                     quantity: l.QUAN,
                     donors: donors
                         .filter((d) => d.GOODSCODE === l.GOODSCODE)
-                        .map((d) => ({
-                            invoiceNumber: d.NS,
-                            scode: d.SCODE,
-                            date: d.DATA ?? null,
-                            prim: d.PRIM ?? null,
-                            podbposcode: d.PODBPOSCODE,
-                            quantity: d.QUANAVAIL,
-                        })),
+                        .map((d) => Trade2006InvoiceService.toDonorDto(d)),
                 })),
             });
         }
 
         if (!transaction) await t.commit(true);
         return result;
+    }
+
+    /**
+     * Доноры по артикулу маркетплейса. Счёта-получателя здесь нет, поэтому и покупателя
+     * не знаем — отдаём живые подборки по товару у всех покупателей, чей счёт видно в
+     * buyerCode. Артикул сводится к коду товара тем же goodCode, что и везде: фасовка
+     * `552601-3` схлопывается в `552601`.
+     */
+    async findDonorsByArticle(article: string, transaction: FirebirdTransaction = null): Promise<GoodDonorsDto[]> {
+        const t = transaction ?? (await this.getTransaction());
+        const goodscode = goodCode({ offer_id: article });
+
+        const [names, donors] = await Promise.all([
+            t.query(
+                'SELECT n.NAME FROM GOODS g LEFT JOIN NAME n ON n.NAMECODE = g.NAMECODE WHERE g.GOODSCODE = ?',
+                [goodscode],
+                false,
+            ),
+            this.queryDonors([goodscode], {}, t),
+        ]);
+        if (!transaction) await t.commit(true);
+
+        return [
+            {
+                goodscode,
+                name: names?.[0]?.NAME ?? null,
+                donors: donors.map((d) => Trade2006InvoiceService.toDonorDto(d)),
+            },
+        ];
     }
 
     async findRealpriceCodes(

@@ -1585,4 +1585,57 @@ describe('Trade2006InvoiceService', () => {
             expect(query).toHaveBeenCalledTimes(1);
         });
     });
+
+    describe('findDonorsByArticle', () => {
+        it('фасовка в артикуле отбрасывается, доноры ищутся по всем покупателям', async () => {
+            query
+                .mockResolvedValueOnce([{ NAME: 'реле HF105F' }])
+                .mockResolvedValueOnce([
+                    {
+                        GOODSCODE: '552601',
+                        PODBPOSCODE: 7,
+                        QUANAVAIL: 5,
+                        SCODE: 200,
+                        NS: 16000,
+                        DATA: new Date('2026-08-20'),
+                        PRIM: 'донор',
+                        POKUPATCODE: 24231,
+                    },
+                ]);
+
+            const res = await service.findDonorsByArticle('552601-3');
+
+            expect(res).toEqual([
+                {
+                    goodscode: '552601',
+                    name: 'реле HF105F',
+                    donors: [
+                        {
+                            invoiceNumber: 16000,
+                            scode: 200,
+                            date: new Date('2026-08-20'),
+                            prim: 'донор',
+                            podbposcode: 7,
+                            quantity: 5,
+                            buyerCode: 24231,
+                        },
+                    ],
+                },
+            ]);
+            // тот же источник доноров, но без сужения по покупателю и без исключения счёта
+            const donorSql = query.mock.calls[1][0];
+            expect(donorSql).toContain('FROM PODBPOS pp');
+            expect(donorSql).toContain('s.STATUS = 1');
+            expect(donorSql).not.toContain('s.POKUPATCODE = ?');
+            expect(donorSql).not.toContain('s.SCODE <> ?');
+            expect(query.mock.calls[1][1]).toEqual(['552601']);
+        });
+
+        it('подборок нет — товар с пустым списком доноров', async () => {
+            query.mockResolvedValueOnce([{ NAME: 'реле HF105F' }]).mockResolvedValueOnce([]);
+            await expect(service.findDonorsByArticle('552601')).resolves.toEqual([
+                { goodscode: '552601', name: 'реле HF105F', donors: [] },
+            ]);
+        });
+    });
 });

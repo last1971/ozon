@@ -10,7 +10,7 @@ import { MarkScanFbsService } from "./mark-scan-fbs.service";
 import { MarkScanDto } from "./dto/mark-scan.dto";
 import { MarkScanProgressDto } from "./dto/mark-scan-progress.dto";
 import { MarkScanResultDto } from "./dto/mark-scan-result.dto";
-import { InvoiceDonorsDto } from "./dto/invoice-donors.dto";
+import { GoodDonorsDto, InvoiceDonorsDto } from "./dto/invoice-donors.dto";
 
 @ApiExtraModels(InvoiceDto, InvoiceLineDto)
 @ApiTags("invoice")
@@ -51,6 +51,13 @@ export class InvoiceController {
         @Param('ki') ki: string,
     ): Promise<MarkScanProgressDto> {
         return this.markScanService.unscan(remarkDto.invoice, ki);
+    }
+
+    @Get('donors/by-article/:article')
+    @ApiParam({ name: 'article', type: 'string', description: 'Артикул маркетплейса; фасовка после дефиса отбрасывается' })
+    @ApiOkResponse({ type: [GoodDonorsDto] })
+    async donorsByArticle(@Param('article') article: string): Promise<GoodDonorsDto[]> {
+        return this.invoiceService.findDonorsByArticle(article);
     }
 
     @Get('donors/:posting')
