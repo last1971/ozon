@@ -283,10 +283,20 @@ export class Trade2006ChzService {
         }
     }
 
+    /**
+     * История вкладки «ЧЗ» — ТОЛЬКО ручные пачки. Пачка со STATUS живёт в очереди
+     * автоматической отправки (Laravel, chz:outbox): её никто не скачивает файлом
+     * и не подтверждает кликом, а вид у неё вкладке незнаком. Фильтруем по STATUS,
+     * а не по списку KIND: «ручная» — это ровно «статуса нет, ведёт человек».
+     */
     async listBatches(limit = 20): Promise<ChzBatchInfo[]> {
         if (!isMarkCodesEnabled(this.configService)) return [];
         const t = await this.pool.getTransaction();
-        const rows = await t.query(this.batchSelect(`ORDER BY b.ID DESC`, Number(limit)), [], true);
+        const rows = await t.query(
+            this.batchSelect(`WHERE b.STATUS IS NULL ORDER BY b.ID DESC`, Number(limit)),
+            [],
+            true,
+        );
         return rows.map((r) => this.mapBatch(r));
     }
 

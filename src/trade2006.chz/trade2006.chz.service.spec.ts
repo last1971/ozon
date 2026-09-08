@@ -124,6 +124,12 @@ describe('Trade2006ChzService', () => {
         expect(execute).not.toHaveBeenCalled();
     });
 
+    it('listBatches: в истории только ручные пачки — у автоматических есть STATUS', async () => {
+        query.mockResolvedValueOnce([]);
+        await service.listBatches();
+        expect(query.mock.calls[0][0]).toContain('WHERE b.STATUS IS NULL');
+    });
+
     it('confirmBatch: пачки нет → null', async () => {
         query.mockResolvedValueOnce([]);
         expect(await service.confirmBatch(99)).toBeNull();
