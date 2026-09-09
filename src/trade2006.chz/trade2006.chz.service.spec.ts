@@ -47,6 +47,16 @@ describe('Trade2006ChzService', () => {
         ]);
     });
 
+    it('оба вывода не видят коды, снятые с отправки (CHZ_SKIP_AT)', async () => {
+        query.mockResolvedValueOnce([]);
+        await service.pending('retire');
+        expect(query.mock.calls[0][0]).toContain('m.CHZ_SKIP_AT IS NULL');
+
+        query.mockResolvedValueOnce([]);
+        await service.pending('retire_upd');
+        expect(query.mock.calls[1][0]).toContain('m.CHZ_SKIP_AT IS NULL');
+    });
+
     it('pending(return): гвард возврата — код жив, а ЧЗ ещё считает его выведенным', async () => {
         query.mockResolvedValueOnce([]);
         await service.pending('return');

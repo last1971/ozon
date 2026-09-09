@@ -70,10 +70,15 @@ export interface ChzBatchInfo {
  */
 @Injectable()
 export class Trade2006ChzService {
-    /** Гвард отбора «ждёт вывода в ЧЗ» после продажи маркетплейса. */
-    private static readonly RETIRE_GUARD = 'm.STATUS = 6 AND m.RETIRE_REASON = 1 AND m.TRANSFER_TYPE = 3 AND m.CHZ_SENT_AT IS NULL';
+    /**
+     * Гвард отбора «ждёт вывода в ЧЗ» после продажи маркетплейса. CHZ_SKIP_AT (патч 52):
+     * код, снятый с отправки, не показываем нигде — ни здесь, ни в напоминалке.
+     */
+    private static readonly RETIRE_GUARD =
+        'm.STATUS = 6 AND m.RETIRE_REASON = 1 AND m.TRANSFER_TYPE = 3 AND m.CHZ_SENT_AT IS NULL AND m.CHZ_SKIP_AT IS NULL';
     /** Гвард отбора «ждёт вывода в ЧЗ» после УПД покупателю вне ЧЗ. */
-    private static readonly RETIRE_UPD_GUARD = 'm.STATUS = 6 AND m.RETIRE_REASON = 1 AND m.TRANSFER_TYPE = 1 AND m.CHZ_SENT_AT IS NULL';
+    private static readonly RETIRE_UPD_GUARD =
+        'm.STATUS = 6 AND m.RETIRE_REASON = 1 AND m.TRANSFER_TYPE = 1 AND m.CHZ_SENT_AT IS NULL AND m.CHZ_SKIP_AT IS NULL';
     /** Гвард отбора «ждёт возврата в ЧЗ». */
     private static readonly RETURN_GUARD = 'm.STATUS = 5 AND m.CHZ_SENT_AT IS NOT NULL';
 

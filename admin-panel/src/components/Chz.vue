@@ -49,6 +49,8 @@ const batches = ref<BatchInfo[]>([]);
 const busy = ref(false);
 const message = ref('');
 const error = ref('');
+/** Вывод возит очередь (chz:outbox) — кнопки ручной выгрузки прячем, списки оставляем как справку. */
+const autoRetire = ref(false);
 
 const headers = [
     { title: 'КИ', key: 'ki' },
@@ -85,12 +87,16 @@ const docNumbers = ref<Record<number, string>>({});
 async function refresh() {
     error.value = '';
     try {
-        const pending = await axios.get<{ retire: PendingCode[]; giveBack: PendingCode[]; upd: PendingDoc[] }>(
-            '/api/chz/pending',
-        );
+        const pending = await axios.get<{
+            retire: PendingCode[];
+            giveBack: PendingCode[];
+            upd: PendingDoc[];
+            autoRetire: boolean;
+        }>('/api/chz/pending');
         retire.value = pending.data.retire;
         giveBack.value = pending.data.giveBack;
         upd.value = pending.data.upd;
+        autoRetire.value = pending.data.autoRetire;
         const history = await axios.get<BatchInfo[]>('/api/chz/batches');
         batches.value = history.data;
     } catch (e: any) {
@@ -175,11 +181,21 @@ onMounted(refresh);
         <v-card class="mb-4">
             <v-card-title>
                 Вывести из оборота — {{ retire.length }} КИ
-                <v-btn class="ml-4" color="primary" :disabled="busy || !retire.length" @click="download('retire')">
+                <v-btn
+                    v-if="!autoRetire"
+                    class="ml-4"
+                    color="primary"
+                    :disabled="busy || !retire.length"
+                    @click="download('retire')"
+                >
                     Скачать xlsx
                 </v-btn>
                 <v-btn class="ml-2" variant="text" :disabled="busy" @click="refresh">Обновить</v-btn>
             </v-card-title>
+            <v-card-subtitle v-if="autoRetire">
+                Отправляет очередь, файл в ГИС МТ грузить не нужно. Что уехало и что отбито —
+                на странице «Отправка в Честный знак» в Trade.
+            </v-card-subtitle>
             <v-data-table :headers="headers" :items="retire" item-value="ki" density="compact" no-data-text="Передавать нечего">
                 <template v-slot:item.since="{ item }">{{ fmtDate(item.since) }}</template>
             </v-data-table>
@@ -194,7 +210,10 @@ onMounted(refresh);
                 <template v-slot:item.date="{ item }">{{ fmtDay(item.date) }}</template>
                 <template v-slot:item.since="{ item }">{{ fmtDate(item.since) }}</template>
                 <template v-slot:item.actions="{ item }">
-                    <v-btn size="small" color="primary" :disabled="busy" @click="downloadDoc(item)">Скачать xlsx</v-btn>
+                    <v-btn v-if="!autoRetire" size="small" color="primary" :disabled="busy" @click="downloadDoc(item)">
+                        Скачать xlsx
+                    </v-btn>
+                    <span v-else class="text-grey">отправляет очередь</span>
                 </template>
             </v-data-table>
         </v-card>
