@@ -1205,6 +1205,41 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         return InvoiceDto.map(rows);
     }
 
+    /**
+     * Строки счёта, где маркируемому товару не хватает КМ (считаем ШТУКИ: количественный код
+     * закрывает N штук).
+     *
+     * Нужно там, где подбор закрывается автоматикой, а не сканом: коды привязывает только скан
+     * (`MARKCODE_ATTACH_FOR_FBS`), а `pickupInvoice` списывает количество независимо от них.
+     * Товар уезжает, код остаётся «лежать на складе» и потом всплывает на витрине как фантом
+     * (549853, счёт №18034 от 09.09.2026).
+     */
+    async getUncoveredMarkLines(
+        scode: number,
+        transaction: FirebirdTransaction = null,
+    ): Promise<{ realpricecode: number; goodscode: string; needed: number; attached: number }[]> {
+        if (!isMarkCodesEnabled(this.configService)) return [];
+        const t = transaction ?? (await this.getTransaction());
+        const rows = await t.query(
+            'SELECT rp.REALPRICECODE, rp.GOODSCODE, rp.QUAN, ' +
+                'COALESCE((SELECT SUM(COALESCE(m.QUANTITY, 1)) FROM MARKCODES m ' +
+                'WHERE m.REALPRICECODE = rp.REALPRICECODE AND m.TRANSFER_TYPE = 3), 0) AS ATTACHED ' +
+                'FROM REALPRICE rp WHERE rp.SCODE = ? ' +
+                'AND EXISTS (SELECT 1 FROM GOODS_CLASSIF gc ' +
+                'WHERE gc.GOODSCODE = rp.GOODSCODE AND gc.MARK_REQUIRED = 1)',
+            [scode],
+            !transaction,
+        );
+        return rows
+            .map((r: any) => ({
+                realpricecode: r.REALPRICECODE,
+                goodscode: String(r.GOODSCODE),
+                needed: Number(r.QUAN) || 0,
+                attached: Number(r.ATTACHED) || 0,
+            }))
+            .filter((line) => line.attached < line.needed);
+    }
+
     async getAttachedMarkCodesByScode(
         scode: number,
         transaction: FirebirdTransaction = null,

@@ -259,8 +259,10 @@ describe("GoodsCountProcessor", () => {
                 { code: "552601", quantity: 1352, reserve: 7, name: "x" },
             ] as GoodDto[]);
 
+            // кодов выписано больше, чем лежит (1352 − 7 = 1345 доступно), поэтому лишний код
+            // на 6 штук на витрину не идёт
             expect(mockServiceOne.updateGoodCounts).toHaveBeenCalledWith(
-                new Map([["552601", 1305], ["552601-3", 7], ["552601-12", 2]]),
+                new Map([["552601", 1299], ["552601-3", 7], ["552601-12", 2]]),
             );
         });
 

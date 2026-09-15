@@ -99,9 +99,11 @@ describe('DistributeMarkedCountsCommand', () => {
             }),
         );
 
-        // 1 штучный + 32×40 и 4×6 без своих фасовок = 1 + 1280 + 24 = 1305
+        // 1 штучный + 32×40 и 4×6 без своих фасовок = 1 + 1280 + 24 = 1305, но кодов на складе
+        // меньше, чем выписано (1352 − 7 резерва = 1345 доступно), поэтому лишний код на 6 штук
+        // на витрину не идёт: 1305 − 6 = 1299.
         expect(result.counts).toEqual(
-            new Map([['552601', 1305], ['552601-3', 7], ['552601-12', 2]]),
+            new Map([['552601', 1299], ['552601-3', 7], ['552601-12', 2]]),
         );
     });
 
@@ -133,8 +135,27 @@ describe('DistributeMarkedCountsCommand', () => {
         );
 
         expect(warn).toHaveBeenCalledWith(expect.stringContaining('расхождение 5 шт'));
-        // учёт остаток не режет: продать можно ровно то, на что есть коды
-        expect(result.counts).toEqual(new Map([['552601', 1357]]));
+        // склад — верхняя граница: кодов на 1357, а лежит 1352, лишние 5 на витрину не идут
+        expect(result.counts).toEqual(new Map([['552601', 1352]]));
+    });
+
+    it('склад пуст, а код остался свободным — витрина получает 0 (549853)', async () => {
+        const command = new DistributeMarkedCountsCommand();
+        jest.spyOn(command['logger'], 'warn').mockImplementation(() => undefined);
+
+        // Товар уехал по FBS без скана: партия списана, код не привязан. По кодам вышла бы 1 шт,
+        // её заказывали с пустого склада — теперь склад режет остаток до нуля.
+        const result = await command.execute(
+            context({
+                goods: [{ code: '549853', quantity: 0, reserve: 0, name: 'HDR-15-5' }] as any,
+                filteredSkuMap: new Map([['549853', ['549853']]]),
+                markedGoods: new Set(['549853']),
+                freeByGood: new Map([['549853', new Map([[1, 1]])]]),
+                reservedByGood: new Map(),
+            }),
+        );
+
+        expect(result.counts).toEqual(new Map([['549853', 0]]));
     });
 
     it('немаркированный товар не трогает', async () => {

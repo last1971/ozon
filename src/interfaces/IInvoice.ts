@@ -112,6 +112,12 @@ export interface IInvoice {
         scode: number,
         transaction: FirebirdTransaction,
     ): Promise<{ ki: string; goodscode: string; realpricecode: number; quantity: number }[]>;
+    /** Строки счёта, где маркируемому товару не хватает КМ (в штуках). */
+    getUncoveredMarkLines(
+        scode: number,
+        transaction: FirebirdTransaction,
+    ): Promise<{ realpricecode: number; goodscode: string; needed: number; attached: number }[]>;
+
     getRealpriceLinesByScode(
         scode: number,
         transaction: FirebirdTransaction,
