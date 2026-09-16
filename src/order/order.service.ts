@@ -25,6 +25,10 @@ import { MpService } from '../mp-event/mp-event.service';
 import { DateTime } from 'luxon';
 import { AccrualWeekService } from '../trade2006.accrual/accrual.week.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { CommandChainAsync } from '../helpers/command/command.chain.async';
+import { IPickupContext } from './commands/i.pickup.context';
+import { CheckMarkCoverageCommand } from './commands/check-mark-coverage.command';
+import { PickupInvoiceCommand } from './commands/pickup-invoice.command';
 import { FbsPrepareDto, isMarkSubmittable, SubmitResultDto } from '../interfaces/IMarkSubmittable';
 import { isShipmentLabelProvider, IShipmentLabelProvider } from '../interfaces/IShipmentLabelProvider';
 import { MpEventDto, MpEventService } from '../mp-event/mp-event.service';
@@ -59,6 +63,8 @@ export class OrderService {
         private mpEvent: MpEventService,
         private mpRunner: MpDecisionRunnerService,
         private markScanService: MarkScanFbsService,
+        private checkMarkCoverageCommand: CheckMarkCoverageCommand,
+        private pickupInvoiceCommand: PickupInvoiceCommand,
     ) {
         const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
         if (services.includes(GoodServiceEnum.WB)) this.orderServices.push(wbOrder);
@@ -293,6 +299,11 @@ export class OrderService {
         }
     }
 
+    /** Подбор не-FBO счёта: сперва позвать руки, если товар уезжает без КМ, потом закрыть подбор. */
+    private pickupChain(): CommandChainAsync<IPickupContext> {
+        return new CommandChainAsync<IPickupContext>([this.checkMarkCoverageCommand, this.pickupInvoiceCommand]);
+    }
+
     async deliveryOrders(service: IOrderable, flushers: (() => Promise<void>)[]): Promise<void> {
         const deliveringPostings = await service.listAwaitingDelivering();
 
@@ -325,48 +336,11 @@ export class OrderService {
                         if (service.isFbo()) {
                             await this.invoiceService.pickupFboUnlessShortage(invoice, transaction);
                         } else {
-                            // Маркетплейс говорит «посылка собрана», и счёт закрывается здесь даже
-                            // без скана КМ — иначе счета виснут в STATUS=3 сотнями (регресс 14–19.08).
-                            // Но коды привязывает ТОЛЬКО скан, поэтому несканированный маркируемый
-                            // товар уезжает, а его код остаётся свободным и потом всплывает фантомом
-                            // на витрине (549853, счёт №18034 от 09.09.2026). Подбор не блокируем —
-                            // зовём руки письмом. Проверяем до подбора и только для STATUS=3, иначе
-                            // письмо уходило бы на каждом прогоне по уже подобранному счёту.
-                            if (invoice.status === 3) {
-                                await this.warnUncoveredMarkLines(invoice, transaction);
-                            }
-                            await this.invoiceService.pickupInvoice(invoice, transaction);
+                            await this.pickupChain().execute({ invoice, transaction });
                         }
                     }
                 }),
             flushers,
-        );
-    }
-
-    /**
-     * Письмо про строки, уехавшие без КМ. Само по себе расхождение чинится на складе
-     * (догоняющая проводка кода), автоматике тут решать нечего — её дело не молчать.
-     */
-    private async warnUncoveredMarkLines(invoice: InvoiceDto, transaction: FirebirdTransaction): Promise<void> {
-        let uncovered: { realpricecode: number; goodscode: string; needed: number; attached: number }[];
-        try {
-            uncovered = await this.invoiceService.getUncoveredMarkLines(invoice.id, transaction);
-        } catch (e) {
-            // Проверка — не повод ронять подбор: счёт важнее письма.
-            this.logger.warn(`${invoice.remark}: не удалось проверить покрытие КМ — ${e.message}`);
-            return;
-        }
-        if (!uncovered.length) return;
-        const details = uncovered
-            .map((line) => `товар ${line.goodscode}: нужно ${line.needed}, привязано ${line.attached}`)
-            .join('; ');
-        this.logger.warn(`${invoice.remark}: подбор закрыт без КМ — ${details}`);
-        this.eventEmitter.emit(
-            'error.message',
-            'Подбор закрыт без кодов маркировки',
-            `${invoice.remark}: счёт №${invoice.number ?? '?'} (SCODE ${invoice.id}) подобран автоматикой,` +
-                ` но коды не привязаны — ${details}.` +
-                ' Товар уезжает, коды остаются свободными и всплывут на витрине — нужна догоняющая проводка.',
         );
     }
 

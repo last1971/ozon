@@ -1213,6 +1213,10 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
      * (`MARKCODE_ATTACH_FOR_FBS`), а `pickupInvoice` списывает количество независимо от них.
      * Товар уезжает, код остаётся «лежать на складе» и потом всплывает на витрине как фантом
      * (549853, счёт №18034 от 09.09.2026).
+     *
+     * Товар, которому кодов не заводили вовсе, сюда не попадает — та же договорённость 8, что
+     * и в расчёте остатков: маркируемый без кодов живёт по старой схеме, всплывать нечему.
+     * На магазине без этого фильтра письма шли на 135 из 150 маркируемых товаров.
      */
     async getUncoveredMarkLines(
         scode: number,
@@ -1226,7 +1230,8 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
                 'WHERE m.REALPRICECODE = rp.REALPRICECODE AND m.TRANSFER_TYPE = 3), 0) AS ATTACHED ' +
                 'FROM REALPRICE rp WHERE rp.SCODE = ? ' +
                 'AND EXISTS (SELECT 1 FROM GOODS_CLASSIF gc ' +
-                'WHERE gc.GOODSCODE = rp.GOODSCODE AND gc.MARK_REQUIRED = 1)',
+                'WHERE gc.GOODSCODE = rp.GOODSCODE AND gc.MARK_REQUIRED = 1) ' +
+                'AND EXISTS (SELECT 1 FROM MARKCODES m2 WHERE m2.GOODSCODE = rp.GOODSCODE)',
             [scode],
             !transaction,
         );

@@ -17,6 +17,8 @@ import { MpDecisionRunnerService } from '../mp-decision/mp-decision.runner.servi
 import { MarkScanFbsService } from '../invoice/mark-scan-fbs.service';
 import { AccrualWeekService } from '../trade2006.accrual/accrual.week.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
+import { CheckMarkCoverageCommand } from './commands/check-mark-coverage.command';
+import { PickupInvoiceCommand } from './commands/pickup-invoice.command';
 
 describe('OrderService', () => {
     const mpRecord = jest.fn().mockResolvedValue(true);
@@ -85,6 +87,18 @@ describe('OrderService', () => {
             providers: [
                 { provide: AccrualWeekService, useValue: { runWeek } },
                 OrderService,
+                // Цепочка подбора: проверка покрытия КМ + сам подбор. Проверку в тестах глушим —
+                // у неё свои тесты; подбор зовёт тот же мок pickupInvoice, что и раньше.
+                { provide: CheckMarkCoverageCommand, useValue: { execute: async (ctx: any) => ctx } },
+                {
+                    provide: PickupInvoiceCommand,
+                    useValue: {
+                        execute: async (ctx: any) => {
+                            await pickupInvoice(ctx.invoice, ctx.transaction);
+                            return ctx;
+                        },
+                    },
+                },
                 { provide: ProductService, useValue: {} },
                 {
                     provide: INVOICE_SERVICE,
