@@ -113,6 +113,33 @@ describe('FboMarkMigrationService', () => {
         expect(emit).not.toHaveBeenCalled();
     });
 
+    it('на доноре только код чужого номинала: штуки НЕ отщипываем, письмо, shortage', async () => {
+        // Строка на 20 шт под одним кодом QUANTITY=20, а заказ на 1 шт: код такого
+        // номинала переехать не может, значит и штуки отсюда брать нельзя.
+        findFboPodbposCandidates.mockResolvedValueOnce([
+            { podbposcode: 1001, scode: 100, realpricecode: 100, quanAvail: 20, prim: 'W', cntNom: 0, cntLive: 1, cntTt3: 1 },
+        ]);
+
+        const shortages = await service.migrate(
+            [{ price: '1', offer_id: '444', quantity: 1 }],
+            ['W'],
+            [line(900, '444', 1)],
+            SCODE_B,
+            null,
+            POSTING,
+        );
+
+        expect(shortages).toEqual([{ goodscode: '444', quantity: 1 }]);
+        expect(migratePodbpos).not.toHaveBeenCalled();
+        expect(migrateMarkCode).not.toHaveBeenCalled();
+        expect(logMigrationLink).not.toHaveBeenCalled();
+        expect(emit).toHaveBeenCalledWith(
+            'error.message',
+            'FBO migration: донор с кодом другого номинала пропущен',
+            expect.stringContaining('GOODSCODE 444'),
+        );
+    });
+
     it('кодов меньше, чем штук (часть без кодов): штуки едут, письмо, НЕ shortage', async () => {
         findFboPodbposCandidates.mockResolvedValueOnce([
             { podbposcode: 1001, scode: 100, realpricecode: 100, quanAvail: 15, prim: 'W', cntNom: 1, cntLive: 1, cntTt3: 0 },

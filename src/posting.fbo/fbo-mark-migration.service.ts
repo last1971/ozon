@@ -52,6 +52,38 @@ export class FboMarkMigrationService {
                 let take = Math.min(cand.quanAvail, need);
                 if (take <= 0) continue;
 
+                // Количественный код (1 КИ = N шт) уехать не может: findLiveMigratableCodes
+                // берёт строго номинал nominal, а поделить КМ без новой этикетки ЧЗ нельзя.
+                // Если живые коды на строке есть, но все чужого номинала — штуки отсюда не
+                // отщипываем: код остался бы на доноре сиротой, а товар уехал бы на маркет
+                // без маркировки (так из строки на 20 шт под одним кодом утекло 11 штук).
+                if (cand.cntLive > 0 && cand.cntNom === 0) {
+                    this.eventEmitter.emit(
+                        'error.message',
+                        'FBO migration: донор с кодом другого номинала пропущен',
+                        `GOODSCODE ${gc}: на строке донора (SCODE ${cand.scode}, RPC ${cand.realpricecode}) ` +
+                            `живых кодов ${cand.cntLive}, из них номинала ${nominal} — ни одного. ` +
+                            `Нужно ${take} шт: поделить код в ЧЗ или подобрать из другой партии.`,
+                    );
+                    continue;
+                }
+
+                // Количественный код (1 КИ = N шт) переехать не может: findLiveMigratableCodes
+                // берёт строго номинал nominal, а дробить КМ без новой этикетки ЧЗ нельзя.
+                // Если на строке живые коды есть, но все крупного номинала — штуки отсюда
+                // не отщипываем: код осиротел бы на доноре, а товар уехал бы на маркетплейс
+                // без маркировки (так из одной строки на 20 шт утекло 11 штук по одной).
+                if (cand.cntLive > 0 && cand.cntNom === 0) {
+                    this.eventEmitter.emit(
+                        'error.message',
+                        'FBO migration: донор с кодом другого номинала пропущен',
+                        `GOODSCODE ${gc}: на строке донора (SCODE ${cand.scode}, RPC ${cand.realpricecode}) ` +
+                            `живых кодов ${cand.cntLive}, из них номинала ${nominal} — ни одного. ` +
+                            `Нужно ${take} шт: либо поделить код в ЧЗ, либо подобрать из другой партии.`,
+                    );
+                    continue;
+                }
+
                 // 1) Коды: целые, только номинала N, TT=3 вперёд.
                 const migrated: string[] = [];
                 const codes = await this.invoiceService.findLiveMigratableCodes(
