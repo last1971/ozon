@@ -819,11 +819,24 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         'm.REALPRICEFCODE IS NULL AND m.SHOPLOGCODE IS NULL AND m.SPISID IS NULL AND ' +
         '(m.TRANSFER_TYPE = 2 OR (m.TRANSFER_TYPE = 3 AND m.STATUS = 5))';
 
+    /**
+     * Доноры для FBO-переезда. Единственное место, где решается «годен ли донор»:
+     * из него читают и `hasAnyPodbor` (заводить ли счёт), и `migrate` (переносить),
+     * поэтому правило живёт здесь, а не у читателей — иначе они разъезжаются.
+     *
+     * Строка, где живые коды есть, но ни одного номинала `nominal`, донором НЕ является:
+     * количественный код (1 КИ = N шт) переехать не может (`findLiveMigratableCodes`
+     * берёт строго номинал), а дробить КМ без новой этикетки ЧЗ нельзя. Отщипывать
+     * штуки от такой строки — оставить код сиротой и увезти товар без маркировки
+     * (18.09.2026: из строки на 20 шт под одним кодом утекло 11 штук по одной).
+     * `onWrongNominal` зовётся на каждую такую строку — для письма тому, кто заводит счёт.
+     */
     async findFboPodbposCandidates(
         goodscode: string,
         prims: string[],
         nominal: number,
         transaction: FirebirdTransaction = null,
+        onWrongNominal?: (cand: { scode: number; realpricecode: number; quanAvail: number; cntLive: number }) => void,
     ): Promise<{ podbposcode: number; scode: number; realpricecode: number; quanAvail: number; prim: string; cntNom: number; cntLive: number; cntTt3: number; cntDead: number }[]> {
         if (prims.length === 0) return [];
         const t = transaction ?? (await this.getTransaction());
@@ -848,7 +861,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             'JOIN REALPRICE rp ON rp.REALPRICECODE = pp.REALPRICECODE ' +
             `WHERE pp.GOODSCODE = ? AND pp.SKLAD_ID IS NULL AND ${this.donorAliveWhere()} AND (${containingClauses})`;
         const rows = await t.query(sql, [nominal, nominal, ...prims, goodscode, ...prims], !transaction);
-        const candidates = rows.map((r) => ({
+        const all = rows.map((r) => ({
             podbposcode: r.PODBPOSCODE,
             scode: r.SCODE,
             realpricecode: r.REALPRICECODE,
@@ -860,9 +873,11 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             cntDead: Number(r.CNT_DEAD) || 0,
             lvl: Number(r.LVL),
         }));
-        // Ярусы: (а) есть живые коды нужного номинала (вперёд — с TT=3), (б) кодов нет, (в) чужой номинал.
-        const tierOf = (c: { cntNom: number; cntLive: number }): number =>
-            c.cntNom > 0 ? 0 : c.cntLive === 0 ? 1 : 2;
+        const wrongNominal = (c: { cntNom: number; cntLive: number }): boolean => c.cntLive > 0 && c.cntNom === 0;
+        const candidates = all.filter((c) => !wrongNominal(c));
+        if (onWrongNominal) all.filter(wrongNominal).forEach(onWrongNominal);
+        // Ярусы: (а) есть живые коды нужного номинала (вперёд — с TT=3), (б) кодов нет.
+        const tierOf = (c: { cntNom: number }): number => (c.cntNom > 0 ? 0 : 1);
         candidates.sort(
             (a, b) => a.lvl - b.lvl || tierOf(a) - tierOf(b) || b.cntTt3 - a.cntTt3,
         );

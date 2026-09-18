@@ -45,28 +45,27 @@ export class FboMarkMigrationService {
                 throw new Error(`FBO migration: нет realpricecode для строки ${i} (GOODSCODE=${gc}, SCODE=${scode})`);
             }
 
-            const candidates = await this.invoiceService.findFboPodbposCandidates(gc, prims, nominal, transaction);
+            // Донор с кодами чужого номинала в выборку не попадает (правило — в источнике,
+            // общее с hasAnyPodbor); сюда доходит только письмо, потому что счёт уже создан.
+            const candidates = await this.invoiceService.findFboPodbposCandidates(
+                gc,
+                prims,
+                nominal,
+                transaction,
+                (cand) =>
+                    this.eventEmitter.emit(
+                        'error.message',
+                        'FBO migration: донор с кодом другого номинала пропущен',
+                        `GOODSCODE ${gc}: на строке донора (SCODE ${cand.scode}, RPC ${cand.realpricecode}) ` +
+                            `${cand.quanAvail} шт и живых кодов ${cand.cntLive}, но ни одного номинала ${nominal}. ` +
+                            `Поделить код в ЧЗ или подобрать из другой партии.`,
+                    ),
+            );
 
             for (const cand of candidates) {
                 if (need <= 0) break;
                 let take = Math.min(cand.quanAvail, need);
                 if (take <= 0) continue;
-
-                // Количественный код (1 КИ = N шт) уехать не может: findLiveMigratableCodes
-                // берёт строго номинал nominal, а поделить КМ без новой этикетки ЧЗ нельзя.
-                // Если живые коды на строке есть, но все чужого номинала — штуки отсюда не
-                // отщипываем: код остался бы на доноре сиротой, а товар уехал бы на маркет
-                // без маркировки (так из строки на 20 шт под одним кодом утекло 11 штук).
-                if (cand.cntLive > 0 && cand.cntNom === 0) {
-                    this.eventEmitter.emit(
-                        'error.message',
-                        'FBO migration: донор с кодом другого номинала пропущен',
-                        `GOODSCODE ${gc}: на строке донора (SCODE ${cand.scode}, RPC ${cand.realpricecode}) ` +
-                            `живых кодов ${cand.cntLive}, из них номинала ${nominal} — ни одного. ` +
-                            `Нужно ${take} шт: поделить код в ЧЗ или подобрать из другой партии.`,
-                    );
-                    continue;
-                }
 
                 // Количественный код (1 КИ = N шт) переехать не может: findLiveMigratableCodes
                 // берёт строго номинал nominal, а дробить КМ без новой этикетки ЧЗ нельзя.

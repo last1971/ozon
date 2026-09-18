@@ -615,15 +615,25 @@ describe('Trade2006InvoiceService', () => {
             ]);
         });
 
-        it('findFboPodbposCandidates — ярусы: коды номинала → без кодов → чужой номинал; TT=3 вперёд', async () => {
+        it('findFboPodbposCandidates — ярусы: коды номинала → без кодов; TT=3 вперёд; чужой номинал — не донор', async () => {
             query.mockResolvedValueOnce([
-                { PODBPOSCODE: 1, SCODE: 10, REALPRICECODE: 10, QUANAVAIL: 5, PRIM: 'W', LVL: 0, CNT_NOM: 0, CNT_LIVE: 2, CNT_TT3: 0 }, // ярус (в): чужой номинал
+                { PODBPOSCODE: 1, SCODE: 10, REALPRICECODE: 10, QUANAVAIL: 5, PRIM: 'W', LVL: 0, CNT_NOM: 0, CNT_LIVE: 2, CNT_TT3: 0 }, // коды есть, номинал чужой → отсечён
                 { PODBPOSCODE: 2, SCODE: 20, REALPRICECODE: 20, QUANAVAIL: 5, PRIM: 'W', LVL: 0, CNT_NOM: 1, CNT_LIVE: 1, CNT_TT3: 0 }, // ярус (а)
                 { PODBPOSCODE: 3, SCODE: 30, REALPRICECODE: 30, QUANAVAIL: 5, PRIM: 'W', LVL: 0, CNT_NOM: 0, CNT_LIVE: 0, CNT_TT3: 0 }, // ярус (б): без кодов
                 { PODBPOSCODE: 4, SCODE: 40, REALPRICECODE: 40, QUANAVAIL: 5, PRIM: 'W', LVL: 0, CNT_NOM: 2, CNT_LIVE: 2, CNT_TT3: 1 }, // ярус (а) + TT=3
             ]);
-            const res = await service.findFboPodbposCandidates('444', ['W'], 5, null);
-            expect(res.map((c) => c.podbposcode)).toEqual([4, 2, 3, 1]);
+            const skipped: any[] = [];
+            const res = await service.findFboPodbposCandidates('444', ['W'], 5, null, (c) => skipped.push(c));
+            expect(res.map((c) => c.podbposcode)).toEqual([4, 2, 3]);
+            expect(skipped).toEqual([{ podbposcode: 1, scode: 10, realpricecode: 10, quanAvail: 5, prim: 'W', cntNom: 0, cntLive: 2, cntTt3: 0, cntDead: 0, lvl: 0 }]);
+        });
+
+        it('findFboPodbposCandidates — без колбэка отсечённый донор просто не возвращается (hasAnyPodbor видит «доноров нет»)', async () => {
+            query.mockResolvedValueOnce([
+                { PODBPOSCODE: 1, SCODE: 10, REALPRICECODE: 10, QUANAVAIL: 20, PRIM: 'W', LVL: 0, CNT_NOM: 0, CNT_LIVE: 1, CNT_TT3: 1 },
+            ]);
+            const res = await service.findFboPodbposCandidates('444', ['W'], 1, null);
+            expect(res).toEqual([]);
         });
 
         it('findFboPodbposCandidates — пустой prims даёт []', async () => {

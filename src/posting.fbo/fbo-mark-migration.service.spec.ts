@@ -86,7 +86,7 @@ describe('FboMarkMigrationService', () => {
 
         expect(shortages).toEqual([]);
         expect(clearInvoiceReserve).toHaveBeenCalledWith(SCODE_B, null);
-        expect(findFboPodbposCandidates).toHaveBeenCalledWith('444', ['W'], 5, null);
+        expect(findFboPodbposCandidates).toHaveBeenCalledWith('444', ['W'], 5, null, expect.any(Function));
         expect(findLiveMigratableCodes).toHaveBeenCalledWith(100, 5, null);
         expect(migrateMarkCode.mock.calls).toEqual([
             ['KI-3', 100, 900, '444', 1, null],
@@ -113,12 +113,14 @@ describe('FboMarkMigrationService', () => {
         expect(emit).not.toHaveBeenCalled();
     });
 
-    it('на доноре только код чужого номинала: штуки НЕ отщипываем, письмо, shortage', async () => {
-        // Строка на 20 шт под одним кодом QUANTITY=20, а заказ на 1 шт: код такого
-        // номинала переехать не может, значит и штуки отсюда брать нельзя.
-        findFboPodbposCandidates.mockResolvedValueOnce([
-            { podbposcode: 1001, scode: 100, realpricecode: 100, quanAvail: 20, prim: 'W', cntNom: 0, cntLive: 1, cntTt3: 1 },
-        ]);
+    it('донор с кодом чужого номинала отсечён источником: письмо через колбэк, shortage, переносов нет', async () => {
+        // Строка на 20 шт под одним кодом QUANTITY=20, а заказ на 1 шт. Правило «такая
+        // строка не донор» живёт в findFboPodbposCandidates (общее с hasAnyPodbor);
+        // сюда она не приходит вовсе, только колбэк — и migrate шлёт письмо.
+        findFboPodbposCandidates.mockImplementationOnce(async (_gc, _prims, _nominal, _t, onWrongNominal) => {
+            onWrongNominal?.({ scode: 100, realpricecode: 100, quanAvail: 20, cntLive: 1 });
+            return [];
+        });
 
         const shortages = await service.migrate(
             [{ price: '1', offer_id: '444', quantity: 1 }],
@@ -136,7 +138,7 @@ describe('FboMarkMigrationService', () => {
         expect(emit).toHaveBeenCalledWith(
             'error.message',
             'FBO migration: донор с кодом другого номинала пропущен',
-            expect.stringContaining('GOODSCODE 444'),
+            expect.stringMatching(/GOODSCODE 444.*SCODE 100.*20 шт.*номинала 1/),
         );
     });
 
@@ -344,8 +346,8 @@ describe('FboMarkMigrationService', () => {
         );
 
         expect(shortages).toEqual([]);
-        expect(findFboPodbposCandidates.mock.calls[0]).toEqual(['111', ['P'], 1, null]);
-        expect(findFboPodbposCandidates.mock.calls[1]).toEqual(['222', ['P'], 1, null]);
+        expect(findFboPodbposCandidates.mock.calls[0]).toEqual(['111', ['P'], 1, null, expect.any(Function)]);
+        expect(findFboPodbposCandidates.mock.calls[1]).toEqual(['222', ['P'], 1, null, expect.any(Function)]);
         expect(migratePodbpos.mock.calls[0]).toEqual([1001, SCODE_B, 901, '111', 1, null]);
         expect(migratePodbpos.mock.calls[1]).toEqual([2002, SCODE_B, 902, '222', 1, null]);
     });
