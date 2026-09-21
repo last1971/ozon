@@ -1427,6 +1427,28 @@ describe('OrderService', () => {
             expect(dryObservePosting).toHaveBeenCalledWith('FBO-1', 'FBO', 'cancel');
         });
 
+        it('счёт с ручной пометкой менеджера (« получен») → одно письмо и пропуск, точный поиск не зовётся', async () => {
+            const fbs: any = makeFbs();
+            fbs.listCanceled = jest.fn().mockResolvedValue([{ posting_number: '0136180428-0113-1', isFbo: false }]);
+            findByPosting.mockResolvedValueOnce({
+                invoice: { id: 291092, status: 0, remark: '0136180428-0113-1 получен' },
+                mark: ' получен',
+                cancelled: false,
+                closed: false,
+            });
+            eventEmitterEmit.mockClear();
+            getByPosting.mockClear();
+
+            await service.cancelOrders(fbs, []);
+
+            expect(getByPosting).not.toHaveBeenCalled();
+            expect(eventEmitterEmit).toHaveBeenCalledWith(
+                'error.message',
+                'Отмена счёта с ручной пометкой',
+                expect.stringContaining('пометка «получен»'),
+            );
+        });
+
         it('суточный крон берёт отмены и доставку только у FBO', async () => {
             const fbo: any = makeFbo();
             const fbs: any = makeFbs();

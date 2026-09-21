@@ -504,6 +504,18 @@ export class OrderService {
                     // переименован, и повторная отмена его просто не находила. Новый предикат находит,
                     // поэтому пропускать уже помеченные надо явно — иначе суффикс ляжет вторым слоем.
                     if (match.cancelled) return;
+                    // Ручная пометка менеджера (« получен», « возврат в пути» и т.п.): счёт уже
+                    // в ручном разборе. Раньше точный поиск падал, элемент не помечался
+                    // обработанным и письмо повторялось каждый прогон — теперь одно и пропуск.
+                    if (match.mark && !match.closed) {
+                        this.eventEmitter.emit(
+                            'error.message',
+                            'Отмена счёта с ручной пометкой',
+                            `${order.posting_number}: счёт №${match.invoice.number ?? '?'} (SCODE ${match.invoice.id}), ` +
+                                `пометка «${match.mark.trim()}» — в ручном разборе, не трогаем`,
+                        );
+                        return;
+                    }
                     if (match.closed || match.invoice.status === 5) {
                         this.eventEmitter.emit(
                             'error.message',
