@@ -233,11 +233,11 @@ describe('PostingService', () => {
             orderList.mockResolvedValue({ postings, has_next: false, cursor: '' });
         });
 
-        it('окно действий по отменам осталось 7 дней и без фильтра смены статуса', async () => {
+        it('окно действий по отменам 45 дней и без фильтра смены статуса', async () => {
             await service.listCanceled();
 
             expect(orderList.mock.calls[0][0]).toEqual({
-                since: DateTime.now().minus({ day: 7 }).startOf('day').toJSDate(),
+                since: DateTime.now().minus({ day: 45 }).startOf('day').toJSDate(),
                 to: DateTime.now().endOf('day').toJSDate(),
                 statuses: ['cancelled'],
             });

@@ -114,14 +114,14 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         return this.list('awaiting_deliver');
     }
     async listCanceled(): Promise<PostingDto[]> {
-        // РАБОЧЕЕ окно действий — трогать нельзя до итерации 8 плана: расширение подняло бы
-        // накопленный хвост (~30 % отмен, которых система не видела), и его обработала бы
-        // старая логика «донор немедленно при отмене». Хвост пока только наблюдаем.
+        // Окно действий = окну наблюдения. Решение владельца 21.09.2026 (кейс счёта 17215):
+        // отмена на 9-й день после заказа не попадала в 7-дневное окно, cancel-fbs-picked
+        // не выполнялся, коды оставались TT=3 и Delphi не пускал их в скан при расформировании.
         return this.list('cancelled', PostingService.ACTION_WINDOW_DAYS);
     }
 
-    /** Окно действий (отмены). Расширение — итерация 8, не раньше. */
-    private static readonly ACTION_WINDOW_DAYS = 7;
+    /** Окно действий (отмены): отмена приходит и через 26 дней после заказа. */
+    private static readonly ACTION_WINDOW_DAYS = 45;
     /** Окно наблюдения по дате создания отправления: отмена приходит и через 26 дней после заказа. */
     private static readonly WIDE_WINDOW_DAYS = 45;
     /** Нахлёст по дате смены статуса. С итерации 4 отсчёт поедет от `MAX(LAST_SEEN)` журнала. */
