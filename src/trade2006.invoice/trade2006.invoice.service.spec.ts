@@ -779,22 +779,24 @@ describe('Trade2006InvoiceService', () => {
             expect(await service.getKmFullByKi('KI-X', null)).toBeNull();
         });
 
-        it('getGtdByKi — склад: обрезает хвост ГТД до 3 частей', async () => {
-            query.mockResolvedValueOnce([{ SKLADINCODE: 285013, SHOPINCODE: null }]);
+        it('getGtdByKi — одним запросом, обрезает хвост ГТД до 3 частей', async () => {
             query.mockResolvedValueOnce([{ GTD: '10228010/260326/5094327/2' }]);
             expect(await service.getGtdByKi('KI-1', null)).toBe('10228010/260326/5094327');
+            expect(query).toHaveBeenCalledTimes(1);
+            expect(query.mock.calls[0][1]).toEqual(['KI-1']);
         });
 
-        it('getGtdByKi — магазин: цепочка SHOPIN→SHOPINPR (не SHOPIN.GTD)', async () => {
-            query.mockResolvedValueOnce([{ SKLADINCODE: null, SHOPINCODE: 777 }]);
+        it('getGtdByKi — обе ветки прихода в одном COALESCE: SKLADIN и SHOPIN→SHOPINPR', async () => {
             query.mockResolvedValueOnce([{ GTD: '10005030/260623/3170340/1' }]);
             expect(await service.getGtdByKi('KI-2', null)).toBe('10005030/260623/3170340');
-            expect(query.mock.calls[1][0]).toContain('JOIN SHOPINPR sp ON sp.SHOPINPRCODE = si.SHOPINPRCODE');
-            expect(query.mock.calls[1][1]).toEqual([777]);
+            const sql = query.mock.calls[0][0];
+            expect(sql).toContain('COALESCE((SELECT sk.GTD FROM SKLADIN sk WHERE sk.SKLADINCODE = pm.SKLADINCODE)');
+            expect(sql).toContain('JOIN SHOPINPR sp ON sp.SHOPINPRCODE = si.SHOPINPRCODE');
+            expect(sql).toContain('WHERE si.SHOPINCODE = pm.SHOPINCODE');
         });
 
         it('getGtdByKi — нет прихода/пусто → null', async () => {
-            query.mockResolvedValueOnce([{ SKLADINCODE: null, SHOPINCODE: null }]);
+            query.mockResolvedValueOnce([{ GTD: null }]);
             expect(await service.getGtdByKi('KI-3', null)).toBeNull();
         });
 
@@ -805,7 +807,6 @@ describe('Trade2006InvoiceService', () => {
             ['------', 'мусор'],
             ['/', 'мусор'],
         ])('getGtdByKi — не формат Озона (%s) → null', async (gtd) => {
-            query.mockResolvedValueOnce([{ SKLADINCODE: 285013, SHOPINCODE: null }]);
             query.mockResolvedValueOnce([{ GTD: gtd }]);
             expect(await service.getGtdByKi('KI-4', null)).toBeNull();
         });
@@ -823,7 +824,10 @@ describe('Trade2006InvoiceService', () => {
             const sql = query.mock.calls[0][0];
             expect(sql).toContain('FROM PODBPOS pp');
             expect(sql).toContain('JOIN FIFO_T f ON f.PR_META_OUT_ID = pout.ID');
-            expect(sql).toContain('JOIN SHOPINPR sp'); // STORAGE_TYPE=SHOPSKLAD → магазинная ветка
+            // Источник ГТД не зависит от инстанса: обе ветки прихода в одном COALESCE
+            // (на опте бывают партии с магазинным приходом — заказ 0286132473-0001-1, 22.09.2026).
+            expect(sql).toContain('COALESCE((SELECT sk.GTD FROM SKLADIN sk WHERE sk.SKLADINCODE = pin.SKLADINCODE)');
+            expect(sql).toContain('WHERE si.SHOPINCODE = pin.SHOPINCODE');
             expect(query.mock.calls[0][1]).toEqual([91786]);
         });
 

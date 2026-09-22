@@ -1124,36 +1124,41 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
     }
 
     /**
+     * ГТД партии прихода — ЕДИНСТВЕННАЯ формулировка правила, подставляется в оба запроса ниже.
+     * Партия ссылается либо на складской приход (SKLADIN.GTD), либо на магазинный
+     * (SHOPIN → SHOPINPR.GTD); заполнено ровно одно из полей, поэтому COALESCE однозначен.
+     *
+     * Ветка по инстансу (getStorageSS) здесь НЕ годится и была багом: на опте лежат партии
+     * с магазинным приходом. Кейс 22.09.2026 — заказ 0286132473-0001-1, товар 543341,
+     * партия PR_META 2706017 (SKLADINCODE пуст, SHOPINCODE 332076, ГТД 10221010/131117/0056818):
+     * ГТД не находилась, и Озон отбивал отгрузку GTD_MUST_BE_SPECIFIED_FOR_PRODUCT_COUNTRY.
+     *
+     * @param pin алиас строки PR_META (прихода) в запросе
+     */
+    private static partyGtdExpr(pin: string): string {
+        return (
+            `COALESCE((SELECT sk.GTD FROM SKLADIN sk WHERE sk.SKLADINCODE = ${pin}.SKLADINCODE), ` +
+            '(SELECT sp.GTD FROM SHOPIN si JOIN SHOPINPR sp ON sp.SHOPINPRCODE = si.SHOPINPRCODE ' +
+            `WHERE si.SHOPINCODE = ${pin}.SHOPINCODE))`
+        );
+    }
+
+    /**
      * ГТД МАРКИРОВАННОГО кода из ПРИХОДА (не расхода — его для несобранного заказа ещё нет):
-     * MARKCODES.PR_META_IN_ID → PR_META.SKLADINCODE|SHOPINCODE → SKLADIN.GTD | SHOPIN→SHOPINPR.GTD.
+     * MARKCODES.PR_META_IN_ID → PR_META → {@link partyGtdExpr}.
      * Нет ссылки на приход/пустой GTD → null. Для НЕмаркированного — getPickedPartiesGtdByScode.
      */
     async getGtdByKi(ki: string, transaction: FirebirdTransaction = null): Promise<string | null> {
         const own = !transaction;
         const t = transaction ?? (await this.getTransaction());
         try {
-            const meta = await t.query(
-                'SELECT FIRST 1 pm.SKLADINCODE, pm.SHOPINCODE FROM MARKCODES m ' +
+            const rows = await t.query(
+                `SELECT FIRST 1 ${Trade2006InvoiceService.partyGtdExpr('pm')} AS GTD FROM MARKCODES m ` +
                     'JOIN PR_META pm ON pm.ID = m.PR_META_IN_ID WHERE m.KI = ?',
                 [ki],
                 false,
             );
-            const row = meta?.[0];
-            let gtd: unknown = null;
-            if (row?.SKLADINCODE) {
-                const r = await t.query('SELECT GTD FROM SKLADIN WHERE SKLADINCODE = ?', [row.SKLADINCODE], false);
-                gtd = r?.[0]?.GTD;
-            } else if (row?.SHOPINCODE) {
-                // магазин: у SHOPIN своей GTD нет — цепочка SHOPIN.SHOPINPRCODE → SHOPINPR.GTD
-                const r = await t.query(
-                    'SELECT sp.GTD FROM SHOPIN si JOIN SHOPINPR sp ON sp.SHOPINPRCODE = si.SHOPINPRCODE ' +
-                        'WHERE si.SHOPINCODE = ?',
-                    [row.SHOPINCODE],
-                    false,
-                );
-                gtd = r?.[0]?.GTD;
-            }
-            return this.normalizeGtd(gtd);
+            return this.normalizeGtd(rows?.[0]?.GTD);
         } finally {
             if (own) await t.commit(true).catch(() => undefined);
         }
@@ -1163,7 +1168,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
      * ГТД НЕмаркированных позиций счёта — по ФАКТИЧЕСКОЙ FIFO-раскладке уже подобранного счёта
      * (не пересчёт остатка: подбор пишет FIFO_T до УПД, поэтому «QUAN − Σ FIFO_T» вернул бы чужие партии).
      * Цепочка: PODBPOS(SCODE) → PR_META(расход, по PODBPOSCODE) → FIFO_T → PR_META(приход) → ГТД.
-     * Источник ГТД по инстансу (getStorageSS): склад → SKLADIN.GTD; магазин → SHOPIN→SHOPINPR.GTD.
+     * Источник ГТД — {@link partyGtdExpr} (тот же, что у маркированных).
      * Возврат: партии по строкам счёта (realpricecode + кол-во из партии + ГТД партии). ГТД пусто → null.
      */
     async getPickedPartiesGtdByScode(
@@ -1171,14 +1176,9 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         transaction: FirebirdTransaction = null,
     ): Promise<{ realpricecode: number; goodscode: string; quantity: number; gtd: string | null }[]> {
         const t = transaction ?? (await this.getTransaction());
-        const gtdExpr =
-            this.getStorageSS() === 1
-                ? '(SELECT sp.GTD FROM SHOPIN si JOIN SHOPINPR sp ON sp.SHOPINPRCODE = si.SHOPINPRCODE ' +
-                  'WHERE si.SHOPINCODE = pin.SHOPINCODE)'
-                : '(SELECT s.GTD FROM SKLADIN s WHERE s.SKLADINCODE = pin.SKLADINCODE)';
         const rows = await t.query(
             'SELECT pp.REALPRICECODE, pp.GOODSCODE, f.QUAN AS PARTY_QUAN, ' +
-                gtdExpr +
+                Trade2006InvoiceService.partyGtdExpr('pin') +
                 ' AS GTD ' +
                 'FROM PODBPOS pp ' +
                 'JOIN PR_META pout ON pout.PODBPOSCODE = pp.PODBPOSCODE AND pout.P_R = 1 ' +
