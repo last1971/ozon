@@ -1,9 +1,12 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { mkdir, writeFile } from 'fs/promises';
+import { join } from 'path';
 import { WbCardService } from '../wb.card/wb.card.service';
 import { WbApiService } from '../wb.api/wb.api.service';
 import { WbCardDto } from '../wb.card/dto/wb.card.dto';
 import { goodCode } from '../helpers/product/product.helpers';
+import { RateLimit, setRateLimitBlocked } from '../helpers/decorators/rate-limit.decorator';
 import {
     ITnvedUpdateable,
     TnvedBaseItem,
@@ -16,15 +19,21 @@ import {
 type WbTnvedDirectory = Set<string> | null;
 
 /**
- * ВБ как реализация договора ТН ВЭД. Пока только чтение (этап 2), запись — этап 4.
+ * ВБ как реализация договора ТН ВЭД.
  * Всё вб-шное внутри: ТН ВЭД — характеристика карточки `15000001 «ТНВЭД»`; ВБ принимает не любую
  * строку, а только код из справочника предмета (`/content/v2/directory/tnved?subjectID=`).
+ * Галочки маркировки — поля карточки `needKiz` («нужен код маркировки») и `kizMarked` («подтверждаю, что
+ * маркировка нанесена», 289-ФЗ); ВБ по коду их не ставит (проверено: 565831 и 474754 — один предмет,
+ * один код, разный needKiz), поэтому ставим сами по MARK_REQUIRED, как на Озоне.
  * Карточки, у которых наш код не в справочнике или у предмета нет этой характеристики, — спорные.
+ * Запись — read-modify-write целой карточки (как updateVat): перед отправкой карточки «до» ложатся в файл,
+ * потому что cards/update перезаписывает карточку целиком и откатить её иначе нечем.
  */
 @Injectable()
 export class WbTnvedService implements ITnvedUpdateable {
     private readonly logger = new Logger(WbTnvedService.name);
     private readonly tnvedCharcId: number;
+    private readonly backupDir: string;
 
     constructor(
         private readonly cardService: WbCardService,
@@ -33,6 +42,8 @@ export class WbTnvedService implements ITnvedUpdateable {
     ) {
         // характеристика «ТНВЭД» (не путать с 15004139 «Код ТН ВЭД» — это другое поле)
         this.tnvedCharcId = config.get<number>('WB_TNVED_CHARC_ID', 15000001);
+        // куда складывать карточки «до» перед записью (в .gitignore)
+        this.backupDir = config.get<string>('WB_CARD_BACKUP_DIR', 'backup/wb-cards');
     }
 
     async checkTnved(base: TnvedBaseItem[]): Promise<TnvedCheckResult> {
@@ -57,8 +68,76 @@ export class WbTnvedService implements ITnvedUpdateable {
     }
 
     async updateTnved(items: TnvedCheckItem[]): Promise<TnvedUpdateResult[]> {
-        // Запись на ВБ перезаписывает карточку целиком — делается на этапе 4 с бэкапом и распознаванием отказов.
-        return items.map((item) => ({ offer: item.offer, error: 'запись ТН ВЭД на ВБ не реализована' }));
+        const results: TnvedUpdateResult[] = [];
+        const before: WbCardDto[] = [];
+        const after: WbCardDto[] = [];
+        const sent: TnvedCheckItem[] = [];
+
+        for (const item of items) {
+            const card = await this.cardService.getWbCardAsync(item.offer);
+            if (!card) {
+                results.push({ offer: item.offer, error: 'карточка не найдена на ВБ' });
+                continue;
+            }
+            before.push(card);
+            after.push(this.withTnved(card, item.base, item.markRequired));
+            sent.push(item);
+        }
+        if (!after.length) return results;
+
+        const backup = await this.backupCards(before);
+        this.logger.log(`[tnved] ВБ: карточки «до» (${before.length}) сохранены в ${backup}, пишем ${after.length}`);
+
+        const errors = this.updateErrors(await this.cardService.updateCards(after));
+        for (const item of sent) {
+            results.push(errors.length ? { offer: item.offer, error: errors.join('; ') } : { offer: item.offer });
+        }
+        if (errors.length) this.logger.warn(`[tnved] ВБ cards/update отказ: ${errors.join('; ')}`);
+        return results;
+    }
+
+    /**
+     * Копия карточки с нашим ТН ВЭД в характеристике и needKiz/kizMarked по маркируемости. Оригинал не трогаем: он лежит в кэше WbCardService.
+     * Копия сырая (JSON), чтобы уехали все поля, что отдал список, а не только известные DTO —
+     * cards/update перезаписывает карточку целиком, чего не отправили — пропадёт.
+     */
+    private withTnved(card: WbCardDto, tnved: string, markRequired: boolean): WbCardDto {
+        const copy: WbCardDto = JSON.parse(JSON.stringify(card));
+        const characteristics = copy.characteristics ?? [];
+        const charc = characteristics.find((c) => c.id === this.tnvedCharcId);
+        if (charc) charc.value = [tnved];
+        else characteristics.push({ id: this.tnvedCharcId, value: [tnved] });
+        copy.characteristics = characteristics;
+        copy.needKiz = markRequired;
+        copy.kizMarked = markRequired;
+        return copy;
+    }
+
+    /** Карточки «до» — в файл backup/wb-cards/tnved-<время>.json. Путь возвращаем для лога. */
+    private async backupCards(cards: WbCardDto[]): Promise<string> {
+        await mkdir(this.backupDir, { recursive: true });
+        const file = join(this.backupDir, `tnved-${new Date().toISOString().replace(/[:.]/g, '-')}.json`);
+        await writeFile(file, JSON.stringify(cards, null, 2), 'utf8');
+        return file;
+    }
+
+    /**
+     * Отказы cards/update. api.method не бросает: HTTP-ошибка приходит как {status:'NotOk', error},
+     * а «принято, но не всё» — как {error:true, errorText, additionalErrors}. Молчаливый успех = [].
+     */
+    private updateErrors(results: any): string[] {
+        const list: any[] = Array.isArray(results) ? results : [results];
+        const errors: string[] = [];
+        for (const r of list) {
+            if (!r) continue;
+            if (r.status === 'NotOk') {
+                errors.push(`HTTP ${r.error?.status ?? '?'}: ${r.error?.message ?? r.error?.service_message ?? '?'}`);
+            } else if (r.error === true || r.errorText) {
+                const extra = r.additionalErrors ? ` ${JSON.stringify(r.additionalErrors)}` : '';
+                errors.push(`${r.errorText || 'error'}${extra}`);
+            }
+        }
+        return errors;
     }
 
     /** Решение по одной карточке ВБ (одному vendorCode). */
@@ -100,13 +179,20 @@ export class WbTnvedService implements ITnvedUpdateable {
             return { ...item, ambiguousReason: `ТНВЭД ${tnved} нет в справочнике предмета ${subject}` };
         }
 
-        if (item.current === tnved) {
+        // ОК = код совпал И обе галочки маркировки в целевом состоянии (ON для MR=1, OFF для MR=0).
+        const needKiz = card.needKiz === true;
+        const kizMarked = card.kizMarked === true;
+        if (item.current === tnved && needKiz === markRequired && kizMarked === markRequired) {
             return { ...item, ok: true };
         }
+        const reasons: string[] = [];
+        if (item.current !== tnved) reasons.push(`ТНВЭД ${item.current ?? '—'}→${tnved}`);
+        if (needKiz !== markRequired) reasons.push(markRequired ? 'включить код маркировки' : 'выключить код маркировки');
+        if (kizMarked !== markRequired) reasons.push(markRequired ? 'подтвердить маркировку' : 'снять подтверждение маркировки');
         return {
             ...item,
-            reason: `ТНВЭД ${item.current ?? '—'}→${tnved}`,
-            action: `set ${tnved} в характеристику ${this.tnvedCharcId}`,
+            reason: reasons.join('; '),
+            action: `set ${tnved} в характеристику ${this.tnvedCharcId} + needKiz/kizMarked ${markRequired ? 'ON' : 'OFF'}`,
         };
     }
 
@@ -138,14 +224,25 @@ export class WbTnvedService implements ITnvedUpdateable {
         return charcs.some((c) => c.charcID === this.tnvedCharcId);
     }
 
-    /** Справочник кодов ТН ВЭД предмета. null — ВБ не ответил (api.method не бросает, возвращает {error}). */
-    private async loadDirectory(subjectId: number): Promise<WbTnvedDirectory> {
+    /**
+     * Справочник кодов ТН ВЭД предмета. null — ВБ не ответил (api.method не бросает, возвращает {error}).
+     * Лимит контентного API общий с выкачкой карточек, поэтому 429 здесь обычное дело: как в WbOrderService.list —
+     * блокируем метод на retryAfterMs и повторяем (не больше двух раз), декоратор сам выждет паузу.
+     */
+    @RateLimit(600)
+    private async loadDirectory(subjectId: number, attempt = 0): Promise<WbTnvedDirectory> {
         const res = await this.api.method(
             'https://content-api.wildberries.ru/content/v2/directory/tnved',
             'get',
             { subjectID: subjectId, locale: 'ru' },
             true,
         );
+        if (res?.error?.status === 429 && attempt < 2) {
+            const retryAfterMs = res.error.retryAfterMs || 60000;
+            this.logger.warn(`[tnved] ВБ 429 на directory/tnved (subjectID=${subjectId}), ждём ${retryAfterMs} мс и повторяем`);
+            setRateLimitBlocked(WbTnvedService.name, 'loadDirectory', Date.now() + retryAfterMs);
+            return this.loadDirectory(subjectId, attempt + 1);
+        }
         if (!Array.isArray(res?.data)) {
             // отказ ВБ должен быть виден в логе, а не тонуть в «спорных»
             this.logger.warn(`[tnved] directory/tnved subjectID=${subjectId}: ${JSON.stringify(res).slice(0, 300)}`);

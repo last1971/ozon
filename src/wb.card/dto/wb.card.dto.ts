@@ -44,6 +44,7 @@ export class WbCardDto {
     title: string;
     description?: string;
     needKiz?: boolean;
+    kizMarked?: boolean; // «Подтверждаю, что на товар нанесена необходимая маркировка» (289-ФЗ)
     kgvpMarketplace?: number;
     parentID?: number;
     parentName?: string;

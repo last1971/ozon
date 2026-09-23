@@ -1,5 +1,8 @@
 # compiled output
 /dist
+
+# карточки ВБ «до» перед перезаписью (tnved-sync)
+/backup
 /node_modules
 /public
 /front
