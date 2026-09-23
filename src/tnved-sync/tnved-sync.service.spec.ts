@@ -110,16 +110,31 @@ describe('TnvedSyncService', () => {
             expect(updateAttributes).not.toHaveBeenCalled();
         });
 
-        it('нет варианта «МАРКИРОВКА РФ» → ambiguous', async () => {
+        it('нет варианта «МАРКИРОВКА РФ», текущий из дублей → alreadyOk, дубль не перетираем (565831)', async () => {
+            query.mockResolvedValueOnce([baseRow(565831, '8504408300')]);
+            ozonCatalog(['565831'], { '565831': { code: '8504408300', dictId: 972997561, markOn: true } });
+            searchCategoryAttributeValues.mockResolvedValue([
+                { id: 971399913, value: '8504408300 - Выпрямители прочие' },
+                { id: 972997561, value: '8504408300 - Выпрямители прочие.' },
+            ]);
+
+            const rep = await service.sync({ apply: false });
+
+            expect(rep.alreadyOk).toBe(1);
+            expect(rep.toFix).toHaveLength(0);
+            expect(rep.ambiguous).toHaveLength(0);
+        });
+
+        it('кода нет в категории → ambiguous «не поддерживается»', async () => {
             query.mockResolvedValueOnce([baseRow(333, '8541410008')]);
             ozonCatalog(['333'], { '333': { code: '8504408500', dictId: 1, markOn: false } });
-            searchCategoryAttributeValues.mockResolvedValue([{ id: 1, value: '8541410008 - Светодиоды (без маркировки)' }]);
+            searchCategoryAttributeValues.mockResolvedValue([]);
 
             const rep = await service.sync({ apply: false });
 
             expect(rep.toFix).toHaveLength(0);
             expect(rep.ambiguous[0].offer).toBe('333');
-            expect(rep.ambiguous[0].reason).toContain('МАРКИРОВКА РФ');
+            expect(rep.ambiguous[0].reason).toContain('не поддерживается');
         });
 
         it('apply=true → updateAttributes с вариантом МАРКИРОВКА РФ + чекбокс true, возвращает task_id', async () => {

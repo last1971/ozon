@@ -36,6 +36,11 @@ export interface TnvedSyncReport {
 
 const MARK_LABEL = 'МАРКИРОВКА РФ';
 
+interface TnvedVariant {
+    id: number;
+    value: string;
+}
+
 /**
  * Сверка ТНВЭД всех товаров с Озоном и (опц.) автоправка. Ветвится по MARK_REQUIRED:
  *   - маркируемый (MR=1)   → вариант ТНВЭД «МАРКИРОВКА РФ» + чекбокс «Нужен код маркировки» ON;
@@ -71,8 +76,8 @@ export class TnvedSyncService {
             notFoundOnOzon: [],
             ambiguous: [],
         };
-        // dictionary_value_id варианта «МАРКИРОВКА РФ», ключ (cat:type:tnved) — резолвим один раз
-        const dictCache = new Map<string, number | null>();
+        // варианты ТНВЭД в категории, ключ (cat:type:tnved) — резолвим один раз
+        const dictCache = new Map<string, TnvedVariant[]>();
 
         for (const { offer: goodscode, tnved, markRequired } of base) {
             // все карточки Озона этого товара: точный goodscode + суффиксные варианты (531557, 531557-10, …)
@@ -101,7 +106,7 @@ export class TnvedSyncService {
         goodscode: string,
         tnved: string,
         markRequired: boolean,
-        dictCache: Map<string, number | null>,
+        dictCache: Map<string, TnvedVariant[]>,
         report: TnvedSyncReport,
         apply: boolean,
     ): Promise<void> {
@@ -127,22 +132,22 @@ export class TnvedSyncService {
         const markAttr = attrs.find((a) => a.id === this.markAttrId);
         const markOn = String(markAttr?.values?.[0]?.value ?? '').toLowerCase() === 'true';
 
-        // Целевой вариант ТНВЭД в категории карточки: с «МАРКИРОВКА РФ» для маркируемых,
-        // плоский — для немаркируемых. Ключ кэша включает markRequired: варианты разные.
+        // Варианты нашего кода в категории карточки. Нет ни одного — код не поддерживается категорией.
         const variantLabel = markRequired ? MARK_LABEL : 'без маркировки';
-        const key = `${cat}:${type}:${tnved}:${markRequired}`;
-        let targetDictId = dictCache.get(key);
-        if (targetDictId === undefined) {
-            targetDictId = await this.resolveTnvedDictValue(cat, type, tnved, markRequired);
-            dictCache.set(key, targetDictId);
+        const key = `${cat}:${type}:${tnved}`;
+        let variants = dictCache.get(key);
+        if (variants === undefined) {
+            variants = await this.loadTnvedVariants(cat, type, tnved);
+            dictCache.set(key, variants);
         }
-        if (!targetDictId) {
+        if (!variants.length) {
             report.ambiguous.push({
                 offer: offerId,
-                reason: `нет варианта «${variantLabel}» для ТНВЭД ${tnved} (cat ${cat}/${type})`,
+                reason: `ТНВЭД ${tnved} не поддерживается категорией ${cat}/${type}`,
             });
             return;
         }
+        const targetDictId = this.pickVariant(variants, markRequired, currentDictId);
 
         // ОК = нужный dictionary_value_id И чекбокс маркировки в целевом состоянии (ON для MR=1, OFF для MR=0).
         // Совпадения одних лишь цифр ТНВЭД мало: не тот вариант / не то состояние чекбокса — НЕ ок.
@@ -228,23 +233,23 @@ export class TnvedSyncService {
         return map;
     }
 
-    /**
-     * dictionary_value_id варианта ТНВЭД в категории товара.
-     * markRequired=true  → вариант, содержащий «МАРКИРОВКА РФ»;
-     * markRequired=false → плоский вариант (без «МАРКИРОВКА РФ»).
-     */
-    private async resolveTnvedDictValue(
-        cat: number,
-        type: number,
-        tnved: string,
-        markRequired: boolean,
-    ): Promise<number | null> {
+    /** Варианты словаря ТНВЭД в категории, значение которых начинается с нашего кода. */
+    private async loadTnvedVariants(cat: number, type: number, tnved: string): Promise<TnvedVariant[]> {
         const vals = await this.productService.searchCategoryAttributeValues(this.tnvedAttrId, cat, type, tnved);
-        const match = vals.find((v) => {
-            const val = (v.value ?? '').trim();
-            return val.startsWith(tnved) && (v.value ?? '').includes(MARK_LABEL) === markRequired;
-        });
-        return match?.id ?? null;
+        return vals
+            .map((v) => ({ id: v.id, value: (v.value ?? '').trim() }))
+            .filter((v) => v.value.startsWith(tnved));
+    }
+
+    /**
+     * Целевой вариант: предпочтительно с «МАРКИРОВКА РФ» для маркируемых и без неё — для остальных;
+     * если предпочтительных нет — любой вариант кода. Текущий вариант карточки, если подходит,
+     * не трогаем (у Озона бывают дубли, отличающиеся точкой в конце).
+     */
+    private pickVariant(variants: TnvedVariant[], markRequired: boolean, currentDictId: number | null): number {
+        const preferred = variants.filter((v) => v.value.includes(MARK_LABEL) === markRequired);
+        const pool = preferred.length ? preferred : variants;
+        return pool.find((v) => v.id === currentDictId)?.id ?? pool[0].id;
     }
 
     /**
