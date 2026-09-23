@@ -8,6 +8,7 @@ import { Cache } from '@nestjs/cache-manager';
 import { InvoiceUpdateDto } from "../invoice/dto/invoice.update.dto";
 import { InvoiceDto } from "../invoice/dto/invoice.dto";
 import { GoodServiceEnum } from "../good/good.service.enum";
+import { GtdResolver } from '../gtd/gtd.resolver';
 
 describe('Trade2006InvoiceService', () => {
     let service: Trade2006InvoiceService;
@@ -18,6 +19,7 @@ describe('Trade2006InvoiceService', () => {
     const get = jest.fn();
     const emit = jest.fn();
     const set = jest.fn();
+    const resolve = jest.fn();
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
@@ -50,6 +52,10 @@ describe('Trade2006InvoiceService', () => {
                     provide: Cache,
                     useValue: { set },
                 },
+                {
+                    provide: GtdResolver,
+                    useValue: { resolve },
+                },
             ],
         }).compile();
 
@@ -60,6 +66,7 @@ describe('Trade2006InvoiceService', () => {
         rollback.mockClear();
         get.mockClear();
         emit.mockClear();
+        resolve.mockReset();
         service = module.get<Trade2006InvoiceService>(Trade2006InvoiceService);
     });
 
@@ -779,43 +786,37 @@ describe('Trade2006InvoiceService', () => {
             expect(await service.getKmFullByKi('KI-X', null)).toBeNull();
         });
 
-        it('getGtdByKi — одним запросом, обрезает хвост ГТД до 3 частей', async () => {
-            query.mockResolvedValueOnce([{ GTD: '10228010/260326/5094327/2' }]);
-            expect(await service.getGtdByKi('KI-1', null)).toBe('10228010/260326/5094327');
+        // Сам поиск ГТД и её формат — забота GtdResolver (см. src/gtd/*.spec.ts).
+        // Сервису остаётся найти партию кода и отдать её резолверу.
+        it('getGtdByKi — находит партию кода и отдаёт её резолверу', async () => {
+            const data = new Date('2026-08-03');
+            query.mockResolvedValueOnce([{ ID: 2932628, GOODSCODE: 565565, DATA: data }]);
+            resolve.mockResolvedValueOnce('10131010/250526/5164730');
+
+            expect(await service.getGtdByKi('KI-1', null)).toBe('10131010/250526/5164730');
             expect(query).toHaveBeenCalledTimes(1);
+            expect(query.mock.calls[0][0]).toContain('JOIN PR_META pm ON pm.ID = m.PR_META_IN_ID');
             expect(query.mock.calls[0][1]).toEqual(['KI-1']);
+            expect(resolve).toHaveBeenCalledWith(
+                { partyId: 2932628, goodscode: '565565', partyDate: data },
+                expect.anything(),
+            );
         });
 
-        it('getGtdByKi — обе ветки прихода в одном COALESCE: SKLADIN и SHOPIN→SHOPINPR', async () => {
-            query.mockResolvedValueOnce([{ GTD: '10005030/260623/3170340/1' }]);
-            expect(await service.getGtdByKi('KI-2', null)).toBe('10005030/260623/3170340');
-            const sql = query.mock.calls[0][0];
-            expect(sql).toContain('COALESCE((SELECT sk.GTD FROM SKLADIN sk WHERE sk.SKLADINCODE = pm.SKLADINCODE)');
-            expect(sql).toContain('JOIN SHOPINPR sp ON sp.SHOPINPRCODE = si.SHOPINPRCODE');
-            expect(sql).toContain('WHERE si.SHOPINCODE = pm.SHOPINCODE');
-        });
-
-        it('getGtdByKi — нет прихода/пусто → null', async () => {
-            query.mockResolvedValueOnce([{ GTD: null }]);
+        it('getGtdByKi — код без партии → null, резолвер не зовём', async () => {
+            query.mockResolvedValueOnce([]);
             expect(await service.getGtdByKi('KI-3', null)).toBeNull();
+            expect(resolve).not.toHaveBeenCalled();
         });
 
-        it.each([
-            ['10210090/160910/п014454/13', 'литера в номере (партия до 2011)'],
-            ['10132160/26115/5241506/2', 'дата 5 цифр'],
-            ['10702070/010425/511644/10', 'номер 6 цифр'],
-            ['------', 'мусор'],
-            ['/', 'мусор'],
-        ])('getGtdByKi — не формат Озона (%s) → null', async (gtd) => {
-            query.mockResolvedValueOnce([{ GTD: gtd }]);
-            expect(await service.getGtdByKi('KI-4', null)).toBeNull();
-        });
-
-        it('getPickedPartiesGtdByScode — партии из FIFO_T + обрезка ГТД, магазинный источник', async () => {
+        it('getPickedPartiesGtdByScode — партии из FIFO_T, ГТД каждой от резолвера', async () => {
+            const data = new Date('2026-04-17');
             query.mockResolvedValueOnce([
-                { REALPRICECODE: 601391, GOODSCODE: 376743, PARTY_QUAN: 1, GTD: '10005030/260623/3170340/1' },
-                { REALPRICECODE: 601392, GOODSCODE: 376743, PARTY_QUAN: 10, GTD: null },
+                { REALPRICECODE: 601391, GOODSCODE: 376743, PARTY_QUAN: 1, PARTY_ID: 2900398, PARTY_DATA: data },
+                { REALPRICECODE: 601392, GOODSCODE: 376743, PARTY_QUAN: 10, PARTY_ID: 2928063, PARTY_DATA: data },
             ]);
+            resolve.mockResolvedValueOnce('10005030/260623/3170340').mockResolvedValueOnce(null);
+
             const res = await service.getPickedPartiesGtdByScode(91786, null);
             expect(res).toEqual([
                 { realpricecode: 601391, goodscode: '376743', quantity: 1, gtd: '10005030/260623/3170340' },
@@ -824,11 +825,20 @@ describe('Trade2006InvoiceService', () => {
             const sql = query.mock.calls[0][0];
             expect(sql).toContain('FROM PODBPOS pp');
             expect(sql).toContain('JOIN FIFO_T f ON f.PR_META_OUT_ID = pout.ID');
-            // Источник ГТД не зависит от инстанса: обе ветки прихода в одном COALESCE
-            // (на опте бывают партии с магазинным приходом — заказ 0286132473-0001-1, 22.09.2026).
-            expect(sql).toContain('COALESCE((SELECT sk.GTD FROM SKLADIN sk WHERE sk.SKLADINCODE = pin.SKLADINCODE)');
-            expect(sql).toContain('WHERE si.SHOPINCODE = pin.SHOPINCODE');
+            expect(sql).toContain('pin.ID AS PARTY_ID');
             expect(query.mock.calls[0][1]).toEqual([91786]);
+        });
+
+        it('getPickedPartiesGtdByScode — одна партия в двух строках подбора резолвится один раз', async () => {
+            query.mockResolvedValueOnce([
+                { REALPRICECODE: 601391, GOODSCODE: 376743, PARTY_QUAN: 1, PARTY_ID: 2900398, PARTY_DATA: null },
+                { REALPRICECODE: 601392, GOODSCODE: 376743, PARTY_QUAN: 2, PARTY_ID: 2900398, PARTY_DATA: null },
+            ]);
+            resolve.mockResolvedValueOnce('10005030/260623/3170340');
+
+            const res = await service.getPickedPartiesGtdByScode(91786, null);
+            expect(res.map((p) => p.gtd)).toEqual(['10005030/260623/3170340', '10005030/260623/3170340']);
+            expect(resolve).toHaveBeenCalledTimes(1);
         });
 
         it('listFbsAwaitingShip — JOIN MARKCODES TT=3 + FINISH_PICKUP + IGK + buyerId', async () => {

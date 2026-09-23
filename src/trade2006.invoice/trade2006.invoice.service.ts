@@ -39,6 +39,7 @@ import {
 } from '../helpers/order.cancellation.constants';
 import { FBO_INVOICE_IGK } from '../helpers/fbo.invoice.constants';
 import { InvoiceMatchDto } from '../invoice/dto/invoice.match.dto';
+import { GtdResolver } from '../gtd/gtd.resolver';
 
 @Injectable()
 export class Trade2006InvoiceService extends WithTransactions(class {}) implements IInvoice, ISuppliable {
@@ -49,6 +50,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         private configService: ConfigService,
         private eventEmitter: EventEmitter2,
         private cacheManager: Cache,
+        private gtdResolver: GtdResolver,
     ) {
         super();
     }
@@ -1103,62 +1105,29 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
     }
 
     /**
-     * Озон принимает ГТД строго 3 частями (8/6/7 цифр, regex ^[0-9]{8}/[0-9]{6}/[0-9]{7}$).
-     * В БД ГТД бывает с хвостом (номер позиции), напр. 10228010/260326/5094327/2 — обрезаем до 3 частей.
-     * Пусто → null (тогда is_gtd_absent=true).
-     *
-     * Не попавшее в формат Озона тоже отдаём null: у старых партий (до ~2011) номер декларации
-     * содержит литеру — 10210090/160910/п014454, семи цифр там нет и не будет. Слать такое нельзя:
-     * exemplar/set проходит, а validate валится regex-ошибкой и отгрузка встаёт целиком.
-     */
-    private normalizeGtd(raw: unknown): string | null {
-        if (raw == null) return null;
-        const s = String(raw).trim();
-        if (!s) return null;
-        const gtd = s.split('/').slice(0, 3).join('/');
-        if (!/^[0-9]{8}\/[0-9]{6}\/[0-9]{7}$/.test(gtd)) {
-            this.logger.warn(`ГТД "${s}" не в формате Озона — отправляем как is_gtd_absent`);
-            return null;
-        }
-        return gtd;
-    }
-
-    /**
-     * ГТД партии прихода — ЕДИНСТВЕННАЯ формулировка правила, подставляется в оба запроса ниже.
-     * Партия ссылается либо на складской приход (SKLADIN.GTD), либо на магазинный
-     * (SHOPIN → SHOPINPR.GTD); заполнено ровно одно из полей, поэтому COALESCE однозначен.
-     *
-     * Ветка по инстансу (getStorageSS) здесь НЕ годится и была багом: на опте лежат партии
-     * с магазинным приходом. Кейс 22.09.2026 — заказ 0286132473-0001-1, товар 543341,
-     * партия PR_META 2706017 (SKLADINCODE пуст, SHOPINCODE 332076, ГТД 10221010/131117/0056818):
-     * ГТД не находилась, и Озон отбивал отгрузку GTD_MUST_BE_SPECIFIED_FOR_PRODUCT_COUNTRY.
-     *
-     * @param pin алиас строки PR_META (прихода) в запросе
-     */
-    private static partyGtdExpr(pin: string): string {
-        return (
-            `COALESCE((SELECT sk.GTD FROM SKLADIN sk WHERE sk.SKLADINCODE = ${pin}.SKLADINCODE), ` +
-            '(SELECT sp.GTD FROM SHOPIN si JOIN SHOPINPR sp ON sp.SHOPINPRCODE = si.SHOPINPRCODE ' +
-            `WHERE si.SHOPINCODE = ${pin}.SHOPINCODE))`
-        );
-    }
-
-    /**
      * ГТД МАРКИРОВАННОГО кода из ПРИХОДА (не расхода — его для несобранного заказа ещё нет):
-     * MARKCODES.PR_META_IN_ID → PR_META → {@link partyGtdExpr}.
-     * Нет ссылки на приход/пустой GTD → null. Для НЕмаркированного — getPickedPartiesGtdByScode.
+     * MARKCODES.PR_META_IN_ID → партия → {@link GtdResolver}.
+     * Здесь только поиск партии; где брать ГТД и какая годится — знает резолвер.
      */
     async getGtdByKi(ki: string, transaction: FirebirdTransaction = null): Promise<string | null> {
         const own = !transaction;
         const t = transaction ?? (await this.getTransaction());
         try {
             const rows = await t.query(
-                `SELECT FIRST 1 ${Trade2006InvoiceService.partyGtdExpr('pm')} AS GTD FROM MARKCODES m ` +
+                'SELECT FIRST 1 pm.ID, pm.GOODSCODE, pm.DATA FROM MARKCODES m ' +
                     'JOIN PR_META pm ON pm.ID = m.PR_META_IN_ID WHERE m.KI = ?',
                 [ki],
                 false,
             );
-            return this.normalizeGtd(rows?.[0]?.GTD);
+            if (!rows?.[0]) return null;
+            return await this.gtdResolver.resolve(
+                {
+                    partyId: Number(rows[0].ID),
+                    goodscode: String(rows[0].GOODSCODE),
+                    partyDate: rows[0].DATA ?? null,
+                },
+                t,
+            );
         } finally {
             if (own) await t.commit(true).catch(() => undefined);
         }
@@ -1167,34 +1136,51 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
     /**
      * ГТД НЕмаркированных позиций счёта — по ФАКТИЧЕСКОЙ FIFO-раскладке уже подобранного счёта
      * (не пересчёт остатка: подбор пишет FIFO_T до УПД, поэтому «QUAN − Σ FIFO_T» вернул бы чужие партии).
-     * Цепочка: PODBPOS(SCODE) → PR_META(расход, по PODBPOSCODE) → FIFO_T → PR_META(приход) → ГТД.
-     * Источник ГТД — {@link partyGtdExpr} (тот же, что у маркированных).
-     * Возврат: партии по строкам счёта (realpricecode + кол-во из партии + ГТД партии). ГТД пусто → null.
+     * Цепочка: PODBPOS(SCODE) → PR_META(расход, по PODBPOSCODE) → FIFO_T → PR_META(приход) → {@link GtdResolver}.
+     * Возврат: партии по строкам счёта (realpricecode + кол-во из партии + ГТД партии). Не нашлось → null.
      */
     async getPickedPartiesGtdByScode(
         scode: number,
         transaction: FirebirdTransaction = null,
     ): Promise<{ realpricecode: number; goodscode: string; quantity: number; gtd: string | null }[]> {
+        const own = !transaction;
         const t = transaction ?? (await this.getTransaction());
-        const rows = await t.query(
-            'SELECT pp.REALPRICECODE, pp.GOODSCODE, f.QUAN AS PARTY_QUAN, ' +
-                Trade2006InvoiceService.partyGtdExpr('pin') +
-                ' AS GTD ' +
-                'FROM PODBPOS pp ' +
-                'JOIN PR_META pout ON pout.PODBPOSCODE = pp.PODBPOSCODE AND pout.P_R = 1 ' +
-                'JOIN FIFO_T f ON f.PR_META_OUT_ID = pout.ID ' +
-                'JOIN PR_META pin ON pin.ID = f.PR_META_IN_ID ' +
-                'WHERE pp.SCODE = ? ' +
-                'ORDER BY pp.REALPRICECODE, f.ID',
-            [scode],
-            !transaction,
-        );
-        return (rows ?? []).map((r) => ({
-            realpricecode: Number(r.REALPRICECODE),
-            goodscode: String(r.GOODSCODE),
-            quantity: Number(r.PARTY_QUAN) || 0,
-            gtd: this.normalizeGtd(r.GTD),
-        }));
+        try {
+            const rows = await t.query(
+                'SELECT pp.REALPRICECODE, pp.GOODSCODE, f.QUAN AS PARTY_QUAN, ' +
+                    'pin.ID AS PARTY_ID, pin.DATA AS PARTY_DATA ' +
+                    'FROM PODBPOS pp ' +
+                    'JOIN PR_META pout ON pout.PODBPOSCODE = pp.PODBPOSCODE AND pout.P_R = 1 ' +
+                    'JOIN FIFO_T f ON f.PR_META_OUT_ID = pout.ID ' +
+                    'JOIN PR_META pin ON pin.ID = f.PR_META_IN_ID ' +
+                    'WHERE pp.SCODE = ? ' +
+                    'ORDER BY pp.REALPRICECODE, f.ID',
+                [scode],
+                false,
+            );
+            // Одна партия может стоять в нескольких строках подбора — резолвим её один раз.
+            const gtdByParty = new Map<number, string | null>();
+            const parties: { realpricecode: number; goodscode: string; quantity: number; gtd: string | null }[] = [];
+            for (const r of rows ?? []) {
+                const partyId = Number(r.PARTY_ID);
+                const goodscode = String(r.GOODSCODE);
+                if (!gtdByParty.has(partyId)) {
+                    gtdByParty.set(
+                        partyId,
+                        await this.gtdResolver.resolve({ partyId, goodscode, partyDate: r.PARTY_DATA ?? null }, t),
+                    );
+                }
+                parties.push({
+                    realpricecode: Number(r.REALPRICECODE),
+                    goodscode,
+                    quantity: Number(r.PARTY_QUAN) || 0,
+                    gtd: gtdByParty.get(partyId),
+                });
+            }
+            return parties;
+        } finally {
+            if (own) await t.commit(true).catch(() => undefined);
+        }
     }
 
     async listFbsAwaitingShip(
