@@ -1,12 +1,14 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FirebirdPool } from 'ts-firebird';
 import { FIREBIRD } from '../firebird/firebird.module';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { ITnvedUpdateable, TnvedBaseItem, TnvedCheckItem } from '../interfaces/i.tnved.updateable';
 import { OzonTnvedService } from './ozon.tnved.service';
+import { WbTnvedService } from './wb.tnved.service';
 
 export interface TnvedSyncOptions {
+    market: GoodServiceEnum; // маркетплейс, обязателен: значение по умолчанию скрывало бы, куда идёт прогон
     apply?: boolean; // false = dry-run (только отчёт), true = писать на маркетплейс
     offer?: string; // ограничить одним GOODSCODE (обкатка) — берутся все его варианты
     limit?: number; // ограничить количество товаров базы
@@ -40,19 +42,26 @@ export class TnvedSyncService {
     constructor(
         @Inject(FIREBIRD) private readonly pool: FirebirdPool,
         ozon: OzonTnvedService,
+        wb: WbTnvedService,
         config: ConfigService,
     ) {
         const services = config.get<GoodServiceEnum[]>('SERVICES', []);
         if (services.includes(GoodServiceEnum.OZON)) this.services.set(GoodServiceEnum.OZON, ozon);
+        if (services.includes(GoodServiceEnum.WB)) this.services.set(GoodServiceEnum.WB, wb);
     }
 
     public getService(service: GoodServiceEnum): ITnvedUpdateable | null {
         return this.services.get(service) || null;
     }
 
-    async sync(opts: TnvedSyncOptions = {}, market: GoodServiceEnum = GoodServiceEnum.OZON): Promise<TnvedSyncReport> {
+    async sync(opts: TnvedSyncOptions): Promise<TnvedSyncReport> {
+        const market = opts.market;
         const service = this.getService(market);
-        if (!service) throw new Error(`Service ${market} does not support TNVED operations`);
+        if (!service) {
+            throw new BadRequestException(
+                `маркетплейс «${market}» не поддерживает ТН ВЭД; доступны: ${[...this.services.keys()].join(', ') || 'нет'}`,
+            );
+        }
 
         const base = await this.loadBaseTnved(opts.offer, opts.limit);
         const { items, notFound } = await service.checkTnved(base);

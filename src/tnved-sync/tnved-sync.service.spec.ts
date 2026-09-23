@@ -3,7 +3,9 @@ import { ConfigService } from '@nestjs/config';
 import { FIREBIRD } from '../firebird/firebird.module';
 import { ProductService } from '../product/product.service';
 import { TnvedSyncService } from './tnved-sync.service';
+import { GoodServiceEnum } from '../good/good.service.enum';
 import { OzonTnvedService } from './ozon.tnved.service';
+import { WbTnvedService } from './wb.tnved.service';
 
 describe('TnvedSyncService', () => {
     let service: TnvedSyncService;
@@ -42,6 +44,7 @@ describe('TnvedSyncService', () => {
             providers: [
                 TnvedSyncService,
                 OzonTnvedService,
+                { provide: WbTnvedService, useValue: {} },
                 { provide: FIREBIRD, useValue: pool },
                 { provide: ProductService, useValue: productService },
                 { provide: ConfigService, useValue: { get: (k: string, def: any) => (k === 'SERVICES' ? ['ozon'] : def) } },
@@ -73,7 +76,7 @@ describe('TnvedSyncService', () => {
             query.mockResolvedValueOnce([baseRow(568615, '8504409100')]);
             ozonCatalog(['568615'], { '568615': { code: '8504409100', dictId: PLAIN_ID, markOn: false } });
 
-            const rep = await service.sync({ apply: false });
+            const rep = await service.sync({ market: GoodServiceEnum.OZON, apply: false });
 
             expect(rep.alreadyOk).toBe(0);
             expect(rep.toFix).toHaveLength(1);
@@ -86,7 +89,7 @@ describe('TnvedSyncService', () => {
             query.mockResolvedValueOnce([baseRow(111, '8504409100')]);
             ozonCatalog(['111'], { '111': { code: '8504409100', dictId: MARK_ID, markOn: true } });
 
-            const rep = await service.sync({ apply: false });
+            const rep = await service.sync({ market: GoodServiceEnum.OZON, apply: false });
 
             expect(rep.alreadyOk).toBe(1);
             expect(rep.toFix).toHaveLength(0);
@@ -96,7 +99,7 @@ describe('TnvedSyncService', () => {
             query.mockResolvedValueOnce([baseRow(112, '8504409100')]);
             ozonCatalog(['112'], { '112': { code: '8504409100', dictId: MARK_ID, markOn: false } });
 
-            const rep = await service.sync({ apply: false });
+            const rep = await service.sync({ market: GoodServiceEnum.OZON, apply: false });
 
             expect(rep.toFix).toHaveLength(1);
             expect(rep.toFix[0].reason).toContain('включить код маркировки');
@@ -106,7 +109,7 @@ describe('TnvedSyncService', () => {
             query.mockResolvedValueOnce([baseRow(568651, '8504409100')]);
             ozonCatalog(['568651'], { '568651': { code: '8504408500', dictId: 971399914, markOn: false } });
 
-            const rep = await service.sync({ apply: false });
+            const rep = await service.sync({ market: GoodServiceEnum.OZON, apply: false });
 
             expect(rep.toFix[0]).toMatchObject({ offer: '568651', current: '8504408500', base: '8504409100', dictValueId: MARK_ID });
             expect(updateAttributes).not.toHaveBeenCalled();
@@ -120,7 +123,7 @@ describe('TnvedSyncService', () => {
                 { id: 972997561, value: '8504408300 - Выпрямители прочие.' },
             ]);
 
-            const rep = await service.sync({ apply: false });
+            const rep = await service.sync({ market: GoodServiceEnum.OZON, apply: false });
 
             expect(rep.alreadyOk).toBe(1);
             expect(rep.toFix).toHaveLength(0);
@@ -132,7 +135,7 @@ describe('TnvedSyncService', () => {
             ozonCatalog(['333'], { '333': { code: '8504408500', dictId: 1, markOn: false } });
             searchCategoryAttributeValues.mockResolvedValue([]);
 
-            const rep = await service.sync({ apply: false });
+            const rep = await service.sync({ market: GoodServiceEnum.OZON, apply: false });
 
             expect(rep.toFix).toHaveLength(0);
             expect(rep.ambiguous[0].offer).toBe('333');
@@ -144,7 +147,7 @@ describe('TnvedSyncService', () => {
             ozonCatalog(['568615'], { '568615': { code: '8504409100', dictId: PLAIN_ID, markOn: false } });
             updateAttributes.mockResolvedValue([{ task_id: 5221013431 }]);
 
-            const rep = await service.sync({ apply: true });
+            const rep = await service.sync({ market: GoodServiceEnum.OZON, apply: true });
 
             expect(rep.toFix[0].taskId).toBe(5221013431);
             expect(updateAttributes).toHaveBeenCalledWith({
@@ -162,7 +165,7 @@ describe('TnvedSyncService', () => {
             query.mockResolvedValueOnce([baseRow(558060, '8504409100', 0)]);
             ozonCatalog(['558060'], { '558060': { code: '8504409100', dictId: PLAIN_ID, markOn: false } });
 
-            const rep = await service.sync({ apply: false });
+            const rep = await service.sync({ market: GoodServiceEnum.OZON, apply: false });
 
             expect(rep.alreadyOk).toBe(1);
             expect(rep.toFix).toHaveLength(0);
@@ -172,7 +175,7 @@ describe('TnvedSyncService', () => {
             query.mockResolvedValueOnce([baseRow(558060, '8504409100', 0)]);
             ozonCatalog(['558060'], { '558060': { code: '8504409100', dictId: MARK_ID, markOn: true } });
 
-            const rep = await service.sync({ apply: false });
+            const rep = await service.sync({ market: GoodServiceEnum.OZON, apply: false });
 
             expect(rep.toFix).toHaveLength(1);
             expect(rep.toFix[0]).toMatchObject({ offer: '558060', dictValueId: PLAIN_ID, markRequired: false });
@@ -185,7 +188,7 @@ describe('TnvedSyncService', () => {
             ozonCatalog(['558060'], { '558060': { code: '8504409100', dictId: MARK_ID, markOn: true } });
             updateAttributes.mockResolvedValue([{ task_id: 7777 }]);
 
-            const rep = await service.sync({ apply: true });
+            const rep = await service.sync({ market: GoodServiceEnum.OZON, apply: true });
 
             expect(rep.toFix[0].taskId).toBe(7777);
             expect(updateAttributes).toHaveBeenCalledWith({
@@ -206,7 +209,7 @@ describe('TnvedSyncService', () => {
                 '531557-10': { code: null, dictId: null, markOn: false },
             });
 
-            const rep = await service.sync({ apply: false });
+            const rep = await service.sync({ market: GoodServiceEnum.OZON, apply: false });
 
             expect(rep.checkedOffers).toBe(2);
             expect(rep.toFix.map((f) => f.offer).sort()).toEqual(['531557', '531557-10']);
@@ -216,7 +219,7 @@ describe('TnvedSyncService', () => {
             query.mockResolvedValueOnce([baseRow(222, '8504409100')]);
             ozonCatalog(['777', '888'], {});
 
-            const rep = await service.sync({ apply: false });
+            const rep = await service.sync({ market: GoodServiceEnum.OZON, apply: false });
 
             expect(rep.notFoundOnOzon).toEqual(['222']);
             expect(rep.checkedOffers).toBe(0);
