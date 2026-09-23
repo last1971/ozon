@@ -9,6 +9,7 @@ import SupplyWbFbs from "@/components/SupplyWbFbs.vue";
 import OzonProductCreate from "@/components/OzonProductCreate.vue";
 import WbCopyProduct from "@/components/WbCopyProduct.vue";
 import Chz from "@/components/Chz.vue";
+import TnvedSync from "@/components/TnvedSync.vue";
 import { postingStore } from "@/stores/postings";
 
 const posting = postingStore();
@@ -43,6 +44,7 @@ function onScanSuccess(order: string) {
             <v-tab value="ozon-product">Добавить товар на Озон</v-tab>
             <v-tab value="wb-copy">Копировать в WB</v-tab>
             <v-tab value="chz">ЧЗ</v-tab>
+            <v-tab value="tnved">ТН ВЭД</v-tab>
         </v-tabs>
 
         <v-card-text>
@@ -77,6 +79,10 @@ function onScanSuccess(order: string) {
 
                 <v-tabs-window-item value="chz">
                     <Chz class="pa-2"/>
+                </v-tabs-window-item>
+
+                <v-tabs-window-item value="tnved">
+                    <TnvedSync class="pa-2"/>
                 </v-tabs-window-item>
             </v-tabs-window>
         </v-card-text>
