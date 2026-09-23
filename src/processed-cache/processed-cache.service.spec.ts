@@ -7,15 +7,17 @@ describe('ProcessedCacheService', () => {
     let service: ProcessedCacheService;
     const cacheGet = jest.fn();
     const cacheSet = jest.fn();
+    const cacheDel = jest.fn();
 
     beforeEach(async () => {
         cacheGet.mockReset().mockResolvedValue('');
         cacheSet.mockReset().mockResolvedValue(undefined);
+        cacheDel.mockReset().mockResolvedValue(undefined);
 
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 ProcessedCacheService,
-                { provide: CACHE_MANAGER, useValue: { get: cacheGet, set: cacheSet } },
+                { provide: CACHE_MANAGER, useValue: { get: cacheGet, set: cacheSet, del: cacheDel } },
                 {
                     provide: ConfigService,
                     useValue: {
@@ -62,6 +64,14 @@ describe('ProcessedCacheService', () => {
         it('пустой Set → пишет пустую строку', async () => {
             await service.save('orders', 'WbOrderService', new Set());
             expect(cacheSet).toHaveBeenCalledWith('processed:orders:WbOrderService', '', expect.any(Number));
+        });
+    });
+
+    describe('clear', () => {
+        it('удаляет ключ набора целиком', async () => {
+            await service.clear('tnved', 'wb');
+
+            expect(cacheDel).toHaveBeenCalledWith('processed:tnved:wb');
         });
     });
 

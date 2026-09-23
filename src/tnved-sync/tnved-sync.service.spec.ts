@@ -4,6 +4,7 @@ import { FIREBIRD } from '../firebird/firebird.module';
 import { ProductService } from '../product/product.service';
 import { TnvedSyncService } from './tnved-sync.service';
 import { GoodServiceEnum } from '../good/good.service.enum';
+import { ProcessedCacheService } from '../processed-cache/processed-cache.service';
 import { OzonTnvedService } from './ozon.tnved.service';
 import { WbTnvedService } from './wb.tnved.service';
 
@@ -19,6 +20,9 @@ describe('TnvedSyncService', () => {
     const searchCategoryAttributeValues = jest.fn();
     const updateAttributes = jest.fn();
     const productService = { list, getProductAttributes, searchCategoryAttributeValues, updateAttributes };
+    const progressLoad = jest.fn();
+    const progressSave = jest.fn();
+    const progressClear = jest.fn();
 
     // id значений словаря ТНВЭД 8504409100 в категории
     const MARK_ID = 972997562; // «8504409100 - МАРКИРОВКА РФ»
@@ -36,15 +40,17 @@ describe('TnvedSyncService', () => {
     });
 
     beforeEach(async () => {
-        [query, commit, rollback, list, getProductAttributes, searchCategoryAttributeValues, updateAttributes].forEach(
+        [query, commit, rollback, list, getProductAttributes, searchCategoryAttributeValues, updateAttributes, progressLoad, progressSave, progressClear].forEach(
             (m) => m.mockReset(),
         );
+        progressLoad.mockResolvedValue(new Set<string>());
         searchCategoryAttributeValues.mockResolvedValue(MARK_VALUES);
         const moduleRef: TestingModule = await Test.createTestingModule({
             providers: [
                 TnvedSyncService,
                 OzonTnvedService,
                 { provide: WbTnvedService, useValue: {} },
+                { provide: ProcessedCacheService, useValue: { load: progressLoad, save: progressSave, clear: progressClear } },
                 { provide: FIREBIRD, useValue: pool },
                 { provide: ProductService, useValue: productService },
                 { provide: ConfigService, useValue: { get: (k: string, def: any) => (k === 'SERVICES' ? ['ozon'] : def) } },
@@ -223,6 +229,58 @@ describe('TnvedSyncService', () => {
 
             expect(rep.notFoundOnOzon).toEqual(['222']);
             expect(rep.checkedOffers).toBe(0);
+        });
+    });
+
+    describe('прогресс раскатки (ProcessedCacheService)', () => {
+        it('onlyNew: обработанные товары пропускаются, limit — по необработанным', async () => {
+            query.mockResolvedValueOnce([baseRow(1, '8504409100'), baseRow(2, '8504409100'), baseRow(3, '8504409100')]);
+            progressLoad.mockResolvedValue(new Set(['1']));
+            ozonCatalog(['2', '3'], {
+                '2': { code: '8504409100', dictId: MARK_ID, markOn: true },
+                '3': { code: '8504409100', dictId: MARK_ID, markOn: true },
+            });
+
+            const rep = await service.sync({ market: GoodServiceEnum.OZON, onlyNew: true, limit: 1 });
+
+            expect(rep.checkedGoods).toBe(1);
+            expect(rep.skippedProcessed).toBe(1);
+            expect(rep.remaining).toBe(2); // 2 и 3 — dry-run ничего не помечает
+            expect(getProductAttributes).toHaveBeenCalledTimes(1);
+            expect(getProductAttributes).toHaveBeenCalledWith('2');
+            expect(progressSave).not.toHaveBeenCalled();
+        });
+
+        it('apply: помечаются товары, где всё ок/записано; спорные, с ошибкой и без карточки — нет', async () => {
+            query.mockResolvedValueOnce([
+                baseRow(10, '8504409100'), // уже ок
+                baseRow(11, '8504409100'), // запишем
+                baseRow(12, '8541410008'), // спорный: кода нет в категории
+                baseRow(13, '8504409100'), // нет карточки
+            ]);
+            ozonCatalog(['10', '11', '12'], {
+                '10': { code: '8504409100', dictId: MARK_ID, markOn: true },
+                '11': { code: '8504409100', dictId: PLAIN_ID, markOn: false },
+                '12': { code: '8504408500', dictId: 1, markOn: false },
+            });
+            searchCategoryAttributeValues.mockImplementation((_a: number, _c: number, _t: number, q: string) =>
+                Promise.resolve(q === '8504409100' ? MARK_VALUES : []),
+            );
+            updateAttributes.mockResolvedValue([{ task_id: 7 }]);
+
+            const rep = await service.sync({ market: GoodServiceEnum.OZON, apply: true, onlyNew: true });
+
+            expect(progressSave).toHaveBeenCalledTimes(1);
+            const [name, scope, set] = progressSave.mock.calls[0];
+            expect([name, scope]).toEqual(['tnved', 'ozon']);
+            expect(Array.from(set as Set<string>).sort()).toEqual(['10', '11']);
+            expect(rep.remaining).toBe(2);
+        });
+
+        it('clearProgress → clear в кэше по маркетплейсу', async () => {
+            await service.clearProgress(GoodServiceEnum.WB);
+
+            expect(progressClear).toHaveBeenCalledWith('tnved', 'wb');
         });
     });
 });

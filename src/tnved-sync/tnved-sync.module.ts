@@ -7,9 +7,10 @@ import { OzonTnvedService } from './ozon.tnved.service';
 import { WbTnvedService } from './wb.tnved.service';
 import { WbCardModule } from '../wb.card/wb.card.module';
 import { WbApiModule } from '../wb.api/wb.api.module';
+import { ProcessedCacheModule } from '../processed-cache/processed-cache.module';
 
 @Module({
-    imports: [ProductModule, FirebirdModule, WbCardModule, WbApiModule],
+    imports: [ProductModule, FirebirdModule, WbCardModule, WbApiModule, ProcessedCacheModule],
     controllers: [TnvedSyncController],
     providers: [TnvedSyncService, OzonTnvedService, WbTnvedService],
 })

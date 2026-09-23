@@ -32,6 +32,11 @@ export class ProcessedCacheService {
         );
     }
 
+    /** Сбросить набор целиком (прогресс раскатки — «прогнать всё заново»). */
+    async clear(cacheName: string, scope: string): Promise<void> {
+        await this.cacheManager.del(this.cacheKey(cacheName, scope));
+    }
+
     /**
      * Дописать один ключ в существующий набор (load→add→save, мердж).
      * Читает актуальное множество перед записью, поэтому не затирает ключи,
