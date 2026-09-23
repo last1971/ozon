@@ -50,7 +50,7 @@ export class WbTnvedService implements ITnvedUpdateable {
         const cardMap = await this.loadCardMap();
         // справочник ТН ВЭД и наличие характеристики — по предмету, резолвим один раз за прогон
         const dirCache = new Map<number, WbTnvedDirectory>();
-        const charcCache = new Map<number, boolean>();
+        const charcCache = new Map<number, boolean | null>();
         const result: TnvedCheckResult = { items: [], notFound: [] };
 
         for (const row of base) {
@@ -145,7 +145,7 @@ export class WbTnvedService implements ITnvedUpdateable {
         card: WbCardDto,
         { goodscode, tnved, markRequired }: TnvedBaseItem,
         dirCache: Map<number, WbTnvedDirectory>,
-        charcCache: Map<number, boolean>,
+        charcCache: Map<number, boolean | null>,
     ): Promise<TnvedCheckItem> {
         const item: TnvedCheckItem = {
             offer: card.vendorCode,
@@ -162,6 +162,9 @@ export class WbTnvedService implements ITnvedUpdateable {
         if (hasCharc === undefined) {
             hasCharc = await this.subjectHasTnvedCharc(card.subjectID);
             charcCache.set(card.subjectID, hasCharc);
+        }
+        if (hasCharc === null) {
+            return { ...item, ambiguousReason: `характеристики предмета ${subject} не отданы` };
         }
         if (!hasCharc) {
             return { ...item, ambiguousReason: `у предмета ${subject} нет характеристики ТНВЭД ${this.tnvedCharcId}` };
@@ -218,31 +221,44 @@ export class WbTnvedService implements ITnvedUpdateable {
         return map;
     }
 
-    /** Есть ли у предмета характеристика ТНВЭД. getCharacteristics отдаёт [] и при сбое — это тоже «нет». */
-    private async subjectHasTnvedCharc(subjectId: number): Promise<boolean> {
-        const charcs = await this.cardService.getCharacteristics(subjectId);
-        return charcs.some((c) => c.charcID === this.tnvedCharcId);
+    /**
+     * Все обращения к контентному API ВБ — через одну калитку: не чаще раза в секунду, при 429 — пауза
+     * retryAfterMs и повтор (до трёх раз). Лимит у ВБ общий на все контентные методы, и после выкачки
+     * каталога он исчерпан, поэтому без паузы и справочники, и характеристики предмета отвечают 429.
+     * api.method не бросает — 429 приходит как {error:{status:429, retryAfterMs}}.
+     */
+    @RateLimit(1000)
+    private async content(label: string, call: () => Promise<any>, attempt = 0): Promise<any> {
+        const res = await call();
+        if (res?.error?.status === 429 && attempt < 3) {
+            const retryAfterMs = res.error.retryAfterMs || 60000;
+            this.logger.warn(`[tnved] ВБ 429 на ${label}, ждём ${retryAfterMs} мс и повторяем`);
+            setRateLimitBlocked(WbTnvedService.name, 'content', Date.now() + retryAfterMs);
+            return this.content(label, call, attempt + 1);
+        }
+        return res;
     }
 
-    /**
-     * Справочник кодов ТН ВЭД предмета. null — ВБ не ответил (api.method не бросает, возвращает {error}).
-     * Лимит контентного API общий с выкачкой карточек, поэтому 429 здесь обычное дело: как в WbOrderService.list —
-     * блокируем метод на retryAfterMs и повторяем (не больше двух раз), декоратор сам выждет паузу.
-     */
-    @RateLimit(600)
-    private async loadDirectory(subjectId: number, attempt = 0): Promise<WbTnvedDirectory> {
-        const res = await this.api.method(
-            'https://content-api.wildberries.ru/content/v2/directory/tnved',
-            'get',
-            { subjectID: subjectId, locale: 'ru' },
-            true,
-        );
-        if (res?.error?.status === 429 && attempt < 2) {
-            const retryAfterMs = res.error.retryAfterMs || 60000;
-            this.logger.warn(`[tnved] ВБ 429 на directory/tnved (subjectID=${subjectId}), ждём ${retryAfterMs} мс и повторяем`);
-            setRateLimitBlocked(WbTnvedService.name, 'loadDirectory', Date.now() + retryAfterMs);
-            return this.loadDirectory(subjectId, attempt + 1);
+    /** Есть ли у предмета характеристика ТНВЭД. null — ВБ не отдал характеристики (в спорные, не «нет»). */
+    private async subjectHasTnvedCharc(subjectId: number): Promise<boolean | null> {
+        const res = await this.content(`object/charcs/${subjectId}`, () => this.cardService.fetchCharacteristics(subjectId));
+        if (res?.error || !Array.isArray(res?.data)) {
+            this.logger.warn(`[tnved] object/charcs/${subjectId}: ${JSON.stringify(res).slice(0, 300)}`);
+            return null;
         }
+        return res.data.some((c: any) => c.charcID === this.tnvedCharcId);
+    }
+
+    /** Справочник кодов ТН ВЭД предмета. null — ВБ не ответил. */
+    private async loadDirectory(subjectId: number): Promise<WbTnvedDirectory> {
+        const res = await this.content(`directory/tnved?subjectID=${subjectId}`, () =>
+            this.api.method(
+                'https://content-api.wildberries.ru/content/v2/directory/tnved',
+                'get',
+                { subjectID: subjectId, locale: 'ru' },
+                true,
+            ),
+        );
         if (!Array.isArray(res?.data)) {
             // отказ ВБ должен быть виден в логе, а не тонуть в «спорных»
             this.logger.warn(`[tnved] directory/tnved subjectID=${subjectId}: ${JSON.stringify(res).slice(0, 300)}`);

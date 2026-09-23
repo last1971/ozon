@@ -239,13 +239,22 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
         ttl: 86400,
     })
     async getCharacteristics(subjectId: number): Promise<WbCharc[]> {
-        const res = await this.api.method(
+        const res = await this.fetchCharacteristics(subjectId);
+        // Отказ ВБ (429 и т.п.) не кэшировать как «характеристик нет» — иначе сутки предмет будет «без характеристик».
+        if (res?.error) {
+            throw new Error(`WB charcs ${subjectId}: ${res.error.status ?? ''} ${res.error.message ?? res.error.service_message ?? ''}`.trim());
+        }
+        return res?.data || [];
+    }
+
+    /** Сырой ответ ВБ по характеристикам предмета, без кэша: {data} или {error} (api.method не бросает). */
+    async fetchCharacteristics(subjectId: number): Promise<any> {
+        return this.api.method(
             `https://content-api.wildberries.ru/content/v2/object/charcs/${subjectId}`,
             'get',
             null,
             true,
         );
-        return res.data || [];
     }
 
     async createCard(input: CreateWbCardDto): Promise<IWbCreateCardContext> {

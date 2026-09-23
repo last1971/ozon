@@ -11,7 +11,7 @@ import { clearRateLimitCache } from '../helpers/decorators/rate-limit.decorator'
 describe('WbTnvedService', () => {
     let service: WbTnvedService;
     const getAllWbCards = jest.fn();
-    const getCharacteristics = jest.fn();
+    const fetchCharacteristics = jest.fn();
     const getWbCardAsync = jest.fn();
     const updateCards = jest.fn();
     const method = jest.fn();
@@ -38,15 +38,15 @@ describe('WbTnvedService', () => {
     const base = (goodscode: string, tnved: string, markRequired = true) => ({ goodscode, tnved, markRequired });
 
     beforeEach(async () => {
-        [getAllWbCards, getCharacteristics, getWbCardAsync, updateCards, method].forEach((m) => m.mockReset());
+        [getAllWbCards, fetchCharacteristics, getWbCardAsync, updateCards, method].forEach((m) => m.mockReset());
         clearRateLimitCache();
         backupDir = mkdtempSync(join(tmpdir(), 'wb-tnved-'));
-        getCharacteristics.mockResolvedValue([TNVED_CHARC]);
+        fetchCharacteristics.mockResolvedValue({ data: [TNVED_CHARC], error: false });
         method.mockResolvedValue(DIRECTORY);
         const moduleRef: TestingModule = await Test.createTestingModule({
             providers: [
                 WbTnvedService,
-                { provide: WbCardService, useValue: { getAllWbCards, getCharacteristics, getWbCardAsync, updateCards } },
+                { provide: WbCardService, useValue: { getAllWbCards, fetchCharacteristics, getWbCardAsync, updateCards } },
                 { provide: WbApiService, useValue: { method } },
                 { provide: ConfigService, useValue: { get: (k: string, def: any) => (k === 'WB_CARD_BACKUP_DIR' ? backupDir : def) } },
             ],
@@ -142,9 +142,31 @@ describe('WbTnvedService', () => {
         expect(res.items[0].ok).toBe(true);
     });
 
+    it('характеристики предмета не отданы (429 три раза подряд) → спорно «не отданы», не «нет характеристики»', async () => {
+        getAllWbCards.mockResolvedValue([card('565831', '8504408300')]);
+        fetchCharacteristics.mockResolvedValue({ result: null, status: 'NotOk', error: { status: 429, retryAfterMs: 10 } });
+
+        const res = await service.checkTnved([base('565831', '8504408300')]);
+
+        expect(fetchCharacteristics).toHaveBeenCalledTimes(4); // 1 + 3 повтора
+        expect(res.items[0].ambiguousReason).toContain('не отданы');
+        expect(method).not.toHaveBeenCalled();
+    });
+
+    it('429 на характеристиках → пауза и повтор, дальше как обычно', async () => {
+        getAllWbCards.mockResolvedValue([card('565831', '8504408300')]);
+        fetchCharacteristics
+            .mockResolvedValueOnce({ result: null, status: 'NotOk', error: { status: 429, retryAfterMs: 10 } })
+            .mockResolvedValueOnce({ data: [TNVED_CHARC], error: false });
+
+        const res = await service.checkTnved([base('565831', '8504408300')]);
+
+        expect(res.items[0].ok).toBe(true);
+    });
+
     it('у предмета нет характеристики ТНВЭД → спорно, справочник не запрашиваем', async () => {
         getAllWbCards.mockResolvedValue([card('565831', undefined, 964)]);
-        getCharacteristics.mockResolvedValue([{ ...TNVED_CHARC, charcID: 15004139, name: 'Код ТН ВЭД' }]);
+        fetchCharacteristics.mockResolvedValue({ data: [{ ...TNVED_CHARC, charcID: 15004139, name: 'Код ТН ВЭД' }], error: false });
 
         const res = await service.checkTnved([base('565831', '8504408300')]);
 
@@ -164,7 +186,7 @@ describe('WbTnvedService', () => {
             { subjectID: SUBJECT, locale: 'ru' },
             true,
         );
-        expect(getCharacteristics).toHaveBeenCalledTimes(1);
+        expect(fetchCharacteristics).toHaveBeenCalledTimes(1);
     });
 
     it('суффиксные vendorCode (531557 и 531557-10) — обе карточки товара', async () => {
