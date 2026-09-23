@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { FIREBIRD } from '../firebird/firebird.module';
 import { ProductService } from '../product/product.service';
 import { TnvedSyncService } from './tnved-sync.service';
+import { OzonTnvedService } from './ozon.tnved.service';
 
 describe('TnvedSyncService', () => {
     let service: TnvedSyncService;
@@ -40,9 +41,10 @@ describe('TnvedSyncService', () => {
         const moduleRef: TestingModule = await Test.createTestingModule({
             providers: [
                 TnvedSyncService,
+                OzonTnvedService,
                 { provide: FIREBIRD, useValue: pool },
                 { provide: ProductService, useValue: productService },
-                { provide: ConfigService, useValue: { get: (_k: string, def: number) => def } },
+                { provide: ConfigService, useValue: { get: (k: string, def: any) => (k === 'SERVICES' ? ['ozon'] : def) } },
             ],
         }).compile();
         service = moduleRef.get(TnvedSyncService);
@@ -106,7 +108,7 @@ describe('TnvedSyncService', () => {
 
             const rep = await service.sync({ apply: false });
 
-            expect(rep.toFix[0]).toMatchObject({ offer: '568651', ozon: '8504408500', base: '8504409100', dictValueId: MARK_ID });
+            expect(rep.toFix[0]).toMatchObject({ offer: '568651', current: '8504408500', base: '8504409100', dictValueId: MARK_ID });
             expect(updateAttributes).not.toHaveBeenCalled();
         });
 
