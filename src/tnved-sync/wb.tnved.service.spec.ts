@@ -48,13 +48,32 @@ describe('WbTnvedService', () => {
                 WbTnvedService,
                 { provide: WbCardService, useValue: { getAllWbCards, fetchCharacteristics, getWbCardAsync, updateCards } },
                 { provide: WbApiService, useValue: { method } },
-                { provide: ConfigService, useValue: { get: (k: string, def: any) => (k === 'WB_CARD_BACKUP_DIR' ? backupDir : def) } },
+                { provide: ConfigService, useValue: { get: (k: string, def: any) => (k === 'WB_CARD_BACKUP_DIR' ? backupDir : k === 'WB_CARD_ERRORS_DELAY_MS' ? 0 : def) } },
             ],
         }).compile();
         service = moduleRef.get(WbTnvedService);
     });
 
     afterEach(() => rmSync(backupDir, { recursive: true, force: true }));
+
+    it('прогресс сверки: «каталог» по страницам, потом «сверка» по товарам', async () => {
+        getAllWbCards.mockImplementation((_l: number, onPage?: (n: number) => void) => {
+            onPage?.(100);
+            onPage?.(150);
+            return Promise.resolve([card('565831', ['8504408300'])]);
+        });
+        const progress = { done: 0, counters: {} };
+        const phases: string[] = [];
+        const orig = Object.assign;
+        // фазы ловим по изменению progress.phase
+        const seen = new Proxy(progress, { set: (t, k, v) => { if (k === 'phase') phases.push(String(v)); (t as any)[k] = v; return true; } });
+
+        await service.checkTnved([base('565831', '8504408300'), base('2', '8504408300')], seen as any);
+
+        expect(phases).toEqual(['каталог', 'сверка']);
+        expect(progress).toMatchObject({ phase: 'сверка', done: 2, total: 2 });
+        expect(orig).toBe(Object.assign);
+    });
 
     it('код совпадает → ok', async () => {
         getAllWbCards.mockResolvedValue([card('565831', ['8504408300'])]);
@@ -273,6 +292,41 @@ describe('WbTnvedService', () => {
 
             expect(res[0].error).toContain('Ошибка');
             expect(res[0].error).toContain('"x":1');
+        });
+
+        it('отложенный отказ ВБ (cards/error/list) по нашей карточке → error с текстом; чужие и старые пачки — нет', async () => {
+            getWbCardAsync.mockImplementation((o: string) => Promise.resolve(card(o)));
+            updateCards.mockResolvedValue([WB_OK]);
+            const fresh = new Date().toISOString();
+            const old = new Date(Date.now() - 3600_000).toISOString();
+            method.mockImplementation((url: string) =>
+                Promise.resolve(
+                    url.endsWith('cards/error/list')
+                        ? { data: { items: [
+                            { batchUUID: 'b1', updatedAt: fresh, errors: { '488434': ['Бренд «STM» не найден'], '999': ['чужая'] } },
+                            { batchUUID: 'b0', updatedAt: old, errors: { '565831': ['старый отказ'] } },
+                          ] } }
+                        : DIRECTORY,
+                ),
+            );
+
+            const res = await service.updateTnved([fix('488434'), fix('565831')]);
+
+            expect(res).toEqual([
+                { offer: '488434', error: 'ВБ отверг: Бренд «STM» не найден' },
+                { offer: '565831' },
+            ]);
+            expect(method).toHaveBeenCalledWith('https://content-api.wildberries.ru/content/v2/cards/error/list', 'post', {}, true);
+        });
+
+        it('прогресс записи: фаза «запись», done = отправлено', async () => {
+            getWbCardAsync.mockResolvedValue(card('565831'));
+            updateCards.mockResolvedValue([WB_OK]);
+            const progress = { done: 0, counters: {} };
+
+            await service.updateTnved([fix('565831')], progress);
+
+            expect(progress).toMatchObject({ phase: 'запись', done: 1, total: 1 });
         });
 
         it('карточки нет на ВБ → error, запись не вызывается', async () => {

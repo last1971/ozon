@@ -1,12 +1,14 @@
 import { SkipProcessedCommand } from './skip-processed.command';
 import { ITnvedProcessingContext } from '../../interfaces/i.tnved.processing.context';
 import { GoodServiceEnum } from '../../good/good.service.enum';
+import { emptyProgress } from '../../interfaces/i.job.context';
 
 describe('SkipProcessedCommand', () => {
     const load = jest.fn();
     const command = new SkipProcessedCommand({ load } as any);
     const all = ['1', '2', '3'].map((goodscode) => ({ goodscode, tnved: 'x', markRequired: false }));
     const ctx = (opts: Partial<ITnvedProcessingContext['opts']>): ITnvedProcessingContext => ({
+        progress: emptyProgress(),
         service: {} as any,
         opts: { market: GoodServiceEnum.OZON, ...opts },
         all,

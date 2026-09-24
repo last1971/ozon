@@ -1,10 +1,10 @@
 import { Injectable } from '@nestjs/common';
-import { ICommandAsync } from '../../interfaces/i.command.acync';
+import { IJobCommand } from '../../interfaces/i.job.context';
 import { ITnvedProcessingContext } from '../../interfaces/i.tnved.processing.context';
 
 /** Решения маркетплейса → отчёт: уже ок / на правку / спорно (руками) / нет карточки. */
 @Injectable()
-export class BuildTnvedReportCommand implements ICommandAsync<ITnvedProcessingContext> {
+export class BuildTnvedReportCommand implements IJobCommand<ITnvedProcessingContext> {
     async execute(context: ITnvedProcessingContext): Promise<ITnvedProcessingContext> {
         const items = context.items ?? [];
         context.report = {
@@ -23,6 +23,13 @@ export class BuildTnvedReportCommand implements ICommandAsync<ITnvedProcessingCo
             else if (item.ok) context.report.alreadyOk++;
             else context.report.toFix.push({ ...item });
         }
+        // счётчики задачи — чтобы их было видно по ходу, до конца цепочки
+        Object.assign(context.progress.counters, {
+            ok: context.report.alreadyOk,
+            toFix: context.report.toFix.length,
+            ambiguous: context.report.ambiguous.length,
+            notFound: context.report.notFoundOnOzon.length,
+        });
         return context;
     }
 }

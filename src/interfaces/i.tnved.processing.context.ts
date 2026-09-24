@@ -1,5 +1,6 @@
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { ITnvedUpdateable, TnvedBaseItem, TnvedCheckItem } from './i.tnved.updateable';
+import { IJobContext } from './i.job.context';
 
 export interface TnvedSyncOptions {
     market: GoodServiceEnum; // маркетплейс, обязателен: значение по умолчанию скрывало бы, куда идёт прогон
@@ -32,8 +33,9 @@ export const TNVED_PROGRESS_CACHE = 'tnved';
 /**
  * Контекст сверки ТН ВЭД через паттерн команда (как IVatProcessingContext).
  * Команды заполняют его по очереди: база → фильтр обработанных → сверка → отчёт → запись → отметки.
+ * Наследует IJobContext: progress двигают команды и маркетплейс, снаружи его видит JobService.
  */
-export interface ITnvedProcessingContext {
+export interface ITnvedProcessingContext extends IJobContext {
     /** Маркетплейс как реализация договора — резолвится сервисом до цепочки, как в НДС */
     service: ITnvedUpdateable;
     opts: TnvedSyncOptions;
@@ -52,7 +54,4 @@ export interface ITnvedProcessingContext {
     notFound?: string[];
 
     report?: TnvedSyncReport;
-
-    stopChain?: boolean;
-    logger?: { log: (msg: string) => void; error: (msg: string) => void };
 }

@@ -1,5 +1,5 @@
 import { Injectable } from '@nestjs/common';
-import { ICommandAsync } from '../../interfaces/i.command.acync';
+import { IJobCommand } from '../../interfaces/i.job.context';
 import { ITnvedProcessingContext, TNVED_PROGRESS_CACHE } from '../../interfaces/i.tnved.processing.context';
 import { ProcessedCacheService } from '../../processed-cache/processed-cache.service';
 
@@ -8,7 +8,7 @@ import { ProcessedCacheService } from '../../processed-cache/processed-cache.ser
  * limit режет уже отфильтрованное («следующие N необработанных») → ctx.base, ctx.skippedProcessed.
  */
 @Injectable()
-export class SkipProcessedCommand implements ICommandAsync<ITnvedProcessingContext> {
+export class SkipProcessedCommand implements IJobCommand<ITnvedProcessingContext> {
     constructor(private readonly progress: ProcessedCacheService) {}
 
     async execute(context: ITnvedProcessingContext): Promise<ITnvedProcessingContext> {

@@ -131,13 +131,15 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
         });
         return res;
     }
-    async getAllWbCards(limit: number = 100): Promise<WbCardDto[]> {
+    /** Весь каталог страницами; onPage(loaded) — сколько карточек уже выкачано (для прогресса фоновой задачи). */
+    async getAllWbCards(limit: number = 100, onPage?: (loaded: number) => void): Promise<WbCardDto[]> {
         const ret: WbCardDto[] = [];
         let cycle = true;
         let args: any = null;
         while (cycle) {
             const { cards, cursor } = await this.getWbCards(args);
             ret.push(...cards);
+            onPage?.(ret.length);
             const { updatedAt, nmID, total } = cursor;
             args = {
                 settings: {

@@ -8,6 +8,7 @@ import { WbTnvedService } from './wb.tnved.service';
 import { WbCardModule } from '../wb.card/wb.card.module';
 import { WbApiModule } from '../wb.api/wb.api.module';
 import { ProcessedCacheModule } from '../processed-cache/processed-cache.module';
+import { JobModule } from '../job/job.module';
 import { LoadBaseTnvedCommand } from './commands/load-base-tnved.command';
 import { SkipProcessedCommand } from './commands/skip-processed.command';
 import { CheckTnvedCommand } from './commands/check-tnved.command';
@@ -25,7 +26,7 @@ const TNVED_COMMANDS = [
 ];
 
 @Module({
-    imports: [ProductModule, FirebirdModule, WbCardModule, WbApiModule, ProcessedCacheModule],
+    imports: [ProductModule, FirebirdModule, WbCardModule, WbApiModule, ProcessedCacheModule, JobModule],
     controllers: [TnvedSyncController],
     providers: [TnvedSyncService, OzonTnvedService, WbTnvedService, ...TNVED_COMMANDS],
 })

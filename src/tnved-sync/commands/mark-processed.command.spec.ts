@@ -1,6 +1,7 @@
 import { MarkProcessedCommand } from './mark-processed.command';
 import { ITnvedProcessingContext } from '../../interfaces/i.tnved.processing.context';
 import { GoodServiceEnum } from '../../good/good.service.enum';
+import { emptyProgress } from '../../interfaces/i.job.context';
 
 describe('MarkProcessedCommand', () => {
     const save = jest.fn();
@@ -9,6 +10,7 @@ describe('MarkProcessedCommand', () => {
     const item = (offer: string, extra = {}) => ({ offer, goodscode: offer, current: null, base: 'x', markRequired: false, ok: false, ...extra });
     // all: 10 ок, 11 записан, 12 спорный, 13 нет карточки, 14 записан с ошибкой, 20 не в этом прогоне
     const ctx = (apply: boolean): ITnvedProcessingContext => ({
+        progress: emptyProgress(),
         service: {} as any,
         opts: { market: GoodServiceEnum.OZON, apply },
         all: ['10', '11', '12', '13', '14', '20'].map(good),

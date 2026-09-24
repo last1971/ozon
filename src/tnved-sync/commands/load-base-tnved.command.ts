@@ -1,12 +1,14 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { FirebirdPool } from 'ts-firebird';
 import { FIREBIRD } from '../../firebird/firebird.module';
-import { ICommandAsync } from '../../interfaces/i.command.acync';
+import { IJobCommand } from '../../interfaces/i.job.context';
 import { ITnvedProcessingContext } from '../../interfaces/i.tnved.processing.context';
 
 /** Источник истины — наша база: все товары с заполненным ТНВЭД + флаг маркируемости → ctx.all. */
 @Injectable()
-export class LoadBaseTnvedCommand implements ICommandAsync<ITnvedProcessingContext> {
+export class LoadBaseTnvedCommand implements IJobCommand<ITnvedProcessingContext> {
+    readonly phase = 'база';
+
     constructor(@Inject(FIREBIRD) private readonly pool: FirebirdPool) {}
 
     async execute(context: ITnvedProcessingContext): Promise<ITnvedProcessingContext> {

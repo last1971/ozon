@@ -8,6 +8,7 @@ import {
     TnvedCheckResult,
     TnvedUpdateResult,
 } from '../interfaces/i.tnved.updateable';
+import { emptyProgress, JobProgress } from '../interfaces/i.job.context';
 
 const MARK_LABEL = 'МАРКИРОВКА РФ';
 
@@ -41,8 +42,10 @@ export class OzonTnvedService implements ITnvedUpdateable {
         this.markAttrId = config.get<number>('OZON_MARK_REQUIRED_ATTR_ID', 23536);
     }
 
-    async checkTnved(base: TnvedBaseItem[]): Promise<TnvedCheckResult> {
-        const offerMap = await this.loadOfferMap();
+    async checkTnved(base: TnvedBaseItem[], progress: JobProgress = emptyProgress()): Promise<TnvedCheckResult> {
+        Object.assign(progress, { phase: 'каталог', done: 0, total: undefined });
+        const offerMap = await this.loadOfferMap((loaded) => (progress.done = loaded));
+        Object.assign(progress, { phase: 'сверка', done: 0, total: base.length });
         // варианты ТНВЭД в категории, ключ (cat:type:tnved) — резолвим один раз
         const dictCache = new Map<string, TnvedVariant[]>();
         const result: TnvedCheckResult = { items: [], notFound: [] };
@@ -52,16 +55,19 @@ export class OzonTnvedService implements ITnvedUpdateable {
             const offers = offerMap.get(row.goodscode) ?? [];
             if (offers.length === 0) {
                 result.notFound.push(row.goodscode);
+                progress.done++;
                 continue;
             }
             for (const offerId of offers) {
                 result.items.push(await this.checkOffer(offerId, row, dictCache));
             }
+            progress.done++;
         }
         return result;
     }
 
-    async updateTnved(items: TnvedCheckItem[]): Promise<TnvedUpdateResult[]> {
+    async updateTnved(items: TnvedCheckItem[], progress: JobProgress = emptyProgress()): Promise<TnvedUpdateResult[]> {
+        Object.assign(progress, { phase: 'отправка', done: 0, total: items.length }); // task_id не опрашивается: «отправлено» ≠ «применилось»
         const results: TnvedUpdateResult[] = [];
         for (const item of items as OzonTnvedItem[]) {
             try {
@@ -69,6 +75,7 @@ export class OzonTnvedService implements ITnvedUpdateable {
             } catch (e) {
                 results.push({ offer: item.offer, error: e?.message ?? String(e) });
             }
+            progress.done++;
         }
         return results;
     }
@@ -136,12 +143,15 @@ export class OzonTnvedService implements ITnvedUpdateable {
     }
 
     /** Карта goodscode -> [offer_id…] по всему каталогу Озона (учитывает суффиксные варианты фасовки). */
-    private async loadOfferMap(): Promise<Map<string, string[]>> {
+    private async loadOfferMap(onPage?: (loaded: number) => void): Promise<Map<string, string[]>> {
         const map = new Map<string, string[]>();
         let lastId = '';
+        let loaded = 0;
         for (let guard = 0; guard < 100; guard++) {
             const res: any = await this.productService.list(lastId, 1000);
             const items: any[] = res?.result?.items ?? [];
+            loaded += items.length;
+            onPage?.(loaded);
             for (const it of items) {
                 const offer = String(it.offer_id ?? '');
                 if (!offer) continue;
@@ -187,6 +197,7 @@ export class OzonTnvedService implements ITnvedUpdateable {
                 { complex_id: 0, id: this.markAttrId, values: [{ value: String(markValue) }] },
             ],
         });
+        await this.productService.evictProductAttributes(offer);
         return res?.[0]?.task_id;
     }
 }

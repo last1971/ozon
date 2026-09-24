@@ -27,7 +27,7 @@ import { UpdateAttributesBodyDto, UpdateAttributesResponseDto } from './dto/upda
 import { BuyoutDto } from '../posting/dto/buyout.dto';
 import { AccrualTypeDto, AccrualByDayResultDto, PayoutPeriodDto } from '../posting/dto/accrual.dto';
 import { normalizePostingsPrices } from '../helpers/posting.price';
-import { Cacheable } from 'nestjs-cacheable';
+import { Cacheable, CacheEvict } from 'nestjs-cacheable';
 
 @Injectable()
 export class ProductService extends ICountUpdateable implements OnModuleInit, IProductable {
@@ -331,6 +331,15 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
             limit: 1,
         });
         return res?.result?.[0] || null;
+    }
+
+    /** Сбросить суточный кэш атрибутов карточки — после записи, иначе сверка сутки видит старое. */
+    @CacheEvict({
+        key: (offer_id: string) => offer_id,
+        namespace: 'ozon:product-attrs',
+    })
+    async evictProductAttributes(offer_id: string): Promise<void> {
+        return;
     }
 
     async getTaskInfo(taskId: number): Promise<any> {

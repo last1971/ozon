@@ -12,6 +12,7 @@ import { VaultModule } from 'vault-module/lib/vault.module';
 import { PostingModule } from './posting/posting.module';
 import { InvoiceModule } from './invoice/invoice.module';
 import { PriceModule } from './price/price.module';
+import { JobModule } from './job/job.module';
 import { GoodModule } from './good/good.module';
 import { ServeStaticModule } from '@nestjs/serve-static';
 import { join } from 'path';
@@ -104,6 +105,7 @@ import JSONbig from 'json-bigint';
             rootPath: join(process.cwd(), 'admin-panel/dist'),
         }),
         ScheduleModule.forRoot(),
+        JobModule,
         OzonApiModule,
         ProductModule,
         ElectronicaApiModule,

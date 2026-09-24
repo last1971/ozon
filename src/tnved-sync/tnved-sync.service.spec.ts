@@ -11,6 +11,7 @@ import { CheckTnvedCommand } from './commands/check-tnved.command';
 import { BuildTnvedReportCommand } from './commands/build-tnved-report.command';
 import { UpdateTnvedCommand } from './commands/update-tnved.command';
 import { MarkProcessedCommand } from './commands/mark-processed.command';
+import { JobService } from '../job/job.service';
 import { OzonTnvedService } from './ozon.tnved.service';
 import { WbTnvedService } from './wb.tnved.service';
 
@@ -25,7 +26,8 @@ describe('TnvedSyncService', () => {
     const getProductAttributes = jest.fn();
     const searchCategoryAttributeValues = jest.fn();
     const updateAttributes = jest.fn();
-    const productService = { list, getProductAttributes, searchCategoryAttributeValues, updateAttributes };
+    const evictProductAttributes = jest.fn();
+    const productService = { list, getProductAttributes, searchCategoryAttributeValues, updateAttributes, evictProductAttributes };
     const progressLoad = jest.fn();
     const progressSave = jest.fn();
     const progressClear = jest.fn();
@@ -46,7 +48,7 @@ describe('TnvedSyncService', () => {
     });
 
     beforeEach(async () => {
-        [query, commit, rollback, list, getProductAttributes, searchCategoryAttributeValues, updateAttributes, progressLoad, progressSave, progressClear].forEach(
+        [query, commit, rollback, list, getProductAttributes, searchCategoryAttributeValues, updateAttributes, evictProductAttributes, progressLoad, progressSave, progressClear].forEach(
             (m) => m.mockReset(),
         );
         progressLoad.mockResolvedValue(new Set<string>());
@@ -61,6 +63,7 @@ describe('TnvedSyncService', () => {
                 BuildTnvedReportCommand,
                 UpdateTnvedCommand,
                 MarkProcessedCommand,
+                JobService,
                 { provide: WbTnvedService, useValue: {} },
                 { provide: ProcessedCacheService, useValue: { load: progressLoad, save: progressSave, clear: progressClear } },
                 { provide: FIREBIRD, useValue: pool },

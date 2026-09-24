@@ -1,6 +1,7 @@
 import { BuildTnvedReportCommand } from './build-tnved-report.command';
 import { ITnvedProcessingContext } from '../../interfaces/i.tnved.processing.context';
 import { GoodServiceEnum } from '../../good/good.service.enum';
+import { emptyProgress } from '../../interfaces/i.job.context';
 
 describe('BuildTnvedReportCommand', () => {
     const item = (offer: string, extra: Partial<ITnvedProcessingContext['items'][0]> = {}) => ({
@@ -8,7 +9,9 @@ describe('BuildTnvedReportCommand', () => {
     });
 
     it('делит решения на ок / на правку / спорно и переносит счётчики', async () => {
+        const progress = emptyProgress();
         const res = await new BuildTnvedReportCommand().execute({
+            progress,
             service: {} as any,
             opts: { market: GoodServiceEnum.WB, apply: true },
             base: [{ goodscode: '1', tnved: 'x', markRequired: false }, { goodscode: '2', tnved: 'x', markRequired: false }],
@@ -28,5 +31,6 @@ describe('BuildTnvedReportCommand', () => {
             remaining: 0,
         });
         expect(res.report.toFix.map((f) => f.offer)).toEqual(['2']);
+        expect(progress.counters).toEqual({ ok: 1, toFix: 1, ambiguous: 1, notFound: 1 });
     });
 });

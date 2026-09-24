@@ -14,6 +14,7 @@ import {
     TnvedCheckResult,
     TnvedUpdateResult,
 } from '../interfaces/i.tnved.updateable';
+import { emptyProgress, JobProgress } from '../interfaces/i.job.context';
 
 /** Справочник ТН ВЭД предмета: коды, которые ВБ примет в характеристику; null — справочник не отдан. */
 type WbTnvedDirectory = Set<string> | null;
@@ -34,6 +35,7 @@ export class WbTnvedService implements ITnvedUpdateable {
     private readonly logger = new Logger(WbTnvedService.name);
     private readonly tnvedCharcId: number;
     private readonly backupDir: string;
+    private readonly errorsDelayMs: number;
 
     constructor(
         private readonly cardService: WbCardService,
@@ -44,10 +46,14 @@ export class WbTnvedService implements ITnvedUpdateable {
         this.tnvedCharcId = config.get<number>('WB_TNVED_CHARC_ID', 15000001);
         // куда складывать карточки «до» перед записью (в .gitignore)
         this.backupDir = config.get<string>('WB_CARD_BACKUP_DIR', 'backup/wb-cards');
+        // сколько ждать после cards/update, прежде чем читать отложенные ошибки ВБ
+        this.errorsDelayMs = config.get<number>('WB_CARD_ERRORS_DELAY_MS', 5000);
     }
 
-    async checkTnved(base: TnvedBaseItem[]): Promise<TnvedCheckResult> {
-        const cardMap = await this.loadCardMap();
+    async checkTnved(base: TnvedBaseItem[], progress: JobProgress = emptyProgress()): Promise<TnvedCheckResult> {
+        Object.assign(progress, { phase: 'каталог', done: 0, total: undefined });
+        const cardMap = await this.loadCardMap((loaded) => (progress.done = loaded));
+        Object.assign(progress, { phase: 'сверка', done: 0, total: base.length });
         // справочник ТН ВЭД и наличие характеристики — по предмету, резолвим один раз за прогон
         const dirCache = new Map<number, WbTnvedDirectory>();
         const charcCache = new Map<number, boolean | null>();
@@ -58,16 +64,19 @@ export class WbTnvedService implements ITnvedUpdateable {
             const cards = cardMap.get(row.goodscode) ?? [];
             if (cards.length === 0) {
                 result.notFound.push(row.goodscode);
+                progress.done++;
                 continue;
             }
             for (const card of cards) {
                 result.items.push(await this.checkCard(card, row, dirCache, charcCache));
             }
+            progress.done++;
         }
         return result;
     }
 
-    async updateTnved(items: TnvedCheckItem[]): Promise<TnvedUpdateResult[]> {
+    async updateTnved(items: TnvedCheckItem[], progress: JobProgress = emptyProgress()): Promise<TnvedUpdateResult[]> {
+        Object.assign(progress, { phase: 'запись', done: 0, total: items.length });
         const results: TnvedUpdateResult[] = [];
         const before: WbCardDto[] = [];
         const after: WbCardDto[] = [];
@@ -88,12 +97,45 @@ export class WbTnvedService implements ITnvedUpdateable {
         const backup = await this.backupCards(before);
         this.logger.log(`[tnved] ВБ: карточки «до» (${before.length}) сохранены в ${backup}, пишем ${after.length}`);
 
+        const writtenAt = Date.now();
         const errors = this.updateErrors(await this.cardService.updateCards(after));
-        for (const item of sent) {
-            results.push(errors.length ? { offer: item.offer, error: errors.join('; ') } : { offer: item.offer });
-        }
         if (errors.length) this.logger.warn(`[tnved] ВБ cards/update отказ: ${errors.join('; ')}`);
+        progress.done = sent.length;
+
+        // Пачку ВБ принимает молча, а отказы по карточкам (бренд не в справочнике и т.п.) кладёт в отложенный список.
+        const deferred = errors.length ? new Map<string, string>() : await this.loadDeferredErrors(writtenAt);
+        for (const item of sent) {
+            const err = errors.length ? errors.join('; ') : deferred.get(item.offer);
+            results.push(err ? { offer: item.offer, error: err } : { offer: item.offer });
+        }
         return results;
+    }
+
+    /**
+     * Отложенные ошибки ВБ по карточкам: POST /content/v2/cards/error/list (GET даёт 405).
+     * Берём только пачки не старше нашей записи — старые отказы по тем же артикулам не считаются.
+     * Ключ — vendorCode, значение — текст ВБ («Бренд «X» не найден»).
+     */
+    private async loadDeferredErrors(writtenAt: number): Promise<Map<string, string>> {
+        await new Promise((r) => setTimeout(r, this.errorsDelayMs));
+        const res = await this.content('cards/error/list', () =>
+            this.api.method('https://content-api.wildberries.ru/content/v2/cards/error/list', 'post', {}, true),
+        );
+        const map = new Map<string, string>();
+        const batches: any[] = res?.data?.items ?? [];
+        if (res?.error || !Array.isArray(batches)) {
+            this.logger.warn(`[tnved] cards/error/list не отдан: ${JSON.stringify(res).slice(0, 300)}`);
+            return map;
+        }
+        for (const b of batches) {
+            const at = Date.parse(b.updatedAt ?? '');
+            if (!isNaN(at) && at < writtenAt - 60_000) continue;
+            for (const [vendorCode, texts] of Object.entries(b.errors ?? {})) {
+                map.set(vendorCode, `ВБ отверг: ${(texts as string[]).join('; ')}`);
+            }
+        }
+        if (map.size) this.logger.warn(`[tnved] ВБ отложенные отказы: ${map.size} карточек`);
+        return map;
     }
 
     /**
@@ -209,9 +251,9 @@ export class WbTnvedService implements ITnvedUpdateable {
     }
 
     /** Карта goodscode -> [карточка…] по всему каталогу ВБ (vendorCode с суффиксом фасовки). */
-    private async loadCardMap(): Promise<Map<string, WbCardDto[]>> {
+    private async loadCardMap(onPage?: (loaded: number) => void): Promise<Map<string, WbCardDto[]>> {
         const map = new Map<string, WbCardDto[]>();
-        for (const card of await this.cardService.getAllWbCards()) {
+        for (const card of await this.cardService.getAllWbCards(100, onPage)) {
             if (!card.vendorCode) continue;
             const gc = goodCode({ offer_id: card.vendorCode });
             const arr = map.get(gc) ?? [];

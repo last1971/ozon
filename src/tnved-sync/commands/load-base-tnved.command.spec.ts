@@ -1,6 +1,7 @@
 import { LoadBaseTnvedCommand } from './load-base-tnved.command';
 import { ITnvedProcessingContext } from '../../interfaces/i.tnved.processing.context';
 import { GoodServiceEnum } from '../../good/good.service.enum';
+import { emptyProgress } from '../../interfaces/i.job.context';
 
 describe('LoadBaseTnvedCommand', () => {
     const query = jest.fn();
@@ -8,7 +9,7 @@ describe('LoadBaseTnvedCommand', () => {
     const rollback = jest.fn();
     const pool = { getTransaction: jest.fn().mockResolvedValue({ query, commit, rollback }) };
     const command = new LoadBaseTnvedCommand(pool as any);
-    const ctx = (offer?: string): ITnvedProcessingContext => ({ service: {} as any, opts: { market: GoodServiceEnum.WB, offer } });
+    const ctx = (offer?: string): ITnvedProcessingContext => ({ progress: emptyProgress(), service: {} as any, opts: { market: GoodServiceEnum.WB, offer } });
 
     beforeEach(() => [query, commit, rollback].forEach((m) => m.mockReset()));
 
