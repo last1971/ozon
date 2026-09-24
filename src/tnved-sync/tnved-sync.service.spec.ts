@@ -12,11 +12,15 @@ import { BuildTnvedReportCommand } from './commands/build-tnved-report.command';
 import { UpdateTnvedCommand } from './commands/update-tnved.command';
 import { MarkProcessedCommand } from './commands/mark-processed.command';
 import { JobService } from '../job/job.service';
+import { LoadMarketOffersCommand } from './commands/load-market-offers.command';
+import { LoadBaseGoodsCommand } from './commands/load-base-goods.command';
+import { DiffMissingTnvedCommand } from './commands/diff-missing-tnved.command';
 import { OzonTnvedService } from './ozon.tnved.service';
 import { WbTnvedService } from './wb.tnved.service';
 
 describe('TnvedSyncService', () => {
     let service: TnvedSyncService;
+    let moduleJobs: JobService;
     const query = jest.fn();
     const commit = jest.fn();
     const rollback = jest.fn();
@@ -63,6 +67,9 @@ describe('TnvedSyncService', () => {
                 BuildTnvedReportCommand,
                 UpdateTnvedCommand,
                 MarkProcessedCommand,
+                LoadMarketOffersCommand,
+                LoadBaseGoodsCommand,
+                DiffMissingTnvedCommand,
                 JobService,
                 { provide: WbTnvedService, useValue: {} },
                 { provide: ProcessedCacheService, useValue: { load: progressLoad, save: progressSave, clear: progressClear } },
@@ -72,6 +79,7 @@ describe('TnvedSyncService', () => {
             ],
         }).compile();
         service = moduleRef.get(TnvedSyncService);
+        moduleJobs = moduleRef.get(JobService);
     });
 
     // карточка Озона: code — цифры ТНВЭД, dictId — id варианта словаря, markOn — чекбокс «Нужен код маркировки»
@@ -244,6 +252,30 @@ describe('TnvedSyncService', () => {
 
             expect(rep.notFoundOnOzon).toEqual(['222']);
             expect(rep.checkedOffers).toBe(0);
+        });
+    });
+
+    describe('«где у нас пусто» (Озон)', () => {
+        it('каталог минус товары с ТН ВЭД: без кода → noTnved, чужой → notInBase, названия из info/list', async () => {
+            list.mockResolvedValue({ result: { items: [{ offer_id: '100-10' }, { offer_id: '565831' }, { offer_id: 'ABC' }], last_id: '' } });
+            const infoList = jest.fn().mockResolvedValue([{ sku: '100-10', remark: 'без кода' }, { sku: 'ABC', remark: 'чужой' }]);
+            (productService as any).infoList = infoList;
+            query
+                .mockResolvedValueOnce([{ GOODSCODE: 100 }, { GOODSCODE: 565831 }])
+                .mockResolvedValueOnce([{ X: 1 }])
+                .mockResolvedValueOnce([{ GOODSCODE: 565831 }]);
+
+            const state = service.startMissing(GoodServiceEnum.OZON, 'c1');
+            const done = await moduleJobs.whenDone(state.id);
+
+            expect(done.status).toBe('done');
+            expect(done.result).toEqual({
+                market: 'ozon',
+                offers: 3,
+                noTnved: [{ offer: '100-10', goodscode: '100', name: 'без кода' }],
+                notInBase: [{ offer: 'ABC', goodscode: 'ABC', name: 'чужой' }],
+            });
+            expect(infoList).toHaveBeenCalledWith(['100-10', '565831', 'ABC']);
         });
     });
 

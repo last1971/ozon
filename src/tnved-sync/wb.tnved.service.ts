@@ -12,6 +12,7 @@ import {
     TnvedBaseItem,
     TnvedCheckItem,
     TnvedCheckResult,
+    TnvedMarketOffer,
     TnvedUpdateResult,
 } from '../interfaces/i.tnved.updateable';
 import { emptyProgress, JobProgress } from '../interfaces/i.job.context';
@@ -180,6 +181,14 @@ export class WbTnvedService implements ITnvedUpdateable {
             }
         }
         return errors;
+    }
+
+    async listOffers(progress: JobProgress = emptyProgress()): Promise<TnvedMarketOffer[]> {
+        Object.assign(progress, { phase: 'каталог', done: 0, total: undefined });
+        const cards = await this.cardService.getAllWbCards(100, (loaded) => (progress.done = loaded));
+        return cards
+            .filter((c) => c.vendorCode)
+            .map((c) => ({ offer: c.vendorCode, goodscode: goodCode({ offer_id: c.vendorCode }), name: c.title }));
     }
 
     /** Решение по одной карточке ВБ (одному vendorCode). */

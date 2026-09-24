@@ -15,6 +15,9 @@ import { CheckTnvedCommand } from './commands/check-tnved.command';
 import { BuildTnvedReportCommand } from './commands/build-tnved-report.command';
 import { UpdateTnvedCommand } from './commands/update-tnved.command';
 import { MarkProcessedCommand } from './commands/mark-processed.command';
+import { LoadMarketOffersCommand } from './commands/load-market-offers.command';
+import { LoadBaseGoodsCommand } from './commands/load-base-goods.command';
+import { DiffMissingTnvedCommand } from './commands/diff-missing-tnved.command';
 
 const TNVED_COMMANDS = [
     LoadBaseTnvedCommand,
@@ -23,6 +26,9 @@ const TNVED_COMMANDS = [
     BuildTnvedReportCommand,
     UpdateTnvedCommand,
     MarkProcessedCommand,
+    LoadMarketOffersCommand,
+    LoadBaseGoodsCommand,
+    DiffMissingTnvedCommand,
 ];
 
 @Module({

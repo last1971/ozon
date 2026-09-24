@@ -44,6 +44,19 @@ export class TnvedSyncController {
         );
     }
 
+    @Post('missing')
+    @ApiOperation({
+        summary: '«Где у нас пусто»: карточки маркетплейса, у которых в базе ТН ВЭД не заполнен или товара нет (фоном)',
+        description:
+            'Каталог маркетплейса минус товары базы с ТН ВЭД. Два списка: «ТН ВЭД пуст» (товар есть — заполнять у нас) ' +
+            'и «нет в базе» (кода нет вообще — привязка карточки). Отвечает состоянием задачи; результат — GET /api/job/{id}.',
+    })
+    @ApiQuery({ name: 'market', required: true, enum: GoodServiceEnum })
+    @ApiOkResponse({ type: JobStateDto })
+    missing(@Query('market') market: GoodServiceEnum, @Headers('x-client-id') clientId?: string): JobStateDto {
+        return this.service.startMissing(market, clientId || undefined);
+    }
+
     @Delete('progress')
     @ApiOperation({ summary: 'Сбросить прогресс раскатки ТН ВЭД по маркетплейсу (следующий onlyNew-прогон — с нуля)' })
     @ApiQuery({ name: 'market', required: true, enum: GoodServiceEnum })

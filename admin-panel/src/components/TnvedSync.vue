@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { tnvedSyncStore, TNVED_SYNC_JOB, type TnvedSyncReport } from "@/stores/tnvedSync";
+import { tnvedSyncStore, TNVED_SYNC_JOB, TNVED_MISSING_JOB, type TnvedSyncReport, type MissingTnvedReport } from "@/stores/tnvedSync";
 import MarketplaceSelect from "@/components/MarketplaceSelect.vue";
 import { useJob } from "@/composable/useJob";
 import { clientId } from "@/axios.config";
@@ -7,14 +7,19 @@ import { computed, onMounted, ref, watch } from "vue";
 
 const store = tnvedSyncStore();
 const { box, start, attach, clear } = useJob<TnvedSyncReport>(TNVED_SYNC_JOB);
+const missing = useJob<MissingTnvedReport>(TNVED_MISSING_JOB);
 const confirmWrite = ref(false);
 const confirmReset = ref(false);
 const me = clientId();
 
-onMounted(attach);
+onMounted(() => Promise.all([attach(), missing.attach()]));
 
-// Отчёт привязан к маркетплейсу: сменили — старый отчёт не годится, кнопка «Записать» гаснет.
-watch(() => store.form.market, () => clear());
+// Отчёты привязаны к маркетплейсу: сменили — старые не годятся, кнопка «Записать» гаснет.
+watch(() => store.form.market, () => { clear(); missing.clear(); });
+
+const missingJob = computed(() => missing.box.job);
+const missingRunning = computed(() => missingJob.value?.status === 'running');
+const missingReport = computed(() => (missingJob.value?.status === 'done' ? missingJob.value.result ?? null : null));
 
 const job = computed(() => box.job);
 const running = computed(() => job.value?.status === 'running');
@@ -43,6 +48,9 @@ async function write() {
     confirmWrite.value = false;
     await start(() => store.start(true));
 }
+async function findMissing() {
+    await missing.start(() => store.startMissing());
+}
 async function resetProgress() {
     confirmReset.value = false;
     await store.resetProgress();
@@ -56,6 +64,9 @@ async function resetProgress() {
         </v-alert>
         <v-alert v-if="box.error" type="error" closable class="mb-4" @click:close="box.error = ''">
             {{ box.error }}
+        </v-alert>
+        <v-alert v-if="missing.box.error" type="error" closable class="mb-4" @click:close="missing.box.error = ''">
+            {{ missing.box.error }}
         </v-alert>
 
         <v-form>
@@ -91,6 +102,17 @@ async function resetProgress() {
                         @click="confirmWrite = true"
                     >
                         Записать
+                    </v-btn>
+                </v-col>
+                <v-col cols="auto">
+                    <v-btn
+                        color="secondary"
+                        prepend-icon="mdi-database-search"
+                        :loading="missingRunning"
+                        :disabled="missingRunning"
+                        @click="findMissing"
+                    >
+                        Где у нас пусто
                     </v-btn>
                 </v-col>
                 <v-col cols="auto">
@@ -259,6 +281,68 @@ async function resetProgress() {
                     <v-expansion-panel-text>{{ report.notFoundOnOzon.join(', ') }}</v-expansion-panel-text>
                 </v-expansion-panel>
             </v-expansion-panels>
+        </template>
+
+        <!-- «Где у нас пусто»: карточки маркетплейса без ТН ВЭД у нас -->
+        <v-card v-if="missingJob" class="mt-6" variant="tonal" :color="missingJob.status === 'failed' ? 'error' : missingRunning ? 'primary' : 'secondary'">
+            <v-card-text>
+                <div class="d-flex align-center">
+                    <v-icon :icon="missingRunning ? 'mdi-progress-clock' : missingJob.status === 'failed' ? 'mdi-alert-circle' : 'mdi-database-search'" class="me-2" />
+                    <span class="font-weight-medium">
+                        {{ marketOf(missingJob) }} · где у нас пусто · {{ whose(missingJob) }} ·
+                        {{ missingRunning
+                            ? `${missingJob.progress.phase ?? ''} ${missingJob.progress.done}${missingJob.progress.total ? ' из ' + missingJob.progress.total : ''}`
+                            : missingJob.status === 'failed' ? `ошибка: ${missingJob.error}` : 'готово' }}
+                    </span>
+                </div>
+                <v-progress-linear v-if="missingRunning" indeterminate height="6" rounded class="mt-2" />
+            </v-card-text>
+        </v-card>
+
+        <template v-if="missingReport">
+            <v-row dense class="mt-2">
+                <v-col cols="auto">
+                    <v-chip color="info" variant="tonal">Карточек на маркетплейсе: {{ missingReport.offers }}</v-chip>
+                </v-col>
+                <v-col cols="auto">
+                    <v-chip color="warning" variant="tonal">У нас ТН ВЭД пуст: {{ missingReport.noTnved.length }}</v-chip>
+                </v-col>
+                <v-col cols="auto">
+                    <v-chip color="error" variant="tonal">Нет в базе: {{ missingReport.notInBase.length }}</v-chip>
+                </v-col>
+            </v-row>
+
+            <v-card class="mt-4" variant="outlined" v-if="missingReport.noTnved.length">
+                <v-card-title class="text-subtitle-1">У нас ТН ВЭД пуст — заполнять в базе</v-card-title>
+                <v-table density="compact" hover>
+                    <thead>
+                        <tr><th>Карточка</th><th>Код товара</th><th>Название</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="o in missingReport.noTnved" :key="o.offer">
+                            <td>{{ o.offer }}</td>
+                            <td>{{ o.goodscode }}</td>
+                            <td>{{ o.name }}</td>
+                        </tr>
+                    </tbody>
+                </v-table>
+            </v-card>
+
+            <v-card class="mt-4" variant="outlined" v-if="missingReport.notInBase.length">
+                <v-card-title class="text-subtitle-1">Нет в базе — такого кода товара у нас нет</v-card-title>
+                <v-table density="compact" hover>
+                    <thead>
+                        <tr><th>Карточка</th><th>Код товара</th><th>Название</th></tr>
+                    </thead>
+                    <tbody>
+                        <tr v-for="o in missingReport.notInBase" :key="o.offer">
+                            <td>{{ o.offer }}</td>
+                            <td>{{ o.goodscode }}</td>
+                            <td>{{ o.name }}</td>
+                        </tr>
+                    </tbody>
+                </v-table>
+            </v-card>
         </template>
     </v-container>
 </template>

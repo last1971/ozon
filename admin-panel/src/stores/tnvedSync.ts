@@ -30,6 +30,21 @@ export interface TnvedSyncReport {
 }
 
 export const TNVED_SYNC_JOB = 'tnved-sync';
+export const TNVED_MISSING_JOB = 'tnved-missing';
+
+/** Карточка маркетплейса, у которой у нас ТН ВЭД пуст или товара нет. */
+export interface TnvedMarketOffer {
+    offer: string;
+    goodscode: string;
+    name?: string;
+}
+
+export interface MissingTnvedReport {
+    market: string;
+    offers: number;
+    noTnved: TnvedMarketOffer[]; // товар в базе есть, ТН ВЭД пуст — заполнять у нас
+    notInBase: TnvedMarketOffer[]; // кода у нас нет вообще — привязка карточки
+}
 
 /** Форма вкладки ТН ВЭД и вызовы бэка; ход и отчёт задачи живут в useJob(TNVED_SYNC_JOB). */
 export const tnvedSyncStore = defineStore("tnvedSyncStore", {
@@ -50,6 +65,11 @@ export const tnvedSyncStore = defineStore("tnvedSyncStore", {
             if (this.form.offer.trim()) params.offer = this.form.offer.trim();
             if (this.form.limit && this.form.limit > 0) params.limit = this.form.limit;
             const res = await axios.post<JobState<TnvedSyncReport>>("/api/tnved-sync", null, { params });
+            return res.data;
+        },
+        /** «Где у нас пусто»: каталог маркетплейса минус товары с ТН ВЭД. Фоном. */
+        async startMissing(): Promise<JobState<MissingTnvedReport>> {
+            const res = await axios.post<JobState<MissingTnvedReport>>("/api/tnved-sync/missing", null, { params: { market: this.form.market } });
             return res.data;
         },
         /** Сбросить прогресс раскатки по маркетплейсу — следующий прогон «только необработанные» пойдёт с нуля. */

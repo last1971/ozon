@@ -9,7 +9,7 @@ describe('CheckTnvedCommand', () => {
         const base = [{ goodscode: '1', tnved: 'x', markRequired: false }];
 
         const progress = emptyProgress();
-        const res = await new CheckTnvedCommand().execute({ service: { checkTnved, updateTnved }, opts: { market: GoodServiceEnum.WB }, base, progress });
+        const res = await new CheckTnvedCommand().execute({ service: { checkTnved, updateTnved, listOffers: jest.fn() }, opts: { market: GoodServiceEnum.WB }, base, progress });
 
         expect(checkTnved).toHaveBeenCalledWith(base, progress);
         expect(res.items).toEqual([{ offer: '1' }]);

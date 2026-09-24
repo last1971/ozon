@@ -6,6 +6,7 @@ import {
     TnvedBaseItem,
     TnvedCheckItem,
     TnvedCheckResult,
+    TnvedMarketOffer,
     TnvedUpdateResult,
 } from '../interfaces/i.tnved.updateable';
 import { emptyProgress, JobProgress } from '../interfaces/i.job.context';
@@ -78,6 +79,29 @@ export class OzonTnvedService implements ITnvedUpdateable {
             progress.done++;
         }
         return results;
+    }
+
+    /** Каталог Озона: offer_id из списка, названия — info/list пачками по 1000 (список названий не отдаёт). */
+    async listOffers(progress: JobProgress = emptyProgress()): Promise<TnvedMarketOffer[]> {
+        Object.assign(progress, { phase: 'каталог', done: 0, total: undefined });
+        const offerMap = await this.loadOfferMap((loaded) => (progress.done = loaded));
+        const offers: TnvedMarketOffer[] = [];
+        for (const [goodscode, ids] of offerMap) for (const offer of ids) offers.push({ offer, goodscode });
+
+        Object.assign(progress, { phase: 'названия', done: 0, total: offers.length });
+        const names = new Map<string, string>();
+        for (let i = 0; i < offers.length; i += 1000) {
+            const chunk = offers.slice(i, i + 1000);
+            try {
+                for (const info of await this.productService.infoList(chunk.map((o) => o.offer))) {
+                    if (info?.sku) names.set(String(info.sku), info.remark);
+                }
+            } catch (e) {
+                // без названия список всё равно полезен — не роняем задачу
+            }
+            progress.done = Math.min(i + 1000, offers.length);
+        }
+        return offers.map((o) => ({ ...o, name: names.get(o.offer) }));
     }
 
     /** Решение по одной карточке Озона (одному offer_id). */

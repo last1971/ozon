@@ -36,6 +36,13 @@ export interface TnvedCheckResult {
     notFound: string[]; // goodscode
 }
 
+/** Карточка маркетплейса как она есть: артикул, наш код товара (числовой префикс артикула), название. */
+export interface TnvedMarketOffer {
+    offer: string;
+    goodscode: string;
+    name?: string;
+}
+
 /** Итог записи одной карточки. */
 export interface TnvedUpdateResult {
     offer: string;
@@ -52,4 +59,7 @@ export interface ITnvedUpdateable {
 
     /** Записать целевое состояние на карточки из своего же checkTnved (те, что !ok и без ambiguousReason). Фаза «запись». */
     updateTnved(items: TnvedCheckItem[], progress?: JobProgress): Promise<TnvedUpdateResult[]>;
+
+    /** Все карточки маркетплейса (для «где у нас пусто»). Фаза «каталог». */
+    listOffers(progress?: JobProgress): Promise<TnvedMarketOffer[]>;
 }

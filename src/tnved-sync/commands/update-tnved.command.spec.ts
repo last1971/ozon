@@ -9,7 +9,7 @@ describe('UpdateTnvedCommand', () => {
     const fix = (offer: string) => ({ offer, goodscode: offer, current: null, base: 'x', markRequired: false, ok: false });
     const ctx = (apply: boolean, toFix = [fix('1'), fix('2')]): ITnvedProcessingContext => ({
         progress: emptyProgress(),
-        service: { checkTnved: jest.fn(), updateTnved },
+        service: { checkTnved: jest.fn(), updateTnved, listOffers: jest.fn() },
         opts: { market: GoodServiceEnum.WB, apply },
         report: { apply, checkedGoods: 0, checkedOffers: 0, toFix, alreadyOk: 0, notFoundOnOzon: [], ambiguous: [], skippedProcessed: 0, remaining: 0 },
     });

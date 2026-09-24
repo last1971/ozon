@@ -75,6 +75,19 @@ describe('WbTnvedService', () => {
         expect(orig).toBe(Object.assign);
     });
 
+    it('listOffers: все карточки с кодом товара и названием, фаза «каталог»', async () => {
+        getAllWbCards.mockResolvedValue([card('531557-10', undefined), card('ABC', undefined)]);
+        const progress = { done: 0, counters: {} };
+
+        const res = await service.listOffers(progress);
+
+        expect(res).toEqual([
+            { offer: '531557-10', goodscode: '531557', name: 'PROD-531557-10' },
+            { offer: 'ABC', goodscode: 'ABC', name: 'PROD-ABC' },
+        ]);
+        expect(progress).toMatchObject({ phase: 'каталог' });
+    });
+
     it('код совпадает → ok', async () => {
         getAllWbCards.mockResolvedValue([card('565831', ['8504408300'])]);
 
