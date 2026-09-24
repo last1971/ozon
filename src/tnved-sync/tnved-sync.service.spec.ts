@@ -5,6 +5,12 @@ import { ProductService } from '../product/product.service';
 import { TnvedSyncService } from './tnved-sync.service';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { ProcessedCacheService } from '../processed-cache/processed-cache.service';
+import { LoadBaseTnvedCommand } from './commands/load-base-tnved.command';
+import { SkipProcessedCommand } from './commands/skip-processed.command';
+import { CheckTnvedCommand } from './commands/check-tnved.command';
+import { BuildTnvedReportCommand } from './commands/build-tnved-report.command';
+import { UpdateTnvedCommand } from './commands/update-tnved.command';
+import { MarkProcessedCommand } from './commands/mark-processed.command';
 import { OzonTnvedService } from './ozon.tnved.service';
 import { WbTnvedService } from './wb.tnved.service';
 
@@ -49,6 +55,12 @@ describe('TnvedSyncService', () => {
             providers: [
                 TnvedSyncService,
                 OzonTnvedService,
+                LoadBaseTnvedCommand,
+                SkipProcessedCommand,
+                CheckTnvedCommand,
+                BuildTnvedReportCommand,
+                UpdateTnvedCommand,
+                MarkProcessedCommand,
                 { provide: WbTnvedService, useValue: {} },
                 { provide: ProcessedCacheService, useValue: { load: progressLoad, save: progressSave, clear: progressClear } },
                 { provide: FIREBIRD, useValue: pool },
