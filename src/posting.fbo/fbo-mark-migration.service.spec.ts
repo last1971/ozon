@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FboMarkMigrationService } from './fbo-mark-migration.service';
 import { INVOICE_SERVICE } from '../interfaces/IInvoice';
+import { DonorTransferService } from './donor-transfer.service';
 
 // S12: при FBO-переезде вместе с подборкой едут коды маркировки (TT=2/3),
 // кратно номиналу, по кандидату строго «сначала коды, потом подборка».
@@ -46,6 +47,7 @@ describe('FboMarkMigrationService', () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 FboMarkMigrationService,
+                DonorTransferService,
                 {
                     provide: INVOICE_SERVICE,
                     useValue: {

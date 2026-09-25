@@ -6,6 +6,7 @@ import { ProductPostingDto } from '../product/dto/product.posting.dto';
 import { InvoiceLineDto } from '../invoice/dto/invoice.line.dto';
 import { goodCode, goodQuantityCoeff } from '../helpers';
 import { FboShortageDto } from './dto/fbo-shortage.dto';
+import { DonorTransferError, DonorTransferService, TransferResult } from './donor-transfer.service';
 
 // S12: при FBO-продаже из счёта А в счёт Б переезжают и коды маркировки, и подборка.
 // Порядок по кандидату строго «сначала коды, потом подборка» (в одной транзакции):
@@ -18,6 +19,7 @@ export class FboMarkMigrationService {
     constructor(
         @Inject(INVOICE_SERVICE) private invoiceService: IInvoice,
         private eventEmitter: EventEmitter2,
+        private transferService: DonorTransferService,
     ) {}
 
     async migrate(
@@ -29,7 +31,6 @@ export class FboMarkMigrationService {
         posting: string,
     ): Promise<FboShortageDto[]> {
         const shortages: FboShortageDto[] = [];
-        const s_s = this.invoiceService.getStorageSS();
 
         // Фантомный резерв счёта Б со свободного полочного остатка — снять до переноса,
         // иначе полочный товар спишется второй раз при pickupInvoice.
@@ -83,88 +84,24 @@ export class FboMarkMigrationService {
                     continue;
                 }
 
-                // 1) Коды: целые, только номинала N, TT=3 вперёд.
-                const migrated: string[] = [];
-                const codes = await this.invoiceService.findLiveMigratableCodes(
-                    cand.realpricecode,
-                    nominal,
-                    transaction,
-                );
-                const maxCodes = Math.floor(take / nominal);
-                for (const code of codes.slice(0, maxCodes)) {
-                    try {
-                        await this.invoiceService.migrateMarkCode(
-                            code.ki,
-                            cand.realpricecode,
-                            newRpc,
-                            gc,
-                            s_s,
-                            transaction,
-                        );
-                        migrated.push(code.ki);
-                    } catch (e) {
-                        // Код застрял (гонка, параллельная ручная операция, кривые данные):
-                        // его штуки остаются на А вместе с ним, иначе код повисает без товара
-                        // и партийный учёт задваивается.
-                        take -= nominal;
-                        this.logger.warn(
-                            `FBO migration: КМ ${code.ki} не переехал (RPC ${cand.realpricecode} -> ${newRpc}): ${e.message}`,
-                        );
-                    }
-                }
-                if (take <= 0) continue;
-
-                // 2) Подборка: счёт А минус, счёт Б плюс, атомарной SP.
+                // Перенос — одна точка на автоматику и ручной разбор (DonorTransferService).
+                // Подборка не переехала — кандидат пропущен, коды уже возвращены; остальное наружу.
+                let result: TransferResult;
                 try {
-                    await this.invoiceService.migratePodbpos(
-                        cand.podbposcode,
-                        scode,
-                        newRpc,
-                        gc,
+                    result = await this.transferService.transfer(
+                        cand,
                         take,
+                        { scode, realpricecode: newRpc, goodscode: gc, nominal, posting },
                         transaction,
                     );
                 } catch (e) {
-                    // Перенос штук не прошёл (гонка/партийный учёт) — возвращаем уже
-                    // переехавшие коды кандидата назад, кандидат пропускается.
-                    this.logger.warn(
-                        `FBO migration: перенос подборки не прошёл (PODBPOS ${cand.podbposcode}, take=${take}): ${e.message}`,
-                    );
-                    for (const ki of migrated) {
-                        try {
-                            await this.invoiceService.migrateMarkCode(
-                                ki,
-                                newRpc,
-                                cand.realpricecode,
-                                gc,
-                                s_s,
-                                transaction,
-                            );
-                        } catch (e2) {
-                            this.eventEmitter.emit(
-                                'error.message',
-                                'FBO migration: КМ завис на счёте продажи без подборки — нужен ручной разбор',
-                                `КМ ${ki}, GOODSCODE ${gc}, RPC ${newRpc} (SCODE ${scode}): ${e2.message}`,
-                            );
-                        }
-                    }
-                    continue;
+                    if (e instanceof DonorTransferError) continue;
+                    throw e;
                 }
+                if (result.moved <= 0) continue;
+                take = result.moved;
                 need -= take;
-
-                // Цепочка донор→приёмник (аудит): счёт/строка донора и счёт/строка продажи.
-                await this.invoiceService.logMigrationLink(
-                    {
-                        posting,
-                        goodscode: gc,
-                        quantity: take,
-                        donorScode: cand.scode,
-                        donorRpc: cand.realpricecode,
-                        targetScode: scode,
-                        targetRpc: newRpc,
-                    },
-                    transaction,
-                );
+                const migrated = result.codes;
 
                 // Кодов уехало меньше, чем штук, при том что живые коды на кандидате были:
                 // сигнал (кодов не хватает на товар), но НЕ недостача — штуки переехали.

@@ -1,6 +1,6 @@
 import { InvoiceCreateDto } from '../invoice/dto/invoice.create.dto';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
-import { GoodDonorsDto, InvoiceDonorsDto } from '../invoice/dto/invoice-donors.dto';
+import { FboShortageRowDto, GoodDonorsDto, InvoiceDonorsDto } from '../invoice/dto/invoice-donors.dto';
 import { PostingDto } from '../posting/dto/posting.dto';
 import { TransactionDto } from '../posting/dto/transaction.dto';
 import { ResultDto } from '../helpers/dto/result.dto';
@@ -35,6 +35,12 @@ export interface IInvoice {
         transaction: FirebirdTransaction,
     ): Promise<void>;
     isInFboShortage(posting: string, transaction: FirebirdTransaction): Promise<boolean>;
+    /** Счета, у которых примечание содержит подстроку (номер отправления лежит в S.PRIM). */
+    getPrimContaining(search: string, transaction?: FirebirdTransaction): Promise<InvoiceDto[]>;
+    /** Открытые недоборы (FBO_SHORTAGE), свежие сверху. */
+    listFboShortages(transaction?: FirebirdTransaction): Promise<FboShortageRowDto[]>;
+    /** Недобор по товару закрыт на quantity штук: строка журнала уменьшается, при нуле исчезает. */
+    closeFboShortage(posting: string, goodscode: string, quantity: number, transaction: FirebirdTransaction): Promise<void>;
     /** Зависшие FBO-счета (STATUS=3, IGK=NOT1C, без пометок и недоборов) для суточной сверки. */
     getStuckFboInvoices(buyerId: number, since: Date, transaction: FirebirdTransaction): Promise<InvoiceDto[]>;
     pickupFboUnlessShortage(invoice: InvoiceDto, transaction: FirebirdTransaction): Promise<void>;
@@ -164,7 +170,10 @@ export interface IInvoice {
     bulkSetStatus(invoices: InvoiceDto[], status: number, transaction: FirebirdTransaction): Promise<void>;
     update(invoice: InvoiceDto, invoiceUpdateDto: InvoiceUpdateDto, t?: FirebirdTransaction): Promise<boolean>;
     distributePaymentByUPD(updNumber: number, updDate: string, amount: number): Promise<ResultDto>;
-    /** Счета по подстроке в примечании + доноры под каждую их строку (тот же покупатель, STATUS=1, подобрано > 0). */
+    /**
+     * Счета по подстроке в примечании + доноры под каждую их строку (тот же покупатель, STATUS=1, подобрано > 0).
+     * По строке — фасовка, подобрано, недобор и признак журнала; по донору — коды по номиналу и «можно ли брать».
+     */
     findDonorsByPrim(prim: string, transaction?: FirebirdTransaction): Promise<InvoiceDonorsDto[]>;
     findDonorsByArticle(article: string, transaction?: FirebirdTransaction): Promise<GoodDonorsDto[]>;
     /**

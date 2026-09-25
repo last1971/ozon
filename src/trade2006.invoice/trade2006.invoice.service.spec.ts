@@ -1571,17 +1571,28 @@ describe('Trade2006InvoiceService', () => {
                     { SCODE: 100, NS: 16771, DATA: new Date('2026-08-26'), PRIM: '555-1 отмена FBO', POKUPATCODE: 24231 },
                 ])
                 .mockResolvedValueOnce([
-                    { REALPRICECODE: 1, GOODSCODE: '111', QUAN: 2, NAME: 'товар А' },
-                    { REALPRICECODE: 2, GOODSCODE: '222', QUAN: 1, NAME: 'товар Б' },
+                    { REALPRICECODE: 1, GOODSCODE: '111', QUAN: 2, PIECES: null, NAME: 'товар А' },
+                    { REALPRICECODE: 2, GOODSCODE: '222', QUAN: 1, PIECES: 1, NAME: 'товар Б' },
                 ])
+                // подобрано на приёмнике: по второй строке всё есть
+                .mockResolvedValueOnce([{ REALPRICECODE: 2, PICKED: 1 }])
+                // журнал недобора по отправлению: товар первой строки
+                .mockResolvedValueOnce([{ GOODSCODE: '111' }])
                 .mockResolvedValueOnce([
-                    { GOODSCODE: '111', PODBPOSCODE: 7, QUANAVAIL: 5, SCODE: 200, NS: 16000, DATA: new Date('2026-08-20'), PRIM: 'донор' },
-                ]);
+                    { GOODSCODE: '111', PODBPOSCODE: 7, REALPRICECODE: 77, QUANAVAIL: 5, SCODE: 200, NS: 16000, DATA: new Date('2026-08-20'), PRIM: 'донор' },
+                ])
+                // коды на строке донора: живых нет, выведенных нет
+                .mockResolvedValueOnce([])
+                .mockResolvedValueOnce([]);
 
             const res = await service.findDonorsByPrim('555-1');
 
             expect(res).toHaveLength(1);
             expect(res[0].invoiceNumber).toBe(16771);
+            expect(res[0].inShortage).toBe(true);
+            // строка: фасовка неизвестна, подобрано 0, недобор = нужно, товар в журнале
+            expect(res[0].lines[0]).toMatchObject({ pieces: null, picked: 0, shortage: 2, inShortage: true });
+            expect(res[0].lines[1]).toMatchObject({ pieces: 1, picked: 1, shortage: 0, inShortage: false });
             expect(res[0].lines[0].donors).toEqual([
                 {
                     invoiceNumber: 16000,
@@ -1589,18 +1600,28 @@ describe('Trade2006InvoiceService', () => {
                     date: new Date('2026-08-20'),
                     prim: 'донор',
                     podbposcode: 7,
+                    realpricecode: 77,
                     quantity: 5,
+                    codesLive: 0,
+                    codesNominal: 0,
+                    codesDead: 0,
+                    canTake: true,
                 },
             ]);
             // у второй строки доноров нет — пустой массив, а не отсутствующее поле
             expect(res[0].lines[1].donors).toEqual([]);
             // доноры ищутся по покупателю счёта, со статусом 1 и подбором > 0, сам счёт исключён
             expect(query.mock.calls[0][0]).toContain('PRIM CONTAINING');
-            const donorSql = query.mock.calls[2][0];
+            expect(query.mock.calls[2][0]).toContain('FROM PODBPOS WHERE SCODE = ?');
+            expect(query.mock.calls[3][0]).toContain('FROM FBO_SHORTAGE WHERE POSTING = ?');
+            const donorSql = query.mock.calls[4][0];
             expect(donorSql).toContain('s.POKUPATCODE = ?');
             expect(donorSql).toContain('s.STATUS = 1');
             expect(donorSql).toContain('s.SCODE <> ?');
-            expect(query.mock.calls[2][1]).toEqual(['111', '222', 24231, 100]);
+            expect(query.mock.calls[4][1]).toEqual(['111', '222', 24231, 100]);
+            // коды доноров: живые по номиналам и выведенные, по строкам доноров
+            expect(query.mock.calls[5][0]).toContain('FROM MARKCODES m');
+            expect(query.mock.calls[5][1]).toEqual([77]);
         });
 
         it('счёт по подстроке не найден — пустой ответ, за товарами не ходим', async () => {

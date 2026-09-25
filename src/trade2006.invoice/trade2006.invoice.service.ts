@@ -7,7 +7,8 @@ import { DateTime } from 'luxon';
 import { ConfigService } from '@nestjs/config';
 import { PostingDto } from '../posting/dto/posting.dto';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
-import { DonorDto, GoodDonorsDto, InvoiceDonorsDto } from '../invoice/dto/invoice-donors.dto';
+import { DonorDto, FboShortageRowDto, GoodDonorsDto, InvoiceDonorsDto } from '../invoice/dto/invoice-donors.dto';
+import { isWrongNominalDonor } from '../helpers/donor.rules';
 import { TransactionDto } from '../posting/dto/transaction.dto';
 import { ResultDto } from '../helpers/dto/result.dto';
 import { goodCode, goodQuantityCoeff, isMarkCodesEnabled } from '../helpers';
@@ -566,6 +567,44 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         );
     }
 
+    /** Открытые недоборы: что ждёт ручного разбора, свежие сверху. */
+    async listFboShortages(transaction: FirebirdTransaction = null): Promise<FboShortageRowDto[]> {
+        const t = transaction ?? (await this.getTransaction());
+        const rows = await t.query(
+            'SELECT f.SERVICE, f.POSTING, f.GOODSCODE, f.QUANTITY, f.PRIM, f.DATA, n.NAME FROM FBO_SHORTAGE f ' +
+                'LEFT JOIN GOODS g ON g.GOODSCODE = f.GOODSCODE LEFT JOIN NAME n ON n.NAMECODE = g.NAMECODE ' +
+                'ORDER BY f.DATA DESC',
+            [],
+            !transaction,
+        );
+        return rows.map((r) => ({
+            service: String(r.SERVICE ?? '').trim(),
+            posting: String(r.POSTING ?? '').trim(),
+            goodscode: String(r.GOODSCODE),
+            name: r.NAME ?? null,
+            quantity: Number(r.QUANTITY) || 0,
+            prim: r.PRIM ?? null,
+            date: r.DATA ?? null,
+        }));
+    }
+
+    /**
+     * Недобор по товару закрыт на quantity штук (переехали с донора руками): строка журнала
+     * уменьшается и исчезает, когда закрыта целиком. Ключ журнала — товар, не строка счёта.
+     */
+    async closeFboShortage(posting: string, goodscode: string, quantity: number, transaction: FirebirdTransaction): Promise<void> {
+        await transaction.execute(
+            'UPDATE FBO_SHORTAGE SET QUANTITY = QUANTITY - ? WHERE POSTING = ? AND GOODSCODE = ?',
+            [quantity, posting, Number(goodscode)],
+            false,
+        );
+        await transaction.execute(
+            'DELETE FROM FBO_SHORTAGE WHERE POSTING = ? AND GOODSCODE = ? AND QUANTITY <= 0',
+            [posting, Number(goodscode)],
+            false,
+        );
+    }
+
     /** Заказ есть в журнале недобора → его FBO-счёт не подбираем (иначе pickup материализует фантом). */
     async isInFboShortage(posting: string, transaction: FirebirdTransaction = null): Promise<boolean> {
         const t = transaction ?? (await this.getTransaction());
@@ -679,7 +718,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             params.push(opts.excludeScode);
         }
         return t.query(
-            `SELECT pp.GOODSCODE, pp.PODBPOSCODE, pp.QUAN${attribute} AS QUANAVAIL, ` +
+            `SELECT pp.GOODSCODE, pp.PODBPOSCODE, pp.REALPRICECODE, pp.QUAN${attribute} AS QUANAVAIL, ` +
                 's.SCODE, s.NS, s.DATA, s.PRIM, s.POKUPATCODE ' +
                 Trade2006InvoiceService.PODBPOS_SOURCE +
                 `WHERE ${where.join(' AND ')} ORDER BY s.DATA`,
@@ -696,8 +735,70 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             date: row.DATA ?? null,
             prim: row.PRIM ?? null,
             podbposcode: row.PODBPOSCODE,
+            realpricecode: row.REALPRICECODE,
             quantity: row.QUANAVAIL,
             buyerCode: row.POKUPATCODE,
+        };
+    }
+
+    /**
+     * Коды маркировки на строках доноров: живые по номиналам и выведенные (возврат без оживления).
+     * Тот же фильтр «живой код», что у автоматики (LIVE_CODE_FILTER); номинал строки-приёмника
+     * известен только вызывающему, поэтому считаем по всем номиналам сразу.
+     */
+    private async countDonorCodes(
+        rpcs: number[],
+        t: FirebirdTransaction,
+    ): Promise<Map<number, { byNominal: Map<number, number>; live: number; dead: number }>> {
+        const result = new Map<number, { byNominal: Map<number, number>; live: number; dead: number }>();
+        const entry = (rpc: number) => {
+            if (!result.has(rpc)) result.set(rpc, { byNominal: new Map(), live: 0, dead: 0 });
+            return result.get(rpc);
+        };
+        const unique = [...new Set(rpcs)];
+        for (let i = 0; i < unique.length; i += 200) {
+            const part = unique.slice(i, i + 200);
+            const marks = part.map(() => '?').join(',');
+            const live = await t.query(
+                `SELECT m.REALPRICECODE, COALESCE(m.QUANTITY, 1) AS NOM, COUNT(*) AS CNT FROM MARKCODES m ` +
+                    `WHERE m.REALPRICECODE IN (${marks}) AND ${Trade2006InvoiceService.LIVE_CODE_FILTER} ` +
+                    'GROUP BY m.REALPRICECODE, COALESCE(m.QUANTITY, 1)',
+                part,
+                false,
+            );
+            for (const r of live) {
+                const e = entry(Number(r.REALPRICECODE));
+                e.byNominal.set(Number(r.NOM), Number(r.CNT));
+                e.live += Number(r.CNT);
+            }
+            const dead = await t.query(
+                `SELECT m.REALPRICECODE, COUNT(*) AS CNT FROM MARKCODES m WHERE m.REALPRICECODE IN (${marks}) AND ` +
+                    'm.REALPRICEFCODE IS NULL AND m.SHOPLOGCODE IS NULL AND m.SPISID IS NULL AND ' +
+                    'm.TRANSFER_TYPE = 3 AND m.STATUS = 6 GROUP BY m.REALPRICECODE',
+                part,
+                false,
+            );
+            for (const r of dead) entry(Number(r.REALPRICECODE)).dead = Number(r.CNT);
+        }
+        return result;
+    }
+
+    /** Донор для строки с номиналом: коды по номиналу, «можно ли брать» по общему правилу. */
+    private static donorForLine(
+        base: DonorDto,
+        codes: { byNominal: Map<number, number>; live: number; dead: number } | undefined,
+        nominal: number,
+    ): DonorDto {
+        const live = codes?.live ?? 0;
+        const nom = codes?.byNominal.get(nominal) ?? 0;
+        const wrong = isWrongNominalDonor(live, nom);
+        return {
+            ...base,
+            codesLive: live,
+            codesNominal: nom,
+            codesDead: codes?.dead ?? 0,
+            canTake: !wrong,
+            reason: wrong ? `живых кодов ${live}, номинала ${nominal} — ни одного: код не делится` : undefined,
         };
     }
 
@@ -731,7 +832,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             // Строки берём своим запросом: getInvoiceLinesByInvoiceId отдаёт InvoiceLineDto
             // без REALPRICECODE и наименования, а они здесь и нужны.
             const lines = await t.query(
-                'SELECT r.REALPRICECODE, r.GOODSCODE, r.QUAN, n.NAME ' +
+                'SELECT r.REALPRICECODE, r.GOODSCODE, r.QUAN, r.PIECES, n.NAME ' +
                     'FROM REALPRICE r ' +
                     'LEFT JOIN GOODS g ON g.GOODSCODE = r.GOODSCODE ' +
                     'LEFT JOIN NAME n ON n.NAMECODE = g.NAMECODE ' +
@@ -739,6 +840,19 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
                 [inv.id],
                 false,
             );
+            // Подобрано на строках приёмника (своя подборка) и журнал недобора по отправлению.
+            const picked = new Map<number, number>();
+            for (const r of await t.query(
+                `SELECT REALPRICECODE, SUM(QUAN${this.quanAttr()}) AS PICKED FROM PODBPOS WHERE SCODE = ? GROUP BY REALPRICECODE`,
+                [inv.id],
+                false,
+            )) {
+                picked.set(Number(r.REALPRICECODE), Number(r.PICKED) || 0);
+            }
+            const shortage = new Set<string>();
+            for (const r of await t.query('SELECT GOODSCODE FROM FBO_SHORTAGE WHERE POSTING = ?', [prim], false)) {
+                shortage.add(String(r.GOODSCODE));
+            }
 
             const goodscodes = lines.map((l) => l.GOODSCODE);
             const donors = await this.queryDonors(
@@ -746,22 +860,43 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
                 { buyerCode: inv.buyerId, excludeScode: inv.id },
                 t,
             );
+            const codes = await this.countDonorCodes(
+                donors.map((d) => Number(d.REALPRICECODE)),
+                t,
+            );
 
             result.push({
                 invoiceNumber: inv.number,
                 scode: inv.id,
+                status: inv.status,
                 date: inv.date ?? null,
                 prim: inv.remark ?? null,
                 buyerCode: inv.buyerId,
-                lines: lines.map((l) => ({
-                    realpricecode: l.REALPRICECODE,
-                    goodscode: l.GOODSCODE,
-                    name: l.NAME ?? null,
-                    quantity: l.QUAN,
-                    donors: donors
-                        .filter((d) => d.GOODSCODE === l.GOODSCODE)
-                        .map((d) => Trade2006InvoiceService.toDonorDto(d)),
-                })),
+                inShortage: shortage.size > 0,
+                lines: lines.map((l) => {
+                    const pieces = l.PIECES == null ? null : Number(l.PIECES);
+                    const nominal = pieces ?? 1;
+                    const got = picked.get(Number(l.REALPRICECODE)) ?? 0;
+                    return {
+                        realpricecode: l.REALPRICECODE,
+                        goodscode: String(l.GOODSCODE),
+                        name: l.NAME ?? null,
+                        quantity: l.QUAN,
+                        pieces,
+                        picked: got,
+                        shortage: Math.max(0, Number(l.QUAN) - got),
+                        inShortage: shortage.has(String(l.GOODSCODE)),
+                        donors: donors
+                            .filter((d) => String(d.GOODSCODE) === String(l.GOODSCODE))
+                            .map((d) =>
+                                Trade2006InvoiceService.donorForLine(
+                                    Trade2006InvoiceService.toDonorDto(d),
+                                    codes.get(Number(d.REALPRICECODE)),
+                                    nominal,
+                                ),
+                            ),
+                    };
+                }),
             });
         }
 
@@ -875,7 +1010,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             cntDead: Number(r.CNT_DEAD) || 0,
             lvl: Number(r.LVL),
         }));
-        const wrongNominal = (c: { cntNom: number; cntLive: number }): boolean => c.cntLive > 0 && c.cntNom === 0;
+        const wrongNominal = (c: { cntNom: number; cntLive: number }): boolean => isWrongNominalDonor(c.cntLive, c.cntNom);
         const candidates = all.filter((c) => !wrongNominal(c));
         if (onWrongNominal) all.filter(wrongNominal).forEach(onWrongNominal);
         // Ярусы: (а) есть живые коды нужного номинала (вперёд — с TT=3), (б) кодов нет.
