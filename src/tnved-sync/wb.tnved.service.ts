@@ -16,7 +16,7 @@ import {
     TnvedUpdateResult,
 } from '../interfaces/i.tnved.updateable';
 import { emptyProgress, JobProgress } from '../interfaces/i.job.context';
-import { WbTnvedEntry } from '../interfaces/i.wb.dict.context';
+import { TnvedEntry } from '../interfaces/i.tnved.dictionary';
 
 /** Справочник ТН ВЭД предмета: коды, которые ВБ примет в характеристику; null — справочник не отдан. */
 type WbTnvedDirectory = Set<string> | null;
@@ -307,7 +307,7 @@ export class WbTnvedService implements ITnvedUpdateable {
      * Публичный: тот же справочник выкачивает по всем предметам WbDictModule (карта «код → предметы»),
      * через ту же калитку content() — лимит у ВБ общий.
      */
-    async directory(subjectId: number): Promise<WbTnvedEntry[] | null> {
+    async directory(subjectId: number): Promise<TnvedEntry[] | null> {
         const res = await this.content(`directory/tnved?subjectID=${subjectId}`, () =>
             this.api.method(
                 'https://content-api.wildberries.ru/content/v2/directory/tnved',
@@ -323,6 +323,6 @@ export class WbTnvedService implements ITnvedUpdateable {
         }
         return res.data
             .map((d: any) => ({ tnved: String(d.tnved ?? '').trim(), isKiz: d.isKiz === true }))
-            .filter((d: WbTnvedEntry) => d.tnved);
+            .filter((d: TnvedEntry) => d.tnved);
     }
 }

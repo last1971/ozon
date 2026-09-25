@@ -237,6 +237,15 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
         desc_cat_id: number,
         type_id: number,
     ): Promise<any[]> {
+        return this.fetchCategoryAttributeValues(attribute_id, desc_cat_id, type_id);
+    }
+
+    /** Словарь атрибута категории целиком, без кэша: для массовой выкачки (справочник ТН ВЭД по типам). */
+    async fetchCategoryAttributeValues(
+        attribute_id: number,
+        desc_cat_id: number,
+        type_id: number,
+    ): Promise<any[]> {
         const allValues: any[] = [];
         let lastValueId = 0;
         let hasNext = true;

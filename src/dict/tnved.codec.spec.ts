@@ -1,6 +1,6 @@
-import { parseTnved, serializeTnved } from './wb-tnved.codec';
+import { parseTnved, serializeTnved } from './tnved.codec';
 
-describe('wb-tnved.codec', () => {
+describe('tnved.codec', () => {
     it('маркируемый код помечается звёздочкой, пустые выбрасываются', () => {
         expect(
             serializeTnved([

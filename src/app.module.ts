@@ -4,7 +4,7 @@ import { AppService } from './app.service';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { OzonApiModule } from './ozon.api/ozon.api.module';
 import { TnvedSyncModule } from './tnved-sync/tnved-sync.module';
-import { WbDictModule } from './wb-dict/wb-dict.module';
+import { DictModule } from './dict/dict.module';
 import { ProductModule } from './product/product.module';
 import { ElectronicaApiModule } from './electronica.api/electronica.api.module';
 import { ScheduleModule } from '@nestjs/schedule';
@@ -162,7 +162,7 @@ import JSONbig from 'json-bigint';
         OzonCategoryModule,
         PickupModule,
         TnvedSyncModule,
-        WbDictModule,
+        DictModule,
     ],
     controllers: [AppController],
     providers: [AppService, CronSetupProviderService],

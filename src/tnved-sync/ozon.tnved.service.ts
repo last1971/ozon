@@ -11,7 +11,8 @@ import {
 } from '../interfaces/i.tnved.updateable';
 import { emptyProgress, JobProgress } from '../interfaces/i.job.context';
 
-const MARK_LABEL = 'МАРКИРОВКА РФ';
+/** Метка маркируемого варианта в словаре ТН ВЭД Озона; ею же пользуется справочник (OzonDictService). */
+export const MARK_LABEL = 'МАРКИРОВКА РФ';
 
 interface TnvedVariant {
     id: number;

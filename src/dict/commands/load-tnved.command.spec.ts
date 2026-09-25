@@ -1,13 +1,22 @@
-import { LoadWbTnvedCommand } from './load-wb-tnved.command';
-import { IWbDictContext } from '../../interfaces/i.wb.dict.context';
+import { LoadTnvedCommand } from './load-tnved.command';
+import { IDictContext } from '../../interfaces/i.tnved.dictionary';
 import { emptyProgress } from '../../interfaces/i.job.context';
+import { GoodServiceEnum } from '../../good/good.service.enum';
 
-describe('LoadWbTnvedCommand', () => {
+describe('LoadTnvedCommand', () => {
     const subjectsToLoad = jest.fn();
     const saveTnved = jest.fn();
     const directory = jest.fn();
-    const command = new LoadWbTnvedCommand({ subjectsToLoad, saveTnved } as any, { directory } as any);
-    const ctx = (all = false): IWbDictContext => ({ all, days: 30, report: {}, progress: emptyProgress(), logger: { log: jest.fn(), error: jest.fn() } });
+    const service = { market: GoodServiceEnum.WB, subjectsToLoad, saveTnved, directory } as any;
+    const command = new LoadTnvedCommand();
+    const ctx = (all = false): IDictContext => ({
+        service,
+        all,
+        days: 30,
+        report: { market: GoodServiceEnum.WB },
+        progress: emptyProgress(),
+        logger: { log: jest.fn(), error: jest.fn() },
+    });
     const subject = (id: number) => ({ id, name: `предмет ${id}`, parentName: 'родитель', commission: 25 });
 
     beforeEach(() => [subjectsToLoad, saveTnved, directory].forEach((m) => m.mockReset()));
@@ -21,16 +30,17 @@ describe('LoadWbTnvedCommand', () => {
 
         const res = await command.execute(ctx());
 
+        expect(directory.mock.calls.map((c) => c[0].id)).toEqual([1, 2, 3]);
         expect(saveTnved.mock.calls).toEqual([
             [1, [{ tnved: '8504408300', isKiz: true }]],
             [2, []],
         ]);
-        expect(res.report).toEqual({ subjects: 3, saved: 1, empty: 1, failed: 1 });
+        expect(res.report).toEqual({ market: GoodServiceEnum.WB, subjects: 3, saved: 1, empty: 1, failed: 1 });
         expect(res.progress.done).toBe(3);
         expect(res.progress.total).toBe(3);
     });
 
-    it('all → в репозиторий уходит признак «все предметы» и срок устаревания', async () => {
+    it('all → в реализацию уходит признак «все предметы» и срок устаревания', async () => {
         subjectsToLoad.mockResolvedValue([]);
 
         await command.execute(ctx(true));

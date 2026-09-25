@@ -1,10 +1,11 @@
-import { buildTnvedMap, lookupTnved, WbTnvedMapService } from './wb-tnved-map.service';
+import { buildTnvedMap, lookupTnved, TnvedMapService } from './tnved-map.service';
+import { GoodServiceEnum } from '../good/good.service.enum';
 
-describe('wb-tnved-map', () => {
+describe('tnved-map', () => {
     const rows = [
         { id: 4536, name: 'Реле напряжения', parentName: 'Электрика', commission: 35, tnved: [{ tnved: '8536411000', isKiz: false }, { tnved: '8504408300', isKiz: true }] },
         { id: 7422, name: 'Радиодетали', parentName: 'Электрика', commission: 25, tnved: [{ tnved: '8504408300', isKiz: true }, { tnved: '8541210000', isKiz: false }] },
-        { id: 8648, name: 'Реле для мототехники', parentName: 'Мототовары', commission: 40, tnved: [{ tnved: '8536490000', isKiz: false }] },
+        { id: 8648, name: 'Реле для мототехники', parentName: 'Мототовары', commission: null, tnved: [{ tnved: '8536490000', isKiz: false }] },
     ];
     const codes = buildTnvedMap(rows);
 
@@ -17,7 +18,7 @@ describe('wb-tnved-map', () => {
         ]);
     });
 
-    it('точного нет → по 6 знакам, потом по 4, без повторов предметов', () => {
+    it('точного нет → по 6 знакам, потом по 4, без повторов; без комиссии — в конец', () => {
         const six = lookupTnved(codes, '8536419999');
         expect(six.match).toBe('prefix6');
         expect(six.subjects.map((s) => s.id)).toEqual([4536]);
@@ -32,16 +33,19 @@ describe('wb-tnved-map', () => {
         expect(lookupTnved(codes, '8504 40 830 0').match).toBe('exact');
     });
 
-    it('сервис собирает карту из базы при первом обращении и после rebuild', async () => {
+    it('карта рынка собирается из базы при первом обращении и после rebuild', async () => {
         const listWithTnved = jest.fn().mockResolvedValue(rows);
-        const service = new WbTnvedMapService({ listWithTnved } as any);
+        const wb = { market: GoodServiceEnum.WB, listWithTnved } as any;
+        const service = new TnvedMapService();
 
-        expect((await service.find('8541210000')).subjects.map((s) => s.id)).toEqual([7422]);
-        await service.find('8541210000');
+        const first = await service.find(wb, '8541210000');
+        expect(first.market).toBe(GoodServiceEnum.WB);
+        expect(first.subjects.map((s) => s.id)).toEqual([7422]);
+        await service.find(wb, '8541210000');
         expect(listWithTnved).toHaveBeenCalledTimes(1);
 
         listWithTnved.mockResolvedValue(rows.slice(0, 1));
-        expect(await service.rebuild()).toBe(2);
-        expect((await service.find('8541210000')).match).toBe('none');
+        expect(await service.rebuild(wb)).toBe(2);
+        expect((await service.find(wb, '8541210000')).match).toBe('none');
     });
 });
