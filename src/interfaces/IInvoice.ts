@@ -37,7 +37,7 @@ export interface IInvoice {
     isInFboShortage(posting: string, transaction: FirebirdTransaction): Promise<boolean>;
     /** Счета, у которых примечание содержит подстроку (номер отправления лежит в S.PRIM). */
     getPrimContaining(search: string, transaction?: FirebirdTransaction): Promise<InvoiceDto[]>;
-    /** Открытые недоборы (FBO_SHORTAGE), свежие сверху. */
+    /** Открытые недоборы: счёт в подборке (STATUS=3) и по строке подобрано меньше, чем нужно; журнал — только кандидаты. */
     listFboShortages(transaction?: FirebirdTransaction): Promise<FboShortageRowDto[]>;
     /** Недобор по товару закрыт на quantity штук: строка журнала уменьшается, при нуле исчезает. */
     closeFboShortage(posting: string, goodscode: string, quantity: number, transaction: FirebirdTransaction): Promise<void>;

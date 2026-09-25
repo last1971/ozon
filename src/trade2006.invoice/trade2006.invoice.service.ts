@@ -567,25 +567,68 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         );
     }
 
-    /** Открытые недоборы: что ждёт ручного разбора, свежие сверху. */
+    /**
+     * Открытые недоборы, свежие сверху. Журнал FBO_SHORTAGE — только кандидаты (по каким отправлениям
+     * автоматика недобрала); открыт ли недобор, решает сам счёт: он ещё в подборке (STATUS=3, PRIM —
+     * ровно отправление, без пометок) и по строке товара подобрано меньше, чем нужно. Закрытое руками
+     * в Delphi или уже подобранное сюда не попадает, даже если строка журнала осталась.
+     * «Подобрано» и «недобор» считаются теми же {@link pickedByLine} и {@link lineShortage}, что в предложении.
+     */
     async listFboShortages(transaction: FirebirdTransaction = null): Promise<FboShortageRowDto[]> {
         const t = transaction ?? (await this.getTransaction());
         const rows = await t.query(
-            'SELECT f.SERVICE, f.POSTING, f.GOODSCODE, f.QUANTITY, f.PRIM, f.DATA, n.NAME FROM FBO_SHORTAGE f ' +
-                'LEFT JOIN GOODS g ON g.GOODSCODE = f.GOODSCODE LEFT JOIN NAME n ON n.NAMECODE = g.NAMECODE ' +
-                'ORDER BY f.DATA DESC',
+            'SELECT f.SERVICE, f.POSTING, f.PRIM, s.SCODE, s.NS, s.DATA, r.REALPRICECODE, r.GOODSCODE, r.QUAN, n.NAME ' +
+                'FROM FBO_SHORTAGE f ' +
+                'JOIN S s ON s.PRIM = f.POSTING AND s.STATUS = 3 ' +
+                'JOIN REALPRICE r ON r.SCODE = s.SCODE AND r.GOODSCODE = f.GOODSCODE ' +
+                'LEFT JOIN GOODS g ON g.GOODSCODE = r.GOODSCODE LEFT JOIN NAME n ON n.NAMECODE = g.NAMECODE ' +
+                'ORDER BY s.DATA DESC, r.REALPRICECODE',
             [],
-            !transaction,
+            false,
         );
-        return rows.map((r) => ({
-            service: String(r.SERVICE ?? '').trim(),
-            posting: String(r.POSTING ?? '').trim(),
-            goodscode: String(r.GOODSCODE),
-            name: r.NAME ?? null,
-            quantity: Number(r.QUANTITY) || 0,
-            prim: r.PRIM ?? null,
-            date: r.DATA ?? null,
-        }));
+        const pickedByInvoice = new Map<number, Map<number, number>>();
+        const result: FboShortageRowDto[] = [];
+        for (const r of rows) {
+            const scode = Number(r.SCODE);
+            if (!pickedByInvoice.has(scode)) pickedByInvoice.set(scode, await this.pickedByLine(scode, t));
+            const picked = pickedByInvoice.get(scode).get(Number(r.REALPRICECODE)) ?? 0;
+            const shortage = Trade2006InvoiceService.lineShortage(r.QUAN, picked);
+            if (shortage <= 0) continue;
+            result.push({
+                service: String(r.SERVICE ?? '').trim(),
+                posting: String(r.POSTING ?? '').trim(),
+                invoiceNumber: Number(r.NS),
+                scode,
+                realpricecode: Number(r.REALPRICECODE),
+                goodscode: String(r.GOODSCODE),
+                name: r.NAME ?? null,
+                quantity: Number(r.QUAN) || 0,
+                picked,
+                shortage,
+                prim: r.PRIM ?? null,
+                date: r.DATA ?? null,
+            });
+        }
+        if (!transaction) await t.commit(true);
+        return result;
+    }
+
+    /** Подобрано на строках счёта (своя подборка): REALPRICECODE → штук. Одно место для «подобрано». */
+    private async pickedByLine(scode: number, t: FirebirdTransaction): Promise<Map<number, number>> {
+        const picked = new Map<number, number>();
+        for (const r of await t.query(
+            `SELECT REALPRICECODE, SUM(QUAN${this.quanAttr()}) AS PICKED FROM PODBPOS WHERE SCODE = ? GROUP BY REALPRICECODE`,
+            [scode],
+            false,
+        )) {
+            picked.set(Number(r.REALPRICECODE), Number(r.PICKED) || 0);
+        }
+        return picked;
+    }
+
+    /** Недобор строки = нужно − подобрано, не меньше нуля. Одно правило для предложения и списка. */
+    private static lineShortage(quan: number, picked: number): number {
+        return Math.max(0, Number(quan) - picked);
     }
 
     /**
@@ -841,14 +884,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
                 false,
             );
             // Подобрано на строках приёмника (своя подборка) и журнал недобора по отправлению.
-            const picked = new Map<number, number>();
-            for (const r of await t.query(
-                `SELECT REALPRICECODE, SUM(QUAN${this.quanAttr()}) AS PICKED FROM PODBPOS WHERE SCODE = ? GROUP BY REALPRICECODE`,
-                [inv.id],
-                false,
-            )) {
-                picked.set(Number(r.REALPRICECODE), Number(r.PICKED) || 0);
-            }
+            const picked = await this.pickedByLine(inv.id, t);
             const shortage = new Set<string>();
             for (const r of await t.query('SELECT GOODSCODE FROM FBO_SHORTAGE WHERE POSTING = ?', [prim], false)) {
                 shortage.add(String(r.GOODSCODE));
@@ -884,7 +920,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
                         quantity: l.QUAN,
                         pieces,
                         picked: got,
-                        shortage: Math.max(0, Number(l.QUAN) - got),
+                        shortage: Trade2006InvoiceService.lineShortage(l.QUAN, got),
                         inShortage: shortage.has(String(l.GOODSCODE)),
                         donors: donors
                             .filter((d) => String(d.GOODSCODE) === String(l.GOODSCODE))

@@ -43,9 +43,14 @@ export interface InvoiceDonors {
 export interface ShortageRow {
     service: string;
     posting: string;
+    invoiceNumber: number;
+    scode: number;
+    realpricecode: number;
     goodscode: string;
     name: string | null;
     quantity: number;
+    picked: number;
+    shortage: number;
     prim: string | null;
     date: string | null;
 }

@@ -14,7 +14,12 @@ export class FboShortageController {
     ) {}
 
     @Get()
-    @ApiOperation({ summary: 'Открытые недоборы FBO (журнал FBO_SHORTAGE), свежие сверху' })
+    @ApiOperation({
+        summary: 'Открытые недоборы FBO, свежие сверху',
+        description:
+            'Журнал FBO_SHORTAGE даёт кандидатов; открыт недобор или нет, решает счёт: он в подборке (STATUS=3) ' +
+            'и по строке товара подобрано меньше, чем нужно. Закрытое руками в Delphi сюда не попадает.',
+    })
     @ApiOkResponse({ type: [FboShortageRowDto] })
     list(): Promise<FboShortageRowDto[]> {
         return this.invoiceService.listFboShortages();

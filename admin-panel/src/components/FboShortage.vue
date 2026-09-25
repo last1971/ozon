@@ -62,14 +62,17 @@ const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString() : ''
             </v-card-title>
             <v-table v-if="store.shortages.length" density="compact" hover>
                 <thead>
-                    <tr><th>Маркет</th><th>Отправление</th><th>Товар</th><th>Не хватает</th><th>Склад</th><th>Когда</th></tr>
+                    <tr><th>Маркет</th><th>Отправление</th><th>Счёт</th><th>Товар</th><th>Нужно</th><th>Подобрано</th><th>Не хватает</th><th>Склад</th><th>Дата счёта</th></tr>
                 </thead>
                 <tbody>
-                    <tr v-for="s in store.shortages" :key="`${s.posting}:${s.goodscode}`" style="cursor: pointer" @click="pick(s.posting)">
+                    <tr v-for="s in store.shortages" :key="s.realpricecode" style="cursor: pointer" @click="pick(s.posting)">
                         <td>{{ s.service.toUpperCase() }}</td>
                         <td>{{ s.posting }}</td>
+                        <td>№{{ s.invoiceNumber }}</td>
                         <td>{{ s.name ?? s.goodscode }} <span class="text-medium-emphasis">({{ s.goodscode }})</span></td>
                         <td>{{ s.quantity }}</td>
+                        <td>{{ s.picked }}</td>
+                        <td class="text-error">{{ s.shortage }}</td>
                         <td>{{ s.prim }}</td>
                         <td>{{ fmtDate(s.date) }}</td>
                     </tr>

@@ -58,13 +58,18 @@ export class GoodDonorsDto {
     @ApiProperty({ type: [DonorDto] }) donors: DonorDto[];
 }
 
-/** Строка журнала недобора FBO_SHORTAGE. */
+/** Открытый недобор: строка счёта в подборке (STATUS=3), где подобрано меньше, чем нужно. */
 export class FboShortageRowDto {
     @ApiProperty() service: string;
     @ApiProperty() posting: string;
+    @ApiProperty({ description: 'Номер счёта (S.NS)' }) invoiceNumber: number;
+    @ApiProperty() scode: number;
+    @ApiProperty() realpricecode: number;
     @ApiProperty() goodscode: string;
     @ApiProperty({ nullable: true }) name: string | null;
-    @ApiProperty() quantity: number;
+    @ApiProperty({ description: 'Нужно по строке счёта' }) quantity: number;
+    @ApiProperty({ description: 'Подобрано на строке' }) picked: number;
+    @ApiProperty({ description: 'Не хватает = нужно − подобрано' }) shortage: number;
     @ApiProperty({ nullable: true, description: 'Склад (метка подбора)' }) prim: string | null;
-    @ApiProperty({ type: String, format: 'date-time', nullable: true }) date: Date | null;
+    @ApiProperty({ type: String, format: 'date-time', nullable: true, description: 'Дата счёта' }) date: Date | null;
 }

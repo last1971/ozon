@@ -1564,6 +1564,38 @@ describe('Trade2006InvoiceService', () => {
         });
     });
 
+    describe('listFboShortages', () => {
+        it('открыт только недобор счёта в подборке, где подобрано меньше, чем нужно; закрытые руками отпадают', async () => {
+            query
+                // журнал × счета STATUS=3 × строки: два счёта, у второго строку уже добрали в Delphi
+                .mockResolvedValueOnce([
+                    { SERVICE: 'ozon', POSTING: '748-1', PRIM: 'Екб', SCODE: 100, NS: 16771, DATA: new Date('2026-09-25'), REALPRICECODE: 1, GOODSCODE: 562990, QUAN: 1, NAME: 'товар А' },
+                    { SERVICE: 'ozon', POSTING: '748-1', PRIM: 'Екб', SCODE: 100, NS: 16771, DATA: new Date('2026-09-25'), REALPRICECODE: 2, GOODSCODE: 111, QUAN: 4, NAME: 'товар Б' },
+                    { SERVICE: 'ozon', POSTING: '507-1', PRIM: 'Крд', SCODE: 200, NS: 16000, DATA: new Date('2026-08-01'), REALPRICECODE: 3, GOODSCODE: 222, QUAN: 5, NAME: 'товар В' },
+                ])
+                // подобрано на счёте 100: по второй строке 3 из 4
+                .mockResolvedValueOnce([{ REALPRICECODE: 2, PICKED: 3 }])
+                // подобрано на счёте 200: всё
+                .mockResolvedValueOnce([{ REALPRICECODE: 3, PICKED: 5 }]);
+
+            const res = await service.listFboShortages();
+
+            expect(res).toEqual([
+                expect.objectContaining({ posting: '748-1', invoiceNumber: 16771, realpricecode: 1, goodscode: '562990', quantity: 1, picked: 0, shortage: 1, prim: 'Екб' }),
+                expect.objectContaining({ posting: '748-1', realpricecode: 2, quantity: 4, picked: 3, shortage: 1 }),
+            ]);
+            // кандидаты — из журнала, открытость — по счёту в подборке и его строкам
+            expect(query.mock.calls[0][0]).toContain('FROM FBO_SHORTAGE f');
+            expect(query.mock.calls[0][0]).toContain('s.PRIM = f.POSTING AND s.STATUS = 3');
+            // подобрано читается один раз на счёт, тем же запросом, что в предложении
+            expect(query).toHaveBeenCalledTimes(3);
+            expect(query.mock.calls[1][0]).toContain('FROM PODBPOS WHERE SCODE = ?');
+            expect(query.mock.calls[1][1]).toEqual([100]);
+            expect(query.mock.calls[2][1]).toEqual([200]);
+            expect(commit).toHaveBeenCalled();
+        });
+    });
+
     describe('findDonorsByPrim', () => {
         it('отдаёт номер счёта и доноров того же покупателя по каждой строке', async () => {
             query
