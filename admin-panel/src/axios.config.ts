@@ -7,11 +7,18 @@ const url = import.meta.env.VITE_URL;
  * Не защита — логина в админке нет. localStorage может быть недоступен (приват-режим) — тогда без метки.
  */
 const CLIENT_ID_KEY = 'client-id';
+
+/** crypto.randomUUID есть только на https и localhost; админка по http://192.168… без него — тогда свой id. */
+function newClientId(): string {
+    if (typeof crypto?.randomUUID === 'function') return crypto.randomUUID();
+    return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 10)}-${Math.random().toString(36).slice(2, 10)}`;
+}
+
 export function clientId(): string | undefined {
     try {
         let id = localStorage.getItem(CLIENT_ID_KEY);
         if (!id) {
-            id = crypto.randomUUID();
+            id = newClientId();
             localStorage.setItem(CLIENT_ID_KEY, id);
         }
         return id;
