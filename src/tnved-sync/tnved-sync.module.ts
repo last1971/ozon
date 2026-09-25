@@ -35,5 +35,7 @@ const TNVED_COMMANDS = [
     imports: [ProductModule, FirebirdModule, WbCardModule, WbApiModule, ProcessedCacheModule, JobModule],
     controllers: [TnvedSyncController],
     providers: [TnvedSyncService, OzonTnvedService, WbTnvedService, ...TNVED_COMMANDS],
+    // WbTnvedService наружу — ради справочника ТН ВЭД предметов (WbDictModule) через общую калитку к ВБ
+    exports: [WbTnvedService],
 })
 export class TnvedSyncModule {}

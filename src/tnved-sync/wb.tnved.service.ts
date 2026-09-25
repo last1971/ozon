@@ -16,6 +16,7 @@ import {
     TnvedUpdateResult,
 } from '../interfaces/i.tnved.updateable';
 import { emptyProgress, JobProgress } from '../interfaces/i.job.context';
+import { WbTnvedEntry } from '../interfaces/i.wb.dict.context';
 
 /** Справочник ТН ВЭД предмета: коды, которые ВБ примет в характеристику; null — справочник не отдан. */
 type WbTnvedDirectory = Set<string> | null;
@@ -223,7 +224,8 @@ export class WbTnvedService implements ITnvedUpdateable {
 
         let dir = dirCache.get(card.subjectID);
         if (dir === undefined) {
-            dir = await this.loadDirectory(card.subjectID);
+            const entries = await this.directory(card.subjectID);
+            dir = entries ? new Set(entries.map((e) => e.tnved)) : null;
             dirCache.set(card.subjectID, dir);
         }
         if (!dir) {
@@ -300,8 +302,12 @@ export class WbTnvedService implements ITnvedUpdateable {
         return res.data.some((c: any) => c.charcID === this.tnvedCharcId);
     }
 
-    /** Справочник кодов ТН ВЭД предмета. null — ВБ не ответил. */
-    private async loadDirectory(subjectId: number): Promise<WbTnvedDirectory> {
+    /**
+     * Справочник ТН ВЭД предмета как отдаёт ВБ: код + isKiz («нужен код маркировки»). null — ВБ не ответил.
+     * Публичный: тот же справочник выкачивает по всем предметам WbDictModule (карта «код → предметы»),
+     * через ту же калитку content() — лимит у ВБ общий.
+     */
+    async directory(subjectId: number): Promise<WbTnvedEntry[] | null> {
         const res = await this.content(`directory/tnved?subjectID=${subjectId}`, () =>
             this.api.method(
                 'https://content-api.wildberries.ru/content/v2/directory/tnved',
@@ -315,6 +321,8 @@ export class WbTnvedService implements ITnvedUpdateable {
             this.logger.warn(`[tnved] directory/tnved subjectID=${subjectId}: ${JSON.stringify(res).slice(0, 300)}`);
             return null;
         }
-        return new Set(res.data.map((d: any) => String(d.tnved ?? '').trim()).filter(Boolean));
+        return res.data
+            .map((d: any) => ({ tnved: String(d.tnved ?? '').trim(), isKiz: d.isKiz === true }))
+            .filter((d: WbTnvedEntry) => d.tnved);
     }
 }

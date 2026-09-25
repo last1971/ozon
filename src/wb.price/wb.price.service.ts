@@ -16,6 +16,7 @@ import Excel from 'exceljs';
 import { GoodWbDto } from '../good/dto/good.wb.dto';
 import { WbCardDto } from '../wb.card/dto/wb.card.dto';
 import { IVatUpdateable } from 'src/interfaces/i.vat.updateable';
+import { JobProgress } from '../interfaces/i.job.context';
 
 /** Задача для ВБ upload/task: nmID + базовая цена + скидка, %. */
 export interface WbPriceTask {
@@ -401,15 +402,24 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
         this.logger.log('Wb categories init');
     }
 
-    async updateWbSaleCoeffs(): Promise<any> {
+    /**
+     * Предметы и комиссии ВБ (tariffs/commission) → WB_CATEGORIES. Справочник ТН ВЭД предметов
+     * (TNVED_LIST/TNVED_AT) не трогает — его ведёт WbDictModule. progress — ход для фоновой задачи.
+     * Возвращает, сколько предметов отдал ВБ.
+     */
+    async updateWbSaleCoeffs(progress?: JobProgress): Promise<number> {
         const data = await this.api.method(
             'https://common-api.wildberries.ru/api/v1/tariffs/commission',
             'get',
             {},
             true,
         );
-        for (const card of data.report) {
-            await this.goodService.updateWbCategory(card as WbCardDto);
+        const report: WbCardDto[] = data?.report ?? [];
+        if (progress) Object.assign(progress, { done: 0, total: report.length });
+        for (const card of report) {
+            await this.goodService.updateWbCategory(card);
+            if (progress) progress.done++;
         }
+        return report.length;
     }
 }

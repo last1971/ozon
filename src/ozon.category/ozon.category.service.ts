@@ -1,3 +1,4 @@
+import { readBlob } from '../firebird/read-blob';
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FIREBIRD } from '../firebird/firebird.module';
@@ -389,8 +390,8 @@ export class OzonCategoryService implements OnModuleInit {
                 return null;
             }
 
-            const fboStr = await this.readBlob(row.FBO_COMMISSIONS, transaction);
-            const fbsStr = await this.readBlob(row.FBS_COMMISSIONS, transaction);
+            const fboStr = await readBlob(row.FBO_COMMISSIONS, transaction);
+            const fbsStr = await readBlob(row.FBS_COMMISSIONS, transaction);
 
             await t.commit(true);
 
@@ -429,7 +430,7 @@ export class OzonCategoryService implements OnModuleInit {
         try {
             const [row] = await t.query('SELECT EMBEDDING FROM OZON_TYPES WHERE TYPE_ID = ?', [typeId], false);
             if (!row) { await t.commit(true); return null; }
-            const buf = await this.readBlob(row.EMBEDDING, transaction, true);
+            const buf = await readBlob(row.EMBEDDING, transaction, true);
             await t.commit(true);
             if (!buf) return null;
             const embedding = this.bufferToEmbedding(buf);
@@ -489,27 +490,6 @@ export class OzonCategoryService implements OnModuleInit {
     }
 
     // ========== Utils ==========
-
-    private readBlob(blob: any, transaction: any, binary?: false): Promise<string>;
-    private readBlob(blob: any, transaction: any, binary: true): Promise<Buffer | null>;
-    private readBlob(blob: any, transaction: any, binary = false): Promise<string | Buffer | null> {
-        return new Promise((resolve, reject) => {
-            if (!blob || typeof blob !== 'function') {
-                resolve(binary ? null : '');
-                return;
-            }
-            blob(transaction, (err: any, _name: string, emitter: any) => {
-                if (err) { reject(err); return; }
-                const chunks: Buffer[] = [];
-                emitter.on('data', (chunk: Buffer) => chunks.push(chunk));
-                emitter.on('end', () => {
-                    const buf = Buffer.concat(chunks);
-                    resolve(binary ? buf : buf.toString('utf8'));
-                });
-                emitter.on('error', reject);
-            });
-        });
-    }
 
     private parsePercent(v: any): number {
         if (v == null) return 0;
@@ -606,7 +586,7 @@ export class OzonCategoryService implements OnModuleInit {
                 for (let j = 0; j < rows.length; j++) {
                     const dbRow = rows[j];
                     if (!dbRow.EMBEDDING) continue;
-                    const buf = await this.readBlob(dbRow.EMBEDDING, transaction, true);
+                    const buf = await readBlob(dbRow.EMBEDDING, transaction, true);
                     if (!buf || buf.length !== EMBEDDING_DIM * 4) continue;
 
                     const meta = batch.find((r: any) => r[opts.idField] === dbRow[opts.idField]);
