@@ -110,6 +110,83 @@ describe('JobService', () => {
         expect(jobs.get('nope')).toBeNull();
     });
 
+    it('команда поставила stopChain → failed с фазой, следующая команда не идёт, result нет', async () => {
+        const state = jobs.run({
+            kind: 'k', params: {},
+            commands: [cmd('stop', 'валидация', async (c) => { c.stopChain = true; }), cmd('never')],
+            context: ctx(),
+            result: (c) => c.log,
+        });
+
+        const done = await jobs.whenDone(state.id);
+        expect(done.status).toBe('failed');
+        expect(done.error).toContain('валидация');
+        expect(done.result).toBeUndefined();
+        expect((done.progress as any)).toEqual(expect.objectContaining({ phase: 'валидация' }));
+    });
+
+    it('cancel: сразу failed «отменена», цепочке поставлен stopChain, вид свободен для нового запуска', async () => {
+        const g = gate();
+        const c = ctx();
+        const mk = () => jobs.run({ kind: 'k', params: { m: 1 }, commands: [cmd('w', 'ж', () => g.opened), cmd('never')], context: c, result: (x) => x.log });
+
+        const a = mk();
+        const cancelled = jobs.cancel(a.id);
+        expect(cancelled.status).toBe('failed');
+        expect(cancelled.error).toBe('отменена');
+        expect(cancelled.finishedAt).toBeDefined();
+        expect(c.stopChain).toBe(true);
+        expect((await jobs.whenDone(a.id)).status).toBe('failed');
+
+        const again = mk();
+        expect(again.id).not.toBe(a.id);
+
+        // цепочка доработала после отмены — статус не перезаписан
+        g.release();
+        await new Promise((r) => setImmediate(r));
+        expect(jobs.get(a.id).status).toBe('failed');
+        expect(jobs.get(a.id).result).toBeUndefined();
+        expect(c.log).toEqual(['w', 'w']); // never не пошла ни в одной
+
+        expect(jobs.cancel('nope')).toBeNull();
+    });
+
+    it('cancel завершённой задачи ничего не меняет', async () => {
+        const a = jobs.run({ kind: 'k', params: {}, commands: [cmd('a')], context: ctx(), result: () => 1 });
+        const done = await jobs.whenDone(a.id);
+        const after = jobs.cancel(a.id);
+        expect(after.status).toBe('done');
+        expect(after.result).toBe(1);
+        expect(after.finishedAt).toBe(done.finishedAt);
+    });
+
+    it('таймаут: зависшая задача уходит в failed, stopChain выставлен, та же задача запускается заново', async () => {
+        const g = gate();
+        const c = ctx();
+        const mk = () => jobs.run({ kind: 'k', params: { t: 1 }, timeoutMs: 20, commands: [cmd('hang', 'ж', () => g.opened)], context: c, result: () => 1 });
+
+        const a = mk();
+        const done = await jobs.whenDone(a.id);
+        expect(done.status).toBe('failed');
+        expect(done.error).toContain('зависшая');
+        expect(c.stopChain).toBe(true);
+        expect(mk().id).not.toBe(a.id);
+        g.release();
+    });
+
+    it('идемпотентность не зависит от порядка ключей params', async () => {
+        const g = gate();
+        const a = jobs.run({ kind: 'k', params: { market: 'wb', all: true }, commands: [cmd('w', 'ж', () => g.opened)], context: ctx(), result: () => 1 });
+        const same = jobs.run({ kind: 'k', params: { all: true, market: 'wb' }, commands: [cmd('w')], context: ctx(), result: () => 1 });
+        expect(same.id).toBe(a.id);
+        g.release();
+        await jobs.whenDone(a.id);
+    });
+
+    it('whenDone по неизвестному id — ошибка, а не undefined', async () => {
+        await expect(jobs.whenDone('nope')).rejects.toThrow('nope');
+    });
+
     it('завершённые старше часа подчищаются при обращении', async () => {
         const a = jobs.run({ kind: 'x', params: {}, commands: [cmd('a')], context: ctx(), result: () => 1 });
         await jobs.whenDone(a.id);

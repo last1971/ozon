@@ -13,15 +13,43 @@ export interface JobRunOptions<T extends IJobContext, R> {
     context: T;
     /** Что из контекста считать результатом задачи */
     result: (context: T) => R;
+    /** Сколько задаче можно идти; дольше — считается зависшей и уходит в failed. По умолчанию час. */
+    timeoutMs?: number;
 }
 
 /** Сколько живёт завершённая задача, пока её не подчистят */
 const FINISHED_TTL_MS = 60 * 60 * 1000;
+/** Сколько задаче можно идти, прежде чем считать её зависшей */
+const DEFAULT_TIMEOUT_MS = 60 * 60 * 1000;
+
+/** Идущая задача: контекст (чтобы поставить stopChain) и способ завершить её снаружи */
+interface ActiveJob {
+    context: IJobContext;
+    fail: (error: string) => void;
+}
+
+/**
+ * Ключ params, не зависящий от порядка полей: { a, b } и { b, a } — одна задача.
+ * JSON.stringify с массивом-replacer не подходит: он режет ключи вложенных объектов.
+ */
+const paramsKey = (v: unknown): string => {
+    if (Array.isArray(v)) return `[${v.map(paramsKey).join(',')}]`;
+    if (v && typeof v === 'object') {
+        const o = v as Record<string, unknown>;
+        return `{${Object.keys(o)
+            .sort()
+            .map((k) => `${JSON.stringify(k)}:${paramsKey(o[k])}`)
+            .join(',')}}`;
+    }
+    return JSON.stringify(v);
+};
 
 /**
  * Исполнитель фоновых задач: цепочка команд запускается, не дожидаясь, состояние видно по id.
  * Про ТН ВЭД и прочие задачи не знает. Фаза прогресса = команда с полем phase.
  * Идемпотентный старт: та же задача (kind + params) уже running → возвращается она, а не вторая.
+ * Задача завершается ровно один раз — кто первый (цепочка, таймаут или cancel), тот и ставит статус;
+ * остановка цепочки командой (stopChain) — это failed, а не done: работа не доделана.
  * Состояния в памяти процесса; завершённые старше часа подчищаются лениво при обращении.
  */
 @Injectable()
@@ -29,6 +57,7 @@ export class JobService {
     private readonly logger = new Logger(JobService.name);
     private readonly states = new Map<string, JobStateDto>();
     private readonly promises = new Map<string, Promise<JobStateDto>>();
+    private readonly active = new Map<string, ActiveJob>();
 
     run<T extends IJobContext, R>(opts: JobRunOptions<T, R>): JobStateDto {
         this.cleanup();
@@ -47,24 +76,46 @@ export class JobService {
         this.states.set(state.id, state);
         this.logger.log(`[job] start ${state.kind} ${state.id} ${JSON.stringify(state.params)}`);
 
-        const chain = new CommandChainAsync<T>(opts.commands.map((c) => this.withPhase(c, state)));
-        // .catch обязателен: unhandled rejection роняет процесс, pm2 рестартует и стирает все задачи
-        const promise = chain
-            .execute(opts.context)
-            .then((ctx) => {
-                state.result = opts.result(ctx);
-                state.status = 'done';
-            })
-            .catch((e) => {
-                state.error = e?.message ?? String(e);
-                state.status = 'failed';
-                this.logger.error(`[job] failed ${state.kind} ${state.id}: ${state.error}`);
-            })
-            .then(() => {
+        const chain = new CommandChainAsync<T>(opts.commands.map((c) => this.withPhase(c)));
+        const promise = new Promise<JobStateDto>((resolve) => {
+            const finish = (apply: () => void) => {
+                if (state.status !== 'running') return; // уже завершили другим путём
+                clearTimeout(timer);
+                this.active.delete(state.id);
+                apply();
                 state.finishedAt = new Date().toISOString();
-                this.logger.log(`[job] ${state.status} ${state.kind} ${state.id}`);
-                return state;
-            });
+                this.logger.log(`[job] ${state.status} ${state.kind} ${state.id}${state.error ? `: ${state.error}` : ''}`);
+                resolve(state);
+            };
+            const fail = (error: string) =>
+                finish(() => {
+                    state.status = 'failed';
+                    state.error = error;
+                });
+
+            const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+            const timer = setTimeout(() => {
+                opts.context.stopChain = true;
+                fail(`не уложилась в ${Math.round(timeoutMs / 60000)} мин — остановлена как зависшая`);
+            }, timeoutMs);
+            timer.unref?.();
+            this.active.set(state.id, { context: opts.context, fail });
+
+            // .catch обязателен: unhandled rejection роняет процесс, pm2 рестартует и стирает все задачи
+            chain
+                .execute(opts.context)
+                .then((ctx) => {
+                    if (ctx.stopChain) return fail(`остановлена командой на фазе «${ctx.progress.phase ?? '?'}»`);
+                    finish(() => {
+                        state.result = opts.result(ctx);
+                        state.status = 'done';
+                    });
+                })
+                .catch((e) => {
+                    this.logger.error(`[job] failed ${state.kind} ${state.id}`, e?.stack ?? String(e));
+                    fail(e?.message ?? String(e));
+                });
+        });
         this.promises.set(state.id, promise);
         return state;
     }
@@ -81,21 +132,36 @@ export class JobService {
             .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
     }
 
-    /** Дождаться завершения — для синхронных вызовов и тестов. */
+    /**
+     * Отменить: цепочке ставится stopChain (сработает между командами, текущую не прервёт),
+     * задача сразу failed — вид освобождается для нового запуска. Уже завершённую не трогает.
+     */
+    cancel(id: string): JobStateDto | null {
+        const state = this.get(id);
+        if (!state) return null;
+        const job = this.active.get(id);
+        if (job) {
+            job.context.stopChain = true;
+            job.fail('отменена');
+        }
+        return state;
+    }
+
+    /** Дождаться завершения — для синхронных вызовов и тестов. Неизвестный id — ошибка, а не undefined. */
     whenDone(id: string): Promise<JobStateDto> {
-        return this.promises.get(id) ?? Promise.resolve(this.states.get(id));
+        return this.promises.get(id) ?? Promise.reject(new Error(`задача ${id} не найдена`));
     }
 
     private findRunning(kind: string, params: Record<string, unknown>): JobStateDto | null {
-        const key = JSON.stringify(params);
+        const key = paramsKey(params);
         for (const s of this.states.values()) {
-            if (s.status === 'running' && s.kind === kind && JSON.stringify(s.params) === key) return s;
+            if (s.status === 'running' && s.kind === kind && paramsKey(s.params) === key) return s;
         }
         return null;
     }
 
     /** Обёртка команды: перед выполнением пишет её фазу в прогресс задачи. */
-    private withPhase<T extends IJobContext>(command: IJobCommand<T>, state: JobStateDto): ICommandAsync<T> {
+    private withPhase<T extends IJobContext>(command: IJobCommand<T>): ICommandAsync<T> {
         return {
             execute: async (ctx: T) => {
                 if (command.phase) {

@@ -1,4 +1,4 @@
-import { Controller, Get, NotFoundException, Param, Query } from '@nestjs/common';
+import { Controller, Get, HttpCode, NotFoundException, Param, Post, Query } from '@nestjs/common';
 import { ApiNotFoundResponse, ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { JobService } from './job.service';
 import { JobStateDto } from './job.state.dto';
@@ -23,6 +23,17 @@ export class JobController {
     get(@Param('id') id: string): JobStateDto {
         const state = this.jobs.get(id);
         if (!state) throw new NotFoundException(`задача ${id} не найдена — запусти заново`);
+        return state;
+    }
+
+    @Post(':id/cancel')
+    @HttpCode(200)
+    @ApiOperation({ summary: 'Отменить задачу: стоп между командами, статус failed, вид свободен для нового запуска' })
+    @ApiOkResponse({ type: JobStateDto, description: 'состояние после отмены; уже завершённая возвращается как есть' })
+    @ApiNotFoundResponse({ description: 'задачи нет' })
+    cancel(@Param('id') id: string): JobStateDto {
+        const state = this.jobs.cancel(id);
+        if (!state) throw new NotFoundException(`задача ${id} не найдена`);
         return state;
     }
 }
