@@ -1,10 +1,15 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { GoodServiceEnum } from '../good/good.service.enum';
-import { DictSubject, DictSubjectTnved, ITnvedDictionary } from '../interfaces/i.tnved.dictionary';
+import { DictSubject, DictSubjectTnved, ITnvedDictionary, TnvedEntry } from '../interfaces/i.tnved.dictionary';
 
-/** Предмет, в котором код проходит, с пометкой «нужен код маркировки». */
+/**
+ * Предмет, в котором код проходит, с пометкой «нужен код маркировки» и кодами справочника,
+ * по которым он сюда попал: при точном совпадении один, при поиске по началу — все с таким началом.
+ * Без них по списку «по первым 4 знакам» не выбрать: не видно, какой код у предмета есть на самом деле.
+ */
 export interface DictSubjectHit extends DictSubject {
     isKiz: boolean;
+    codes: TnvedEntry[];
 }
 
 /** Как нашли: точный код, либо по началу (6 или 4 знака), когда точного нет ни у одного предмета. */
@@ -39,8 +44,14 @@ export function lookupTnved(codes: TnvedCodeMap, tnved: string): Omit<TnvedLooku
         const seen = new Map<number, DictSubjectHit>();
         for (const [key, hits] of codes) {
             if (!key.startsWith(prefix)) continue;
-            for (const hit of hits) if (!seen.has(hit.id)) seen.set(hit.id, hit);
+            for (const hit of hits) {
+                // Копия: карта живёт в памяти процесса, накапливать коды в её элементах нельзя.
+                const found = seen.get(hit.id) ?? { ...hit, codes: [] };
+                found.codes.push({ tnved: key, isKiz: hit.isKiz });
+                seen.set(hit.id, found);
+            }
         }
+        for (const hit of seen.values()) hit.codes.sort((a, b) => a.tnved.localeCompare(b.tnved));
         if (seen.size) {
             const subjects = [...seen.values()].sort(
                 (a, b) => (a.commission ?? Infinity) - (b.commission ?? Infinity) || a.name.localeCompare(b.name, 'ru'),
@@ -57,7 +68,7 @@ export function buildTnvedMap(rows: DictSubjectTnved[]): TnvedCodeMap {
     for (const { tnved, ...subject } of rows) {
         for (const entry of tnved) {
             const list = codes.get(entry.tnved) ?? [];
-            list.push({ ...subject, isKiz: entry.isKiz });
+            list.push({ ...subject, isKiz: entry.isKiz, codes: [] });
             codes.set(entry.tnved, list);
         }
     }

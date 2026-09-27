@@ -30,6 +30,8 @@ export interface DictSubjectHit {
     parentName: string;
     commission: number | null;
     isKiz: boolean;
+    /** Коды справочника предмета, по которым он попал в ответ (при поиске по началу — все с таким началом). */
+    codes: { tnved: string; isKiz: boolean }[];
 }
 
 export type TnvedMatch = 'exact' | 'prefix6' | 'prefix4' | 'none';

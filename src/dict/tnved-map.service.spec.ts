@@ -28,6 +28,18 @@ describe('tnved-map', () => {
         expect(four.subjects.map((s) => s.id)).toEqual([4536, 8648]);
     });
 
+    it('у предмета видны коды справочника, по которым он попал: один при точном, все с таким началом при поиске по началу', () => {
+        const exact = lookupTnved(codes, '8504408300');
+        expect(exact.subjects.map((s) => s.codes)).toEqual([[{ tnved: '8504408300', isKiz: true }], [{ tnved: '8504408300', isKiz: true }]]);
+
+        const four = lookupTnved(codes, '8536900000');
+        expect(four.subjects.find((s) => s.id === 4536).codes).toEqual([{ tnved: '8536411000', isKiz: false }]);
+        expect(four.subjects.find((s) => s.id === 8648).codes).toEqual([{ tnved: '8536490000', isKiz: false }]);
+
+        // Повторный поиск не накапливает коды в элементах карты.
+        expect(lookupTnved(codes, '8536900000').subjects.find((s) => s.id === 4536).codes).toHaveLength(1);
+    });
+
     it('ничего не подходит → none; мусор в коде отбрасывается', () => {
         expect(lookupTnved(codes, '3926909709')).toEqual({ tnved: '3926909709', match: 'none', subjects: [] });
         expect(lookupTnved(codes, '8504 40 830 0').match).toBe('exact');

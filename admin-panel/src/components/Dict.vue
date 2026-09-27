@@ -23,6 +23,15 @@ const MATCH: Record<string, string> = {
     none: 'нет ни одного предмета',
 };
 
+const subjectHeaders = [
+    { title: 'Предмет', key: 'name' },
+    { title: 'Категория', key: 'parentName' },
+    { title: 'ID', key: 'id' },
+    { title: 'Комиссия, %', key: 'commission' },
+    { title: 'Маркировка', key: 'isKiz', sortable: false },
+    { title: 'Кодов', key: 'codes', sortable: false },
+];
+
 const jobs = [
     { label: 'категории', box: categories.box },
     { label: 'ТН ВЭД', box: tnved.box },
@@ -126,26 +135,40 @@ const statsOfMarket = computed(() => store.stats.find((s) => s.market === store.
                     <v-card-title class="text-subtitle-1">
                         {{ marketOf(l) }} · {{ MATCH[l.match] }} · предметов: {{ l.subjects.length }}
                     </v-card-title>
-                    <v-table v-if="l.subjects.length" density="compact" hover>
-                        <thead>
+                    <!-- Строка разворачивается: под ней коды справочника этого предмета, по которым он найден -->
+                    <v-data-table
+                        v-if="l.subjects.length"
+                        :headers="subjectHeaders"
+                        :items="l.subjects"
+                        item-value="id"
+                        density="compact"
+                        show-expand
+                        expand-on-click
+                        hover
+                        :items-per-page="-1"
+                        hide-default-footer
+                    >
+                        <template v-slot:item.commission="{ item }">{{ item.commission ?? '—' }}</template>
+                        <template v-slot:item.isKiz="{ item }"><v-icon :icon="item.isKiz ? 'mdi-check' : 'mdi-minus'" size="small" /></template>
+                        <template v-slot:item.codes="{ item }">{{ item.codes.length }}</template>
+                        <template v-slot:expanded-row="{ columns, item }">
                             <tr>
-                                <th>Предмет</th>
-                                <th>Категория</th>
-                                <th>ID</th>
-                                <th>Комиссия, %</th>
-                                <th>Маркировка</th>
+                                <td :colspan="columns.length" class="py-2 bg-grey-lighten-4">
+                                    <v-chip
+                                        v-for="c in item.codes"
+                                        :key="c.tnved"
+                                        size="small"
+                                        class="me-2"
+                                        :color="c.tnved === l.tnved ? 'success' : undefined"
+                                        :prepend-icon="c.isKiz ? 'mdi-barcode' : undefined"
+                                        :title="c.isKiz ? 'нужен код маркировки' : 'без маркировки'"
+                                    >
+                                        {{ c.tnved }}
+                                    </v-chip>
+                                </td>
                             </tr>
-                        </thead>
-                        <tbody>
-                            <tr v-for="s in l.subjects" :key="s.id">
-                                <td>{{ s.name }}</td>
-                                <td>{{ s.parentName }}</td>
-                                <td>{{ s.id }}</td>
-                                <td>{{ s.commission ?? '—' }}</td>
-                                <td><v-icon :icon="s.isKiz ? 'mdi-check' : 'mdi-minus'" size="small" /></td>
-                            </tr>
-                        </tbody>
-                    </v-table>
+                        </template>
+                    </v-data-table>
                 </v-card>
             </v-col>
         </v-row>
