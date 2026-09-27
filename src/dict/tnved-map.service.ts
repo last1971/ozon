@@ -12,6 +12,13 @@ export interface DictSubjectHit extends DictSubject {
     codes: TnvedEntry[];
 }
 
+/**
+ * Элемент карты: предмет с пометкой маркировки, ОДИН объект на предмет и пометку, разделяемый
+ * всеми его кодами. Пар «код + предмет» миллионы (Озон — 3.3 млн на 27.09.2026), копия на каждую
+ * пару давала ~800 МБ кучи и OOM на опте (потолок 1 ГБ). Коды здесь не храним — они собираются в поиске.
+ */
+type MapEntry = DictSubject & { isKiz: boolean };
+
 /** Как нашли: точный код, либо по началу (6 или 4 знака), когда точного нет ни у одного предмета. */
 export type TnvedMatch = 'exact' | 'prefix6' | 'prefix4' | 'none';
 
@@ -22,7 +29,7 @@ export interface TnvedLookup {
     subjects: DictSubjectHit[];
 }
 
-export type TnvedCodeMap = Map<string, DictSubjectHit[]>;
+export type TnvedCodeMap = Map<string, MapEntry[]>;
 
 /** Порядок поиска по убыванию точности. Длина 10 — сам код. */
 const PREFIXES: { length: number; match: TnvedMatch }[] = [
@@ -45,8 +52,8 @@ export function lookupTnved(codes: TnvedCodeMap, tnved: string): Omit<TnvedLooku
         for (const [key, hits] of codes) {
             if (!key.startsWith(prefix)) continue;
             for (const hit of hits) {
-                // Копия: карта живёт в памяти процесса, накапливать коды в её элементах нельзя.
-                const found = seen.get(hit.id) ?? { ...hit, codes: [] };
+                // Копия только для найденного: элемент карты общий для всех кодов предмета.
+                const found: DictSubjectHit = seen.get(hit.id) ?? { ...hit, codes: [] };
                 found.codes.push({ tnved: key, isKiz: hit.isKiz });
                 seen.set(hit.id, found);
             }
@@ -66,9 +73,13 @@ export function lookupTnved(codes: TnvedCodeMap, tnved: string): Omit<TnvedLooku
 export function buildTnvedMap(rows: DictSubjectTnved[]): TnvedCodeMap {
     const codes: TnvedCodeMap = new Map();
     for (const { tnved, ...subject } of rows) {
+        // Два разделяемых объекта на предмет (с маркировкой и без), а не копия на каждый код.
+        const shared: Record<'kiz' | 'plain', MapEntry | undefined> = { kiz: undefined, plain: undefined };
         for (const entry of tnved) {
+            const key = entry.isKiz ? 'kiz' : 'plain';
+            const item = (shared[key] ??= { ...subject, isKiz: entry.isKiz });
             const list = codes.get(entry.tnved) ?? [];
-            list.push({ ...subject, isKiz: entry.isKiz, codes: [] });
+            list.push(item);
             codes.set(entry.tnved, list);
         }
     }
@@ -84,14 +95,27 @@ export function buildTnvedMap(rows: DictSubjectTnved[]): TnvedCodeMap {
 export class TnvedMapService {
     private readonly logger = new Logger(TnvedMapService.name);
     private readonly maps = new Map<GoodServiceEnum, TnvedCodeMap>();
+    /**
+     * Сборка, которая уже идёт, по рынку. Сборка читает справочник каждого предмета (тысячи BLOB,
+     * около минуты на проде), и пока она идёт, каждый новый поиск запускал ещё одну такую же:
+     * 27.09.2026 после рестарта несколько кликов «Где проходит» подряд дали параллельные сборки
+     * и OOM (куча 1 ГБ на опте). Теперь ждущие поиска цепляются к идущей сборке.
+     */
+    private readonly building = new Map<GoodServiceEnum, Promise<number>>();
 
-    /** Пересобрать карту рынка из базы. Возвращает число разных кодов. */
-    async rebuild(service: ITnvedDictionary): Promise<number> {
-        const rows = await service.listWithTnved();
-        const codes = buildTnvedMap(rows);
-        this.maps.set(service.market, codes);
-        this.logger.log(`[dict] ${service.market}: карта ТН ВЭД — предметов ${rows.length}, кодов ${codes.size}`);
-        return codes.size;
+    /** Пересобрать карту рынка из базы. Возвращает число разных кодов. Параллельные вызовы делят одну сборку. */
+    rebuild(service: ITnvedDictionary): Promise<number> {
+        const running = this.building.get(service.market);
+        if (running) return running;
+        const build = (async () => {
+            const rows = await service.listWithTnved();
+            const codes = buildTnvedMap(rows);
+            this.maps.set(service.market, codes);
+            this.logger.log(`[dict] ${service.market}: карта ТН ВЭД — предметов ${rows.length}, кодов ${codes.size}`);
+            return codes.size;
+        })().finally(() => this.building.delete(service.market));
+        this.building.set(service.market, build);
+        return build;
     }
 
     /** Поиск по одному рынку. */
