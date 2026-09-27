@@ -60,7 +60,7 @@ describe('Trade2006ChzService', () => {
     it('pending(return): гвард возврата — код жив, а ЧЗ ещё считает его выведенным', async () => {
         query.mockResolvedValueOnce([]);
         await service.pending('return');
-        expect(query.mock.calls[0][0]).toContain('m.STATUS = 5 AND m.CHZ_SENT_AT IS NOT NULL');
+        expect(query.mock.calls[0][0]).toContain('m.STATUS = 5 AND m.CHZ_SENT_AT IS NOT NULL AND m.CHZ_SKIP_TEXT IS NULL');
     });
 
     it('createBatch: пусто → null и откат, пачка не плодится', async () => {
@@ -125,7 +125,7 @@ describe('Trade2006ChzService', () => {
         expect(result).toEqual({ confirmed: 1, skipped: 0, already: false });
         const update = execute.mock.calls.find(([sql]) => sql.includes('UPDATE MARKCODES'));
         expect(update[0]).toContain('SET CHZ_SENT_AT = NULL');
-        expect(update[0]).toContain('m.STATUS = 5 AND m.CHZ_SENT_AT IS NOT NULL');
+        expect(update[0]).toContain('m.STATUS = 5 AND m.CHZ_SENT_AT IS NOT NULL AND m.CHZ_SKIP_TEXT IS NULL');
     });
 
     it('confirmBatch: повторное подтверждение — тихий no-op', async () => {

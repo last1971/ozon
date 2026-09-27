@@ -61,7 +61,8 @@ export interface ChzBatchInfo {
  *
  *   вывод FBS:  STATUS=6, RETIRE_REASON=1, TT=3, CHZ_SENT_AT IS NULL;
  *   вывод УПД:  STATUS=6, RETIRE_REASON=1, TT=1, CHZ_SENT_AT IS NULL;
- *   возврат:    STATUS=5, CHZ_SENT_AT IS NOT NULL (ЧЗ ещё считает код выведенным).
+ *   возврат:    STATUS=5, CHZ_SENT_AT IS NOT NULL, CHZ_SKIP_TEXT IS NULL
+ *               (ЧЗ ещё считает код выведенным; закрытые без вывода чужие коды — мимо).
  *
  * Два вывода различаются ТОЛЬКО TRANSFER_TYPE. Эти предикаты живут ТОЛЬКО
  * здесь — ими пользуются вкладка админки, суточная напоминалка и недельный
@@ -79,8 +80,12 @@ export class Trade2006ChzService {
     /** Гвард отбора «ждёт вывода в ЧЗ» после УПД покупателю вне ЧЗ. */
     private static readonly RETIRE_UPD_GUARD =
         'm.STATUS = 6 AND m.RETIRE_REASON = 1 AND m.TRANSFER_TYPE = 1 AND m.CHZ_SENT_AT IS NULL AND m.CHZ_SKIP_AT IS NULL';
-    /** Гвард отбора «ждёт возврата в ЧЗ». */
-    private static readonly RETURN_GUARD = 'm.STATUS = 5 AND m.CHZ_SENT_AT IS NOT NULL';
+    /**
+     * Гвард отбора «ждёт возврата в ЧЗ». CHZ_SKIP_TEXT без CHZ_SKIP_AT ставит очередь
+     * Trade, когда закрывает код без вывода (в ГИС МТ он числится за другим участником):
+     * в ЧЗ такой код не выводился, возвращать нечего — в список и в письмо не попадает.
+     */
+    private static readonly RETURN_GUARD = 'm.STATUS = 5 AND m.CHZ_SENT_AT IS NOT NULL AND m.CHZ_SKIP_TEXT IS NULL';
 
     constructor(
         @Inject(FIREBIRD) private pool: FirebirdPool,
