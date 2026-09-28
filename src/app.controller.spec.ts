@@ -9,7 +9,7 @@ import { WbCardService } from './wb.card/wb.card.service';
 import { ConfigService } from '@nestjs/config';
 import { VaultService } from 'vault-module/lib/vault.service';
 import { FIREBIRD } from './firebird/firebird.module';
-import { MailService } from './mail/mail.service';
+import { NotifierService } from './notify/notifier.service';
 
 describe('AppController', () => {
     let appController: AppController;
@@ -42,9 +42,9 @@ describe('AppController', () => {
                     },
                 },
                 {
-                    provide: MailService,
+                    provide: NotifierService,
                     useValue: {
-                        checkHealth: jest.fn().mockResolvedValue(true),
+                        test: jest.fn().mockResolvedValue({ ok: true }),
                     },
                 },
             ],
@@ -63,7 +63,7 @@ describe('AppController', () => {
     describe('clearVaultCache', () => {
         it('should clear vault cache and return success message', async () => {
             const result = await appController.clearVaultCache();
-            
+
             expect(vaultService.clearCache).toHaveBeenCalled();
             expect(result).toEqual({ message: 'Vault cache cleared successfully' });
         });

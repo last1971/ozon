@@ -73,7 +73,7 @@ export const cronConfig: Record<string, CronSetup> = {
             settings: {
                 time: CronExpression.EVERY_HOUR,
             },
-        },  
+        },
         development: {
             enabled: false,
             settings: {
@@ -274,6 +274,16 @@ export const cronConfig: Record<string, CronSetup> = {
                 time: CronExpression.EVERY_MINUTE,
             },
         },
+    },
+    // Повтор неотправленного в Matrix (NotifyRetryService); пустая очередь выходит сразу.
+    notifyRetry: {
+        production: {
+            enabled: true,
+            settings: {
+                time: CronExpression.EVERY_MINUTE,
+            },
+        },
+        development: false,
     },
     checkHealth: {
         production: {

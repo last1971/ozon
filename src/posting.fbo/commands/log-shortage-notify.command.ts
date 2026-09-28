@@ -3,6 +3,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ICommandAsync } from '../../interfaces/i.command.acync';
 import { IInvoice, INVOICE_SERVICE } from '../../interfaces/IInvoice';
 import { IFboCreateContext } from './i.fbo-create.context';
+import { NotifyTopic } from '../../notify/notify.types';
 
 /**
  * Недобор по счёту (позиция без подбора / недокинутый migrate-остаток) → журнал FBO_SHORTAGE + письмо.
@@ -43,7 +44,7 @@ export class LogShortageNotifyCommand implements ICommandAsync<IFboCreateContext
 
         // Письмо шлём после commit транзакции (через flushers) — чтобы не уведомлять при откате.
         const send = async () => {
-            this.eventEmitter.emit('error.message', subject, body);
+            this.eventEmitter.emit('error.message', subject, body, NotifyTopic.OPS);
         };
         if (context.flushers) context.flushers.push(send);
         else await send();

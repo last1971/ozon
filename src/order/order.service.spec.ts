@@ -19,6 +19,7 @@ import { AccrualWeekService } from '../trade2006.accrual/accrual.week.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { CheckMarkCoverageCommand } from './commands/check-mark-coverage.command';
 import { PickupInvoiceCommand } from './commands/pickup-invoice.command';
+import { NotifyTopic } from '../notify/notify.types';
 
 describe('OrderService', () => {
     const mpRecord = jest.fn().mockResolvedValue(true);
@@ -639,6 +640,7 @@ describe('OrderService', () => {
                 'error.message',
                 'Отмена отгруженного ВБ-заказа при неожиданном статусе счёта',
                 expect.stringContaining('9003'),
+                NotifyTopic.OPS,
             );
         });
 
@@ -716,6 +718,7 @@ describe('OrderService', () => {
                 'error.message',
                 expect.stringContaining('недоборного FBO'),
                 expect.stringContaining('FBO-SH'),
+                NotifyTopic.OPS,
             );
         });
 
@@ -731,6 +734,7 @@ describe('OrderService', () => {
                 'error.message',
                 expect.stringContaining('неожиданном статусе'),
                 expect.stringContaining('STATUS=0'),
+                NotifyTopic.OPS,
             );
         });
 
@@ -755,6 +759,7 @@ describe('OrderService', () => {
                 'error.message',
                 'Отменён собранный заказ — разобрать посылку',
                 expect.stringContaining('расформировать счёт №1777'),
+                NotifyTopic.OPS,
             );
             expect(eventEmitterEmit.mock.calls[0][2]).toContain('отсканировать коды (их 3)');
         });
@@ -1446,6 +1451,7 @@ describe('OrderService', () => {
                 'error.message',
                 'Отмена счёта с ручной пометкой',
                 expect.stringContaining('пометка «получен»'),
+                NotifyTopic.OPS,
             );
         });
 

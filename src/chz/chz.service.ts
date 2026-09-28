@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import { writeRows } from '../helpers/spreadsheet.util';
+import { NotifyTopic } from '../notify/notify.types';
 import {
     ChzBatchInfo,
     ChzBatchKind,
@@ -116,6 +117,7 @@ export class ChzService {
             'error.message',
             `ЧЗ: ждёт передачи ${retire.length + giveBack.length + updCodes} КИ`,
             lines.join('\n'),
+            NotifyTopic.MARKING,
         );
     }
 }

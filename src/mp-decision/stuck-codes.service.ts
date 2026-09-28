@@ -8,6 +8,7 @@ import { isMarkCodesEnabled } from '../helpers/mark-codes.helper';
 import { MpEventService, MpService } from '../mp-event/mp-event.service';
 import { Trade2006ChzService } from '../trade2006.chz/trade2006.chz.service';
 import { CLAIM_RETURN_STATES, LOST_RETURN_STATES, RETURN_STATE } from './mp-decision.types';
+import { NotifyTopic } from '../notify/notify.types';
 
 /**
  * Еженедельный отчёт «подвисшие коды» (Этап 5, перенесён в итерацию 5).
@@ -111,6 +112,7 @@ export class StuckCodesService {
                 '',
                 ...lines,
             ].join('\n'),
+            NotifyTopic.MARKING,
         );
     }
 
@@ -138,6 +140,7 @@ export class StuckCodesService {
                 ...(retire.length ? [`Вывести из оборота: ${retire.length} КИ.`] : []),
                 ...(giveBack.length ? [`Вернуть в оборот: ${giveBack.length} КИ.`] : []),
             ].join('\n'),
+            NotifyTopic.MARKING,
         );
     }
 
@@ -219,6 +222,7 @@ export class StuckCodesService {
                 '',
                 ...lines,
             ].join('\n'),
+            NotifyTopic.MARKING,
         );
     }
 }

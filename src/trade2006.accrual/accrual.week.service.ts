@@ -13,6 +13,7 @@ import {
     PendingVerdict,
 } from '../helpers/accrual.distribution';
 import { AccrualUnpaidDto, AccrualWeekReportDto } from './dto/accrual.week.report.dto';
+import { NotifyTopic } from '../notify/notify.types';
 
 const amountOf = (a: AccrualDto): number => parseFloat(a.total_amount?.amount ?? '0') || 0;
 const round2 = (v: number): number => Math.round(v * 100) / 100;
@@ -267,6 +268,7 @@ export class AccrualWeekService {
             'error.message',
             `Начисления Ozon за ${report.period.from} … ${report.period.to}`,
             lines.join('\n'),
+            NotifyTopic.FINANCE,
         );
         this.logger.log('Письмо по итогам прогона отправлено');
     }

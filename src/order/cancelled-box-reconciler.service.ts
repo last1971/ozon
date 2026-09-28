@@ -8,6 +8,7 @@ import { PostingService } from '../posting/posting.service';
 import { donorSuffixFor } from '../helpers/order.cancellation.constants';
 import { MpService } from '../mp-event/mp-event.service';
 import { returnWhereabouts } from '../mp-decision/mp-decision.types';
+import { NotifyTopic } from '../notify/notify.types';
 
 /** Строка письма плюс всё, что нужно, чтобы положить её в правильный раздел. */
 interface BoxRow {
@@ -100,6 +101,7 @@ export class CancelledBoxReconcilerService {
             'error.message',
             `Коробка уехала к маркетплейсу, а счёт помечен « отмена»: ${total}`,
             CancelledBoxReconcilerService.buildLetter(buckets),
+            NotifyTopic.OPS,
         );
     }
 

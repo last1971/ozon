@@ -7,6 +7,7 @@ import { InvoiceLineDto } from '../invoice/dto/invoice.line.dto';
 import { goodCode, goodQuantityCoeff } from '../helpers';
 import { FboShortageDto } from './dto/fbo-shortage.dto';
 import { DonorTransferError, DonorTransferService, TransferResult } from './donor-transfer.service';
+import { NotifyTopic } from '../notify/notify.types';
 
 // S12: при FBO-продаже из счёта А в счёт Б переезжают и коды маркировки, и подборка.
 // Порядок по кандидату строго «сначала коды, потом подборка» (в одной транзакции):
@@ -60,6 +61,7 @@ export class FboMarkMigrationService {
                         `GOODSCODE ${gc}: на строке донора (SCODE ${cand.scode}, RPC ${cand.realpricecode}) ` +
                             `${cand.quanAvail} шт и живых кодов ${cand.cntLive}, но ни одного номинала ${nominal}. ` +
                             `Поделить код в ЧЗ или подобрать из другой партии.`,
+                        NotifyTopic.MARKING,
                     ),
             );
 
@@ -80,6 +82,7 @@ export class FboMarkMigrationService {
                         `GOODSCODE ${gc}: на строке донора (SCODE ${cand.scode}, RPC ${cand.realpricecode}) ` +
                             `живых кодов ${cand.cntLive}, из них номинала ${nominal} — ни одного. ` +
                             `Нужно ${take} шт: либо поделить код в ЧЗ, либо подобрать из другой партии.`,
+                        NotifyTopic.MARKING,
                     );
                     continue;
                 }
@@ -111,6 +114,7 @@ export class FboMarkMigrationService {
                         'error.message',
                         'FBO migration: часть товара переехала без кодов маркировки',
                         `GOODSCODE ${gc}: перенесено ${take} шт, кодами покрыто ${coveredByCodes} (SCODE ${cand.scode} -> ${scode})`,
+                        NotifyTopic.MARKING,
                     );
                 } else if (coveredByCodes < take && cand.cntDead > 0) {
                     // Живых кодов нет, но на строке донора лежит выведенный (TT=3, STATUS=6):
@@ -122,6 +126,7 @@ export class FboMarkMigrationService {
                         `GOODSCODE ${gc}: перенесено ${take} шт без кодов, на строке донора ` +
                             `выведенных кодов: ${cand.cntDead} (SCODE ${cand.scode} -> ${scode}) — ` +
                             `нужен ручной unretire (MARKCODE_FBS_UNSOLD) и разбор в ЧЗ`,
+                        NotifyTopic.MARKING,
                     );
                 }
             }

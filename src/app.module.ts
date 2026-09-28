@@ -31,6 +31,7 @@ import { WbApiModule } from './wb.api/wb.api.module';
 import { WbOrderModule } from './wb.order/wb.order.module';
 import { WbPriceModule } from './wb.price/wb.price.module';
 import { MailModule } from './mail/mail.module';
+import { NotifyModule } from './notify/notify.module';
 import { CacheModule } from '@nestjs/cache-manager';
 import { CacheStore } from '@nestjs/cache-manager';
 import { redisStore } from 'cache-manager-redis-yet';
@@ -143,6 +144,7 @@ import JSONbig from 'json-bigint';
         WbOrderModule,
         WbPriceModule,
         MailModule,
+        NotifyModule,
         WbSupplyModule,
         SupplyModule,
         LabelModule,

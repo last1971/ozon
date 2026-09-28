@@ -1,11 +1,12 @@
-import { Controller, Get, Inject, Post } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Post } from '@nestjs/common';
 import { AppService } from './app.service';
 import { VaultService } from 'vault-module/lib/vault.service';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { FIREBIRD } from './firebird/firebird.module';
 import { FirebirdPool } from 'ts-firebird';
 import { PoolStatsDto } from './firebird/dto/pool.stats.dto';
-import { MailService } from './mail/mail.service';
+import { NotifierService } from './notify/notifier.service';
+import { NotifyTopic } from './notify/notify.types';
 
 @ApiTags('app')
 @Controller()
@@ -14,7 +15,7 @@ export class AppController {
         private readonly appService: AppService,
         private readonly vaultService: VaultService,
         @Inject(FIREBIRD) private readonly pool: FirebirdPool,
-        private readonly mailService: MailService,
+        private readonly notifier: NotifierService,
     ) {}
 
     @Get()
@@ -53,10 +54,13 @@ export class AppController {
         };
     }
 
-    @Post('mail/test')
-    @ApiOperation({ summary: 'Тестовое письмо' })
-    async testMail(): Promise<{ sent: boolean }> {
-        const sent = await this.mailService.checkHealth();
-        return { sent };
+    /**
+     * Проверка уведомлений. С room — напрямую в комнату, мимо таблицы маршрутов
+     * и гейта «не прод» (локально иначе ничего не проверить). Без room — по теме.
+     */
+    @Post('notify/test')
+    @ApiOperation({ summary: 'Тестовое уведомление: {topic?: OPS|MARKING|PRICES|FINANCE|DEV, room?: !id:server}' })
+    async testNotify(@Body() body: { topic?: NotifyTopic; room?: string }): Promise<{ ok: boolean; detail?: string }> {
+        return this.notifier.test(body?.topic ?? NotifyTopic.DEV, body?.room);
     }
 }

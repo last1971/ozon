@@ -4,6 +4,7 @@ import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { DonorTransferError, DonorTransferService } from './donor-transfer.service';
 import { validatePicks } from './donor-picks.validator';
 import { DonorMovedDto, FboShortageApplyDto, FboShortageApplyResultDto } from './dto/fbo-shortage-apply.dto';
+import { NotifyTopic } from '../notify/notify.types';
 
 /**
  * Ручной разбор недобора FBO: человек выбрал, с каких доноров сколько взять, — переносим той же
@@ -88,6 +89,7 @@ export class DonorApplyService {
                 'FBO: недобор закрыт руками',
                 `Заказ: ${posting}\nСчёт: №${offer.invoiceNumber}\nПереехало: ${summary}\n` +
                     (shortageClosed ? 'Недобора не осталось, счёт отдан в подбор.' : 'По другим позициям недобор ещё открыт.'),
+                NotifyTopic.OPS,
             );
             return { posting, scode: offer.scode, moved, shortageClosed, pickedUp };
         } catch (e) {

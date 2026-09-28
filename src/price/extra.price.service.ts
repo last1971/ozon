@@ -44,6 +44,7 @@ import { NotifyHighPriceCommand } from './commands/notify-high-price.command';
 import { CalculateUnprofitableCommand } from './commands/calculate-unprofitable.command';
 import { ExportUnprofitableXlsxCommand } from './commands/export-unprofitable-xlsx.command';
 import { Buffer } from 'exceljs';
+import { NotifyTopic } from '../notify/notify.types';
 
 @Injectable()
 export class ExtraPriceService {
@@ -159,7 +160,7 @@ export class ExtraPriceService {
             const message = allErrors
                 .map((r) => `${r.service}: ${r.errors.length} ошибок\n${JSON.stringify(r.errors.slice(0, 10), null, 2)}`)
                 .join('\n\n');
-            this.eventEmitter.emit('error.message', 'Ошибки обновления цен', message);
+            this.eventEmitter.emit('error.message', 'Ошибки обновления цен', message, NotifyTopic.PRICES);
         }
 
         const summary = results.map((r) => `${r.service}: ${r.errors.length} ошибок`).join(', ');

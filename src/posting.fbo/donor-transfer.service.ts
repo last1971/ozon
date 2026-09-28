@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FirebirdTransaction } from 'ts-firebird';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
+import { NotifyTopic } from '../notify/notify.types';
 
 /** Строка донора: подборка и строка счёта, откуда едет товар. */
 export interface DonorLineRef {
@@ -92,6 +93,7 @@ export class DonorTransferService {
                         'error.message',
                         'FBO migration: КМ завис на счёте продажи без подборки — нужен ручной разбор',
                         `КМ ${ki}, GOODSCODE ${gc}, RPC ${target.realpricecode} (SCODE ${target.scode}): ${e2.message}`,
+                        NotifyTopic.MARKING,
                     );
                 }
             }

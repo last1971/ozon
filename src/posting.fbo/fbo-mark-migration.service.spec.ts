@@ -3,6 +3,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FboMarkMigrationService } from './fbo-mark-migration.service';
 import { INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { DonorTransferService } from './donor-transfer.service';
+import { NotifyTopic } from '../notify/notify.types';
 
 // S12: при FBO-переезде вместе с подборкой едут коды маркировки (TT=2/3),
 // кратно номиналу, по кандидату строго «сначала коды, потом подборка».
@@ -141,6 +142,7 @@ describe('FboMarkMigrationService', () => {
             'error.message',
             'FBO migration: донор с кодом другого номинала пропущен',
             expect.stringMatching(/GOODSCODE 444.*SCODE 100.*20 шт.*номинала 1/),
+            NotifyTopic.MARKING,
         );
     });
 
@@ -166,6 +168,7 @@ describe('FboMarkMigrationService', () => {
             'error.message',
             expect.stringContaining('без кодов'),
             expect.any(String),
+            NotifyTopic.MARKING,
         );
     });
 
@@ -212,6 +215,7 @@ describe('FboMarkMigrationService', () => {
             'error.message',
             expect.stringContaining('выведенный код'),
             expect.stringContaining('unretire'),
+            NotifyTopic.MARKING,
         );
     });
 

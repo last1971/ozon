@@ -1,5 +1,5 @@
 import { plainToInstance, Transform } from 'class-transformer';
-import { IsBoolean, IsEmail, IsEnum, IsIP, IsNumber, IsOptional, IsString, IsUrl, validateSync } from "class-validator";
+import { IsBoolean, IsEmail, IsEnum, IsIP, IsNumber, IsOptional, IsString, IsUrl, validateSync } from 'class-validator';
 import { GoodServiceEnum } from './good/good.service.enum';
 
 export enum Environment {
@@ -72,14 +72,33 @@ class EnvironmentVariables {
     @IsEmail()
     MAIL_FROM: string;
 
+    // Адресаты уведомлений живут в NOTIFY_ROUTE (src/notify); эти три остались
+    // только чтобы старые .env не падали на старте — в коде не читаются.
+    @IsOptional()
     @IsEmail()
     MAIL_ADMIN: string;
 
+    @IsOptional()
     @IsEmail()
     MAIL_LAST: string;
 
+    @IsOptional()
     @IsEmail()
     MAIL_NICK: string;
+
+    // Инсталляция для тега в уведомлениях: opt | shop. Без неё — по имени FB_BASE.
+    @IsOptional()
+    @IsString()
+    INSTANCE: string;
+
+    // Matrix: homeserver и токен бота (свой device на инсталляцию). Пусто — канал matrix только логирует.
+    @IsOptional()
+    @IsUrl({ require_tld: false })
+    MATRIX_HOMESERVER: string;
+
+    @IsOptional()
+    @IsString()
+    MATRIX_ACCESS_TOKEN: string;
 
     @IsNumber()
     PERC_MAX: number;

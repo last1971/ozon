@@ -37,6 +37,7 @@ import { UpdateOzonPricesCommand } from './commands/update-ozon-prices.command';
 import { NotifyHighPriceCommand } from './commands/notify-high-price.command';
 import { CalculateUnprofitableCommand } from './commands/calculate-unprofitable.command';
 import { ExportUnprofitableXlsxCommand } from './commands/export-unprofitable-xlsx.command';
+import { NotifyTopic } from '../notify/notify.types';
 
 jest.mock("../yandex.price/yandex.price.service");
 jest.mock("../wb.price/wb.price.service");
@@ -390,7 +391,8 @@ describe("ExtraPriceService", () => {
             expect(mockEventEmitter.emit).toHaveBeenCalledWith(
                 'error.message',
                 'Ошибки обновления цен',
-                expect.stringContaining('PriceService: 1 ошибок')
+                expect.stringContaining('PriceService: 1 ошибок'),
+                NotifyTopic.PRICES,
             );
         });
 

@@ -1,5 +1,6 @@
 import { CheckMarkCoverageCommand } from './check-mark-coverage.command';
 import { IPickupContext } from './i.pickup.context';
+import { NotifyTopic } from '../../notify/notify.types';
 
 describe('CheckMarkCoverageCommand', () => {
     const invoice = (status: number) => ({ id: 300739, number: 77876, remark: '5771104739', status }) as any;
@@ -27,6 +28,7 @@ describe('CheckMarkCoverageCommand', () => {
             'error.message',
             'Подбор закрыт без кодов маркировки',
             expect.stringContaining('товар 549853: нужно 1, привязано 0'),
+            NotifyTopic.MARKING,
         );
     });
 

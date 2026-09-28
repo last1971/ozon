@@ -3,6 +3,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ICommandAsync } from '../../interfaces/i.command.acync';
 import { IPickupContext } from './i.pickup.context';
 import { INVOICE_SERVICE, IInvoice } from '../../interfaces/IInvoice';
+import { NotifyTopic } from '../../notify/notify.types';
 
 /**
  * Зовёт руки, когда маркируемый товар уезжает без КМ.
@@ -46,6 +47,7 @@ export class CheckMarkCoverageCommand implements ICommandAsync<IPickupContext> {
             `${invoice.remark}: счёт №${invoice.number ?? '?'} (SCODE ${invoice.id}) подобран автоматикой,` +
                 ` но коды не привязаны — ${details}.` +
                 ' Товар уезжает, коды остаются свободными и всплывут на витрине — нужна догоняющая проводка.',
+            NotifyTopic.MARKING,
         );
 
         return { ...context, uncovered };

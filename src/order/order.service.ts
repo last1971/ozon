@@ -35,6 +35,7 @@ import { MpEventDto, MpEventService } from '../mp-event/mp-event.service';
 import { MpDecisionRunnerService } from '../mp-decision/mp-decision.runner.service';
 import { MarkScanFbsService } from '../invoice/mark-scan-fbs.service';
 import { CLAIM_RETURN_STATES, Decision } from '../mp-decision/mp-decision.types';
+import { NotifyTopic } from '../notify/notify.types';
 
 type OrderStep = 'cancel' | 'returns' | 'package' | 'delivery' | 'reconcile';
 
@@ -323,6 +324,7 @@ export class OrderService {
                             'Доставка по помеченному счёту',
                             `${posting.posting_number}: счёт ${match.invoice.id} помечен «${match.mark.trim()}»,` +
                                 ` а отправление доставлено — не трогаем, разобрать руками`,
+                            NotifyTopic.OPS,
                         );
                         return;
                     }
@@ -513,6 +515,7 @@ export class OrderService {
                             'Отмена счёта с ручной пометкой',
                             `${order.posting_number}: счёт №${match.invoice.number ?? '?'} (SCODE ${match.invoice.id}), ` +
                                 `пометка «${match.mark.trim()}» — в ручном разборе, не трогаем`,
+                            NotifyTopic.OPS,
                         );
                         return;
                     }
@@ -653,7 +656,11 @@ export class OrderService {
             );
             this.logger.log(`Return ${postingNumber} was returned`);
         } else {
-            this.eventEmitter.emit('error.message', 'Return wrong status', `${postingNumber}: status=${invoice.status}`);
+            this.eventEmitter.emit(
+                'error.message',
+                'Return wrong status',
+                `${postingNumber}: status=${invoice.status}`,
+            );
         }
     }
 
@@ -687,6 +694,7 @@ export class OrderService {
                 'Отменён собранный заказ — разобрать посылку',
                 `${postingNumber}: счёт №${invoice.number ?? '?'} (SCODE ${invoice.id}) был собран, заказ отменён.\n` +
                     `Вскрыть посылку, расформировать счёт №${invoice.number ?? invoice.id} в Trade${scanNote}, товар разложить на полку.`,
+                NotifyTopic.OPS,
             );
     }
 
@@ -746,6 +754,7 @@ export class OrderService {
                         'error.message',
                         'Отмена недоборного FBO-счёта — разобрать руками',
                         `${order.posting_number}: счёт №${invoice.number ?? '?'} (SCODE ${invoice.id}) в журнале недоборов — не подобран и донором не помечен`,
+                        NotifyTopic.OPS,
                     );
                     return;
                 }
@@ -763,6 +772,7 @@ export class OrderService {
                     'error.message',
                     'Отмена FBO при неожиданном статусе счёта',
                     `${order.posting_number}: счёт №${invoice.number ?? '?'} (SCODE ${invoice.id}) в STATUS=${invoice.status} — не трогаем, глянуть глазами`,
+                    NotifyTopic.OPS,
                 );
             }
         } else if (order.service === GoodServiceEnum.WB && isShippedToMarketplace(order)) {
@@ -784,6 +794,7 @@ export class OrderService {
                     'Отмена отгруженного ВБ-заказа при неожиданном статусе счёта',
                     `${order.posting_number}: счёт №${invoice.number ?? '?'} (SCODE ${invoice.id}) в STATUS=${invoice.status}, ` +
                         'а заказ отгружен — не трогаем, глянуть глазами',
+                    NotifyTopic.OPS,
                 );
             }
         } else if (isShippedToMarketplace(order)) {
