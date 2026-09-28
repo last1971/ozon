@@ -442,7 +442,7 @@ describe("ExtraPriceService", () => {
     });
 
     describe('ExtraPriceService - filterProblematicProducts', () => {
-        it('should calculate diffPercent correctly and return all products with diffPercent', () => {
+        it('только выше порога, процент со знаком, пустая мин. цена пропущена', () => {
             const products: PriceDto[] = [
                 {
                     marketing_seller_price: "200",
@@ -473,13 +473,23 @@ describe("ExtraPriceService", () => {
                 } as unknown as PriceDto,
             ];
 
-            const thresholdPercent = 50;
-            const result = extraPriceService['filterProblematicProducts'](products, thresholdPercent);
+            products.push(
+                { marketing_seller_price: '1191', min_price: '1269', offer_id: '4' } as unknown as PriceDto, // −6.1
+                { marketing_seller_price: '1048', min_price: '1000', offer_id: '5' } as unknown as PriceDto, // +4.8, округлилось бы в 5
+                { marketing_seller_price: '100', min_price: '0', offer_id: '6' } as unknown as PriceDto,     // мин. цены нет
+            );
+            const result = extraPriceService['filterProblematicProducts'](products, 5);
 
-            expect(result).toHaveLength(3);
-            expect(result[0].diffPercent).toBe(100); // (200-100)/100 * 100
-            expect(result[1].diffPercent).toBe(0);   // (150-150)/150 * 100
-            expect(result[2].diffPercent).toBe(50);  // (300-200)/200 * 100
+            expect(result.map((p) => [p.offer_id, p.diffPercent])).toEqual([
+                ['1', 100],  // (200-100)/100
+                ['3', 50],   // (300-200)/200
+                ['4', -6.1], // (1191-1269)/1269 — в пользу маркетплейса
+            ]);
+        });
+
+        it('ровно на пороге — не проблема', () => {
+            const products = [{ marketing_seller_price: '105', min_price: '100', offer_id: '1' } as unknown as PriceDto];
+            expect(extraPriceService['filterProblematicProducts'](products, 5)).toEqual([]);
         });
     });
 
@@ -623,6 +633,16 @@ describe("ExtraPriceService", () => {
     });
 
     describe("ExtraPriceService - checkPriceDifferenceAndNotify", () => {
+        it("нет товаров выше порога — события нет", async () => {
+            mockPriceService.index = jest.fn().mockResolvedValue({
+                data: [{ marketing_seller_price: "100", min_price: "100", offer_id: "1" }],
+            } as unknown as PriceResponseDto);
+            const eventEmitterSpy = jest.spyOn(mockEventEmitter, "emit");
+            eventEmitterSpy.mockClear();
+            await extraPriceService.checkPriceDifferenceAndNotify(["1"]);
+            expect(eventEmitterSpy).not.toHaveBeenCalledWith("problematic.prices", expect.anything());
+        });
+
         it("should emit an event if problematic products are found", async () => {
             const ozonSkus = ["ozon-sku1", "ozon-sku2"];
             const mockProducts = [

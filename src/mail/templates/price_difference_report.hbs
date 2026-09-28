@@ -1,6 +1,10 @@
 <h2>Отчет о расхождении цен Ozon</h2>
 <p>Найдено товаров: <strong>{{products.length}}</strong></p>
-<p>Порог расхождения: <strong>{{thresholdPercent}}%</strong></p>
+<p>Порог расхождения: <strong>{{thresholdPercent}}%</strong> — в отчёте только товары, где разница больше порога.</p>
+<p>
+  <span style="background: #e3f4e1; padding: 2px 6px;">зелёный</span> — маркетинговая цена выше минимальной, в нашу пользу;
+  <span style="background: #fbe3e3; padding: 2px 6px;">красный</span> — ниже минимальной, в пользу маркетплейса.
+</p>
 
 <table border="1" cellpadding="5" cellspacing="0">
   <thead>
@@ -14,12 +18,12 @@
   </thead>
   <tbody>
   {{#each products}}
-    <tr>
+    <tr style="background: {{this.rowColor}};">
       <td>{{this.offer_id}}</td>
       <td>{{this.name}}</td>
       <td>{{this.marketing_seller_price}}</td>
       <td>{{this.min_price}}</td>
-      <td>{{this.diffPercent}}</td>
+      <td>{{this.diffLabel}}</td>
     </tr>
   {{/each}}
   </tbody>

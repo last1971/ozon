@@ -22,16 +22,27 @@ export function halfStoreMessage(good: any, bound: any): NotifyMessage {
     };
 }
 
+/** Цвет и подпись строки: «+» — маркетинговая выше минимальной, в нашу пользу; «−» — в пользу маркетплейса. */
+function priceRow(p: any) {
+    const ours = Number(p.diffPercent) > 0;
+    return {
+        ...p,
+        diffLabel: `${ours ? '+' : '−'}${Math.abs(Number(p.diffPercent))}`,
+        rowColor: ours ? '#e3f4e1' : '#fbe3e3',
+        mark: ours ? '🟢' : '🔴',
+    };
+}
+
 export function problematicPricesMessage(context: { products: any[]; thresholdPercent: number }): NotifyMessage {
-    const products = context?.products ?? [];
+    const products = (context?.products ?? []).map(priceRow);
     const lines = products.map(
-        (p) => `${p.offer_id} ${p.name ?? ''}: маркетинг ${p.marketing_seller_price}, мин ${p.min_price}, ${p.diffPercent}%`,
+        (p) => `${p.mark} ${p.diffLabel}% ${p.offer_id} ${p.name ?? ''}: маркетинг ${p.marketing_seller_price}, мин ${p.min_price}`,
     );
     return {
         subject: 'Поправить цены',
-        text: `Товаров: ${products.length}, порог ${context?.thresholdPercent}%\n${lines.join('\n')}`,
+        text: `Товаров: ${products.length}, порог ${context?.thresholdPercent}%\n🟢 в нашу пользу, 🔴 в пользу маркетплейса\n${lines.join('\n')}`,
         notice: true,
-        mail: { template: 'price_difference_report', context },
+        mail: { template: 'price_difference_report', context: { ...context, products } },
     };
 }
 

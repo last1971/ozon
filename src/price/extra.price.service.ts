@@ -222,7 +222,9 @@ export class ExtraPriceService {
 
     async checkPriceDifferenceAndNotify(ozonSkus: string[]): Promise<void> {
         // 1. Получаем порог разницы из конфигурации (в процентах)
-        const thresholdPercent = this.configService.get<number>('PRICE_DIFF_THRESHOLD_PERCENT', 5);
+        // env отдаёт строку; не число (пусто, опечатка) — порог по умолчанию 5%, а не NaN, при котором отчёт молчит
+        const configured = Number(this.configService.get('PRICE_DIFF_THRESHOLD_PERCENT', 5));
+        const thresholdPercent = Number.isFinite(configured) ? configured : 5;
         if (!ozonSkus || ozonSkus.length === 0) {
             this.logger.warn('No trade SKUs provided for price difference check.');
             return;
@@ -254,42 +256,31 @@ export class ExtraPriceService {
     }
 
     /**
-     * Filters out products with a price difference exceeding the specified threshold percentage.
-     * Сейчас убрал фильтрацию но скорее всего потребуется в будущем
-     * @param products
-     * @param thresholdPercent
-     * @private
+     * Товары, у которых маркетинговая цена ушла от минимальной больше чем на порог.
+     * diffPercent со знаком, 1 знак после запятой: «+» — маркетинговая выше минимальной
+     * (продаём дороже нашего минимума, в нашу пользу), «−» — ниже (в пользу маркетплейса).
+     * Сравнение с порогом — по точному значению, не по округлённому.
      */
     private filterProblematicProducts(
         products: PriceDto[],
         thresholdPercent: number
     ): Array<PriceDto & { diffPercent: number }> {
-        return products.map((product): PriceDto & { diffPercent: number } => {
-            const marketingPrice = toNumber(product.marketing_seller_price);
-            const minPrice = toNumber(product.min_price);
-            const diff = Math.abs(marketingPrice - minPrice);
-            const diffPercent = Math.round((diff / minPrice) * 100);
-            return { ...product, diffPercent };
-        });
-        /*
         const problematicProducts: Array<PriceDto & { diffPercent: number }> = [];
-        products.forEach(item => {
+        for (const item of products) {
             const marketingPrice = toNumber(item.marketing_seller_price);
             const minPrice = toNumber(item.min_price);
-
-            if (minPrice > 0 && marketingPrice > 0) {
-                const diff = Math.abs(marketingPrice - minPrice);
-                const diffPercent = (diff / minPrice) * 100;
-
-                if (diffPercent > thresholdPercent) {
-                    problematicProducts.push({ ...item, diffPercent });
-                }
-            } else if (minPrice <= 0 && marketingPrice > 0) {
-                this.logger.warn(`Product ${item.offer_id} (${item.name}) has invalid min_price (${item.min_price}) but valid marketing_price (${item.marketing_seller_price}). Skipping percentage check.`);
+            if (!(minPrice > 0) || !(marketingPrice > 0)) {
+                this.logger.warn(
+                    `Цена ${item.offer_id} (${item.name}): min_price=${item.min_price}, marketing_seller_price=${item.marketing_seller_price} — процент не считаем`,
+                );
+                continue;
             }
-        });
+            const exact = ((marketingPrice - minPrice) / minPrice) * 100;
+            if (Math.abs(exact) > thresholdPercent) {
+                problematicProducts.push({ ...item, diffPercent: Math.round(exact * 10) / 10 });
+            }
+        }
         return problematicProducts;
-        */
     }
     public async generatePercentsForOzon(sku: string, goodPercentDto?: Partial<GoodPercentDto>, generic?: boolean): Promise<GoodPercentDto> {
         const available_prices = goodPercentDto !== null && goodPercentDto !== undefined

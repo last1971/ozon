@@ -87,6 +87,25 @@ describe('NotifierService', () => {
         expect(matrix.send.mock.calls[0][1]).toMatchObject({ notice: true, text: 'srid1 — ART' });
     });
 
+    it('отчёт о ценах: цвет и знак по стороне разницы', async () => {
+        const { service, mail, matrix } = make(prod, { 'PRICES:mail': ['n@x.y'], 'PRICES:matrix': ['!p:s'] });
+        await service.problematicPrices({
+            thresholdPercent: 5,
+            products: [
+                { offer_id: 'A', name: 'a', marketing_seller_price: 110, min_price: 100, diffPercent: 10 },
+                { offer_id: 'B', name: 'b', marketing_seller_price: 93, min_price: 100, diffPercent: -7 },
+            ],
+        });
+        const rows = mail.send.mock.calls[0][1].mail.context.products;
+        expect(rows.map((r: any) => [r.diffLabel, r.rowColor])).toEqual([
+            ['+10', '#e3f4e1'],
+            ['−7', '#fbe3e3'],
+        ]);
+        const text = matrix.send.mock.calls[0][1].text;
+        expect(text).toContain('🟢 +10% A');
+        expect(text).toContain('🔴 −7% B');
+    });
+
     it('test с явной комнатой — напрямую через deliver, мимо таблицы', async () => {
         const { service, matrix, repo } = make({ NODE_ENV: 'development', INSTANCE: 'shop' }, {});
         matrix.deliver.mockResolvedValue({ ok: true });
