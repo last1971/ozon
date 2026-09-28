@@ -230,9 +230,7 @@ export class ExtraGoodService implements OnApplicationBootstrap {
     }
 
     /** Сводка по сервису: вкл/выкл + активные/замороженные SKU. */
-    async getStatus(
-        serviceEnum: GoodServiceEnum,
-    ): Promise<{
+    async getStatus(serviceEnum: GoodServiceEnum): Promise<{
         isSwitchedOn: boolean;
         total: number;
         active: number;

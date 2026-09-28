@@ -1,5 +1,4 @@
 import { DiscountTaskDto } from '../discount-requests/dto/discount-task-list.dto';
-import { Logger } from '@nestjs/common';
 
 export interface IDiscountDecisions {
     approveTasks: {

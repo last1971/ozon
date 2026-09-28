@@ -1,6 +1,5 @@
 import { MakeDecisionsCommand } from './make-decisions.command';
 import { DiscountTaskDto } from '../dto/discount-task-list.dto';
-import { ConfigService } from '@nestjs/config';
 
 describe('MakeDecisionsCommand', () => {
     let configService: any;

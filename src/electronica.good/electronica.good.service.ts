@@ -16,16 +16,16 @@ export class ElectronicaGoodService implements IGood {
     constructor(private api: ElectronicaApiService) {}
 
     generatePercentsForService(
-        service: IPriceUpdateable,
-        skus: string[],
-        goodPercentsDto?: Map<string, Partial<GoodPercentDto>>,
+        _service: IPriceUpdateable,
+        _skus: string[],
+        _goodPercentsDto?: Map<string, Partial<GoodPercentDto>>,
     ): Promise<GoodPercentDto[]> {
         throw new Error('Method not implemented.');
     }
     updatePercentsForService(
-        service: IPriceUpdateable,
-        skus: string[],
-        goodPercentsDto?: Map<string, Partial<GoodPercentDto>>,
+        _service: IPriceUpdateable,
+        _skus: string[],
+        _goodPercentsDto?: Map<string, Partial<GoodPercentDto>>,
     ): Promise<void> {
         throw new Error('Method not implemented.');
     }
@@ -51,48 +51,48 @@ export class ElectronicaGoodService implements IGood {
             }),
         );
     }
-    async prices(codes: string[]): Promise<GoodPriceDto[]> {
+    async prices(_codes: string[]): Promise<GoodPriceDto[]> {
         return [];
     }
-    async getPerc(codes: string[]): Promise<GoodPercentDto[]> {
+    async getPerc(_codes: string[]): Promise<GoodPercentDto[]> {
         return [];
     }
-    async setPercents(perc: GoodPercentDto): Promise<void> {}
+    async setPercents(_perc: GoodPercentDto): Promise<void> {}
 
-    async getQuantities(goodCodes: string[]): Promise<Map<string, number>> {
+    async getQuantities(_goodCodes: string[]): Promise<Map<string, number>> {
         return new Map<string, number>();
     }
 
-    async updateCountForService(service: ICountUpdateable, args: any): Promise<number> {
+    async updateCountForService(_service: ICountUpdateable, _args: any): Promise<number> {
         return 0;
     }
 
-    updatePriceForService(service: IPriceUpdateable, skus: string[]): Promise<any> {
+    updatePriceForService(_service: IPriceUpdateable, _skus: string[]): Promise<any> {
         return Promise.resolve(undefined);
     }
 
-    getWbData(ids: string[]): Promise<GoodWbDto[]> {
+    getWbData(_ids: string[]): Promise<GoodWbDto[]> {
         return Promise.resolve([]);
     }
 
-    setWbData(data: GoodWbDto): Promise<void> {
+    setWbData(_data: GoodWbDto): Promise<void> {
         return Promise.resolve(undefined);
     }
 
-    getWbCategoryByName(name: string): Promise<WbCommissionDto> {
+    getWbCategoryByName(_name: string): Promise<WbCommissionDto> {
         return Promise.resolve(undefined);
     }
-    async resetAvailablePrice(goodCodes?: string[], t?: FirebirdTransaction): Promise<void> {
+    async resetAvailablePrice(_goodCodes?: string[], _t?: FirebirdTransaction): Promise<void> {
         return Promise.resolve(undefined);
     }
     // Отключение товаров не поддерживается для Electronica (нет своей таблицы GOODS_DISABLED).
-    async getDisabledCodes(service: GoodServiceEnum, t?: FirebirdTransaction): Promise<string[]> {
+    async getDisabledCodes(_service: GoodServiceEnum, _t?: FirebirdTransaction): Promise<string[]> {
         return [];
     }
-    async setGoodsDisabled(codes: string[], service: GoodServiceEnum, t?: FirebirdTransaction): Promise<void> {
+    async setGoodsDisabled(_codes: string[], _service: GoodServiceEnum, _t?: FirebirdTransaction): Promise<void> {
         return Promise.resolve(undefined);
     }
-    async clearGoodsDisabled(codes: string[], service: GoodServiceEnum, t?: FirebirdTransaction): Promise<void> {
+    async clearGoodsDisabled(_codes: string[], _service: GoodServiceEnum, _t?: FirebirdTransaction): Promise<void> {
         return Promise.resolve(undefined);
     }
     // Своей БД у Electronica нет — читаем без транзакции.
@@ -100,19 +100,19 @@ export class ElectronicaGoodService implements IGood {
         return null;
     }
     // Маркировки у Electronica нет — товары всегда считаются по старой схеме.
-    async getMarkRequiredCodes(t?: FirebirdTransaction): Promise<Set<string>> {
+    async getMarkRequiredCodes(_t?: FirebirdTransaction): Promise<Set<string>> {
         return new Set<string>();
     }
-    async getGoodsWithMarkCodes(goodCodes: string[], t?: FirebirdTransaction): Promise<Set<string>> {
+    async getGoodsWithMarkCodes(_goodCodes: string[], _t?: FirebirdTransaction): Promise<Set<string>> {
         return new Set<string>();
     }
     async getFreeMarkCodesByNominal(
-        goodCodes: string[],
-        t?: FirebirdTransaction,
+        _goodCodes: string[],
+        _t?: FirebirdTransaction,
     ): Promise<Map<string, Map<number, number>>> {
         return new Map<string, Map<number, number>>();
     }
-    async getReservedQuantities(goodCodes: string[], t?: FirebirdTransaction): Promise<Map<string, number[]>> {
+    async getReservedQuantities(_goodCodes: string[], _t?: FirebirdTransaction): Promise<Map<string, number[]>> {
         return new Map<string, number[]>();
     }
 }

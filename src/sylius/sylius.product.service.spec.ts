@@ -7,7 +7,6 @@ import { GoodServiceEnum } from '../good/good.service.enum';
 describe('SyliusProductService', () => {
     let service: SyliusProductService;
     let apiService: jest.Mocked<SyliusApiService>;
-    let configService: jest.Mocked<ConfigService>;
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
@@ -30,7 +29,6 @@ describe('SyliusProductService', () => {
 
         service = module.get<SyliusProductService>(SyliusProductService);
         apiService = module.get(SyliusApiService);
-        configService = module.get(ConfigService);
     });
 
     it('should be defined', () => {

@@ -123,7 +123,7 @@ export class PostingFboService implements IOrderable, IFboReconcilable {
         return this.list('awaiting_packaging');
     }
 
-    async getByPostingNumber(postingNumber: string): Promise<PostingDto> {
+    async getByPostingNumber(_postingNumber: string): Promise<PostingDto> {
         return Promise.resolve(undefined);
     }
 

@@ -1245,14 +1245,12 @@ describe('OrderService', () => {
             updatePrim.mockClear();
             const invoiceService = (service as any).invoiceService;
             invoiceService.update.mockClear();
-            invoiceService.findByPosting = jest
-                .fn()
-                .mockResolvedValue({
-                    invoice: { id: 9, status: 4, remark: '111' },
-                    mark: '',
-                    cancelled: false,
-                    closed: false,
-                });
+            invoiceService.findByPosting = jest.fn().mockResolvedValue({
+                invoice: { id: 9, status: 4, remark: '111' },
+                mark: '',
+                cancelled: false,
+                closed: false,
+            });
             const svc: any = makeService([
                 { id: 9, posting_number: '111', visual: { status: { sys_name: 'Rejected' } } },
             ]);
@@ -1268,14 +1266,12 @@ describe('OrderService', () => {
         it('физический возврат при выключенном флаге по-прежнему делает донора', async () => {
             updatePrim.mockClear();
             const invoiceService = (service as any).invoiceService;
-            invoiceService.findByPosting = jest
-                .fn()
-                .mockResolvedValue({
-                    invoice: { id: 9, status: 4, remark: '111' },
-                    mark: '',
-                    cancelled: false,
-                    closed: false,
-                });
+            invoiceService.findByPosting = jest.fn().mockResolvedValue({
+                invoice: { id: 9, status: 4, remark: '111' },
+                mark: '',
+                cancelled: false,
+                closed: false,
+            });
             const svc: any = makeService([
                 { id: 9, posting_number: '111', visual: { status: { sys_name: 'ReturnedToOzon' } } },
             ]);

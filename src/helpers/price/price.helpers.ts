@@ -125,7 +125,7 @@ export const findSellingPriceOSNO = (percent: number, price: IPriceable, percent
     // Цена не может быть выше 100000 рублей
     let high = 100000;
     // Точность 1 рубль
-    let tolerance = 1;
+    const tolerance = 1;
 
     while (high - low > tolerance) {
         const mid = (low + high) / 2;

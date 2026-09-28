@@ -52,7 +52,7 @@ describe('ShortenTitleCommand', () => {
             description: '',
             subjectId: 0,
         };
-        const result = await command.execute(ctx);
+        await command.execute(ctx);
 
         expect(shortenTitle).toHaveBeenCalledWith('Fallback', 60);
     });

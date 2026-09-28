@@ -1,4 +1,3 @@
-import PDFDocument from 'pdfkit';
 import { PDFDocument as PdfLibDocument } from 'pdf-lib';
 import { calculateOptimalFontSize, firstPageOnly } from './pdf.helpers';
 

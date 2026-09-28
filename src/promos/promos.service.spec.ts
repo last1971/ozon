@@ -11,7 +11,6 @@ import { ActionsDto } from './dto/actions.dto';
 
 describe('PromosService', () => {
     let service: PromosService;
-    let productService: ProductService;
 
     const method = jest.fn();
     const index = jest.fn();
@@ -32,7 +31,6 @@ describe('PromosService', () => {
         index.mockClear();
         getProductsPrices.mockClear();
         service = module.get<PromosService>(PromosService);
-        productService = module.get<ProductService>(ProductService);
     });
 
     it('should be defined', () => {

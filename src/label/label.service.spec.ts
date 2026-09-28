@@ -58,7 +58,7 @@ describe('LabelService', () => {
             image: jest.fn().mockReturnThis(),
             addPage: jest.fn().mockReturnThis(),
             end: jest.fn(),
-            on: jest.fn((event: string, callback: Function) => {
+            on: jest.fn((event: string, callback: (...args: any[]) => void) => {
                 if (event === 'data') {
                     callback(Buffer.from('data'));
                 } else if (event === 'end') {

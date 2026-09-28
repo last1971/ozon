@@ -146,9 +146,9 @@ describe('Price helpers', () => {
             const result = calcNetProfitOSNO(priceWithVAT, price as any, percents as any);
 
             // Отладка calculateOSNODetails
-            const details = calculateOSNODetails(priceWithVAT, price as any, percents as any);
+            calculateOSNODetails(priceWithVAT, price as any, percents as any);
             // Отладка промежуточных значений
-            const { fixedCosts, dynamicCosts } = calculateCosts(price as any, percents as any);
+            calculateCosts(price as any, percents as any);
 
             expect(typeof result).toBe('number');
             expect(result).toBeLessThan(priceWithVAT); // прибыль должна быть меньше цены

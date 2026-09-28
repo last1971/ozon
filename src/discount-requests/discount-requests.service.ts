@@ -26,25 +26,6 @@ interface ProcessingResult {
     errors: string[];
 }
 
-interface ProcessedData {
-    tasks: DiscountTaskDto[];
-    pricesMap: Map<string, any>;
-}
-
-interface Decisions {
-    approveTasks: {
-        id: string;
-        approved_price: number;
-        seller_comment?: string;
-        approved_quantity_min: number;
-        approved_quantity_max: number;
-    }[];
-    declineTasks: {
-        id: string;
-        seller_comment?: string;
-    }[];
-}
-
 @Injectable()
 export class DiscountRequestsService {
     private readonly logger = new Logger(DiscountRequestsService.name);

@@ -11,7 +11,6 @@ import * as helpers from '../price/price.helpers';
 
 describe('PriceCalculationHelper', () => {
     let helper: PriceCalculationHelper;
-    let configService: ConfigService;
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
@@ -40,7 +39,6 @@ describe('PriceCalculationHelper', () => {
         }).compile();
 
         helper = module.get<PriceCalculationHelper>(PriceCalculationHelper);
-        configService = module.get<ConfigService>(ConfigService);
     });
 
     describe('preparePricesContext', () => {

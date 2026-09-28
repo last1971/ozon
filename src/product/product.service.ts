@@ -9,8 +9,6 @@ import { PriceRequestDto } from '../price/dto/price.request.dto';
 import { ProductVisibility } from './product.visibility';
 import { chunk, isArray } from 'lodash';
 import { UpdatePricesDto } from '../price/dto/update.price.dto';
-import { TransactionFilterDto } from '../posting/dto/transaction.filter.dto';
-import { TransactionDto } from '../posting/dto/transaction.dto';
 import { GoodCountsDto, ICountUpdateable } from '../interfaces/ICountUpdatebale';
 import { StockType } from './stock.type';
 import { PostingsFboRequestDto } from '../posting.fbo/dto/postings.fbo.request.dto';
@@ -24,7 +22,6 @@ import { IProductable } from 'src/interfaces/i.productable';
 import { ActionListProduct } from 'src/promos/dto/actionsCandidate.dto';
 import { ProductPriceDto } from 'src/price/dto/product.price.dto';
 import { UpdateAttributesBodyDto, UpdateAttributesResponseDto } from './dto/update.attributes.dto';
-import { BuyoutDto } from '../posting/dto/buyout.dto';
 import { AccrualTypeDto, AccrualByDayResultDto, PayoutPeriodDto } from '../posting/dto/accrual.dto';
 import { normalizePostingsPrices } from '../helpers/posting.price';
 import { Cacheable, CacheEvict } from 'nestjs-cacheable';
@@ -375,7 +372,7 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
         key: (offer_id: string) => offer_id,
         namespace: 'ozon:product-attrs',
     })
-    async evictProductAttributes(offer_id: string): Promise<void> {
+    async evictProductAttributes(_offer_id: string): Promise<void> {
         return;
     }
 

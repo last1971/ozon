@@ -5,7 +5,7 @@ import { ProductInfoDto } from 'src/product/dto/product.info.dto';
 
 @Injectable()
 export class ExpressOfferService extends AbstractOfferService implements OnModuleInit {
-    infoList(offer_id: string[]): Promise<ProductInfoDto[]> {
+    infoList(_offer_id: string[]): Promise<ProductInfoDto[]> {
         throw new Error('Method not implemented.');
     }
     async onModuleInit(): Promise<any> {

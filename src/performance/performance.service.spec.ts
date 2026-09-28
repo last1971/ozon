@@ -7,7 +7,6 @@ import { ConfigService } from '@nestjs/config';
 describe('PerformanceService', () => {
     let service: PerformanceService;
     let httpWrapper: HttpWrapperService;
-    let vaultService: VaultService;
     let configService: ConfigService;
 
     const mockOzonConfig = {
@@ -52,7 +51,6 @@ describe('PerformanceService', () => {
 
         service = module.get<PerformanceService>(PerformanceService);
         httpWrapper = module.get<HttpWrapperService>(HttpWrapperService);
-        vaultService = module.get<VaultService>(VaultService);
         configService = module.get<ConfigService>(ConfigService);
 
         // Инициализация сервиса

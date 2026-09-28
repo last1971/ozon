@@ -112,7 +112,7 @@ export class AvitoPriceService implements IPriceUpdateable {
         return { updated: cards.goods.size, level };
     }
 
-    async createAction(file: Express.Multer.File): Promise<Excel.Buffer> {
+    async createAction(_file: Express.Multer.File): Promise<Excel.Buffer> {
         // TODO: implement creating Excel action file for Avito
         const workbook = new Excel.Workbook();
         const worksheet = workbook.addWorksheet('Avito Prices');

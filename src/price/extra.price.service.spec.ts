@@ -1,4 +1,4 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { ExtraPriceService } from './extra.price.service';
 import { ConfigService } from '@nestjs/config';
 import { PriceService } from './price.service';
@@ -137,7 +137,7 @@ describe('ExtraPriceService', () => {
     beforeEach(async () => {
         jest.clearAllMocks();
 
-        const module: TestingModule = await Test.createTestingModule({
+        await Test.createTestingModule({
             providers: [
                 ExtraPriceService,
                 { provide: ConfigService, useValue: mockConfigService },
@@ -560,8 +560,6 @@ describe('ExtraPriceService', () => {
             const skus: string[] = [];
             // Сбросить вызовы
             mockCommand.execute.mockClear();
-            // Мок логгера
-            const logger = { log: jest.fn() };
             // Вставить логгер в контекст
             await extraPriceService.handleIncomingGoods(skus);
             // Проверяем, что любая команда была вызвана с пустым skus

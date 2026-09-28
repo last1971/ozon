@@ -52,7 +52,7 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
     ) {}
     async checkVatForAll(
         expectedVat: number,
-        limit?: number,
+        _limit?: number,
     ): Promise<Array<{ offer_id: string; current_vat: number; expected_vat: number }>> {
         const cards = await this.cardService.getAllWbCards();
         const mismatches: Array<{ offer_id: string; current_vat: number; expected_vat: number }> = [];

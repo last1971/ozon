@@ -13,7 +13,6 @@ import { TransactionDto } from '../posting/dto/transaction.dto';
 import { ResultDto } from '../helpers/dto/result.dto';
 import { goodCode, goodQuantityCoeff, isMarkCodesEnabled } from '../helpers';
 import { chunk, flatten, toNumber } from 'lodash';
-import { ProductPostingDto } from '../product/dto/product.posting.dto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Cache } from '@nestjs/cache-manager';
 import { InvoiceGetDto } from '../invoice/dto/invoice.get.dto';
@@ -107,7 +106,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
     async update(invoice: InvoiceDto, invoiceUpdateDto: InvoiceUpdateDto, t?: FirebirdTransaction): Promise<boolean> {
         return this.withTransaction(async (transaction) => {
             const fieldsToUpdate = Object.entries(invoiceUpdateDto)
-                .filter(([key, value]) => value !== undefined)
+                .filter(([, value]) => value !== undefined)
                 .map(([key, value]) => ({ field: key, value }));
 
             if (fieldsToUpdate.length === 0) {

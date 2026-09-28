@@ -15,8 +15,6 @@ export class FetchSalesByStickerCommand implements ICommandAsync<IWbTransactionP
         const dateFromStr = context.dateFrom.toISOString().split('T')[0];
         const sales = await this.wbOrderService.getSales(dateFromStr);
 
-        const hz = sales.filter((s) => s.sticker !== '');
-
         if (!sales || sales.length === 0) {
             // Продолжаем цепочку - попробуем найти в orders
             return { ...context };

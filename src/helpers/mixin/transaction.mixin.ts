@@ -3,7 +3,7 @@ import { FirebirdTransaction } from 'ts-firebird';
 
 // type Constructor = new (...args: any[]) => any;
 
-export function WithTransactions<T extends new (...args: any[]) => {}>(Base: T) {
+export function WithTransactions<T extends new (...args: any[]) => object>(Base: T) {
     return class extends Base {
         public async withTransaction<T>(
             operation: (transaction: FirebirdTransaction) => Promise<T>,

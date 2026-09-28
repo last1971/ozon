@@ -6,7 +6,6 @@ import { AxiosError, AxiosResponse } from 'axios';
 
 describe('HttpWrapperService', () => {
     let service: HttpWrapperService;
-    let httpService: HttpService;
 
     const mockHttpService = {
         get: jest.fn(),
@@ -26,7 +25,6 @@ describe('HttpWrapperService', () => {
         }).compile();
 
         service = module.get<HttpWrapperService>(HttpWrapperService);
-        httpService = module.get<HttpService>(HttpService);
     });
 
     afterEach(() => {

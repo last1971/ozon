@@ -96,7 +96,7 @@ export class OzonApiService {
         }
     }
 
-    private handleApiError(error: AxiosError, url: string, method: string, body: any, headers: any) {
+    private handleApiError(error: AxiosError, url: string, method: string, body: any, _headers: any) {
         const responseData = error?.response?.data;
 
         this.logger.error(formatAxiosError(error, { url, method, body }));
@@ -120,7 +120,7 @@ export class OzonApiService {
         };
 
         let fetchUrl = url;
-        let fetchOptions: any = {
+        const fetchOptions: any = {
             method,
             headers,
         };

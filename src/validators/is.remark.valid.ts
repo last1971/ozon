@@ -29,7 +29,7 @@ export class IsRemarkValid implements ValidatorConstraintInterface {
         return false;
     }
 
-    defaultMessage(args: ValidationArguments) {
+    defaultMessage(_args: ValidationArguments) {
         return 'Remark ($value) is not valid!';
     }
 }

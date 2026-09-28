@@ -4,7 +4,6 @@ import { AvitoCardService } from './avito.card.service';
 import { AvitoApiService } from '../avito.api/avito.api.service';
 import { AVITO_GOOD_STORE } from '../interfaces/i.avito.good.store';
 import { AvitoLinkMaintenanceService } from './avito.link.maintenance.service';
-import { GoodServiceEnum } from '../good/good.service.enum';
 
 describe('AvitoCardService', () => {
     let service: AvitoCardService;

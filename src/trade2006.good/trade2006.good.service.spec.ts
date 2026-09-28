@@ -1,7 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { Trade2006GoodService } from './trade2006.good.service';
 import { FIREBIRD } from '../firebird/firebird.module';
-import { ICountUpdateable } from '../interfaces/ICountUpdatebale';
 import { ConfigService } from '@nestjs/config';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -356,10 +355,9 @@ describe('Trade2006GoodService', () => {
     it('должен обнулять AVAILABLE_PRICE для всех товаров', async () => {
         const execute = jest.fn();
 
-        // @ts-ignore - Игнорируем проверку типов для теста
         const existingTransaction = { execute };
 
-        // @ts-ignore - Игнорируем проверку типов для теста
+        // @ts-expect-error — в тесте вместо транзакции Firebird объект с одним execute
         await service.resetAvailablePrice(null, existingTransaction);
 
         expect(execute).toHaveBeenCalledWith('UPDATE OZON_PERC SET AVAILABLE_PRICE = 0', []);

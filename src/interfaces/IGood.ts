@@ -1,7 +1,6 @@
 import { GoodDto } from '../good/dto/good.dto';
 import { GoodPriceDto } from '../good/dto/good.price.dto';
 import { GoodPercentDto } from '../good/dto/good.percent.dto';
-import { ICountUpdateable } from './ICountUpdatebale';
 import { IPriceUpdateable } from './i.price.updateable';
 import { GoodWbDto } from '../good/dto/good.wb.dto';
 import { FirebirdTransaction } from 'ts-firebird';

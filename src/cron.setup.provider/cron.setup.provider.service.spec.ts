@@ -1,3 +1,5 @@
+import * as fs from 'fs';
+import * as path from 'path';
 import { Test, TestingModule } from '@nestjs/testing';
 import { CronSetupProviderService } from './cron.setup.provider.service';
 import { SchedulerRegistry } from '@nestjs/schedule';
@@ -48,8 +50,6 @@ describe('CronSetupProviderService', () => {
      * не будет даже намёка. Ловим это тестом, а не на проде.
      */
     it('каждый @Cron из кода внесён в cron.setup.ts', () => {
-        const fs = require('fs');
-        const path = require('path');
         const root = path.join(__dirname, '..');
 
         const walk = (dir: string): string[] =>

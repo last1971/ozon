@@ -13,9 +13,6 @@ import { WbCardService } from '../wb.card/wb.card.service';
 describe('SupplyController', () => {
     let controller: SupplyController;
     let app: INestApplication;
-    let productServices: ProductService;
-    let invoiceService: Trade2006InvoiceService;
-    let wbSupplyService: WbSupplyService;
 
     const mockProductServices = {
         get: jest.fn(),
@@ -66,9 +63,6 @@ describe('SupplyController', () => {
         await app.init();
 
         controller = module.get<SupplyController>(SupplyController);
-        productServices = module.get<ProductService>(ProductService);
-        invoiceService = module.get<Trade2006InvoiceService>(Trade2006InvoiceService);
-        wbSupplyService = module.get<WbSupplyService>(WbSupplyService);
     });
 
     it('should be defined', () => {
@@ -85,7 +79,6 @@ describe('SupplyController', () => {
 
     describe('getOrders', () => {
         const mockId = '123';
-        const mockService = { name: 'test' };
         const mockPositions = [{ id: 1 }, { id: 2 }];
 
         it('should throw NotFoundException when service not found', async () => {

@@ -128,7 +128,7 @@ export class AvitoApiService {
         };
         const isGetLike = method === 'GET';
         let fetchUrl = url;
-        let fetchOptions: any = { method, headers };
+        const fetchOptions: any = { method, headers };
 
         if (isGetLike && body && Object.keys(body).length > 0) {
             const params = new URLSearchParams();

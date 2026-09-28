@@ -48,12 +48,7 @@ describe('OzonProductCoeffsAdapter', () => {
 
         it('should use helper for warehouse selection', () => {
             const productInfo = { fboCount: 80, fbsCount: 20 } as ProductInfoDto;
-            const adapter = new OzonProductCoeffsAdapter(
-                mockProduct,
-                1,
-                productInfo,
-                mockHelper as PriceCalculationHelper,
-            );
+            new OzonProductCoeffsAdapter(mockProduct, 1, productInfo, mockHelper as PriceCalculationHelper);
 
             expect(mockHelper.selectWarehouse).toHaveBeenCalledWith(80, 20, 25, 33);
         });

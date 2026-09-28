@@ -4,7 +4,6 @@ import {
     productQuantity,
     isSkuMatch,
     getPieces,
-    StringToIOfferIdableAdapter,
     skusToGoodIds,
     chrtIdVendorCodePairs,
     groupByGoodCode,

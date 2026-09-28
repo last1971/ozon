@@ -69,7 +69,7 @@ describe('UpdateVatCommand', () => {
             logger: mockLogger,
         };
 
-        const result = await command.execute(context);
+        await command.execute(context);
 
         expect(mockService.updateVat).not.toHaveBeenCalled();
         expect(mockLogger.log).toHaveBeenCalledWith('Нет товаров для обновления НДС (несоответствий не найдено)');

@@ -1,7 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ICommandAsync } from '../../interfaces/i.command.acync';
 import { IDiscountProcessingContext, IDiscountDecisions } from '../../interfaces/i.discount.processing.context';
-import { DiscountTaskDto } from '../dto/discount-task-list.dto';
 import { ConfigService } from '@nestjs/config';
 
 @Injectable()

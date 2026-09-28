@@ -41,7 +41,7 @@ export class AvitoCardService extends ICountUpdateable implements IProductable {
     }
 
     // Load and map SKUs to Avito item IDs; return nextArgs for pagination if applicable
-    async getGoodIds(args: any): Promise<GoodCountsDto<number>> {
+    async getGoodIds(_args: any): Promise<GoodCountsDto<number>> {
         const avitoGoods = await this.store.getAllAvitoGoods();
         const goods = new Map<string, number>();
 

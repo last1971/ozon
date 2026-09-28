@@ -10,7 +10,6 @@ import { IOrderable } from '../interfaces/IOrderable';
 import { FirebirdTransaction } from 'ts-firebird';
 import { Cron } from '@nestjs/schedule';
 import { ISuppliable } from '../interfaces/i.suppliable';
-import * as console from 'node:console';
 import { SupplyDto } from '../supply/dto/supply.dto';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { SupplyPositionDto } from 'src/supply/dto/supply.position.dto';
@@ -61,7 +60,7 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         return false;
     }
 
-    getSupplyPositions(id: string): Promise<SupplyPositionDto[]> {
+    getSupplyPositions(_id: string): Promise<SupplyPositionDto[]> {
         throw new Error('Method not implemented.');
     }
 
