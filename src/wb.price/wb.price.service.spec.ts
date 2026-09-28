@@ -4,6 +4,7 @@ import { ConfigService } from '@nestjs/config';
 import { GOOD_SERVICE } from '../interfaces/IGood';
 import { WbApiService } from '../wb.api/wb.api.service';
 import { WbCardService } from '../wb.card/wb.card.service';
+import { WbCardWriter } from '../wb.card/wb.card.writer';
 import { WbPriceCoeffsAdapter } from './wb.price.coeffs.adapter';
 
 describe('WbPriceService', () => {
@@ -17,6 +18,7 @@ describe('WbPriceService', () => {
     const updateWbCategory = jest.fn();
     const getWbCardAsync = jest.fn();
     const updateCards = jest.fn();
+    const write = jest.fn();
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
@@ -38,6 +40,10 @@ describe('WbPriceService', () => {
                     provide: WbCardService,
                     useValue: { getGoodIds, getNmID, getWbCardAsync, updateCards },
                 },
+                {
+                    provide: WbCardWriter,
+                    useValue: { write },
+                },
             ],
         }).compile();
 
@@ -45,6 +51,7 @@ describe('WbPriceService', () => {
         getWbData.mockClear();
         getWbCardAsync.mockClear();
         updateCards.mockClear();
+        write.mockReset();
         service = module.get<WbPriceService>(WbPriceService);
     });
 
@@ -162,105 +169,55 @@ describe('WbPriceService', () => {
     });
 
     describe('updateVat', () => {
-        it('should update VAT for existing characteristic', async () => {
-            const mockCard = {
-                vendorCode: 'TEST-001',
-                nmID: 12345,
-                characteristics: [
-                    { id: 15001405, value: ['10'] },
-                    { id: 999, value: ['other'] }
-                ]
-            };
+        // Писатель отдаёт правке свежую копию карточки; здесь — копию мока, итог правки виден в edited.
+        const cards: Record<string, any> = {};
+        const edited: Record<string, any> = {};
+        beforeEach(() => {
+            write.mockImplementation(async (label: string, edits: { offer: string; edit: (c: any) => any }[]) =>
+                edits.map(({ offer, edit }) => {
+                    edited[offer] = edit(JSON.parse(JSON.stringify(cards[offer])));
+                    return { offer };
+                }),
+            );
+        });
 
-            getWbCardAsync.mockResolvedValue(mockCard);
-            updateCards.mockResolvedValue({ success: true });
+        it('заменяет НДС в существующей характеристике — через общий писатель с меткой vat', async () => {
+            cards['TEST-001'] = { vendorCode: 'TEST-001', nmID: 12345, characteristics: [{ id: 15001405, value: ['10'] }, { id: 999, value: ['other'] }] };
 
             const result = await service.updateVat(['TEST-001'], 20);
 
-            expect(getWbCardAsync).toHaveBeenCalledWith('TEST-001');
-            expect(updateCards).toHaveBeenCalledWith([{
-                ...mockCard,
-                characteristics: [
-                    { id: 15001405, value: ['20'] },
-                    { id: 999, value: ['other'] }
-                ]
-            }]);
-            expect(result).toEqual({ success: true });
+            expect(write.mock.calls[0][0]).toBe('vat');
+            expect(edited['TEST-001'].characteristics).toEqual([{ id: 15001405, value: ['20'] }, { id: 999, value: ['other'] }]);
+            expect(result).toEqual([{ offer: 'TEST-001' }]);
+            expect(updateCards).not.toHaveBeenCalled(); // напрямую в ВБ больше не пишет
+            expect(cards['TEST-001'].characteristics[0].value).toEqual(['10']); // кэш не правится на месте
         });
 
-        it('should add VAT characteristic if not exists', async () => {
-            const mockCard = {
-                vendorCode: 'TEST-002',
-                nmID: 12346,
-                characteristics: [
-                    { id: 999, value: ['other'] }
-                ]
-            };
+        it('добавляет характеристику НДС, если её нет', async () => {
+            cards['TEST-002'] = { vendorCode: 'TEST-002', nmID: 12346, characteristics: [{ id: 999, value: ['other'] }] };
 
-            getWbCardAsync.mockResolvedValue(mockCard);
-            updateCards.mockResolvedValue({ success: true });
+            await service.updateVat(['TEST-002'], 20);
 
-            const result = await service.updateVat(['TEST-002'], 20);
-
-            expect(getWbCardAsync).toHaveBeenCalledWith('TEST-002');
-            expect(updateCards).toHaveBeenCalledWith([{
-                ...mockCard,
-                characteristics: [
-                    { id: 999, value: ['other'] },
-                    { id: 15001405, value: ['20'] }
-                ]
-            }]);
-            expect(result).toEqual({ success: true });
+            expect(edited['TEST-002'].characteristics).toEqual([{ id: 999, value: ['other'] }, { id: 15001405, value: ['20'] }]);
         });
 
-        it('should handle multiple offer IDs', async () => {
-            const mockCard1 = {
-                vendorCode: 'TEST-001',
-                nmID: 12345,
-                characteristics: [{ id: 15001405, value: ['10'] }]
-            };
-            const mockCard2 = {
-                vendorCode: 'TEST-002',
-                nmID: 12346,
-                characteristics: []
-            };
-
-            getWbCardAsync
-                .mockResolvedValueOnce(mockCard1)
-                .mockResolvedValueOnce(mockCard2);
-            updateCards.mockResolvedValue({ success: true });
+        it('несколько карточек — одной записью', async () => {
+            cards['TEST-001'] = { vendorCode: 'TEST-001', nmID: 12345, characteristics: [{ id: 15001405, value: ['10'] }] };
+            cards['TEST-002'] = { vendorCode: 'TEST-002', nmID: 12346, characteristics: [] };
 
             await service.updateVat(['TEST-001', 'TEST-002'], 20);
 
-            expect(getWbCardAsync).toHaveBeenCalledTimes(2);
-            expect(updateCards).toHaveBeenCalledWith([
-                {
-                    ...mockCard1,
-                    characteristics: [{ id: 15001405, value: ['20'] }]
-                },
-                {
-                    ...mockCard2,
-                    characteristics: [{ id: 15001405, value: ['20'] }]
-                }
-            ]);
+            expect(write).toHaveBeenCalledTimes(1);
+            expect(edited['TEST-001'].characteristics).toEqual([{ id: 15001405, value: ['20'] }]);
+            expect(edited['TEST-002'].characteristics).toEqual([{ id: 15001405, value: ['20'] }]);
         });
 
-        it('should handle "Без НДС" case', async () => {
-            const mockCard = {
-                vendorCode: 'TEST-003',
-                nmID: 12347,
-                characteristics: [{ id: 15001405, value: ['20'] }]
-            };
-
-            getWbCardAsync.mockResolvedValue(mockCard);
-            updateCards.mockResolvedValue({ success: true });
+        it('«Без НДС»', async () => {
+            cards['TEST-003'] = { vendorCode: 'TEST-003', nmID: 12347, characteristics: [{ id: 15001405, value: ['20'] }] };
 
             await service.updateVat(['TEST-003'], -1);
 
-            expect(updateCards).toHaveBeenCalledWith([{
-                ...mockCard,
-                characteristics: [{ id: 15001405, value: ['Без НДС'] }]
-            }]);
+            expect(edited['TEST-003'].characteristics).toEqual([{ id: 15001405, value: ['Без НДС'] }]);
         });
     });
 

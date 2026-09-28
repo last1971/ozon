@@ -1,14 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { IJobCommand } from '../../interfaces/i.job.context';
-import { ITnvedProcessingContext } from '../../interfaces/i.tnved.processing.context';
+import { ICardSyncContext } from '../../interfaces/i.card.sync';
 
 /** Маркетплейс читает свои карточки и решает по каждой → ctx.items, ctx.notFound. Ничего не пишет. Фазы «каталог»/«сверка» ставит сам маркетплейс. */
 @Injectable()
-export class CheckTnvedCommand implements IJobCommand<ITnvedProcessingContext> {
+export class CheckCardsCommand implements IJobCommand<ICardSyncContext<any, any>> {
     readonly phase = 'сверка';
 
-    async execute(context: ITnvedProcessingContext): Promise<ITnvedProcessingContext> {
-        const { items, notFound } = await context.service.checkTnved(context.base ?? [], context.progress);
+    async execute(context: ICardSyncContext<any, any>): Promise<ICardSyncContext<any, any>> {
+        const { items, notFound } = await context.service.check(context.base ?? [], context.progress);
         context.items = items;
         context.notFound = notFound;
         return context;

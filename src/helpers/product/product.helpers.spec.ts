@@ -1,4 +1,4 @@
-import { goodCode, goodQuantityCoeff, productQuantity, isSkuMatch, getPieces, StringToIOfferIdableAdapter, skusToGoodIds, chrtIdVendorCodePairs } from './product.helpers';
+import { goodCode, goodQuantityCoeff, productQuantity, isSkuMatch, getPieces, StringToIOfferIdableAdapter, skusToGoodIds, chrtIdVendorCodePairs, groupByGoodCode, minPackOffer, barcodeKey } from './product.helpers';
 
 describe('Product helpers', () => {
     it('goodCode', () => {
@@ -107,4 +107,28 @@ describe('Product helpers', () => {
             ]),
         );
     });
-}); 
+
+    it('groupByGoodCode — фасовки одного товара в одну группу, порядок сохраняется', () => {
+        const res = groupByGoodCode(['531557-10', '531557', '12', '', '531557-5'], (o) => o);
+        expect(res).toEqual(
+            new Map([
+                ['531557', ['531557-10', '531557', '531557-5']],
+                ['12', ['12']],
+            ]),
+        );
+    });
+    it('minPackOffer — минимальная фасовка, при ничьей без суффикса', () => {
+        expect(minPackOffer(['569593-10', '569593-5'])).toEqual('569593-5');
+        expect(minPackOffer(['569593-5', '569593', '569593-10'])).toEqual('569593');
+        expect(minPackOffer(['123-1', '123'])).toEqual('123');
+        expect(minPackOffer(['123', '123-1'])).toEqual('123');
+        expect(minPackOffer(['777-10'])).toEqual('777-10');
+        expect(minPackOffer([])).toBeUndefined();
+    });
+    it('barcodeKey — одна и та же запись GTIN разной длины', () => {
+        expect(barcodeKey('00400001759547')).toEqual('400001759547');
+        expect(barcodeKey('0400001759547')).toEqual('400001759547');
+        expect(barcodeKey(' 400001759547 ')).toEqual('400001759547');
+        expect(barcodeKey('OZN3322443266')).toEqual('OZN3322443266');
+    });
+});

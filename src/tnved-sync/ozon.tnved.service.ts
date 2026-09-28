@@ -10,6 +10,7 @@ import {
     TnvedUpdateResult,
 } from '../interfaces/i.tnved.updateable';
 import { emptyProgress, JobProgress } from '../interfaces/i.job.context';
+import { groupByGoodCode } from '../helpers/product/product.helpers';
 
 /** Метка маркируемого варианта в словаре ТН ВЭД Озона; ею же пользуется справочник (OzonDictService). */
 export const MARK_LABEL = 'МАРКИРОВКА РФ';
@@ -44,7 +45,7 @@ export class OzonTnvedService implements ITnvedUpdateable {
         this.markAttrId = config.get<number>('OZON_MARK_REQUIRED_ATTR_ID', 23536);
     }
 
-    async checkTnved(base: TnvedBaseItem[], progress: JobProgress = emptyProgress()): Promise<TnvedCheckResult> {
+    async check(base: TnvedBaseItem[], progress: JobProgress = emptyProgress()): Promise<TnvedCheckResult> {
         Object.assign(progress, { phase: 'каталог', done: 0, total: undefined });
         const offerMap = await this.loadOfferMap((loaded) => (progress.done = loaded));
         Object.assign(progress, { phase: 'сверка', done: 0, total: base.length });
@@ -68,7 +69,7 @@ export class OzonTnvedService implements ITnvedUpdateable {
         return result;
     }
 
-    async updateTnved(items: TnvedCheckItem[], progress: JobProgress = emptyProgress()): Promise<TnvedUpdateResult[]> {
+    async update(items: TnvedCheckItem[], progress: JobProgress = emptyProgress()): Promise<TnvedUpdateResult[]> {
         Object.assign(progress, { phase: 'отправка', done: 0, total: items.length }); // task_id не опрашивается: «отправлено» ≠ «применилось»
         const results: TnvedUpdateResult[] = [];
         for (const item of items as OzonTnvedItem[]) {
@@ -169,26 +170,7 @@ export class OzonTnvedService implements ITnvedUpdateable {
 
     /** Карта goodscode -> [offer_id…] по всему каталогу Озона (учитывает суффиксные варианты фасовки). */
     private async loadOfferMap(onPage?: (loaded: number) => void): Promise<Map<string, string[]>> {
-        const map = new Map<string, string[]>();
-        let lastId = '';
-        let loaded = 0;
-        for (let guard = 0; guard < 100; guard++) {
-            const res: any = await this.productService.list(lastId, 1000);
-            const items: any[] = res?.result?.items ?? [];
-            loaded += items.length;
-            onPage?.(loaded);
-            for (const it of items) {
-                const offer = String(it.offer_id ?? '');
-                if (!offer) continue;
-                const gc = offer.split('-')[0];
-                const arr = map.get(gc) ?? [];
-                arr.push(offer);
-                map.set(gc, arr);
-            }
-            lastId = res?.result?.last_id ?? '';
-            if (!items.length || !lastId) break;
-        }
-        return map;
+        return groupByGoodCode(await this.productService.listAllOfferIds(onPage), (offer) => offer);
     }
 
     /** Варианты словаря ТНВЭД в категории, значение которых начинается с нашего кода. */
@@ -213,9 +195,11 @@ export class OzonTnvedService implements ITnvedUpdateable {
     /**
      * Записать ТНВЭД (нужный вариант) + выставить «Нужен код маркировки» в целевое состояние.
      * markValue=true для маркируемых, false — для немаркируемых (крыжик активно снимается). task_id.
+     * Отказ Озона бросается: OzonApiService.method не бросает, а отдаёт { result: null, error } —
+     * без проверки отказ уходил в отчёт «записано» и товар помечался обработанным.
      */
-    private async applyFix(offer: string, dictValueId: number, markValue: boolean): Promise<number | undefined> {
-        const res = await this.productService.updateAttributes({
+    private async applyFix(offer: string, dictValueId: number, markValue: boolean): Promise<number> {
+        const res: any[] = await this.productService.updateAttributes({
             offer_ids: [offer],
             attributes: [
                 { complex_id: 0, id: this.tnvedAttrId, values: [{ dictionary_value_id: dictValueId }] },
@@ -223,6 +207,13 @@ export class OzonTnvedService implements ITnvedUpdateable {
             ],
         });
         await this.productService.evictProductAttributes(offer);
-        return res?.[0]?.task_id;
+        const r = res?.[0];
+        if (r?.error) {
+            throw new Error(`Озон отказал: ${r.error.message ?? r.error.service_message ?? JSON.stringify(r.error)}`);
+        }
+        if (r?.task_id === undefined || r?.task_id === null) {
+            throw new Error(`Озон не вернул task_id: ${JSON.stringify(r ?? null).slice(0, 200)}`);
+        }
+        return r.task_id;
     }
 }

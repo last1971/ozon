@@ -231,6 +231,30 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
         return ret;
     }
 
+    /**
+     * Карточка прямо с ВБ, не из кэша: поиск cards/list по артикулу (textSearch), точное совпадение vendorCode.
+     * Кэш обновляется попутно (getWbCards). null — не нашлась.
+     */
+    async fetchWbCard(vendorCode: string): Promise<WbCardDto | null> {
+        const res = await this.getWbCards({
+            settings: {
+                cursor: { limit: 100 },
+                filter: { textSearch: vendorCode, withPhoto: -1 },
+            },
+        });
+        return res?.cards?.find((card) => card.vendorCode === vendorCode) ?? null;
+    }
+
+    /** Положить в кэш карточку, которую только что записали (WbCardWriter): следующая правка уйдёт не со старыми полями. */
+    rememberCard(card: WbCardDto): void {
+        this.wbCards.set(card.vendorCode, card);
+        try {
+            this.productInfos.set(card.vendorCode, this.wbCardToProductInfo(card));
+        } catch {
+            // карточка без фото/размеров — сведения для списка не собрать, сама карточка в кэше уже есть
+        }
+    }
+
     clearWbCards(): void {
         this.wbCards = new Map<string, WbCardDto>();
     }

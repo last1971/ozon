@@ -1,11 +1,11 @@
 import { Injectable } from '@nestjs/common';
 import { IJobCommand } from '../../interfaces/i.job.context';
-import { ITnvedProcessingContext } from '../../interfaces/i.tnved.processing.context';
+import { ICardSyncContext } from '../../interfaces/i.card.sync';
 
 /** Решения маркетплейса → отчёт: уже ок / на правку / спорно (руками) / нет карточки. */
 @Injectable()
-export class BuildTnvedReportCommand implements IJobCommand<ITnvedProcessingContext> {
-    async execute(context: ITnvedProcessingContext): Promise<ITnvedProcessingContext> {
+export class BuildSyncReportCommand implements IJobCommand<ICardSyncContext<any, any>> {
+    async execute(context: ICardSyncContext<any, any>): Promise<ICardSyncContext<any, any>> {
         const items = context.items ?? [];
         context.report = {
             apply: !!context.opts.apply,

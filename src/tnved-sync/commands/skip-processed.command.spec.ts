@@ -11,6 +11,7 @@ describe('SkipProcessedCommand', () => {
         progress: emptyProgress(),
         service: {} as any,
         opts: { market: GoodServiceEnum.OZON, ...opts },
+        progressCache: 'tnved',
         all,
     });
 
@@ -30,5 +31,20 @@ describe('SkipProcessedCommand', () => {
         expect(res.base.map((b) => b.goodscode)).toEqual(['2']);
         expect(res.skippedProcessed).toBe(1);
         expect(res.processed).toEqual(new Set(['1']));
+    });
+
+    it('ключ обработанного — progressKey строки, если задан (режим GTIN: товар + набор GTIN)', async () => {
+        load.mockResolvedValue(new Set(['2:111']));
+        const c = ctx({ onlyNew: true });
+        c.all = [
+            { goodscode: '1', progressKey: '1:999', tnved: 'x', markRequired: false },
+            { goodscode: '2', progressKey: '2:111', tnved: 'x', markRequired: false },
+        ];
+        c.progressCache = 'gtin';
+
+        const res = await command.execute(c);
+
+        expect(load).toHaveBeenCalledWith('gtin', 'ozon');
+        expect(res.base.map((b) => b.goodscode)).toEqual(['1']);
     });
 });

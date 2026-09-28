@@ -3,14 +3,21 @@ import axios from "../axios.config";
 import { GoodServiceEnum } from "@/stores/goods";
 import type { JobState } from "@/contracts/job.state";
 
-/** Решение маркетплейса по карточке (см. src/interfaces/i.tnved.updateable.ts на бэке) + итог записи. */
+/** Что сверяем с карточками (см. src/interfaces/i.card.sync.ts на бэке). */
+export type SyncMode = 'tnved' | 'gtin';
+
+/**
+ * Решение маркетплейса по карточке + итог записи. current — что на карточке, base — что по базе
+ * (ТН ВЭД: код; GTIN: баркоды карточки / наши GTIN). markRequired — только у ТН ВЭД, add — только у GTIN.
+ */
 export interface TnvedFixItem {
     offer: string;
     goodscode: string;
     name?: string;
     current: string | null;
     base: string;
-    markRequired: boolean;
+    markRequired?: boolean;
+    add?: string[];
     reason?: string;
     action?: string;
     taskId?: number;
@@ -31,6 +38,10 @@ export interface TnvedSyncReport {
 
 export const TNVED_SYNC_JOB = 'tnved-sync';
 export const TNVED_MISSING_JOB = 'tnved-missing';
+export const GTIN_SYNC_JOB = 'gtin-sync';
+
+/** Вид фоновой задачи режима: у режимов свои задачи, идут независимо. */
+export const syncJobKind = (mode: SyncMode) => (mode === 'gtin' ? GTIN_SYNC_JOB : TNVED_SYNC_JOB);
 
 /** Карточка маркетплейса, у которой у нас ТН ВЭД пуст или товара нет. */
 export interface TnvedMarketOffer {
@@ -46,10 +57,11 @@ export interface MissingTnvedReport {
     notInBase: TnvedMarketOffer[]; // кода у нас нет вообще — привязка карточки
 }
 
-/** Форма вкладки ТН ВЭД и вызовы бэка; ход и отчёт задачи живут в useJob(TNVED_SYNC_JOB). */
+/** Форма вкладки сверки карточек (ТН ВЭД / GTIN) и вызовы бэка; ход и отчёт задачи живут в useJob(syncJobKind(mode)). */
 export const tnvedSyncStore = defineStore("tnvedSyncStore", {
     state: () => ({
         form: {
+            mode: 'tnved' as SyncMode,
             market: GoodServiceEnum.OZON,
             offer: '', // один goodscode (обкатка), пусто = вся база
             limit: null as number | null, // следующие N товаров базы, пусто = все
@@ -61,7 +73,7 @@ export const tnvedSyncStore = defineStore("tnvedSyncStore", {
     actions: {
         /** Старт фоновой задачи: apply=false — только отчёт; apply=true — записать на маркетплейс. */
         async start(apply: boolean): Promise<JobState<TnvedSyncReport>> {
-            const params: Record<string, string | number | boolean> = { market: this.form.market, apply, onlyNew: this.form.onlyNew };
+            const params: Record<string, string | number | boolean> = { mode: this.form.mode, market: this.form.market, apply, onlyNew: this.form.onlyNew };
             if (this.form.offer.trim()) params.offer = this.form.offer.trim();
             if (this.form.limit && this.form.limit > 0) params.limit = this.form.limit;
             const res = await axios.post<JobState<TnvedSyncReport>>("/api/tnved-sync", null, { params });
@@ -72,12 +84,12 @@ export const tnvedSyncStore = defineStore("tnvedSyncStore", {
             const res = await axios.post<JobState<MissingTnvedReport>>("/api/tnved-sync/missing", null, { params: { market: this.form.market } });
             return res.data;
         },
-        /** Сбросить прогресс раскатки по маркетплейсу — следующий прогон «только необработанные» пойдёт с нуля. */
+        /** Сбросить прогресс раскатки режима по маркетплейсу — следующий прогон «только необработанные» пойдёт с нуля. */
         async resetProgress() {
             this.errorMessage = '';
             this.isResetting = true;
             try {
-                await axios.delete("/api/tnved-sync/progress", { params: { market: this.form.market } });
+                await axios.delete("/api/tnved-sync/progress", { params: { market: this.form.market, mode: this.form.mode } });
             } catch (e: any) {
                 this.errorMessage = e.response?.data?.message || e.message;
             } finally {

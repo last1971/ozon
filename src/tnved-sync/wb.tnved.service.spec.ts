@@ -7,12 +7,15 @@ import { mkdtempSync, readdirSync, readFileSync, rmSync } from 'fs';
 import { tmpdir } from 'os';
 import { join } from 'path';
 import { clearRateLimitCache } from '../helpers/decorators/rate-limit.decorator';
+import { WbCardWriter } from '../wb.card/wb.card.writer';
+import { WbContentGate } from '../wb.card/wb.content.gate';
 
 describe('WbTnvedService', () => {
     let service: WbTnvedService;
     const getAllWbCards = jest.fn();
     const fetchCharacteristics = jest.fn();
-    const getWbCardAsync = jest.fn();
+    const fetchWbCard = jest.fn();
+    const rememberCard = jest.fn();
     const updateCards = jest.fn();
     const method = jest.fn();
     let backupDir: string;
@@ -38,7 +41,7 @@ describe('WbTnvedService', () => {
     const base = (goodscode: string, tnved: string, markRequired = true) => ({ goodscode, tnved, markRequired });
 
     beforeEach(async () => {
-        [getAllWbCards, fetchCharacteristics, getWbCardAsync, updateCards, method].forEach((m) => m.mockReset());
+        [getAllWbCards, fetchCharacteristics, fetchWbCard, rememberCard, updateCards, method].forEach((m) => m.mockReset());
         clearRateLimitCache();
         backupDir = mkdtempSync(join(tmpdir(), 'wb-tnved-'));
         fetchCharacteristics.mockResolvedValue({ data: [TNVED_CHARC], error: false });
@@ -46,7 +49,10 @@ describe('WbTnvedService', () => {
         const moduleRef: TestingModule = await Test.createTestingModule({
             providers: [
                 WbTnvedService,
-                { provide: WbCardService, useValue: { getAllWbCards, fetchCharacteristics, getWbCardAsync, updateCards } },
+                // настоящие писатель и калитка: запись ТН ВЭД проверяется целиком, как уходит в ВБ
+                WbCardWriter,
+                WbContentGate,
+                { provide: WbCardService, useValue: { getAllWbCards, fetchCharacteristics, fetchWbCard, rememberCard, updateCards } },
                 { provide: WbApiService, useValue: { method } },
                 { provide: ConfigService, useValue: { get: (k: string, def: any) => (k === 'WB_CARD_BACKUP_DIR' ? backupDir : k === 'WB_CARD_ERRORS_DELAY_MS' ? 0 : def) } },
             ],
@@ -68,7 +74,7 @@ describe('WbTnvedService', () => {
         // фазы ловим по изменению progress.phase
         const seen = new Proxy(progress, { set: (t, k, v) => { if (k === 'phase') phases.push(String(v)); (t as any)[k] = v; return true; } });
 
-        await service.checkTnved([base('565831', '8504408300'), base('2', '8504408300')], seen as any);
+        await service.check([base('565831', '8504408300'), base('2', '8504408300')], seen as any);
 
         expect(phases).toEqual(['каталог', 'сверка']);
         expect(progress).toMatchObject({ phase: 'сверка', done: 2, total: 2 });
@@ -91,7 +97,7 @@ describe('WbTnvedService', () => {
     it('код совпадает → ok', async () => {
         getAllWbCards.mockResolvedValue([card('565831', ['8504408300'])]);
 
-        const res = await service.checkTnved([base('565831', '8504408300')]);
+        const res = await service.check([base('565831', '8504408300')]);
 
         expect(res.items).toHaveLength(1);
         expect(res.items[0]).toMatchObject({ offer: '565831', current: '8504408300', ok: true });
@@ -101,7 +107,7 @@ describe('WbTnvedService', () => {
     it('код совпал, но needKiz не по базе → на правку (маркируемый, галочка выкл)', async () => {
         getAllWbCards.mockResolvedValue([card('474754', '8504408300', SUBJECT, false)]);
 
-        const res = await service.checkTnved([base('474754', '8504408300', true)]);
+        const res = await service.check([base('474754', '8504408300', true)]);
 
         expect(res.items[0].ok).toBe(false);
         expect(res.items[0].reason).toBe('включить код маркировки; подтвердить маркировку');
@@ -110,7 +116,7 @@ describe('WbTnvedService', () => {
     it('маркируемый: needKiz есть, подтверждения маркировки нет → на правку «подтвердить»', async () => {
         getAllWbCards.mockResolvedValue([card('474754', '8504408300', SUBJECT, true, false)]);
 
-        const res = await service.checkTnved([base('474754', '8504408300', true)]);
+        const res = await service.check([base('474754', '8504408300', true)]);
 
         expect(res.items[0].ok).toBe(false);
         expect(res.items[0].reason).toBe('подтвердить маркировку');
@@ -120,7 +126,7 @@ describe('WbTnvedService', () => {
         getAllWbCards.mockResolvedValue([card('376743', '8532220000', SUBJECT, true)]);
         method.mockResolvedValue({ data: [{ tnved: '8532220000', isKiz: false }] });
 
-        const res = await service.checkTnved([base('376743', '8532220000', false)]);
+        const res = await service.check([base('376743', '8532220000', false)]);
 
         expect(res.items[0].reason).toBe('выключить код маркировки; снять подтверждение маркировки');
     });
@@ -128,7 +134,7 @@ describe('WbTnvedService', () => {
     it('код другой → на правку с причиной', async () => {
         getAllWbCards.mockResolvedValue([card('565831', '8504403003')]);
 
-        const res = await service.checkTnved([base('565831', '8504408300')]);
+        const res = await service.check([base('565831', '8504408300')]);
 
         expect(res.items[0]).toMatchObject({ ok: false, current: '8504403003', base: '8504408300' });
         expect(res.items[0].reason).toBe('ТНВЭД 8504403003→8504408300');
@@ -138,7 +144,7 @@ describe('WbTnvedService', () => {
     it('характеристики на карточке нет → на правку, current null', async () => {
         getAllWbCards.mockResolvedValue([card('565831')]);
 
-        const res = await service.checkTnved([base('565831', '8504408300')]);
+        const res = await service.check([base('565831', '8504408300')]);
 
         expect(res.items[0]).toMatchObject({ ok: false, current: null });
         expect(res.items[0].reason).toContain('—→8504408300');
@@ -147,7 +153,7 @@ describe('WbTnvedService', () => {
     it('нашего кода нет в справочнике предмета → спорно', async () => {
         getAllWbCards.mockResolvedValue([card('565831', '8504408300')]);
 
-        const res = await service.checkTnved([base('565831', '9999999999')]);
+        const res = await service.check([base('565831', '9999999999')]);
 
         expect(res.items[0].ok).toBe(false);
         expect(res.items[0].ambiguousReason).toContain('нет в справочнике предмета');
@@ -157,7 +163,7 @@ describe('WbTnvedService', () => {
         getAllWbCards.mockResolvedValue([card('565831', '8504408300')]);
         method.mockResolvedValue({ result: null, status: 'NotOk', error: { message: 'boom' } });
 
-        const res = await service.checkTnved([base('565831', '8504408300')]);
+        const res = await service.check([base('565831', '8504408300')]);
 
         expect(res.items[0].ambiguousReason).toContain('не отдан');
     });
@@ -168,7 +174,7 @@ describe('WbTnvedService', () => {
             .mockResolvedValueOnce({ result: null, status: 'NotOk', error: { status: 429, retryAfterMs: 20 } })
             .mockResolvedValueOnce(DIRECTORY);
 
-        const res = await service.checkTnved([base('565831', '8504408300')]);
+        const res = await service.check([base('565831', '8504408300')]);
 
         expect(method).toHaveBeenCalledTimes(2);
         expect(res.items[0].ok).toBe(true);
@@ -178,7 +184,7 @@ describe('WbTnvedService', () => {
         getAllWbCards.mockResolvedValue([card('565831', '8504408300')]);
         fetchCharacteristics.mockResolvedValue({ result: null, status: 'NotOk', error: { status: 429, retryAfterMs: 10 } });
 
-        const res = await service.checkTnved([base('565831', '8504408300')]);
+        const res = await service.check([base('565831', '8504408300')]);
 
         expect(fetchCharacteristics).toHaveBeenCalledTimes(4); // 1 + 3 повтора
         expect(res.items[0].ambiguousReason).toContain('не отданы');
@@ -191,7 +197,7 @@ describe('WbTnvedService', () => {
             .mockResolvedValueOnce({ result: null, status: 'NotOk', error: { status: 429, retryAfterMs: 10 } })
             .mockResolvedValueOnce({ data: [TNVED_CHARC], error: false });
 
-        const res = await service.checkTnved([base('565831', '8504408300')]);
+        const res = await service.check([base('565831', '8504408300')]);
 
         expect(res.items[0].ok).toBe(true);
     });
@@ -200,7 +206,7 @@ describe('WbTnvedService', () => {
         getAllWbCards.mockResolvedValue([card('565831', undefined, 964)]);
         fetchCharacteristics.mockResolvedValue({ data: [{ ...TNVED_CHARC, charcID: 15004139, name: 'Код ТН ВЭД' }], error: false });
 
-        const res = await service.checkTnved([base('565831', '8504408300')]);
+        const res = await service.check([base('565831', '8504408300')]);
 
         expect(res.items[0].ambiguousReason).toContain('нет характеристики ТНВЭД');
         expect(method).not.toHaveBeenCalled();
@@ -209,7 +215,7 @@ describe('WbTnvedService', () => {
     it('справочник и характеристики предмета запрашиваются один раз на предмет', async () => {
         getAllWbCards.mockResolvedValue([card('1', '8504408300'), card('2', '8504408300')]);
 
-        await service.checkTnved([base('1', '8504408300'), base('2', '8504408300')]);
+        await service.check([base('1', '8504408300'), base('2', '8504408300')]);
 
         expect(method).toHaveBeenCalledTimes(1);
         expect(method).toHaveBeenCalledWith(
@@ -224,7 +230,7 @@ describe('WbTnvedService', () => {
     it('суффиксные vendorCode (531557 и 531557-10) — обе карточки товара', async () => {
         getAllWbCards.mockResolvedValue([card('531557', '8504408300'), card('531557-10', '8504403003')]);
 
-        const res = await service.checkTnved([base('531557', '8504408300')]);
+        const res = await service.check([base('531557', '8504408300')]);
 
         expect(res.items.map((i) => [i.offer, i.ok])).toEqual([
             ['531557', true],
@@ -235,22 +241,22 @@ describe('WbTnvedService', () => {
     it('на ВБ нет ни одной карточки товара → notFound', async () => {
         getAllWbCards.mockResolvedValue([card('1', '8504408300')]);
 
-        const res = await service.checkTnved([base('2', '8504408300')]);
+        const res = await service.check([base('2', '8504408300')]);
 
         expect(res.items).toEqual([]);
         expect(res.notFound).toEqual(['2']);
     });
 
-    describe('updateTnved', () => {
+    describe('update — через общий WbCardWriter', () => {
         const fix = (offer: string, base = '8504408300', markRequired = true) => ({ offer, goodscode: offer, current: null, base, markRequired, ok: false });
         const WB_OK = { data: null, error: false, errorText: '', additionalErrors: null };
 
         it('пишет копию карточки с нашим кодом в характеристике, оригинал не трогает', async () => {
             const original = { ...card('565831', '8504403003', SUBJECT, false), documents: [{ id: 1 }] } as any; // поле вне DTO должно уехать
-            getWbCardAsync.mockResolvedValue(original);
+            fetchWbCard.mockResolvedValue(original);
             updateCards.mockResolvedValue([WB_OK]);
 
-            const res = await service.updateTnved([fix('565831')]);
+            const res = await service.update([fix('565831')]);
 
             expect(res).toEqual([{ offer: '565831' }]);
             const sent = updateCards.mock.calls[0][0];
@@ -264,10 +270,10 @@ describe('WbTnvedService', () => {
         });
 
         it('характеристики не было — добавляет; немаркируемый → needKiz false', async () => {
-            getWbCardAsync.mockResolvedValue(card('565831'));
+            fetchWbCard.mockResolvedValue(card('565831'));
             updateCards.mockResolvedValue([WB_OK]);
 
-            await service.updateTnved([fix('565831', '8504408300', false)]);
+            await service.update([fix('565831', '8504408300', false)]);
 
             const sent = updateCards.mock.calls[0][0][0];
             expect(sent.characteristics).toEqual([{ id: 15000001, value: ['8504408300'] }]);
@@ -276,10 +282,10 @@ describe('WbTnvedService', () => {
         });
 
         it('перед записью кладёт карточки «до» в файл', async () => {
-            getWbCardAsync.mockResolvedValue(card('565831', '8504403003'));
+            fetchWbCard.mockResolvedValue(card('565831', '8504403003'));
             updateCards.mockResolvedValue([WB_OK]);
 
-            await service.updateTnved([fix('565831')]);
+            await service.update([fix('565831')]);
 
             const files = readdirSync(backupDir);
             expect(files).toHaveLength(1);
@@ -289,26 +295,26 @@ describe('WbTnvedService', () => {
         });
 
         it('HTTP-отказ ВБ ({status:NotOk}) → error на каждую карточку', async () => {
-            getWbCardAsync.mockResolvedValue(card('565831'));
+            fetchWbCard.mockResolvedValue(card('565831'));
             updateCards.mockResolvedValue([{ result: null, status: 'NotOk', error: { status: 400, message: 'bad' } }]);
 
-            const res = await service.updateTnved([fix('565831')]);
+            const res = await service.update([fix('565831')]);
 
             expect(res[0].error).toContain('HTTP 400: bad');
         });
 
         it('принято с ошибкой ({error:true, errorText}) → error с additionalErrors', async () => {
-            getWbCardAsync.mockResolvedValue(card('565831'));
+            fetchWbCard.mockResolvedValue(card('565831'));
             updateCards.mockResolvedValue([{ data: null, error: true, errorText: 'Ошибка', additionalErrors: { x: 1 } }]);
 
-            const res = await service.updateTnved([fix('565831')]);
+            const res = await service.update([fix('565831')]);
 
             expect(res[0].error).toContain('Ошибка');
             expect(res[0].error).toContain('"x":1');
         });
 
         it('отложенный отказ ВБ (cards/error/list) по нашей карточке → error с текстом; чужие и старые пачки — нет', async () => {
-            getWbCardAsync.mockImplementation((o: string) => Promise.resolve(card(o)));
+            fetchWbCard.mockImplementation((o: string) => Promise.resolve(card(o)));
             updateCards.mockResolvedValue([WB_OK]);
             const fresh = new Date().toISOString();
             const old = new Date(Date.now() - 3600_000).toISOString();
@@ -323,7 +329,7 @@ describe('WbTnvedService', () => {
                 ),
             );
 
-            const res = await service.updateTnved([fix('488434'), fix('565831')]);
+            const res = await service.update([fix('488434'), fix('565831')]);
 
             expect(res).toEqual([
                 { offer: '488434', error: 'ВБ отверг: Бренд «STM» не найден' },
@@ -333,19 +339,19 @@ describe('WbTnvedService', () => {
         });
 
         it('прогресс записи: фаза «запись», done = отправлено', async () => {
-            getWbCardAsync.mockResolvedValue(card('565831'));
+            fetchWbCard.mockResolvedValue(card('565831'));
             updateCards.mockResolvedValue([WB_OK]);
             const progress = { done: 0, counters: {} };
 
-            await service.updateTnved([fix('565831')], progress);
+            await service.update([fix('565831')], progress);
 
             expect(progress).toMatchObject({ phase: 'запись', done: 1, total: 1 });
         });
 
         it('карточки нет на ВБ → error, запись не вызывается', async () => {
-            getWbCardAsync.mockResolvedValue(null);
+            fetchWbCard.mockResolvedValue(null);
 
-            const res = await service.updateTnved([fix('нет')]);
+            const res = await service.update([fix('нет')]);
 
             expect(res).toEqual([{ offer: 'нет', error: expect.stringContaining('не найдена') }]);
             expect(updateCards).not.toHaveBeenCalled();

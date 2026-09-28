@@ -80,7 +80,7 @@ describe("ExtraPriceService", () => {
     mockYandexPriceService.updateAllPrices = jest.fn();
     mockYandexPriceService.createAction = jest.fn();
 
-    const mockWbPriceService = new WbPriceService(null, null, null, null) as jest.Mocked<WbPriceService>;
+    const mockWbPriceService = new WbPriceService(null, null, null, null, null) as jest.Mocked<WbPriceService>;
     mockWbPriceService.getObtainCoeffs = jest.fn();
     mockWbPriceService.getProductsWithCoeffs = jest.fn();
     mockWbPriceService.updatePrices = jest.fn();

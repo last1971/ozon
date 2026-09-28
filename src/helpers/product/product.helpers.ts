@@ -91,3 +91,40 @@ export const chrtIdVendorCodePairs = (cards: WbCardDto[]): Map<number, string> =
     });
     return pairs;
 };
+/**
+ * Карта «код товара → его элементы» по артикулу (goodCode: часть до первого дефиса).
+ * Один товар — несколько карточек-фасовок (531557, 531557-10, …). Порядок элементов сохраняется.
+ */
+export function groupByGoodCode<T>(items: T[], offerOf: (item: T) => string): Map<string, T[]> {
+    const map = new Map<string, T[]>();
+    for (const item of items) {
+        const offer = offerOf(item);
+        if (!offer) continue;
+        const gc = goodCode({ offer_id: offer });
+        const arr = map.get(gc) ?? [];
+        arr.push(item);
+        map.set(gc, arr);
+    }
+    return map;
+}
+
+/**
+ * Артикул минимальной фасовки товара: наименьший goodQuantityCoeff (без суффикса = 1).
+ * Ничья («123» и «123-1») — артикул без суффикса, дальше короче, дальше по алфавиту: выбор детерминирован.
+ */
+export function minPackOffer(offers: string[]): string | undefined {
+    const rank = (o: string) => [goodQuantityCoeff({ offer_id: o }), o.includes('-') ? 1 : 0, o.length] as const;
+    return [...offers].sort((a, b) => {
+        const [ca, da, la] = rank(a);
+        const [cb, db, lb] = rank(b);
+        return ca - cb || da - db || la - lb || a.localeCompare(b);
+    })[0];
+}
+
+/**
+ * Ключ сравнения штрихкода: без пробелов и ведущих нулей. GTIN-14 «00400001759547», EAN-13 «0400001759547»
+ * и «400001759547» — один и тот же код, записанный разной длиной.
+ */
+export function barcodeKey(code: string): string {
+    return String(code ?? '').trim().replace(/^0+/, '');
+}

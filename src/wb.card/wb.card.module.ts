@@ -14,6 +14,8 @@ import { CheckWbCardExistsCommand } from './commands/check-wb-card-exists.comman
 import { ShortenTitleCommand } from './commands/shorten-title.command';
 import { BuildWbUploadBodyCommand } from './commands/build-wb-upload-body.command';
 import { SubmitWbCardCommand } from './commands/submit-wb-card.command';
+import { WbContentGate } from './wb.content.gate';
+import { WbCardWriter } from './wb.card.writer';
 
 @Module({
     imports: [WbApiModule, AIModule, ProductModule, OzonCategoryModule],
@@ -29,7 +31,9 @@ import { SubmitWbCardCommand } from './commands/submit-wb-card.command';
         ShortenTitleCommand,
         BuildWbUploadBodyCommand,
         SubmitWbCardCommand,
+        WbContentGate,
+        WbCardWriter,
     ],
-    exports: [WbCardService],
+    exports: [WbCardService, WbContentGate, WbCardWriter],
 })
 export class WbCardModule {}

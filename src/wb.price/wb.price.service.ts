@@ -10,6 +10,7 @@ import { WbPriceUpdateDto } from './dto/wb.price.update.dto';
 import { WbApiService } from '../wb.api/wb.api.service';
 import { WbDiscountUpdateDto } from './dto/wb.discount.update.dto';
 import { WbCardService } from '../wb.card/wb.card.service';
+import { WbCardWriter } from '../wb.card/wb.card.writer';
 import { readColumnByHeader } from '../helpers';
 import { find, first } from 'lodash';
 import Excel from 'exceljs';
@@ -47,6 +48,7 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
         @Inject(GOOD_SERVICE) private goodService: IGood,
         private api: WbApiService,
         private cardService: WbCardService,
+        private cardWriter: WbCardWriter,
     ) {}
     async checkVatForAll(expectedVat: number, limit?: number): Promise<Array<{ offer_id: string; current_vat: number; expected_vat: number; }>> {
         const cards = await this.cardService.getAllWbCards();
@@ -86,32 +88,28 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
         return mismatches;
     }
     
+    /**
+     * Записать ставку НДС в характеристику карточек — через общий писатель карточек ВБ
+     * (свежая карточка, бэкап «до», очередь). Итог по карточке: { offer } или { offer, error }.
+     */
     async updateVat(offerIds: string[], vat: number): Promise<any> {
-        const cards: WbCardDto[] = [];
+        const value = [this.numberToVat(vat)];
+        return this.cardWriter.write(
+            'vat',
+            offerIds.map((offer) => ({ offer, edit: (card: WbCardDto) => this.withVat(card, value) })),
+        );
+    }
 
-        for (const offerId of offerIds) {
-          const card = await this.cardService.getWbCardAsync(offerId);
-          cards.push(card);
+    /** Характеристика НДС в копии карточки: заменить значение или добавить характеристику. */
+    private withVat(card: WbCardDto, value: string[]): WbCardDto {
+        const characteristics = card.characteristics || [];
+        const vatChar = characteristics.find((ch) => ch.id === WbPriceService.VAT_CHARACTERISTIC_ID);
+        if (vatChar) {
+            vatChar.value = value;
+        } else {
+            characteristics.push({ id: WbPriceService.VAT_CHARACTERISTIC_ID, value });
         }
-
-        const updatedCards = cards.map(card => {
-            const characteristics = card.characteristics || [];
-            const vatChar = characteristics.find(ch => ch.id === WbPriceService.VAT_CHARACTERISTIC_ID);
-
-            if (vatChar) {
-                vatChar.value = [this.numberToVat(vat)];
-            } else {
-                characteristics.push({
-                    id: WbPriceService.VAT_CHARACTERISTIC_ID,
-                    value: [this.numberToVat(vat)]
-                });
-            }
-
-            return { ...card, characteristics };
-        });
-
-        return this.cardService.updateCards(updatedCards);
-        
+        return { ...card, characteristics };
     }
     /**
      * Преобразует значение НДС WB (строка) в стандартное число (проценты)

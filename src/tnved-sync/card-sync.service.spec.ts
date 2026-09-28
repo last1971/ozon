@@ -2,14 +2,18 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { FIREBIRD } from '../firebird/firebird.module';
 import { ProductService } from '../product/product.service';
-import { TnvedSyncService } from './tnved-sync.service';
+import { CardSyncService, GTIN_SYNC_JOB, TNVED_SYNC_JOB } from './card-sync.service';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { ProcessedCacheService } from '../processed-cache/processed-cache.service';
 import { LoadBaseTnvedCommand } from './commands/load-base-tnved.command';
 import { SkipProcessedCommand } from './commands/skip-processed.command';
-import { CheckTnvedCommand } from './commands/check-tnved.command';
-import { BuildTnvedReportCommand } from './commands/build-tnved-report.command';
-import { UpdateTnvedCommand } from './commands/update-tnved.command';
+import { CheckCardsCommand } from './commands/check-cards.command';
+import { BuildSyncReportCommand } from './commands/build-sync-report.command';
+import { UpdateCardsCommand } from './commands/update-cards.command';
+import { LoadBaseGtinCommand } from './commands/load-base-gtin.command';
+import { OzonGtinService } from './ozon.gtin.service';
+import { WbGtinService } from './wb.gtin.service';
+import { CardSyncMode } from '../interfaces/i.card.sync';
 import { MarkProcessedCommand } from './commands/mark-processed.command';
 import { JobService } from '../job/job.service';
 import { LoadMarketOffersCommand } from './commands/load-market-offers.command';
@@ -18,8 +22,8 @@ import { DiffMissingTnvedCommand } from './commands/diff-missing-tnved.command';
 import { OzonTnvedService } from './ozon.tnved.service';
 import { WbTnvedService } from './wb.tnved.service';
 
-describe('TnvedSyncService', () => {
-    let service: TnvedSyncService;
+describe('CardSyncService', () => {
+    let service: CardSyncService;
     let moduleJobs: JobService;
     const query = jest.fn();
     const commit = jest.fn();
@@ -31,7 +35,21 @@ describe('TnvedSyncService', () => {
     const searchCategoryAttributeValues = jest.fn();
     const updateAttributes = jest.fn();
     const evictProductAttributes = jest.fn();
-    const productService = { list, getProductAttributes, searchCategoryAttributeValues, updateAttributes, evictProductAttributes };
+    const infoList = jest.fn();
+    const addBarcodes = jest.fn();
+    // постраничную выкачку каталога гоняем настоящую (ProductService.listAllOfferIds поверх мока list)
+    const productService = {
+        list,
+        getProductAttributes,
+        searchCategoryAttributeValues,
+        updateAttributes,
+        evictProductAttributes,
+        infoList,
+        addBarcodes,
+        listAllOfferIds(onPage?: (loaded: number) => void) {
+            return ProductService.prototype.listAllOfferIds.call(this, onPage);
+        },
+    };
     const progressLoad = jest.fn();
     const progressSave = jest.fn();
     const progressClear = jest.fn();
@@ -52,33 +70,36 @@ describe('TnvedSyncService', () => {
     });
 
     beforeEach(async () => {
-        [query, commit, rollback, list, getProductAttributes, searchCategoryAttributeValues, updateAttributes, evictProductAttributes, progressLoad, progressSave, progressClear].forEach(
+        [query, commit, rollback, list, getProductAttributes, searchCategoryAttributeValues, updateAttributes, evictProductAttributes, infoList, addBarcodes, progressLoad, progressSave, progressClear].forEach(
             (m) => m.mockReset(),
         );
         progressLoad.mockResolvedValue(new Set<string>());
         searchCategoryAttributeValues.mockResolvedValue(MARK_VALUES);
         const moduleRef: TestingModule = await Test.createTestingModule({
             providers: [
-                TnvedSyncService,
+                CardSyncService,
                 OzonTnvedService,
+                OzonGtinService,
                 LoadBaseTnvedCommand,
+                LoadBaseGtinCommand,
                 SkipProcessedCommand,
-                CheckTnvedCommand,
-                BuildTnvedReportCommand,
-                UpdateTnvedCommand,
+                CheckCardsCommand,
+                BuildSyncReportCommand,
+                UpdateCardsCommand,
                 MarkProcessedCommand,
                 LoadMarketOffersCommand,
                 LoadBaseGoodsCommand,
                 DiffMissingTnvedCommand,
                 JobService,
                 { provide: WbTnvedService, useValue: {} },
+                { provide: WbGtinService, useValue: {} },
                 { provide: ProcessedCacheService, useValue: { load: progressLoad, save: progressSave, clear: progressClear } },
                 { provide: FIREBIRD, useValue: pool },
                 { provide: ProductService, useValue: productService },
                 { provide: ConfigService, useValue: { get: (k: string, def: any) => (k === 'SERVICES' ? ['ozon'] : def) } },
             ],
         }).compile();
-        service = moduleRef.get(TnvedSyncService);
+        service = moduleRef.get(CardSyncService);
         moduleJobs = moduleRef.get(JobService);
     });
 
@@ -258,8 +279,7 @@ describe('TnvedSyncService', () => {
     describe('«где у нас пусто» (Озон)', () => {
         it('каталог минус товары с ТН ВЭД: без кода → noTnved, чужой → notInBase, названия из info/list', async () => {
             list.mockResolvedValue({ result: { items: [{ offer_id: '100-10' }, { offer_id: '565831' }, { offer_id: 'ABC' }], last_id: '' } });
-            const infoList = jest.fn().mockResolvedValue([{ sku: '100-10', remark: 'без кода' }, { sku: 'ABC', remark: 'чужой' }]);
-            (productService as any).infoList = infoList;
+            infoList.mockResolvedValue([{ sku: '100-10', remark: 'без кода' }, { sku: 'ABC', remark: 'чужой' }]);
             query
                 .mockResolvedValueOnce([{ GOODSCODE: 100 }, { GOODSCODE: 565831 }])
                 .mockResolvedValueOnce([{ X: 1 }])
@@ -328,6 +348,141 @@ describe('TnvedSyncService', () => {
             await service.clearProgress(GoodServiceEnum.WB);
 
             expect(progressClear).toHaveBeenCalledWith('tnved', 'wb');
+        });
+    });
+
+    describe('старый дефект: отказ Озона при записи ТН ВЭД больше не считается успехом', () => {
+        const oneToFix = () => {
+            query.mockResolvedValueOnce([baseRow(11, '8504409100')]);
+            ozonCatalog(['11'], { '11': { code: '8504409100', dictId: PLAIN_ID, markOn: false } });
+        };
+
+        it('сбой запроса ({ result: null, error }) → error в отчёте, товар не помечается обработанным', async () => {
+            oneToFix();
+            updateAttributes.mockResolvedValue([{ result: null, error: { message: 'invalid attribute' } }]);
+
+            const rep = await service.sync({ market: GoodServiceEnum.OZON, apply: true });
+
+            expect(rep.toFix[0].error).toContain('Озон отказал: invalid attribute');
+            expect(rep.toFix[0].taskId).toBeUndefined();
+            expect(Array.from(progressSave.mock.calls[0][2] as Set<string>)).toEqual([]);
+        });
+
+        it('ответ без task_id → error', async () => {
+            oneToFix();
+            updateAttributes.mockResolvedValue([{}]);
+
+            const rep = await service.sync({ market: GoodServiceEnum.OZON, apply: true });
+
+            expect(rep.toFix[0].error).toContain('не вернул task_id');
+        });
+    });
+
+    describe('режим GTIN (Озон) — та же цепочка, своя база и площадка', () => {
+        const gtinRows = (rows: [number, string][]) => query.mockResolvedValueOnce(rows.map(([GOODSCODE, GTIN]) => ({ GOODSCODE, GTIN })));
+        // карточки Озона: артикул → [sku, баркоды]
+        const ozonCards = (cards: Record<string, [number, string[]]>) => {
+            list.mockResolvedValue({ result: { items: Object.keys(cards).map((o) => ({ offer_id: o })), last_id: '' } });
+            infoList.mockImplementation((offers: string[]) =>
+                Promise.resolve(offers.map((o) => ({ sku: o, marketSku: cards[o][0], barcodes: cards[o][1], remark: `PROD-${o}` }))),
+            );
+        };
+        const gtin = (extra = {}) => ({ mode: CardSyncMode.GTIN, market: GoodServiceEnum.OZON, ...extra });
+
+        it('dry-run: все GTIN — на минимальную фасовку; -N не трогаем; GTIN в другой длине записи = уже стоит', async () => {
+            gtinRows([[569593, '04600000000011'], [569593, '04600000000028'], [7, '0400001759547']]);
+            ozonCards({
+                '569593-10': [3, ['OZN3']],
+                '569593': [1, ['OZN1']],
+                '569593-5': [2, ['OZN2']],
+                '7-10': [4, ['OZN4', '00400001759547']], // у товара 7 только фасовка 10 — она и минимальная
+            });
+
+            const rep = await service.sync(gtin());
+
+            expect(rep.checkedGoods).toBe(2);
+            expect(rep.checkedOffers).toBe(2); // по одной карточке на товар
+            expect(rep.alreadyOk).toBe(1);
+            expect(rep.toFix).toHaveLength(1);
+            expect(rep.toFix[0]).toMatchObject({ offer: '569593', add: ['04600000000011', '04600000000028'], marketId: 1, current: 'OZN1' });
+            expect(addBarcodes).not.toHaveBeenCalled();
+            expect(updateAttributes).not.toHaveBeenCalled();
+        });
+
+        it('apply: /v1/barcode/add по SKU, отметка прогресса «товар:набор GTIN» в наборе gtin', async () => {
+            gtinRows([[569593, '04600000000011'], [569593, '04600000000028']]);
+            ozonCards({ '569593': [1, ['OZN1']], '569593-5': [2, ['OZN2']] });
+            addBarcodes.mockResolvedValue({ errors: [] });
+
+            const rep = await service.sync(gtin({ apply: true }));
+
+            expect(addBarcodes).toHaveBeenCalledWith([
+                { barcode: '04600000000011', sku: 1 },
+                { barcode: '04600000000028', sku: 1 },
+            ]);
+            expect(rep.toFix[0].error).toBeUndefined();
+            expect(evictProductAttributes).toHaveBeenCalledWith('569593');
+            const [name, scope, set] = progressSave.mock.calls[0];
+            expect([name, scope]).toEqual(['gtin', 'ozon']);
+            expect(Array.from(set as Set<string>)).toEqual(['569593:04600000000011|04600000000028']);
+        });
+
+        it('apply: построчный отказ Озона → error у карточки, товар не помечается', async () => {
+            gtinRows([[569593, '04600000000011']]);
+            ozonCards({ '569593': [1, []] });
+            addBarcodes.mockResolvedValue({ errors: [{ code: 'BARCODE_ALREADY_EXISTS', error: 'уже у другого товара', barcode: '04600000000011', sku: 1 }] });
+
+            const rep = await service.sync(gtin({ apply: true }));
+
+            expect(rep.toFix[0].error).toContain('04600000000011: уже у другого товара');
+            expect(Array.from(progressSave.mock.calls[0][2] as Set<string>)).toEqual([]);
+        });
+
+        it('apply: сбой запроса ({ result: null, error }) → error на все карточки пачки', async () => {
+            gtinRows([[569593, '04600000000011']]);
+            ozonCards({ '569593': [1, []] });
+            addBarcodes.mockResolvedValue({ result: null, error: { message: 'Forbidden' } });
+
+            const rep = await service.sync(gtin({ apply: true }));
+
+            expect(rep.toFix[0].error).toContain('Озон отказал: Forbidden');
+        });
+
+        it('GTIN уже висит на другой фасовке товара → спорно, не пишем', async () => {
+            gtinRows([[569593, '04600000000011']]);
+            ozonCards({ '569593': [1, ['OZN1']], '569593-5': [2, ['4600000000011']] });
+
+            const rep = await service.sync(gtin({ apply: true }));
+
+            expect(rep.toFix).toHaveLength(0);
+            expect(rep.ambiguous[0].offer).toBe('569593');
+            expect(rep.ambiguous[0].reason).toContain('уже на 569593-5');
+            expect(addBarcodes).not.toHaveBeenCalled();
+        });
+
+        it('у карточки нет SKU Озона → спорно', async () => {
+            gtinRows([[5, '04600000000011']]);
+            ozonCards({ '5': [0, []] });
+
+            const rep = await service.sync(gtin());
+
+            expect(rep.ambiguous[0].reason).toContain('нет SKU Озона');
+        });
+
+        it('режимы — разные виды задач; сброс прогресса — в наборе режима', async () => {
+            gtinRows([]);
+            ozonCards({});
+            query.mockResolvedValueOnce([]);
+
+            const g = service.start(gtin());
+            const t = service.start({ market: GoodServiceEnum.OZON });
+            await Promise.all([moduleJobs.whenDone(g.id), moduleJobs.whenDone(t.id)]);
+            await service.clearProgress(GoodServiceEnum.OZON, CardSyncMode.GTIN);
+
+            expect(g.kind).toBe(GTIN_SYNC_JOB);
+            expect(t.kind).toBe(TNVED_SYNC_JOB);
+            expect(t.params.mode).toBe(CardSyncMode.TNVED);
+            expect(progressClear).toHaveBeenCalledWith('gtin', 'ozon');
         });
     });
 });

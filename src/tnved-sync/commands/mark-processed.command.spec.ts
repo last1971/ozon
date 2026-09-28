@@ -13,6 +13,7 @@ describe('MarkProcessedCommand', () => {
         progress: emptyProgress(),
         service: {} as any,
         opts: { market: GoodServiceEnum.OZON, apply },
+        progressCache: 'tnved',
         all: ['10', '11', '12', '13', '14', '20'].map(good),
         base: ['10', '11', '12', '13', '14'].map(good),
         processed: new Set<string>(['20']),
@@ -41,5 +42,20 @@ describe('MarkProcessedCommand', () => {
 
         expect(save).not.toHaveBeenCalled();
         expect(res.report.remaining).toBe(5);
+    });
+
+    it('apply: отмечает progressKey строки и пишет в набор режима', async () => {
+        const c = ctx(true);
+        c.progressCache = 'gtin';
+        c.base = [{ goodscode: '10', progressKey: '10:4600', tnved: 'x', markRequired: false }];
+        c.all = c.base;
+        c.processed = new Set();
+
+        const res = await command.execute(c);
+
+        const [name, , set] = save.mock.calls[0];
+        expect(name).toBe('gtin');
+        expect(Array.from(set as Set<string>)).toEqual(['10:4600']);
+        expect(res.report.remaining).toBe(0);
     });
 });

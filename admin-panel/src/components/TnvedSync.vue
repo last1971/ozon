@@ -1,27 +1,31 @@
 <script setup lang="ts">
-import { tnvedSyncStore, TNVED_SYNC_JOB, TNVED_MISSING_JOB, type TnvedSyncReport, type MissingTnvedReport } from "@/stores/tnvedSync";
+import { tnvedSyncStore, TNVED_SYNC_JOB, GTIN_SYNC_JOB, TNVED_MISSING_JOB, type TnvedSyncReport, type MissingTnvedReport } from "@/stores/tnvedSync";
 import MarketplaceSelect from "@/components/MarketplaceSelect.vue";
 import { useJob } from "@/composable/useJob";
 import { clientId } from "@/axios.config";
 import { computed, onMounted, ref, watch } from "vue";
 
 const store = tnvedSyncStore();
-const { box, start, attach, clear } = useJob<TnvedSyncReport>(TNVED_SYNC_JOB);
+// у режимов свои фоновые задачи: отчёт GTIN не путается с отчётом ТН ВЭД, после F5 подхватывается свой
+const jobs = { tnved: useJob<TnvedSyncReport>(TNVED_SYNC_JOB), gtin: useJob<TnvedSyncReport>(GTIN_SYNC_JOB) };
+const sync = computed(() => jobs[store.form.mode]);
+const box = computed(() => sync.value.box);
+const isGtin = computed(() => store.form.mode === 'gtin');
 const missing = useJob<MissingTnvedReport>(TNVED_MISSING_JOB);
 const confirmWrite = ref(false);
 const confirmReset = ref(false);
 const me = clientId();
 
-onMounted(() => Promise.all([attach(), missing.attach()]));
+onMounted(() => Promise.all([jobs.tnved.attach(), jobs.gtin.attach(), missing.attach()]));
 
 // Отчёты привязаны к маркетплейсу: сменили — старые не годятся, кнопка «Записать» гаснет.
-watch(() => store.form.market, () => { clear(); missing.clear(); });
+watch(() => store.form.market, () => { jobs.tnved.clear(); jobs.gtin.clear(); missing.clear(); });
 
 const missingJob = computed(() => missing.box.job);
 const missingRunning = computed(() => missingJob.value?.status === 'running');
 const missingReport = computed(() => (missingJob.value?.status === 'done' ? missingJob.value.result ?? null : null));
 
-const job = computed(() => box.job);
+const job = computed(() => box.value.job);
 const running = computed(() => job.value?.status === 'running');
 const report = computed(() => (job.value?.status === 'done' ? job.value.result ?? null : null));
 /** Записывать можно только после проверки того же маркетплейса, и только если есть что править. */
@@ -42,11 +46,11 @@ const marketOf = (j: { params: Record<string, unknown> }) => String(j.params.mar
 const whose = (j: { clientId?: string }) => (j.clientId && j.clientId === me ? 'моя' : 'с другого компьютера');
 
 async function check() {
-    await start(() => store.start(false));
+    await sync.value.start(() => store.start(false));
 }
 async function write() {
     confirmWrite.value = false;
-    await start(() => store.start(true));
+    await sync.value.start(() => store.start(true));
 }
 async function findMissing() {
     await missing.start(() => store.startMissing());
@@ -71,6 +75,12 @@ async function resetProgress() {
 
         <v-form>
             <v-row dense align="center">
+                <v-col cols="auto">
+                    <v-btn-toggle v-model="store.form.mode" mandatory density="compact" color="primary" variant="outlined">
+                        <v-btn value="tnved">ТН ВЭД</v-btn>
+                        <v-btn value="gtin">GTIN</v-btn>
+                    </v-btn-toggle>
+                </v-col>
                 <v-col cols="2">
                     <marketplace-select v-model="store.form.market" />
                 </v-col>
@@ -104,7 +114,7 @@ async function resetProgress() {
                         Записать
                     </v-btn>
                 </v-col>
-                <v-col cols="auto">
+                <v-col v-if="!isGtin" cols="auto">
                     <v-btn
                         color="secondary"
                         prepend-icon="mdi-database-search"
@@ -134,7 +144,7 @@ async function resetProgress() {
                 <div class="d-flex align-center mb-2">
                     <v-icon :icon="running ? 'mdi-progress-clock' : job.status === 'failed' ? 'mdi-alert-circle' : 'mdi-check-circle'" class="me-2" />
                     <span class="font-weight-medium">
-                        {{ marketOf(job) }} · {{ job.params.apply ? 'запись' : 'проверка' }} · {{ whose(job) }}
+                        {{ isGtin ? 'GTIN' : 'ТН ВЭД' }} · {{ marketOf(job) }} · {{ job.params.apply ? 'запись' : 'проверка' }} · {{ whose(job) }}
                         · {{ running ? progressText : job.status === 'failed' ? `ошибка: ${job.error}` : 'готово' }}
                     </span>
                 </div>
@@ -163,7 +173,7 @@ async function resetProgress() {
 
         <v-dialog v-model="confirmReset" max-width="480">
             <v-card>
-                <v-card-title>Сбросить прогресс {{ store.form.market.toUpperCase() }}?</v-card-title>
+                <v-card-title>Сбросить прогресс {{ isGtin ? 'GTIN' : 'ТН ВЭД' }} · {{ store.form.market.toUpperCase() }}?</v-card-title>
                 <v-card-text>
                     Отметки «обработано» будут стёрты, следующий прогон «только необработанные» пойдёт по всей базе.
                     На маркетплейсе ничего не меняется.
@@ -182,6 +192,10 @@ async function resetProgress() {
                 <v-card-text>
                     Будет записано карточек: {{ report?.toFix.length }}. Карточки ВБ перезаписываются целиком,
                     «до» сохраняется в бэкап на сервере.
+                    <template v-if="isGtin">
+                        <br /><br />
+                        <b>Баркоды на Озоне и ВБ только добавляются — снять их потом через API нельзя.</b>
+                    </template>
                 </v-card-text>
                 <v-card-actions>
                     <v-spacer />
@@ -233,7 +247,7 @@ async function resetProgress() {
                             <th>Название</th>
                             <th>На маркетплейсе</th>
                             <th>У нас</th>
-                            <th>Маркировка</th>
+                            <th v-if="!isGtin">Маркировка</th>
                             <th>Причина</th>
                             <th v-if="report.apply">Итог</th>
                         </tr>
@@ -244,7 +258,7 @@ async function resetProgress() {
                             <td>{{ f.name }}</td>
                             <td>{{ f.current ?? '—' }}</td>
                             <td>{{ f.base }}</td>
-                            <td><v-icon :icon="f.markRequired ? 'mdi-check' : 'mdi-minus'" size="small" /></td>
+                            <td v-if="!isGtin"><v-icon :icon="f.markRequired ? 'mdi-check' : 'mdi-minus'" size="small" /></td>
                             <td>{{ f.reason }}</td>
                             <td v-if="report.apply">
                                 <v-chip v-if="f.error" color="error" size="small" variant="tonal">{{ f.error }}</v-chip>

@@ -28,6 +28,7 @@ import { BuyoutDto } from '../posting/dto/buyout.dto';
 import { AccrualTypeDto, AccrualByDayResultDto, PayoutPeriodDto } from '../posting/dto/accrual.dto';
 import { normalizePostingsPrices } from '../helpers/posting.price';
 import { Cacheable, CacheEvict } from 'nestjs-cacheable';
+import { RateLimit } from '../helpers/decorators/rate-limit.decorator';
 
 @Injectable()
 export class ProductService extends ICountUpdateable implements OnModuleInit, IProductable {
@@ -43,9 +44,32 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
         const ozon = await this.vaultService.get('ozon');
         this.warehouseId = ozon.STORE as number;
     }
-    // вроде более не использую
+    /** Одна страница каталога (/v3/product/list). Весь каталог — listAllOfferIds. */
     async list(last_id = '', limit = 100, filter: ProductFilterDto = new ProductFilterDto()): Promise<ProductListResultDto> {
         return this.ozonApiService.method('/v3/product/list', { filter, last_id, limit });
+    }
+
+    /**
+     * Все артикулы каталога страницами по 1000 (/v3/product/list, фильтр по умолчанию = «все, кроме архива»).
+     * onPage(loaded) — сколько карточек уже выкачано (для прогресса фоновой задачи).
+     */
+    async listAllOfferIds(onPage?: (loaded: number) => void): Promise<string[]> {
+        const offers: string[] = [];
+        let lastId = '';
+        let loaded = 0;
+        for (let guard = 0; guard < 100; guard++) {
+            const res: any = await this.list(lastId, 1000);
+            const items: any[] = res?.result?.items ?? [];
+            loaded += items.length;
+            onPage?.(loaded);
+            for (const it of items) {
+                const offer = String(it.offer_id ?? '');
+                if (offer) offers.push(offer);
+            }
+            lastId = res?.result?.last_id ?? '';
+            if (!items.length || !lastId) break;
+        }
+        return offers;
     }
     async infoList(offer_id: string[]): Promise<ProductInfoDto[]> {
         const res = await this.ozonApiService.method('/v3/product/info/list', { offer_id });
@@ -56,6 +80,8 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
             return{
                 sku: item.offer_id,
                 barCode: item.barcodes[0],
+                barcodes: item.barcodes ?? [],
+                marketSku: item.sku || undefined,
                 remark: item.name,
                 primaryImage: item.primary_image,
                 id: item.id,
@@ -314,6 +340,17 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
             productPrices.push(...pricesChunk.items.map((item) => ({ id: item.product_id, price: item.price })));
         }
         return productPrices;
+    }
+
+    /**
+     * Привязать штрихкоды к карточкам (/v1/barcode/add): только добавляет, существующие не трогает.
+     * До 100 карточек в запросе, до 100 штрихкодов на карточку, не чаще 20 раз в минуту.
+     * Сырой ответ: успех — { errors: [{ code, error, barcode, sku }] } по отказанным строкам;
+     * сбой запроса — { result: null, error } (OzonApiService.method не бросает).
+     */
+    @RateLimit(3000)
+    async addBarcodes(barcodes: { barcode: string; sku: number }[]): Promise<any> {
+        return this.ozonApiService.method('/v1/barcode/add', { barcodes });
     }
 
     async updateAttributes(body: UpdateAttributesBodyDto): Promise<UpdateAttributesResponseDto[]> {

@@ -1,15 +1,15 @@
 import { Injectable } from '@nestjs/common';
 import { IJobCommand } from '../../interfaces/i.job.context';
-import { ITnvedProcessingContext } from '../../interfaces/i.tnved.processing.context';
+import { ICardSyncContext } from '../../interfaces/i.card.sync';
 
 /** Только при apply: маркетплейс пишет «на правку», итог по карточке (taskId / error) — в отчёт. Фазу «запись» ставит сам маркетплейс, чтобы при dry-run она не появлялась. */
 @Injectable()
-export class UpdateTnvedCommand implements IJobCommand<ITnvedProcessingContext> {
-    async execute(context: ITnvedProcessingContext): Promise<ITnvedProcessingContext> {
+export class UpdateCardsCommand implements IJobCommand<ICardSyncContext<any, any>> {
+    async execute(context: ICardSyncContext<any, any>): Promise<ICardSyncContext<any, any>> {
         const toFix = context.report?.toFix ?? [];
         if (!context.opts.apply || !toFix.length) return context;
 
-        const results = await context.service.updateTnved(toFix, context.progress);
+        const results = await context.service.update(toFix, context.progress);
         for (const fix of toFix) {
             const r = results.find((x) => x.offer === fix.offer);
             if (!r) continue;

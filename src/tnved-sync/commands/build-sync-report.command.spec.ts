@@ -1,19 +1,20 @@
-import { BuildTnvedReportCommand } from './build-tnved-report.command';
+import { BuildSyncReportCommand } from './build-sync-report.command';
 import { ITnvedProcessingContext } from '../../interfaces/i.tnved.processing.context';
 import { GoodServiceEnum } from '../../good/good.service.enum';
 import { emptyProgress } from '../../interfaces/i.job.context';
 
-describe('BuildTnvedReportCommand', () => {
+describe('BuildSyncReportCommand', () => {
     const item = (offer: string, extra: Partial<ITnvedProcessingContext['items'][0]> = {}) => ({
         offer, goodscode: offer, current: null, base: 'x', markRequired: false, ok: false, ...extra,
     });
 
     it('делит решения на ок / на правку / спорно и переносит счётчики', async () => {
         const progress = emptyProgress();
-        const res = await new BuildTnvedReportCommand().execute({
+        const res = await new BuildSyncReportCommand().execute({
             progress,
             service: {} as any,
             opts: { market: GoodServiceEnum.WB, apply: true },
+            progressCache: 'tnved',
             base: [{ goodscode: '1', tnved: 'x', markRequired: false }, { goodscode: '2', tnved: 'x', markRequired: false }],
             skippedProcessed: 5,
             notFound: ['9'],

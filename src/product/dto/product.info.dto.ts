@@ -31,4 +31,10 @@ export class ProductInfoDto {
 
     @ApiProperty({ description: 'Объёмный вес в литрах', example: 0.4, required: false })
     volumeWeight?: number;
+
+    @ApiProperty({ description: 'Все штрихкоды карточки (barCode — первый из них)', type: [String], required: false })
+    barcodes?: string[];
+
+    @ApiProperty({ description: 'SKU площадки (Озон: числовой sku; поле sku выше — это артикул)', example: 3322443266, required: false })
+    marketSku?: number;
 }
