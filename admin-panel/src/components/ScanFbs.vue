@@ -67,6 +67,11 @@ const lines = computed(
 const orderService = ref<GoodServiceEnum | null>(null);
 const service = computed<GoodServiceEnum>(() => orderService.value ?? GoodServiceEnum.OZON);
 const isOzon = computed(() => service.value === GoodServiceEnum.OZON);
+const isYandex = computed(() => service.value === GoodServiceEnum.YANDEX);
+// Флоу «Подобрано» → «Передать»: Озон и Яндекс (у Яндекса «Передать» = коды + «готов к отгрузке»).
+// ВБ — своя кнопка «Передать коды», статус меняет поставка.
+const hasTransferFlow = computed(() => isOzon.value || isYandex.value);
+const mpName = computed(() => (isOzon.value ? 'Озон' : isYandex.value ? 'Яндекс' : 'ВБ'));
 
 const headers = ref([
     { title: 'Картинка', key: 'image', sortable: false },     // Колонка с картинкой товара
@@ -93,10 +98,10 @@ const secondDisabled = ref<boolean>(true);
 const markScanDisabled = ref<boolean>(true);
 const submitInProgress = ref<boolean>(false);
 
-// OZON хочет коды (is_mandatory_mark_needed из create-or-get, на уровне заказа).
-const ozonWantsMarks = ref<boolean>(false);
+// Маркетплейс хочет коды (Озон: is_mandatory_mark_needed из create-or-get; Яндекс: requiredInstanceTypes=CIS).
+const mpWantsMarks = ref<boolean>(false);
 
-// OZON: последовательные шаги «Подобрано» → «Передать/Проверить» → скан ШК.
+// OZON/Яндекс: последовательные шаги «Подобрано» → «Передать/Проверить» → скан ШК.
 const pickInProgress = ref<boolean>(false);
 const pickDone = ref<boolean>(false);
 const transferInProgress = ref<boolean>(false);
@@ -116,10 +121,10 @@ const isReadyToFinish = computed(() => markProgress.value?.isReadyToFinish ?? tr
 const requiresMarkScan = computed(() =>
     !!markProgress.value && markProgress.value.lines.some((l) => l.requiresScan),
 );
-// Скан-гейт: сканим если коды есть у нас (requiresMarkScan) ИЛИ Озон хочет коды.
+// Скан-гейт: сканим если коды есть у нас (requiresMarkScan) ИЛИ маркетплейс хочет коды.
 // ВБ коды не запрашивает → для него остаётся только «есть у нас».
 const needMarkScan = computed(
-    () => (requiresMarkScan.value || (isOzon.value && ozonWantsMarks.value)) && !isReadyToFinish.value,
+    () => (requiresMarkScan.value || (hasTransferFlow.value && mpWantsMarks.value)) && !isReadyToFinish.value,
 );
 // «Передать коды» (ВБ) доступно, когда сборка начата и все КМ отсканированы (или их нет).
 const canSubmitMarks = computed(
@@ -127,13 +132,13 @@ const canSubmitMarks = computed(
 );
 // КМ-шаг закрыт: заказ загружен и все КМ отсканированы (или не требуются).
 const kmReady = computed(() => firstDisabled.value && isReadyToFinish.value);
-// OZON «Подобрано» — после закрытия КМ-шага, до подбора.
+// «Подобрано» — после закрытия КМ-шага, до подбора.
 const canPick = computed(
-    () => isOzon.value && kmReady.value && !pickDone.value && !pickInProgress.value,
+    () => hasTransferFlow.value && kmReady.value && !pickDone.value && !pickInProgress.value,
 );
-// OZON «Передать/Проверить» — после подбора, до успешной передачи.
+// «Передать/Проверить» — после подбора, до успешной передачи.
 const canTransfer = computed(
-    () => isOzon.value && pickDone.value && !transferDone.value && !transferInProgress.value,
+    () => hasTransferFlow.value && pickDone.value && !transferDone.value && !transferInProgress.value,
 );
 const lastAttachedKi = computed(() => {
     const kis = markProgress.value?.attachedKis ?? [];
@@ -204,9 +209,9 @@ async function loadMarkProgress(remark: string): Promise<boolean> {
     }
 }
 
-// OZON: узнаём, хочет ли маркетплейс коды (create-or-get is_mandatory_mark_needed по заказу).
+// Узнаём, хочет ли маркетплейс коды (Озон: create-or-get; Яндекс: requiredInstanceTypes по заказу).
 // Ошибка не блокирует загрузку — считаем, что не хочет.
-async function loadOzonWantsMarks(remark: string): Promise<boolean> {
+async function loadMpWantsMarks(remark: string): Promise<boolean> {
     try {
         const res = await axios.post(`/api/pickup/${remark}/marks/prepare`);
         const prepare: FbsPrepareDto | undefined = res.data?.prepare;
@@ -243,25 +248,25 @@ async function onFirstInput() {
         );
         if (res.ok) {
             const progressOk = await loadMarkProgress(firstInput.value);
-            // OZON: спрашиваем create-or-get — хочет ли Озон коды (влияет на скан-гейт).
-            ozonWantsMarks.value = isOzon.value ? await loadOzonWantsMarks(firstInput.value) : false;
+            // Спрашиваем маркетплейс — хочет ли он коды (влияет на скан-гейт).
+            mpWantsMarks.value = hasTransferFlow.value ? await loadMpWantsMarks(firstInput.value) : false;
             if (progressOk && needMarkScan.value) {
                 markScanDisabled.value = false;
                 secondDisabled.value = true;
                 await setFocus(markScanInputRef);
             } else {
-                // Озон требует КМ, но свободных кодов в базе нет — сразу говорим кладовщику (п9).
-                if (isOzon.value && ozonWantsMarks.value && !requiresMarkScan.value) {
+                // Маркетплейс требует КМ, но свободных кодов в базе нет — сразу говорим кладовщику (п9).
+                if (hasTransferFlow.value && mpWantsMarks.value && !requiresMarkScan.value) {
                     showSnackbar(
-                        'Озон требует КМ, но свободных кодов в базе нет — собери без КМ, в Озон коды не уйдут',
+                        `${mpName.value} требует КМ, но свободных кодов в базе нет — собери без КМ, в ${mpName.value} коды не уйдут`,
                         'warning',
                         60000,
                     );
                 }
-                // Сканить нечего/уже готово. ВБ → сразу поле ШК. OZON → ждём «Подобрано».
+                // Сканить нечего/уже готово. ВБ → сразу поле ШК. OZON/Яндекс → ждём «Подобрано».
                 markScanDisabled.value = true;
-                secondDisabled.value = isOzon.value;
-                if (!isOzon.value) await setFocus(secondInputRef);
+                secondDisabled.value = hasTransferFlow.value;
+                if (!hasTransferFlow.value) await setFocus(secondInputRef);
             }
         } else {
             firstDisabled.value = false;
@@ -282,10 +287,10 @@ async function onMarkScanInput() {
         markScanInput.value = '';
         showSnackbar(`КМ привязан (${res.data.attached.ki.slice(0, 18)}…)`, 'success');
         if (markProgress.value.isReadyToFinish) {
-            // Все КМ отсканированы. ВБ → поле ШК. OZON → ждём «Подобрано».
+            // Все КМ отсканированы. ВБ → поле ШК. OZON/Яндекс → ждём «Подобрано».
             markScanDisabled.value = true;
-            secondDisabled.value = isOzon.value;
-            if (!isOzon.value) await setFocus(secondInputRef);
+            secondDisabled.value = hasTransferFlow.value;
+            if (!hasTransferFlow.value) await setFocus(secondInputRef);
         } else {
             await setFocus(markScanInputRef);
         }
@@ -359,7 +364,7 @@ async function onPick() {
     }
 }
 
-// OZON «Передать/Проверить» — фаза 1: create-or-get (предпроверка) → диалог «точно передать?».
+// «Передать/Проверить» — фаза 1: предпроверка (Озон create-or-get / Яндекс getOrder) → диалог «точно передать?».
 async function onTransferClick() {
     if (!canTransfer.value) return;
     transferInProgress.value = true;
@@ -381,11 +386,12 @@ async function onTransferClick() {
     confirmTransfer.value = true;
 }
 
-// OZON подтверждение передачи: фаза 2 — цепочка (validate→set→status→ship→label).
-// Окно этикетки открываем СИНХРОННО в обработчике клика (обход попап-блока), URL ставим после успеха.
+// Подтверждение передачи: фаза 2 — Озон: цепочка (validate→set→status→ship→label);
+// Яндекс: boxes (коды) → READY_TO_SHIP, этикетки у нас нет — ярлык печатают в ЛК ПОСЛЕ передачи.
+// Окно этикетки (только Озон) открываем СИНХРОННО в обработчике клика (обход попап-блока), URL ставим после успеха.
 async function onTransferConfirm() {
     confirmTransfer.value = false;
-    const labelWindow = window.open('', '_blank');
+    const labelWindow = isOzon.value ? window.open('', '_blank') : null;
     transferInProgress.value = true;
     try {
         const res = await axios.post(`/api/pickup/${firstInput.value}/marks`);
@@ -394,16 +400,21 @@ async function onTransferConfirm() {
             if (labelWindow) labelWindow.location.href = `${url}/api/pickup/${firstInput.value}/label`;
             transferDone.value = true;
             secondDisabled.value = false;
-            showSnackbar('Передано. Печатайте этикетку и сканируйте ШК посылки', 'success');
+            showSnackbar(
+                isOzon.value
+                    ? 'Передано. Печатайте этикетку и сканируйте ШК посылки'
+                    : `Передано, заказ «готов к отгрузке». Распечатайте ярлык в ЛК ${mpName.value} и отсканируйте ШК посылки`,
+                'success',
+            );
             await setFocus(secondInputRef);
         } else {
             if (labelWindow) labelWindow.close();
             const reason = (submit?.failed ?? []).map((f) => f.reason).join('; ');
             const prefix = submit?.goToOzon
-                ? 'Ошибка после отправки — разберитесь в ЛК Озона: '
+                ? `Ошибка после отправки — разберитесь в ЛК ${mpName.value}: `
                 : 'Не передано (напр. нет ГТД): ';
             showSnackbar(
-                prefix + (reason || submit?.failedStep || 'ошибка') + '. Оформите в Озоне и отсканируйте ШК.',
+                prefix + (reason || submit?.failedStep || 'ошибка') + `. Оформите в ЛК ${mpName.value} и отсканируйте ШК.`,
                 'error',
                 60000,
             );
@@ -447,8 +458,8 @@ async function unlockFirstInput() {
         firstDisabled.value = false;
         firstInput.value = '';
         firstTime.value = '';
-        // Сбрасываем OZON-шаги — начинаем заказ заново.
-        ozonWantsMarks.value = false;
+        // Сбрасываем шаги подбора/передачи — начинаем заказ заново.
+        mpWantsMarks.value = false;
         pickDone.value = false;
         pickInProgress.value = false;
         transferDone.value = false;
@@ -482,7 +493,7 @@ async function resetFields() {
     secondDisabled.value = true;
     markScanDisabled.value = true;
     submitInProgress.value = false;
-    ozonWantsMarks.value = false;
+    mpWantsMarks.value = false;
     pickInProgress.value = false;
     pickDone.value = false;
     transferInProgress.value = false;
@@ -588,7 +599,7 @@ watch(
             </v-col>
 
             <!-- ВБ: передача КМ (+ГТД) маркетплейсу -->
-            <v-col cols="2" v-if="!isOzon">
+            <v-col cols="2" v-if="!hasTransferFlow">
                 <v-btn
                     block
                     color="primary"
@@ -601,8 +612,8 @@ watch(
                 </v-btn>
             </v-col>
 
-            <!-- OZON: подбор счёта -->
-            <v-col cols="2" v-if="isOzon">
+            <!-- OZON/Яндекс: подбор счёта -->
+            <v-col cols="2" v-if="hasTransferFlow">
                 <v-btn
                     block
                     color="secondary"
@@ -615,8 +626,8 @@ watch(
                 </v-btn>
             </v-col>
 
-            <!-- OZON: передача + этикетка -->
-            <v-col cols="2" v-if="isOzon">
+            <!-- OZON: передача + этикетка. Яндекс: коды + «готов к отгрузке», ярлык в ЛК -->
+            <v-col cols="2" v-if="hasTransferFlow">
                 <v-btn
                     block
                     color="primary"
@@ -734,13 +745,17 @@ watch(
 
         </v-data-table>
 
-        <!-- OZON: подтверждение передачи перед set -->
+        <!-- OZON/Яндекс: подтверждение передачи перед отправкой -->
         <v-dialog v-model="confirmTransfer" max-width="420" persistent>
             <v-card>
-                <v-card-title>Передать в Озон?</v-card-title>
-                <v-card-text>
+                <v-card-title>Передать в {{ mpName }}?</v-card-title>
+                <v-card-text v-if="isOzon">
                     Коды и ГТД будут отправлены, отправление отгружено. После этого откроется этикетка —
                     распечатайте и отсканируйте ШК посылки.
+                </v-card-text>
+                <v-card-text v-else>
+                    Коды будут отправлены, заказ переведён в «готов к отгрузке» — в ЛК Яндекса это больше не нажимать.
+                    После этого распечатайте ярлык в ЛК Яндекса и отсканируйте ШК посылки.
                 </v-card-text>
                 <v-card-actions>
                     <v-spacer />

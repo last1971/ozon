@@ -4,7 +4,7 @@ import axios from "@/axios.config";
 
 export enum GoodServiceEnum {
     OZON = 'ozon',
-//    YANDEX = 'yandex',
+    YANDEX = 'yandex',
 //    EXPRESS = 'express',
     WB = 'wb',
 }

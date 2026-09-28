@@ -252,6 +252,20 @@ export const cronConfig: Record<string, CronSetup> = {
         },
         development: false,
     },
+    /**
+     * Наблюдатель продаж Яндекс-FBS: журнал MP_EVENT + retire по delivered.
+     * Минута :04 — своя по той же причине, что :03 у ВБ (общий runner-буфер).
+     * На dev выключен — кабинет и база боевые.
+     */
+    observeYandexFbs: {
+        production: {
+            enabled: true,
+            settings: {
+                time: '0 4-59/5 * * * *',
+            },
+        },
+        development: false,
+    },
     checkCanceledWbOrders: {
         production: {
             enabled: true,

@@ -16,7 +16,7 @@ export abstract class AbstractOfferService extends ICountUpdateable {
     protected campaignId: number;
     protected warehouseId: number;
     constructor(
-        private yandexApi: YandexApiService,
+        protected yandexApi: YandexApiService,
         protected vaultService: VaultService,
         protected configService: ConfigService,
     ) {

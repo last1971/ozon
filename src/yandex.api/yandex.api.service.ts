@@ -30,11 +30,25 @@ export class YandexApiService {
         return firstValueFrom(
             response.pipe(map((res) => res.data)).pipe(
                 catchError(async (error: AxiosError) => {
-                    this.logger.error(error.message + ' ' + error?.response?.data['message']);
+                    // Яндекс отдаёт причину в `errors[] {code, message}`, а не в `message`:
+                    // без разбора массива отказ по коду маркировки приходил как «undefined».
+                    const data: any = error?.response?.data ?? {};
+                    const errors: { code?: string; message?: string }[] = Array.isArray(data.errors) ? data.errors : [];
+                    const message: string =
+                        data.message ??
+                        (errors.length
+                            ? errors.map((e) => [e.code, e.message].filter(Boolean).join(': ')).join('; ')
+                            : undefined);
+                    this.logger.error(`${error.message} ${name}: ${message ?? ''}`);
                     return {
                         result: null,
                         status: 'NotOk',
-                        error: { service_message: error.message, message: error?.response?.data['message'] },
+                        error: {
+                            service_message: error.message,
+                            message,
+                            status: error?.response?.status,
+                            errors,
+                        },
                     };
                 }),
             ),
