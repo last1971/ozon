@@ -5,7 +5,9 @@ import { OzonCategoryService } from '../ozon.category.service';
 
 @Injectable()
 export class LoadRequiredAttributesCommand implements ICommandAsync<IProductCreateContext> {
-    constructor(@Inject(forwardRef(() => OzonCategoryService)) private readonly ozonCategoryService: OzonCategoryService) {}
+    constructor(
+        @Inject(forwardRef(() => OzonCategoryService)) private readonly ozonCategoryService: OzonCategoryService,
+    ) {}
 
     async execute(context: IProductCreateContext): Promise<IProductCreateContext> {
         const { description_category_id, type_id } = context;

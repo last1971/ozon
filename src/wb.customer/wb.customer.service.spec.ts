@@ -66,12 +66,7 @@ describe('WbCustomerService', () => {
 
         const result = await service.getClaims(query);
 
-        expect(mockMethod).toHaveBeenCalledWith(
-            'https://returns-api.wildberries.ru/api/v1/claims',
-            'get',
-            query,
-            true,
-        );
+        expect(mockMethod).toHaveBeenCalledWith('https://returns-api.wildberries.ru/api/v1/claims', 'get', query, true);
         expect(result).toEqual(mockResponse);
         expect(result.claims).toHaveLength(1);
         expect(result.total).toBe(1);
@@ -92,12 +87,7 @@ describe('WbCustomerService', () => {
 
         const result = await service.getClaims(query);
 
-        expect(mockMethod).toHaveBeenCalledWith(
-            'https://returns-api.wildberries.ru/api/v1/claims',
-            'get',
-            query,
-            true,
-        );
+        expect(mockMethod).toHaveBeenCalledWith('https://returns-api.wildberries.ru/api/v1/claims', 'get', query, true);
         expect(result.claims).toHaveLength(0);
     });
 
@@ -115,12 +105,7 @@ describe('WbCustomerService', () => {
 
         await service.getClaims(query);
 
-        expect(mockMethod).toHaveBeenCalledWith(
-            'https://returns-api.wildberries.ru/api/v1/claims',
-            'get',
-            query,
-            true,
-        );
+        expect(mockMethod).toHaveBeenCalledWith('https://returns-api.wildberries.ru/api/v1/claims', 'get', query, true);
     });
 
     it('should get claim by id from active claims', async () => {

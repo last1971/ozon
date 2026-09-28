@@ -1,20 +1,22 @@
-import { HttpException, Injectable } from "@nestjs/common";
+import { HttpException, Injectable } from '@nestjs/common';
 import { WbApiService } from '../wb.api/wb.api.service';
 import { WbSupplyDto } from './dto/wb.supply.dto';
 import { ISuppliable } from '../interfaces/i.suppliable';
 import { SupplyDto } from '../supply/dto/supply.dto';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { SupplyPositionDto } from 'src/supply/dto/supply.position.dto';
-import { WbOrderService } from "../wb.order/wb.order.service";
-import { find } from "lodash";
+import { WbOrderService } from '../wb.order/wb.order.service';
+import { find } from 'lodash';
 
 @Injectable()
 export class WbSupplyService implements ISuppliable {
     private next: number = 0;
     private supplies: WbSupplyDto[] = [];
 
-    constructor(private api: WbApiService, private wbOrderService: WbOrderService) {
-    }
+    constructor(
+        private api: WbApiService,
+        private wbOrderService: WbOrderService,
+    ) {}
 
     async getSupplyPositions(id: string): Promise<SupplyPositionDto[]> {
         const orderIds = await this.listOrderIds(id);
@@ -40,10 +42,10 @@ export class WbSupplyService implements ISuppliable {
             allPositions.push(
                 ...batch.map((orderId) => ({
                     supplyId: id,
-                    barCode: find(labelsResponse.stickers, sticker => sticker.orderId === orderId)?.barcode || "",
+                    barCode: find(labelsResponse.stickers, (sticker) => sticker.orderId === orderId)?.barcode || '',
                     remark: orderId.toString(),
                     quantity: 1,
-                }))
+                })),
             );
         } while (remainingOrderIds.length > 0);
 
@@ -51,11 +53,7 @@ export class WbSupplyService implements ISuppliable {
     }
 
     async list(next = 0): Promise<WbSupplyDto[]> {
-        const res = await this.api.method(
-            '/api/v3/supplies',
-            'get',
-            { limit: 1000, next },
-        );
+        const res = await this.api.method('/api/v3/supplies', 'get', { limit: 1000, next });
         this.next = res?.next ?? 0;
         return res?.supplies ?? [];
     }
@@ -82,11 +80,7 @@ export class WbSupplyService implements ISuppliable {
     }
 
     async listOrderIds(id: string): Promise<number[]> {
-        const data = await this.api.method(
-            `/api/marketplace/v3/supplies/${id}/order-ids`,
-            'get',
-            {},
-        );
+        const data = await this.api.method(`/api/marketplace/v3/supplies/${id}/order-ids`, 'get', {});
         return data.orderIds ?? [];
     }
 }

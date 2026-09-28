@@ -23,7 +23,7 @@ describe('FilterByIncomingPriceBelowCommand', () => {
         const result = await command.execute(context);
 
         expect(result.ozonPrices).toHaveLength(2);
-        expect(result.ozonPrices.map(p => p.offer_id)).toEqual(['sku1', 'sku3']);
+        expect(result.ozonPrices.map((p) => p.offer_id)).toEqual(['sku1', 'sku3']);
     });
 
     it('should use available_price when > 0', async () => {
@@ -76,9 +76,7 @@ describe('FilterByIncomingPriceBelowCommand', () => {
     it('should filter out items with zero available_price and zero incoming_price', async () => {
         const context: IGoodsProcessingContext = {
             skus: [],
-            ozonPrices: [
-                { offer_id: 'sku1', incoming_price: 0, available_price: 0 } as PriceDto,
-            ],
+            ozonPrices: [{ offer_id: 'sku1', incoming_price: 0, available_price: 0 } as PriceDto],
             filterMaxIncomingPrice: 150,
         };
 

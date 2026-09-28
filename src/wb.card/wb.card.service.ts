@@ -7,7 +7,7 @@ import { WbCardDto } from './dto/wb.card.dto';
 import { ConfigService } from '@nestjs/config';
 import { WbCardAnswerDto } from './dto/wb.card.answer.dto';
 import { GoodServiceEnum } from '../good/good.service.enum';
-import { ProductInfoDto } from "../product/dto/product.info.dto";
+import { ProductInfoDto } from '../product/dto/product.info.dto';
 import { IProductable } from '../interfaces/i.productable';
 import { RateLimit } from '../helpers/decorators/rate-limit.decorator';
 import { Cacheable } from 'nestjs-cacheable';
@@ -34,7 +34,7 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
     private skuChrtIdPair: Map<string, number>;
     private skuNmIDPair: Map<string, string>;
     private productInfos: Map<string, ProductInfoDto>;
-    private wbCards: Map<string, WbCardDto>
+    private wbCards: Map<string, WbCardDto>;
     constructor(
         private api: WbApiService,
         private vault: VaultService,
@@ -79,7 +79,7 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
             sku: card.vendorCode,
             fbsCount: 0,
             fboCount: 0,
-        }
+        };
     }
 
     @RateLimit(6000)
@@ -167,11 +167,9 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
         cards.forEach((card) => {
             this.skuNmIDPair.set(card.vendorCode, card.nmID.toString());
         });
-        const quantities = await this.api.method(
-            '/api/v3/stocks/' + this.warehouseId,
-            'post',
-            { chrtIds: Array.from(chrtIdToVendor.keys()) },
-        );
+        const quantities = await this.api.method('/api/v3/stocks/' + this.warehouseId, 'post', {
+            chrtIds: Array.from(chrtIdToVendor.keys()),
+        });
         const goods = new Map<string, number>();
         if (quantities?.stocks) {
             quantities.stocks.forEach((stock) => {
@@ -268,7 +266,9 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
         const res = await this.fetchCharacteristics(subjectId);
         // Отказ ВБ (429 и т.п.) не кэшировать как «характеристик нет» — иначе сутки предмет будет «без характеристик».
         if (res?.error) {
-            throw new Error(`WB charcs ${subjectId}: ${res.error.status ?? ''} ${res.error.message ?? res.error.service_message ?? ''}`.trim());
+            throw new Error(
+                `WB charcs ${subjectId}: ${res.error.status ?? ''} ${res.error.message ?? res.error.service_message ?? ''}`.trim(),
+            );
         }
         return res?.data || [];
     }
@@ -353,5 +353,4 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
         ]);
         return chain.execute(context);
     }
-
 }

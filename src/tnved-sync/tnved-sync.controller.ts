@@ -6,7 +6,8 @@ import { JobStateDto } from '../job/job.state.dto';
 import { CardSyncMode } from '../interfaces/i.card.sync';
 
 /** Режим из query: пусто — ТН ВЭД (как было до режимов). */
-const parseMode = (mode?: string): CardSyncMode => (mode === CardSyncMode.GTIN ? CardSyncMode.GTIN : CardSyncMode.TNVED);
+const parseMode = (mode?: string): CardSyncMode =>
+    mode === CardSyncMode.GTIN ? CardSyncMode.GTIN : CardSyncMode.TNVED;
 
 @ApiTags('tnved-sync')
 @Controller('tnved-sync')
@@ -25,11 +26,24 @@ export class TnvedSyncController {
             'Отвечает сразу состоянием задачи; ход и отчёт — GET /api/job/{id}. Та же задача с теми же параметрами уже идёт — вернётся она.',
     })
     @ApiQuery({ name: 'market', required: true, enum: GoodServiceEnum, description: 'маркетплейс: ozon | wb' })
-    @ApiQuery({ name: 'mode', required: false, enum: CardSyncMode, description: 'что сверяем: tnved (по умолчанию) | gtin' })
+    @ApiQuery({
+        name: 'mode',
+        required: false,
+        enum: CardSyncMode,
+        description: 'что сверяем: tnved (по умолчанию) | gtin',
+    })
     @ApiQuery({ name: 'apply', required: false, description: 'true = писать на маркетплейс; иначе dry-run' })
     @ApiQuery({ name: 'offer', required: false, description: 'ограничить одним goodscode (обкатка)' })
-    @ApiQuery({ name: 'limit', required: false, description: 'ограничить количество товаров (с onlyNew — следующие N необработанных)' })
-    @ApiQuery({ name: 'onlyNew', required: false, description: 'true = пропустить товары, уже помеченные обработанными' })
+    @ApiQuery({
+        name: 'limit',
+        required: false,
+        description: 'ограничить количество товаров (с onlyNew — следующие N необработанных)',
+    })
+    @ApiQuery({
+        name: 'onlyNew',
+        required: false,
+        description: 'true = пропустить товары, уже помеченные обработанными',
+    })
     @ApiOkResponse({ type: JobStateDto, description: 'Состояние запущенной задачи; result по завершении — отчёт' })
     run(
         @Query('market') market: GoodServiceEnum,

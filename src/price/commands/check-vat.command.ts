@@ -22,9 +22,7 @@ export class CheckVatCommand implements ICommandAsync<IVatProcessingContext> {
         try {
             context.mismatches = await context.service.checkVatForAll(context.expectedVat, context.limit);
 
-            context.logger?.log(
-                `Проверка завершена. Найдено несоответствий: ${context.mismatches.length}`,
-            );
+            context.logger?.log(`Проверка завершена. Найдено несоответствий: ${context.mismatches.length}`);
 
             if (context.mismatches.length > 0) {
                 context.logger?.log(

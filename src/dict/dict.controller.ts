@@ -14,7 +14,8 @@ export class DictController {
     @Post('categories')
     @ApiOperation({
         summary: 'Обновить предметы (типы) и комиссии маркетплейса (фоном)',
-        description: 'ВБ: tariffs/commission → WB_CATEGORIES; Озон: дерево категорий → OZON_CATEGORIES/OZON_TYPES. Справочник ТН ВЭД не трогает. Ход — GET /api/job/{id}.',
+        description:
+            'ВБ: tariffs/commission → WB_CATEGORIES; Озон: дерево категорий → OZON_CATEGORIES/OZON_TYPES. Справочник ТН ВЭД не трогает. Ход — GET /api/job/{id}.',
     })
     @ApiQuery({ name: 'market', required: true, enum: GoodServiceEnum })
     @ApiOkResponse({ type: JobStateDto })
@@ -33,12 +34,18 @@ export class DictController {
     @ApiQuery({ name: 'market', required: true, enum: GoodServiceEnum })
     @ApiQuery({ name: 'all', required: false, description: 'true = все предметы заново' })
     @ApiOkResponse({ type: JobStateDto })
-    tnved(@Query('market') market: GoodServiceEnum, @Query('all') all?: string, @Headers('x-client-id') clientId?: string): JobStateDto {
+    tnved(
+        @Query('market') market: GoodServiceEnum,
+        @Query('all') all?: string,
+        @Headers('x-client-id') clientId?: string,
+    ): JobStateDto {
         return this.service.startTnved(market, all === 'true' || all === '1', clientId || undefined);
     }
 
     @Get('stats')
-    @ApiOperation({ summary: 'По каждому рынку: сколько предметов, у скольких есть справочник ТН ВЭД, сколько ждёт выкачки' })
+    @ApiOperation({
+        summary: 'По каждому рынку: сколько предметов, у скольких есть справочник ТН ВЭД, сколько ждёт выкачки',
+    })
     stats(): Promise<DictStats[]> {
         return this.service.stats();
     }
@@ -46,7 +53,8 @@ export class DictController {
     @Get('subjects')
     @ApiOperation({
         summary: 'Предметы всех маркетплейсов, где проходит код ТН ВЭД',
-        description: 'Ответ по каждому рынку: точное совпадение; нет — по началу кода (6, затем 4 знака), match говорит, как нашли. Сортировка по комиссии.',
+        description:
+            'Ответ по каждому рынку: точное совпадение; нет — по началу кода (6, затем 4 знака), match говорит, как нашли. Сортировка по комиссии.',
     })
     @ApiQuery({ name: 'tnved', required: true, description: 'код ТН ВЭД, 10 знаков (можно короче — поиск по началу)' })
     subjects(@Query('tnved') tnved?: string): Promise<TnvedLookup[]> {

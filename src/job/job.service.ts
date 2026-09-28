@@ -84,7 +84,9 @@ export class JobService {
                 this.active.delete(state.id);
                 apply();
                 state.finishedAt = new Date().toISOString();
-                this.logger.log(`[job] ${state.status} ${state.kind} ${state.id}${state.error ? `: ${state.error}` : ''}`);
+                this.logger.log(
+                    `[job] ${state.status} ${state.kind} ${state.id}${state.error ? `: ${state.error}` : ''}`,
+                );
                 resolve(state);
             };
             const fail = (error: string) =>

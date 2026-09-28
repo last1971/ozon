@@ -1,8 +1,8 @@
 import { IsNotEmpty, Validate } from 'class-validator';
-import { IsRemarkValid } from "../../validators/is.remark.valid";
-import { ApiProperty } from "@nestjs/swagger";
-import { InvoiceDto } from "./invoice.dto";
-import { InvoiceMatchDto } from "./invoice.match.dto";
+import { IsRemarkValid } from '../../validators/is.remark.valid';
+import { ApiProperty } from '@nestjs/swagger';
+import { InvoiceDto } from './invoice.dto';
+import { InvoiceMatchDto } from './invoice.match.dto';
 
 export class RemarkDto {
     @ApiProperty({

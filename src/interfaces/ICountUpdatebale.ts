@@ -1,4 +1,4 @@
-import { ProductInfoDto } from "../product/dto/product.info.dto";
+import { ProductInfoDto } from '../product/dto/product.info.dto';
 
 export class GoodCountsDto<T> {
     goods: Map<string, T>;

@@ -67,7 +67,9 @@ export class MpDecisionService {
     private notFoundLetter(input: DecisionInput): { letter: boolean; reason: string } {
         const state = input.returnState ?? '';
         const physicalReturn =
-            input.kind === 'return' && !CLAIM_RETURN_STATES.includes(state) && !IN_TRANSIT_RETURN_STATES.includes(state);
+            input.kind === 'return' &&
+            !CLAIM_RETURN_STATES.includes(state) &&
+            !IN_TRANSIT_RETURN_STATES.includes(state);
         if (input.kind === 'delivered' || physicalReturn) {
             return {
                 letter: true,
@@ -213,19 +215,37 @@ export class MpDecisionService {
         // Заявочные статусы физики не имеют вовсе. Если их не отбрасывать, получится
         // «вернулось больше, чем заказано».
         if (CLAIM_RETURN_STATES.includes(state)) {
-            return this.build(input, 'return/claim-state', 'none', false, `пока только заявка на возврат (${state}) — товар никуда не поехал`);
+            return this.build(
+                input,
+                'return/claim-state',
+                'none',
+                false,
+                `пока только заявка на возврат (${state}) — товар никуда не поехал`,
+            );
         }
         if (IN_TRANSIT_RETURN_STATES.includes(state)) {
             return this.build(input, 'return/in-transit', 'none', false, `возврат в пути (${state})`);
         }
         if (LOST_RETURN_STATES.includes(state)) {
-            return this.build(input, 'return/lost', 'none', true, `товар до нас не доедет — списан или потерян у Ozon (${state})`);
+            return this.build(
+                input,
+                'return/lost',
+                'none',
+                true,
+                `товар до нас не доедет — списан или потерян у Ozon (${state})`,
+            );
         }
         // Частичность определяется только сравнением ЧИСЛА ЗАПИСЕЙ возврата с составом
         // отправления (по type не определяется: PartialReturn только у 2 из 8).
         // Автоматики под неё нет — 8 случаев за 180 дней дешевле разобрать письмом.
         if (input.partial) {
-            return this.build(input, 'return/partial', 'none', true, 'вернулась только часть отправления — разобрать руками');
+            return this.build(
+                input,
+                'return/partial',
+                'none',
+                true,
+                'вернулась только часть отправления — разобрать руками',
+            );
         }
 
         if (state === RETURN_STATE.ARRIVED_AT_MARKETPLACE) {
@@ -287,7 +307,13 @@ export class MpDecisionService {
             );
         }
 
-        return this.build(input, 'return/unknown-state', 'none', true, `статус возврата неизвестен (${state}) — разобрать руками`);
+        return this.build(
+            input,
+            'return/unknown-state',
+            'none',
+            true,
+            `статус возврата неизвестен (${state}) — разобрать руками`,
+        );
     }
 
     /**
@@ -306,7 +332,12 @@ export class MpDecisionService {
     private decideCodes(input: DecisionInput, layer1: Layer1Action, branch: string): CodeDecision[] {
         return input.codes.map((code) => {
             if (MpDecisionService.ALREADY_HANDLED.includes(branch)) {
-                return this.code(code, [], false, 'событие уже отработано — код не трогаем, висяк ловит недельный отчёт');
+                return this.code(
+                    code,
+                    [],
+                    false,
+                    'событие уже отработано — код не трогаем, висяк ловит недельный отчёт',
+                );
             }
             if (input.kind === 'delivered') return this.decideCodeOnDelivered(code);
             // Возвраты со своим слоем 2 (ReturnedToOzon, ReceivedBySeller) сюда не попадают —
@@ -318,7 +349,12 @@ export class MpDecisionService {
             if (input.scheme === 'FBO') {
                 // НЕ трогаем TT: код обязан остаться TT=3 на доноре, иначе миграция
                 // (TRANSFER_TYPE IN (2,3)) его не перенесёт на счёт FBO-продажи.
-                return this.code(code, [], false, 'остаётся за счётом, уедет вместе с товаром на следующую FBO-продажу');
+                return this.code(
+                    code,
+                    [],
+                    false,
+                    'остаётся за счётом, уедет вместе с товаром на следующую FBO-продажу',
+                );
             }
             if (input.transferred) {
                 // Ozon: отгруженная отмена ждёт записи возврата — код остаётся TT=3
@@ -336,7 +372,12 @@ export class MpDecisionService {
             if (layer1 === 'make-donor') {
                 // Код обязан остаться TT=3 на доноре — иначе миграция
                 // (TRANSFER_TYPE IN (2,3)) его не перенесёт на FBO-продажу.
-                return this.code(code, [], false, 'остаётся за счётом, уедет вместе с товаром на следующую FBO-продажу');
+                return this.code(
+                    code,
+                    [],
+                    false,
+                    'остаётся за счётом, уедет вместе с товаром на следующую FBO-продажу',
+                );
             }
             if (layer1 === 'cancel-fbs-unpicked') {
                 return code.transferType === 3
@@ -384,7 +425,12 @@ export class MpDecisionService {
             // пока Ozon не оформил возвратный документ, значит развести базу с ГИС МТ.
             // Это корректировка УПД-2 в ЭДО, а не операция над кодом.
             if (code.transferType === 2) {
-                return this.code(code, [], true, 'передавался по УПД-2 — откат только корректировкой УПД-2 в ЭДО, руками');
+                return this.code(
+                    code,
+                    [],
+                    true,
+                    'передавался по УПД-2 — откат только корректировкой УПД-2 в ЭДО, руками',
+                );
             }
             if (code.status === 6 && code.retireReason !== 1) {
                 return this.code(

@@ -18,7 +18,9 @@ describe('ResolveWbCategoryCommand', () => {
 
     it('should use subjectId as-is for manual mode', async () => {
         const ctx: IWbCreateCardContext = {
-            productName: 'Test', description: '', subjectId: 2009,
+            productName: 'Test',
+            description: '',
+            subjectId: 2009,
             categoryMode: WbCategoryMode.MANUAL,
         };
         const result = await command.execute(ctx);
@@ -31,7 +33,9 @@ describe('ResolveWbCategoryCommand', () => {
 
     it('should stopChain if manual mode without subjectId', async () => {
         const ctx: IWbCreateCardContext = {
-            productName: 'Test', description: '', subjectId: 0,
+            productName: 'Test',
+            description: '',
+            subjectId: 0,
             categoryMode: WbCategoryMode.MANUAL,
         };
         const result = await command.execute(ctx);
@@ -46,7 +50,9 @@ describe('ResolveWbCategoryCommand', () => {
         ]);
 
         const ctx: IWbCreateCardContext = {
-            productName: 'Test', description: '', subjectId: 0,
+            productName: 'Test',
+            description: '',
+            subjectId: 0,
             categoryMode: WbCategoryMode.BY_OZON_TYPE,
             typeId: 99309,
         };
@@ -62,7 +68,9 @@ describe('ResolveWbCategoryCommand', () => {
         ]);
 
         const ctx: IWbCreateCardContext = {
-            productName: 'Блок питания', description: '', subjectId: 0,
+            productName: 'Блок питания',
+            description: '',
+            subjectId: 0,
             categoryMode: WbCategoryMode.BY_NAME,
             ozonName: 'Блок питания LRS-350',
         };
@@ -76,7 +84,9 @@ describe('ResolveWbCategoryCommand', () => {
         searchWbCategory.mockResolvedValue([]);
 
         const ctx: IWbCreateCardContext = {
-            productName: 'Unknown', description: '', subjectId: 0,
+            productName: 'Unknown',
+            description: '',
+            subjectId: 0,
             categoryMode: WbCategoryMode.BY_NAME,
         };
         const result = await command.execute(ctx);
@@ -87,7 +97,9 @@ describe('ResolveWbCategoryCommand', () => {
 
     it('should stopChain if byOzonType without typeId', async () => {
         const ctx: IWbCreateCardContext = {
-            productName: 'Test', description: '', subjectId: 0,
+            productName: 'Test',
+            description: '',
+            subjectId: 0,
             categoryMode: WbCategoryMode.BY_OZON_TYPE,
         };
         const result = await command.execute(ctx);

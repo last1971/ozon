@@ -22,7 +22,7 @@ export class ValidateOfferIdCommand implements ICommandAsync<IProductCreateConte
             context.error_message = 'Не заполнен артикул (offer_id)';
             return context;
         }
-        if (!images?.length || !images.some(img => img?.trim())) {
+        if (!images?.length || !images.some((img) => img?.trim())) {
             context.stopChain = true;
             context.error_message = 'Не добавлены картинки';
             return context;

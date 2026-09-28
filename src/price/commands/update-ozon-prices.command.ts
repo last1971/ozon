@@ -16,7 +16,7 @@ export class UpdateOzonPricesCommand implements ICommandAsync<IGoodsProcessingCo
             return context;
         }
 
-        const updatePrices = prices.map(p => ({
+        const updatePrices = prices.map((p) => ({
             offer_id: p.offer_id,
             min_price: String(p.min_price),
             price: String(p.price),

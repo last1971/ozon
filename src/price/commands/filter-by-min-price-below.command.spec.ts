@@ -23,7 +23,7 @@ describe('FilterByMinPriceBelowCommand', () => {
         const result = await command.execute(context);
 
         expect(result.ozonPrices).toHaveLength(2);
-        expect(result.ozonPrices.map(p => p.offer_id)).toEqual(['sku1', 'sku2']);
+        expect(result.ozonPrices.map((p) => p.offer_id)).toEqual(['sku1', 'sku2']);
     });
 
     it('should save items with price > threshold to ozonPricesHighPrice', async () => {

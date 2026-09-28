@@ -83,7 +83,13 @@ export class DictService {
         return service;
     }
 
-    private run(kind: string, service: ITnvedDictionary, all: boolean, commands: IJobCommand<IDictContext>[], clientId?: string): JobStateDto {
+    private run(
+        kind: string,
+        service: ITnvedDictionary,
+        all: boolean,
+        commands: IJobCommand<IDictContext>[],
+        clientId?: string,
+    ): JobStateDto {
         return this.jobs.run<IDictContext, DictReport>({
             kind,
             params: { market: service.market, all },

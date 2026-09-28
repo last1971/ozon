@@ -5,13 +5,13 @@ import { DiscountRequestsService } from '../discount-requests.service';
 
 @Injectable()
 export class GetDiscountTasksCommand implements ICommandAsync<IDiscountProcessingContext> {
-  constructor(
-    @Inject(forwardRef(() => DiscountRequestsService))
-    private readonly discountRequestsService: DiscountRequestsService,
-  ) {}
+    constructor(
+        @Inject(forwardRef(() => DiscountRequestsService))
+        private readonly discountRequestsService: DiscountRequestsService,
+    ) {}
 
-  async execute(context: IDiscountProcessingContext): Promise<IDiscountProcessingContext> {
-    const tasks = await this.discountRequestsService.getAllUnprocessedDiscountTasks();
-    return { ...context, tasks };
-  }
-} 
+    async execute(context: IDiscountProcessingContext): Promise<IDiscountProcessingContext> {
+        const tasks = await this.discountRequestsService.getAllUnprocessedDiscountTasks();
+        return { ...context, tasks };
+    }
+}

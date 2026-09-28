@@ -60,10 +60,7 @@ describe('Trade2006IncomingService', () => {
 
             await service.onModuleInit();
 
-            expect(query).toHaveBeenCalledWith(
-                'SELECT MAX(SHOPINCODE) AS MAX_CODE FROM SHOPIN',
-                []
-            );
+            expect(query).toHaveBeenCalledWith('SELECT MAX(SHOPINCODE) AS MAX_CODE FROM SHOPIN', []);
             expect((service as any).lastShopInCode).toBe(123);
         });
 
@@ -102,13 +99,10 @@ describe('Trade2006IncomingService', () => {
 
             expect(query).toHaveBeenCalledWith(
                 'SELECT SHOPINCODE AS CODE, GOODSCODE FROM SHOPIN WHERE SHOPINCODE > ? ORDER BY SHOPINCODE',
-                [124]
+                [124],
             );
 
-            expect(eventEmitterMock.emit).toHaveBeenCalledWith(
-                'incoming.goods',
-                ['A001', 'B002']
-            );
+            expect(eventEmitterMock.emit).toHaveBeenCalledWith('incoming.goods', ['A001', 'B002']);
 
             expect((service as any).lastShopInCode).toBe(126);
         });
@@ -127,7 +121,7 @@ describe('Trade2006IncomingService', () => {
 
             expect(query).toHaveBeenCalledWith(
                 'SELECT SHOPINCODE AS CODE, GOODSCODE FROM SHOPIN WHERE SHOPINCODE > ? ORDER BY SHOPINCODE',
-                [124]
+                [124],
             );
 
             expect(eventEmitterMock.emit).not.toHaveBeenCalled();

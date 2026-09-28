@@ -11,7 +11,7 @@ export class FilterBySellingPriceAboveCommand implements ICommandAsync<IGoodsPro
         const threshold = context.priceThreshold ?? this.DEFAULT_PRICE_THRESHOLD;
         const before = prices.length;
 
-        context.ozonPrices = prices.filter(p => p.marketing_seller_price > threshold);
+        context.ozonPrices = prices.filter((p) => p.marketing_seller_price > threshold);
 
         context.logger?.log(`Фильтр по цене > ${threshold}: ${before} -> ${context.ozonPrices.length}`);
         return context;

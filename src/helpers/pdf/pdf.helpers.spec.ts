@@ -75,4 +75,4 @@ describe('calculateOptimalFontSize', () => {
         // В этом случае функция дойдет до minFontSize
         expect(fontSize).toBe(6);
     });
-}); 
+});

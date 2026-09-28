@@ -74,7 +74,10 @@ export class OzonTnvedService implements ITnvedUpdateable {
         const results: TnvedUpdateResult[] = [];
         for (const item of items as OzonTnvedItem[]) {
             try {
-                results.push({ offer: item.offer, taskId: await this.applyFix(item.offer, item.dictValueId, item.markRequired) });
+                results.push({
+                    offer: item.offer,
+                    taskId: await this.applyFix(item.offer, item.dictValueId, item.markRequired),
+                });
             } catch (e) {
                 results.push({ offer: item.offer, error: e?.message ?? String(e) });
             }
@@ -158,7 +161,8 @@ export class OzonTnvedService implements ITnvedUpdateable {
         const reasons: string[] = [];
         if (currentCode !== tnved) reasons.push(`ТНВЭД ${currentCode ?? '—'}→${tnved}`);
         else if (currentDictId !== targetDictId) reasons.push(`вариант «${variantLabel}»`);
-        if (markOn !== markRequired) reasons.push(markRequired ? 'включить код маркировки' : 'выключить код маркировки');
+        if (markOn !== markRequired)
+            reasons.push(markRequired ? 'включить код маркировки' : 'выключить код маркировки');
 
         return {
             ...item,
@@ -176,9 +180,7 @@ export class OzonTnvedService implements ITnvedUpdateable {
     /** Варианты словаря ТНВЭД в категории, значение которых начинается с нашего кода. */
     private async loadTnvedVariants(cat: number, type: number, tnved: string): Promise<TnvedVariant[]> {
         const vals = await this.productService.searchCategoryAttributeValues(this.tnvedAttrId, cat, type, tnved);
-        return vals
-            .map((v) => ({ id: v.id, value: (v.value ?? '').trim() }))
-            .filter((v) => v.value.startsWith(tnved));
+        return vals.map((v) => ({ id: v.id, value: (v.value ?? '').trim() })).filter((v) => v.value.startsWith(tnved));
     }
 
     /**

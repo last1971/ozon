@@ -30,7 +30,7 @@ export class ExportUnprofitableXlsxCommand implements ICommandAsync<IGoodsProces
             });
         }
 
-        context.xlsxBuffer = await workbook.xlsx.writeBuffer() as Excel.Buffer;
+        context.xlsxBuffer = (await workbook.xlsx.writeBuffer()) as Excel.Buffer;
         context.logger?.log('xlsx файл сформирован');
 
         return context;

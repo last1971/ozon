@@ -44,7 +44,13 @@ describe('DistributePlainCountsCommand', () => {
             }),
         );
 
-        expect(result.counts).toEqual(new Map([['sku-1', 17], ['sku-2', 16], ['sku-3', 17]]));
+        expect(result.counts).toEqual(
+            new Map([
+                ['sku-1', 17],
+                ['sku-2', 16],
+                ['sku-3', 17],
+            ]),
+        );
     });
 
     it('маркируемый товар пропускается — его считает другая команда', async () => {
@@ -78,13 +84,26 @@ describe('DistributeMarkedCountsCommand', () => {
                 goods: [{ code: '498824', quantity: 8416, reserve: 24, name: 'x' }] as any,
                 filteredSkuMap: new Map([['498824', ['498824', '498824-100', '498824-800']]]),
                 markedGoods: new Set(['498824']),
-                freeByGood: new Map([['498824', new Map([[1, 16], [100, 12], [800, 9]])]]),
+                freeByGood: new Map([
+                    [
+                        '498824',
+                        new Map([
+                            [1, 16],
+                            [100, 12],
+                            [800, 9],
+                        ]),
+                    ],
+                ]),
                 reservedByGood: new Map([['498824', [24]]]),
             }),
         );
 
         expect(result.counts).toEqual(
-            new Map([['498824', 16], ['498824-100', 11], ['498824-800', 9]]),
+            new Map([
+                ['498824', 16],
+                ['498824-100', 11],
+                ['498824-800', 9],
+            ]),
         );
     });
 
@@ -94,7 +113,18 @@ describe('DistributeMarkedCountsCommand', () => {
                 goods: [{ code: '552601', quantity: 1352, reserve: 7, name: 'x' }] as any,
                 filteredSkuMap: new Map([['552601', ['552601', '552601-3', '552601-12']]]),
                 markedGoods: new Set(['552601']),
-                freeByGood: new Map([['552601', new Map([[1, 2], [3, 9], [6, 4], [12, 2], [40, 32]]) ]]),
+                freeByGood: new Map([
+                    [
+                        '552601',
+                        new Map([
+                            [1, 2],
+                            [3, 9],
+                            [6, 4],
+                            [12, 2],
+                            [40, 32],
+                        ]),
+                    ],
+                ]),
                 reservedByGood: new Map([['552601', [1, 3, 3]]]),
             }),
         );
@@ -103,7 +133,11 @@ describe('DistributeMarkedCountsCommand', () => {
         // меньше, чем выписано (1352 − 7 резерва = 1345 доступно), поэтому лишний код на 6 штук
         // на витрину не идёт: 1305 − 6 = 1299.
         expect(result.counts).toEqual(
-            new Map([['552601', 1299], ['552601-3', 7], ['552601-12', 2]]),
+            new Map([
+                ['552601', 1299],
+                ['552601-3', 7],
+                ['552601-12', 2],
+            ]),
         );
     });
 
@@ -118,7 +152,12 @@ describe('DistributeMarkedCountsCommand', () => {
             }),
         );
 
-        expect(result.counts).toEqual(new Map([['569126', 0], ['569126-10', 0]]));
+        expect(result.counts).toEqual(
+            new Map([
+                ['569126', 0],
+                ['569126-10', 0],
+            ]),
+        );
     });
 
     it('кодов больше, чем на складе — считаем по кодам и пишем предупреждение', async () => {
@@ -174,23 +213,39 @@ describe('ApplyDisabledCommand', () => {
     it('sku-блок гасит только свою фасовку', async () => {
         const result = await new ApplyDisabledCommand().execute(
             context({
-                counts: new Map([['sku-1', 17], ['sku-2', 16]]),
+                counts: new Map([
+                    ['sku-1', 17],
+                    ['sku-2', 16],
+                ]),
                 disabled: new Set(['sku-2']),
             }),
         );
 
-        expect(result.counts).toEqual(new Map([['sku-1', 17], ['sku-2', 0]]));
+        expect(result.counts).toEqual(
+            new Map([
+                ['sku-1', 17],
+                ['sku-2', 0],
+            ]),
+        );
     });
 
     it('good-блок гасит все фасовки товара', async () => {
         const result = await new ApplyDisabledCommand().execute(
             context({
-                counts: new Map([['sku-1', 17], ['sku-2', 16]]),
+                counts: new Map([
+                    ['sku-1', 17],
+                    ['sku-2', 16],
+                ]),
                 disabled: new Set(['good:sku']),
             }),
         );
 
-        expect(result.counts).toEqual(new Map([['sku-1', 0], ['sku-2', 0]]));
+        expect(result.counts).toEqual(
+            new Map([
+                ['sku-1', 0],
+                ['sku-2', 0],
+            ]),
+        );
     });
 
     it('отключений нет — контекст не меняется', async () => {
@@ -205,8 +260,14 @@ describe('KeepChangedOnlyCommand', () => {
     it('оставляет только изменившиеся SKU', async () => {
         const result = await new KeepChangedOnlyCommand().execute(
             context({
-                counts: new Map([['sku-1', 5], ['sku-2', 7]]),
-                currentCounts: new Map([['sku-1', 5], ['sku-2', 3]]),
+                counts: new Map([
+                    ['sku-1', 5],
+                    ['sku-2', 7],
+                ]),
+                currentCounts: new Map([
+                    ['sku-1', 5],
+                    ['sku-2', 3],
+                ]),
             }),
         );
 
@@ -241,11 +302,19 @@ describe('PushCountsCommand', () => {
         const result = await command.execute(
             context({
                 service: { skuList: [], updateGoodCounts } as any,
-                counts: new Map([['sku-1', 5], ['sku-2', 0]]),
+                counts: new Map([
+                    ['sku-1', 5],
+                    ['sku-2', 0],
+                ]),
             }),
         );
 
-        expect(updateGoodCounts).toHaveBeenCalledWith(new Map([['sku-1', 5], ['sku-2', 0]]));
+        expect(updateGoodCounts).toHaveBeenCalledWith(
+            new Map([
+                ['sku-1', 5],
+                ['sku-2', 0],
+            ]),
+        );
         expect(result.updated).toBe(2);
     });
 

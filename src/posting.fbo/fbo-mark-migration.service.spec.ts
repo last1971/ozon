@@ -74,7 +74,16 @@ describe('FboMarkMigrationService', () => {
 
     it('полный переезд 3×5: коды перед подборкой, кратно номиналу, без shortages', async () => {
         findFboPodbposCandidates.mockResolvedValueOnce([
-            { podbposcode: 1001, scode: 100, realpricecode: 100, quanAvail: 15, prim: 'W', cntNom: 3, cntLive: 3, cntTt3: 1 },
+            {
+                podbposcode: 1001,
+                scode: 100,
+                realpricecode: 100,
+                quanAvail: 15,
+                prim: 'W',
+                cntNom: 3,
+                cntLive: 3,
+                cntTt3: 1,
+            },
         ]);
         findLiveMigratableCodes.mockResolvedValueOnce([{ ki: 'KI-3' }, { ki: 'KI-1' }, { ki: 'KI-2' }]);
 
@@ -148,7 +157,16 @@ describe('FboMarkMigrationService', () => {
 
     it('кодов меньше, чем штук (часть без кодов): штуки едут, письмо, НЕ shortage', async () => {
         findFboPodbposCandidates.mockResolvedValueOnce([
-            { podbposcode: 1001, scode: 100, realpricecode: 100, quanAvail: 15, prim: 'W', cntNom: 1, cntLive: 1, cntTt3: 0 },
+            {
+                podbposcode: 1001,
+                scode: 100,
+                realpricecode: 100,
+                quanAvail: 15,
+                prim: 'W',
+                cntNom: 1,
+                cntLive: 1,
+                cntTt3: 0,
+            },
         ]);
         findLiveMigratableCodes.mockResolvedValueOnce([{ ki: 'KI-1' }]);
 
@@ -174,7 +192,16 @@ describe('FboMarkMigrationService', () => {
 
     it('товар без кодов вообще (cntLive=0): только штуки, без письма', async () => {
         findFboPodbposCandidates.mockResolvedValueOnce([
-            { podbposcode: 1001, scode: 100, realpricecode: 100, quanAvail: 2, prim: 'W', cntNom: 0, cntLive: 0, cntTt3: 0 },
+            {
+                podbposcode: 1001,
+                scode: 100,
+                realpricecode: 100,
+                quanAvail: 2,
+                prim: 'W',
+                cntNom: 0,
+                cntLive: 0,
+                cntTt3: 0,
+            },
         ]);
         findLiveMigratableCodes.mockResolvedValueOnce([]);
 
@@ -195,7 +222,17 @@ describe('FboMarkMigrationService', () => {
 
     it('на доноре только выведенный код (cntDead>0): штуки едут, письмо «возврат проданного»', async () => {
         findFboPodbposCandidates.mockResolvedValueOnce([
-            { podbposcode: 1001, scode: 100, realpricecode: 100, quanAvail: 2, prim: 'W', cntNom: 0, cntLive: 0, cntTt3: 0, cntDead: 1 },
+            {
+                podbposcode: 1001,
+                scode: 100,
+                realpricecode: 100,
+                quanAvail: 2,
+                prim: 'W',
+                cntNom: 0,
+                cntLive: 0,
+                cntTt3: 0,
+                cntDead: 1,
+            },
         ]);
         findLiveMigratableCodes.mockResolvedValueOnce([]);
 
@@ -237,7 +274,16 @@ describe('FboMarkMigrationService', () => {
 
     it('некратная продажа (1 шт при кодах по 5): перенос падает → кандидат пропущен → shortage', async () => {
         findFboPodbposCandidates.mockResolvedValueOnce([
-            { podbposcode: 1001, scode: 100, realpricecode: 100, quanAvail: 15, prim: 'W', cntNom: 0, cntLive: 3, cntTt3: 0 },
+            {
+                podbposcode: 1001,
+                scode: 100,
+                realpricecode: 100,
+                quanAvail: 15,
+                prim: 'W',
+                cntNom: 0,
+                cntLive: 3,
+                cntTt3: 0,
+            },
         ]);
         findLiveMigratableCodes.mockResolvedValueOnce([]); // кодов номинала 1 нет
         migratePodbpos.mockRejectedValueOnce(new Error('нет столько свободно в приходе'));
@@ -257,8 +303,26 @@ describe('FboMarkMigrationService', () => {
 
     it('перенос подборки упал после кодов → компенсация обратным переносом, кандидат пропущен', async () => {
         findFboPodbposCandidates.mockResolvedValueOnce([
-            { podbposcode: 1001, scode: 100, realpricecode: 100, quanAvail: 10, prim: 'A', cntNom: 2, cntLive: 2, cntTt3: 0 },
-            { podbposcode: 2002, scode: 200, realpricecode: 200, quanAvail: 10, prim: 'B', cntNom: 2, cntLive: 2, cntTt3: 0 },
+            {
+                podbposcode: 1001,
+                scode: 100,
+                realpricecode: 100,
+                quanAvail: 10,
+                prim: 'A',
+                cntNom: 2,
+                cntLive: 2,
+                cntTt3: 0,
+            },
+            {
+                podbposcode: 2002,
+                scode: 200,
+                realpricecode: 200,
+                quanAvail: 10,
+                prim: 'B',
+                cntNom: 2,
+                cntLive: 2,
+                cntTt3: 0,
+            },
         ]);
         findLiveMigratableCodes
             .mockResolvedValueOnce([{ ki: 'KI-A1' }, { ki: 'KI-A2' }])
@@ -294,7 +358,16 @@ describe('FboMarkMigrationService', () => {
 
     it('застрявший код: его штуки остаются на А (take -= N), недобор → shortage', async () => {
         findFboPodbposCandidates.mockResolvedValueOnce([
-            { podbposcode: 1001, scode: 100, realpricecode: 100, quanAvail: 15, prim: 'W', cntNom: 3, cntLive: 3, cntTt3: 0 },
+            {
+                podbposcode: 1001,
+                scode: 100,
+                realpricecode: 100,
+                quanAvail: 15,
+                prim: 'W',
+                cntNom: 3,
+                cntLive: 3,
+                cntTt3: 0,
+            },
         ]);
         findLiveMigratableCodes.mockResolvedValueOnce([{ ki: 'KI-1' }, { ki: 'KI-2' }, { ki: 'KI-3' }]);
         migrateMarkCode
@@ -333,10 +406,28 @@ describe('FboMarkMigrationService', () => {
     it('2 товара → независимые выборки кандидатов и строки Б по индексу', async () => {
         findFboPodbposCandidates
             .mockResolvedValueOnce([
-                { podbposcode: 1001, scode: 100, realpricecode: 100, quanAvail: 1, prim: 'P', cntNom: 0, cntLive: 0, cntTt3: 0 },
+                {
+                    podbposcode: 1001,
+                    scode: 100,
+                    realpricecode: 100,
+                    quanAvail: 1,
+                    prim: 'P',
+                    cntNom: 0,
+                    cntLive: 0,
+                    cntTt3: 0,
+                },
             ])
             .mockResolvedValueOnce([
-                { podbposcode: 2002, scode: 200, realpricecode: 200, quanAvail: 1, prim: 'P', cntNom: 0, cntLive: 0, cntTt3: 0 },
+                {
+                    podbposcode: 2002,
+                    scode: 200,
+                    realpricecode: 200,
+                    quanAvail: 1,
+                    prim: 'P',
+                    cntNom: 0,
+                    cntLive: 0,
+                    cntTt3: 0,
+                },
             ]);
 
         const shortages = await service.migrate(
@@ -360,7 +451,16 @@ describe('FboMarkMigrationService', () => {
 
     it('quanAvail > need → take = need, не лишнего', async () => {
         findFboPodbposCandidates.mockResolvedValueOnce([
-            { podbposcode: 1001, scode: 100, realpricecode: 100, quanAvail: 10, prim: 'P', cntNom: 0, cntLive: 0, cntTt3: 0 },
+            {
+                podbposcode: 1001,
+                scode: 100,
+                realpricecode: 100,
+                quanAvail: 10,
+                prim: 'P',
+                cntNom: 0,
+                cntLive: 0,
+                cntTt3: 0,
+            },
         ]);
 
         const shortages = await service.migrate(

@@ -16,7 +16,9 @@ describe('DonorTransferService', () => {
     const target = { scode: 500, realpricecode: 900, goodscode: '444', nominal: 5, posting: 'P-1' };
 
     beforeEach(async () => {
-        [findLiveMigratableCodes, migrateMarkCode, migratePodbpos, logMigrationLink, getStorageSS, emit].forEach((m) => m.mockReset());
+        [findLiveMigratableCodes, migrateMarkCode, migratePodbpos, logMigrationLink, getStorageSS, emit].forEach((m) =>
+            m.mockReset(),
+        );
         getStorageSS.mockReturnValue(1);
         migrateMarkCode.mockResolvedValue(undefined);
         migratePodbpos.mockResolvedValue(undefined);
@@ -24,7 +26,16 @@ describe('DonorTransferService', () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 DonorTransferService,
-                { provide: INVOICE_SERVICE, useValue: { findLiveMigratableCodes, migrateMarkCode, migratePodbpos, logMigrationLink, getStorageSS } },
+                {
+                    provide: INVOICE_SERVICE,
+                    useValue: {
+                        findLiveMigratableCodes,
+                        migrateMarkCode,
+                        migratePodbpos,
+                        logMigrationLink,
+                        getStorageSS,
+                    },
+                },
                 { provide: EventEmitter2, useValue: { emit } },
             ],
         }).compile();
@@ -43,7 +54,15 @@ describe('DonorTransferService', () => {
         ]);
         expect(migratePodbpos).toHaveBeenCalledWith(1001, 500, 900, '444', 10, null);
         expect(logMigrationLink).toHaveBeenCalledWith(
-            { posting: 'P-1', goodscode: '444', quantity: 10, donorScode: 100, donorRpc: 100, targetScode: 500, targetRpc: 900 },
+            {
+                posting: 'P-1',
+                goodscode: '444',
+                quantity: 10,
+                donorScode: 100,
+                donorRpc: 100,
+                targetScode: 500,
+                targetRpc: 900,
+            },
             null,
         );
     });

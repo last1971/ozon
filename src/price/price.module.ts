@@ -9,7 +9,7 @@ import { AvitoPriceModule } from '../avito.price/avito.price.module';
 import { SyliusPriceModule } from '../sylius.price/sylius.price.module';
 import { HelpersModule } from '../helpers/helpers.module';
 import { OzonCategoryModule } from '../ozon.category/ozon.category.module';
-import { ExtraPriceService } from "./extra.price.service";
+import { ExtraPriceService } from './extra.price.service';
 import { ResetAvailablePriceCommand } from './commands/reset-available-price.command';
 import { TradeSkusCommand } from './commands/trade-skus.command';
 import { UpdatePercentsForGoodSkusCommand } from './commands/update-percents-for-good-skus.command';
@@ -34,7 +34,16 @@ import { CalculateUnprofitableCommand } from './commands/calculate-unprofitable.
 import { ExportUnprofitableXlsxCommand } from './commands/export-unprofitable-xlsx.command';
 
 @Module({
-    imports: [ProductModule, GoodModule, YandexPriceModule, WbPriceModule, AvitoPriceModule, SyliusPriceModule, HelpersModule, OzonCategoryModule],
+    imports: [
+        ProductModule,
+        GoodModule,
+        YandexPriceModule,
+        WbPriceModule,
+        AvitoPriceModule,
+        SyliusPriceModule,
+        HelpersModule,
+        OzonCategoryModule,
+    ],
     providers: [
         PriceService,
         ExtraPriceService,

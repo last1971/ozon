@@ -66,7 +66,7 @@ describe('WbCardService', () => {
                                 skus: ['1-1'],
                             },
                         ],
-                        photos:[{ big: 'test.jpg' }],
+                        photos: [{ big: 'test.jpg' }],
                     },
                 ],
                 cursor: { total: 1 },
@@ -106,7 +106,7 @@ describe('WbCardService', () => {
                                 skus: ['1-1'],
                             },
                         ],
-                        photos:[{ big: 'test.jpg' }],
+                        photos: [{ big: 'test.jpg' }],
                     },
                 ],
                 cursor: { total: 1 },
@@ -124,7 +124,7 @@ describe('WbCardService', () => {
                             skus: ['1-1'],
                         },
                     ],
-                    photos:[{ big: 'test.jpg' }],
+                    photos: [{ big: 'test.jpg' }],
                 },
                 {
                     nmID: 2,
@@ -135,7 +135,7 @@ describe('WbCardService', () => {
                             skus: ['1-2'],
                         },
                     ],
-                    photos:[{ big: 'test.jpg' }],
+                    photos: [{ big: 'test.jpg' }],
                 },
             ],
         });
@@ -180,16 +180,16 @@ describe('WbCardService', () => {
     });
     it('getAllWbCards', async () => {
         const testCard = {
-                nmID: 1,
-                vendorCode: '1',
-                sizes: [
-                    {
-                        skus: ['1-1'],
-                    },
-                ],
-                photos:[{ big: 'test.jpg' }],
-                title: 'test-name'
-            };
+            nmID: 1,
+            vendorCode: '1',
+            sizes: [
+                {
+                    skus: ['1-1'],
+                },
+            ],
+            photos: [{ big: 'test.jpg' }],
+            title: 'test-name',
+        };
         method
             .mockResolvedValueOnce({
                 cards: [testCard],
@@ -335,7 +335,7 @@ describe('WbCardService', () => {
                 'https://content-api.wildberries.ru/content/v2/cards/update',
                 'post',
                 cards,
-                true
+                true,
             );
         });
 

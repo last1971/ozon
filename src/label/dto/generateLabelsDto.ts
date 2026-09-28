@@ -1,24 +1,24 @@
-import { ApiProperty } from "@nestjs/swagger";
-import { LabelDto } from "./labelDto";
-import { IsArray, IsEnum, IsNumber, IsOptional, ValidateNested } from "class-validator";
-import { Type } from "class-transformer";
-import { SizeDto } from "./sizeDto";
-import { BarcodeType } from "./barcodeType";
+import { ApiProperty } from '@nestjs/swagger';
+import { LabelDto } from './labelDto';
+import { IsArray, IsEnum, IsNumber, IsOptional, ValidateNested } from 'class-validator';
+import { Type } from 'class-transformer';
+import { SizeDto } from './sizeDto';
+import { BarcodeType } from './barcodeType';
 
 export class GenerateLabelsDto {
-    @ApiProperty({ type: [LabelDto], description: "Array of labels data" })
+    @ApiProperty({ type: [LabelDto], description: 'Array of labels data' })
     @IsArray()
     @ValidateNested({ each: true })
     @Type(() => LabelDto)
     labelsData: LabelDto[];
 
-    @ApiProperty({ type: SizeDto, description: "Size of each label" })
+    @ApiProperty({ type: SizeDto, description: 'Size of each label' })
     @ValidateNested()
     @Type(() => SizeDto)
     size: SizeDto;
 
-    @ApiProperty({ enum: BarcodeType, description: "Type of barcode" })
-    @IsEnum(BarcodeType, { message: "Invalid barcode type" })
+    @ApiProperty({ enum: BarcodeType, description: 'Type of barcode' })
+    @IsEnum(BarcodeType, { message: 'Invalid barcode type' })
     barcodeType: BarcodeType;
 
     @ApiProperty({

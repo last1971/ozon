@@ -1,16 +1,16 @@
-import { Test, TestingModule } from "@nestjs/testing";
-import { Trade2006GoodService } from "./trade2006.good.service";
-import { FIREBIRD } from "../firebird/firebird.module";
-import { ICountUpdateable } from "../interfaces/ICountUpdatebale";
-import { ConfigService } from "@nestjs/config";
-import { IPriceUpdateable } from "../interfaces/i.price.updateable";
-import { EventEmitter2 } from "@nestjs/event-emitter";
-import { Cache } from "@nestjs/cache-manager";
-import { PriceCalculationHelper } from "../helpers/price/price.calculation.helper";
-import { UpdatePriceDto } from "../price/dto/update.price.dto";
-import { GoodPercentDto } from "../good/dto/good.percent.dto";
-import { GoodServiceEnum } from "../good/good.service.enum";
-import { Logger } from "@nestjs/common";
+import { Test, TestingModule } from '@nestjs/testing';
+import { Trade2006GoodService } from './trade2006.good.service';
+import { FIREBIRD } from '../firebird/firebird.module';
+import { ICountUpdateable } from '../interfaces/ICountUpdatebale';
+import { ConfigService } from '@nestjs/config';
+import { IPriceUpdateable } from '../interfaces/i.price.updateable';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Cache } from '@nestjs/cache-manager';
+import { PriceCalculationHelper } from '../helpers/price/price.calculation.helper';
+import { UpdatePriceDto } from '../price/dto/update.price.dto';
+import { GoodPercentDto } from '../good/dto/good.percent.dto';
+import { GoodServiceEnum } from '../good/good.service.enum';
+import { Logger } from '@nestjs/common';
 
 describe('Trade2006GoodService', () => {
     let service: Trade2006GoodService;
@@ -24,9 +24,7 @@ describe('Trade2006GoodService', () => {
         getTransMaxAmount: () => 40,
         getSalesPercent: () => 10,
     };
-    const getProductsWithCoeffs = jest.fn().mockResolvedValue([
-        getProductsWithCoeffsFirst,
-    ]);
+    const getProductsWithCoeffs = jest.fn().mockResolvedValue([getProductsWithCoeffsFirst]);
     const updatePrices = jest.fn();
     const priceUdateable: IPriceUpdateable = {
         getObtainCoeffs: () => ({
@@ -48,30 +46,32 @@ describe('Trade2006GoodService', () => {
         preparePricesContext: jest.fn().mockResolvedValue({
             codes: ['1'],
             goods: [{ code: 1, name: 'ONE', price: 10.11 }],
-            percents: [{
-                offer_id: '1',
-                pieces: 1,
-                perc: 20,
-                adv_perc: 0,
-                min_perc: 10,
-                old_perc: 30,
-                packing_price: 0,
-                available_price: 0
-            }],
+            percents: [
+                {
+                    offer_id: '1',
+                    pieces: 1,
+                    perc: 20,
+                    adv_perc: 0,
+                    min_perc: 10,
+                    old_perc: 30,
+                    packing_price: 0,
+                    available_price: 0,
+                },
+            ],
             products: [
                 {
                     getSku: () => '1',
                     getTransMaxAmount: () => 40,
-                    getSalesPercent: () => 10
-                }
-            ]
+                    getSalesPercent: () => 10,
+                },
+            ],
         }),
         getIncomingPrice: jest.fn().mockReturnValue(10.11),
         adjustPercents: jest.fn().mockReturnValue({
             min_perc: 10,
             perc: 20,
-            old_perc: 30
-        })
+            old_perc: 30,
+        }),
     };
 
     const commit = jest.fn();
@@ -82,36 +82,41 @@ describe('Trade2006GoodService', () => {
         mockPriceCalculationHelper.preparePricesContext.mockResolvedValue({
             codes: ['1'],
             goods: [{ code: 1, name: 'ONE', price: 10.11 }],
-            percents: [{
-                offer_id: '1',
-                pieces: 1,
-                perc: 20,
-                adv_perc: 0,
-                min_perc: 10,
-                old_perc: 30,
-                packing_price: 0,
-                available_price: 0
-            }],
+            percents: [
+                {
+                    offer_id: '1',
+                    pieces: 1,
+                    perc: 20,
+                    adv_perc: 0,
+                    min_perc: 10,
+                    old_perc: 30,
+                    packing_price: 0,
+                    available_price: 0,
+                },
+            ],
             products: [
                 {
                     getSku: () => '1',
                     getTransMaxAmount: () => 40,
-                    getSalesPercent: () => 10
-                }
-            ]
+                    getSalesPercent: () => 10,
+                },
+            ],
         });
         mockPriceCalculationHelper.getIncomingPrice.mockReturnValue(10.11);
         mockPriceCalculationHelper.adjustPercents.mockReturnValue({
             min_perc: 10,
             perc: 20,
-            old_perc: 30
+            old_perc: 30,
         });
 
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 Trade2006GoodService,
                 { provide: FIREBIRD, useValue: { getTransaction: () => ({ query, execute, commit }) } },
-                { provide: ConfigService, useValue: { get: (key: string) => key === 'STORAGE_TYPE' ? 'SHOPSKLAD' : null } },
+                {
+                    provide: ConfigService,
+                    useValue: { get: (key: string) => (key === 'STORAGE_TYPE' ? 'SHOPSKLAD' : null) },
+                },
                 {
                     provide: EventEmitter2,
                     useValue: { emit },
@@ -140,7 +145,6 @@ describe('Trade2006GoodService', () => {
         mockPriceCalculationHelper.adjustPercents.mockReset();
     });
 
-
     afterAll(() => {
         jest.resetModules(); // Сбрасываем все модули после всех тестов
     });
@@ -153,7 +157,7 @@ describe('Trade2006GoodService', () => {
         const res = await service.in(['1']);
         expect(res).toEqual([{ code: 1, quantity: 2, reserve: 1 }]);
         expect(query.mock.calls[0][0].replace(/\s+/g, ' ').trim().toUpperCase()).toEqual(
-            'SELECT GOODS.GOODSCODE, SHOPSKLAD.QUAN, ( SELECT SUM(QUANSHOP) + SUM(QUANSKLAD) FROM RESERVEDPOS WHERE GOODS.GOODSCODE = RESERVEDPOS.GOODSCODE ) AS RES, NAME.NAME AS NAME FROM GOODS JOIN SHOPSKLAD ON GOODS.GOODSCODE = SHOPSKLAD.GOODSCODE JOIN NAME ON GOODS.NAMECODE = NAME.NAMECODE WHERE GOODS.GOODSCODE IN (?)'
+            'SELECT GOODS.GOODSCODE, SHOPSKLAD.QUAN, ( SELECT SUM(QUANSHOP) + SUM(QUANSKLAD) FROM RESERVEDPOS WHERE GOODS.GOODSCODE = RESERVEDPOS.GOODSCODE ) AS RES, NAME.NAME AS NAME FROM GOODS JOIN SHOPSKLAD ON GOODS.GOODSCODE = SHOPSKLAD.GOODSCODE JOIN NAME ON GOODS.NAMECODE = NAME.NAMECODE WHERE GOODS.GOODSCODE IN (?)',
         );
         expect(query.mock.calls[0][1]).toEqual(['1']);
         expect(query.mock.calls[0][2]).toBe(true);
@@ -161,7 +165,7 @@ describe('Trade2006GoodService', () => {
     it('test prices', async () => {
         await service.prices(['1', '2']);
         expect(query.mock.calls[0][0].replace(/\s+/g, ' ').trim().toUpperCase()).toEqual(
-            'SELECT G.GOODSCODE, N.NAME, CASE WHEN S.QUAN - COALESCE(R.RES, 0) > 0 THEN COALESCE( ( SELECT SUM(T.OST * T.PRICE) / NULLIF(SUM(T.OST), 0) FROM ( SELECT PM.PRICE, PM.QUAN - COALESCE((SELECT SUM(F.QUAN) FROM FIFO_T F WHERE F.PR_META_IN_ID = PM.ID), 0) AS OST FROM PR_META PM WHERE PM.GOODSCODE = G.GOODSCODE AND PM.SHOPINCODE IS NOT NULL AND COALESCE((SELECT SUM(F.QUAN) FROM FIFO_T F WHERE F.PR_META_IN_ID = PM.ID), 0) < PM.QUAN ) T ), (SELECT MAX(AVAILABLE_PRICE) FROM OZON_PERC WHERE GOODSCODE = G.GOODSCODE), (SELECT FIRST 1 PM2.PRICE FROM PR_META PM2 WHERE PM2.GOODSCODE = G.GOODSCODE AND PM2.SHOPINCODE IS NOT NULL ORDER BY PM2.DATA DESC), 1 ) ELSE NULL END AS PRIC FROM GOODS G JOIN NAME N ON G.NAMECODE = N.NAMECODE JOIN SHOPSKLAD S ON S.GOODSCODE = G.GOODSCODE LEFT JOIN ( SELECT GOODSCODE, SUM(QUANSHOP) + SUM(QUANSKLAD) AS RES FROM RESERVEDPOS GROUP BY GOODSCODE ) R ON R.GOODSCODE = G.GOODSCODE WHERE G.GOODSCODE IN (?,?)'
+            'SELECT G.GOODSCODE, N.NAME, CASE WHEN S.QUAN - COALESCE(R.RES, 0) > 0 THEN COALESCE( ( SELECT SUM(T.OST * T.PRICE) / NULLIF(SUM(T.OST), 0) FROM ( SELECT PM.PRICE, PM.QUAN - COALESCE((SELECT SUM(F.QUAN) FROM FIFO_T F WHERE F.PR_META_IN_ID = PM.ID), 0) AS OST FROM PR_META PM WHERE PM.GOODSCODE = G.GOODSCODE AND PM.SHOPINCODE IS NOT NULL AND COALESCE((SELECT SUM(F.QUAN) FROM FIFO_T F WHERE F.PR_META_IN_ID = PM.ID), 0) < PM.QUAN ) T ), (SELECT MAX(AVAILABLE_PRICE) FROM OZON_PERC WHERE GOODSCODE = G.GOODSCODE), (SELECT FIRST 1 PM2.PRICE FROM PR_META PM2 WHERE PM2.GOODSCODE = G.GOODSCODE AND PM2.SHOPINCODE IS NOT NULL ORDER BY PM2.DATA DESC), 1 ) ELSE NULL END AS PRIC FROM GOODS G JOIN NAME N ON G.NAMECODE = N.NAMECODE JOIN SHOPSKLAD S ON S.GOODSCODE = G.GOODSCODE LEFT JOIN ( SELECT GOODSCODE, SUM(QUANSHOP) + SUM(QUANSKLAD) AS RES FROM RESERVEDPOS GROUP BY GOODSCODE ) R ON R.GOODSCODE = G.GOODSCODE WHERE G.GOODSCODE IN (?,?)',
         );
         expect(query.mock.calls[0][1]).toEqual(['1', '2']);
         expect(query.mock.calls[0][2]).toBe(false);
@@ -174,7 +178,7 @@ describe('Trade2006GoodService', () => {
         await service.setPercents({ offer_id: '123', adv_perc: 10 });
         expect(execute.mock.calls[0]).toEqual([
             'UPDATE OR INSERT INTO OZON_PERC (PERC_MIN, PERC_NOR, PERC_MAX, PERC_ADV, PACKING_PRICE,' +
-            ' AVAILABLE_PRICE, GOODSCODE,' +
+                ' AVAILABLE_PRICE, GOODSCODE,' +
                 ' PIECES)VALUES (?,' +
                 ' ?, ?, ?, ?, ?, ?, ?) MATCHING (GOODSCODE, PIECES)',
             [null, null, null, 10, null, 0, '123', 1],
@@ -216,23 +220,27 @@ describe('Trade2006GoodService', () => {
             codes: ['1'],
             goods: [{ code: 1, name: 'ONE', price: 10.11 }],
             percents: [], // пусто!
-            products: [{
-                getSku: () => '1',
-                getTransMaxAmount: () => 40,
-                getSalesPercent: () => 10
-            }]
+            products: [
+                {
+                    getSku: () => '1',
+                    getTransMaxAmount: () => 40,
+                    getSalesPercent: () => 10,
+                },
+            ],
         });
 
-        const generateSpy = jest.spyOn(service, 'generatePercentsForService').mockResolvedValueOnce([{
-            offer_id: '1',
-            pieces: 1,
-            perc: 20,
-            adv_perc: 0,
-            min_perc: 10,
-            old_perc: 30,
-            packing_price: 10,
-            available_price: 0
-        }]);
+        const generateSpy = jest.spyOn(service, 'generatePercentsForService').mockResolvedValueOnce([
+            {
+                offer_id: '1',
+                pieces: 1,
+                perc: 20,
+                adv_perc: 0,
+                min_perc: 10,
+                old_perc: 30,
+                packing_price: 10,
+                available_price: 0,
+            },
+        ]);
 
         await service.updatePriceForService(priceUdateable, ['1']);
 
@@ -258,7 +266,7 @@ describe('Trade2006GoodService', () => {
     it('checkBounds', async () => {
         // Настройка мока кэша - возвращаем null для всех ключей (кэш пустой)
         get.mockResolvedValue(null);
-        
+
         query
             .mockResolvedValueOnce([
                 { QUAN: 1, AMOUNT: 1, BOUND: null, GOODSCODE: '1' },
@@ -273,7 +281,7 @@ describe('Trade2006GoodService', () => {
             { code: '2', name: '222', quantity: 2, reserve: null },
         ]);
         expect(query.mock.calls[0][0].replace(/\s+/g, ' ').trim().toUpperCase()).toEqual(
-            'SELECT GOODSCODE, SUM(QUAN) AS AMOUNT, COUNT(QUAN) AS QUAN, (SELECT BOUND_QUAN_SHOP FROM BOUND_QUAN WHERE BOUND_QUAN.GOODSCODE = PR_META.GOODSCODE) AS BOUND FROM PR_META WHERE (SHOPOUTCODE IS NOT NULL OR PODBPOSCODE IS NOT NULL OR REALPRICEFCODE IS NOT NULL) AND DATA >= ? AND DATA <= ? AND GOODSCODE IN (?,?) GROUP BY GOODSCODE'.toUpperCase()
+            'SELECT GOODSCODE, SUM(QUAN) AS AMOUNT, COUNT(QUAN) AS QUAN, (SELECT BOUND_QUAN_SHOP FROM BOUND_QUAN WHERE BOUND_QUAN.GOODSCODE = PR_META.GOODSCODE) AS BOUND FROM PR_META WHERE (SHOPOUTCODE IS NOT NULL OR PODBPOSCODE IS NOT NULL OR REALPRICEFCODE IS NOT NULL) AND DATA >= ? AND DATA <= ? AND GOODSCODE IN (?,?) GROUP BY GOODSCODE'.toUpperCase(),
         );
         expect(emit.mock.calls[0]).toEqual([
             'half.store',
@@ -285,7 +293,7 @@ describe('Trade2006GoodService', () => {
             { code: '2', name: '222', quantity: 2, reserve: null },
             { QUAN: 2, AMOUNT: 10, BOUND: 5, GOODSCODE: '2' },
         ]);
-        
+
         // Настройка мока кэша для второго вызова - возвращаем true для ключей, которые были записаны
         get.mockImplementation((key: string) => {
             if (key === 'half_store:2' || key === 'bound_check:2') {
@@ -293,7 +301,7 @@ describe('Trade2006GoodService', () => {
             }
             return Promise.resolve(null);
         });
-        
+
         await service.checkBounds([
             { code: '1', name: '111', quantity: 1, reserve: 1 },
             { code: '2', name: '222', quantity: 2, reserve: null },
@@ -332,7 +340,7 @@ describe('Trade2006GoodService', () => {
             subjectName: '3',
             vendorCode: '4',
             photos: [],
-            title: 'test'
+            title: 'test',
         });
         expect(execute.mock.calls[0]).toEqual([
             'UPDATE OR INSERT INTO WB_CATEGORIES (ID, COMMISSION, NAME, PARENT_ID, PARENT_NAME) VALUES (?, ?, ?, ?, ?) MATCHING (ID)',
@@ -354,10 +362,7 @@ describe('Trade2006GoodService', () => {
         // @ts-ignore - Игнорируем проверку типов для теста
         await service.resetAvailablePrice(null, existingTransaction);
 
-        expect(execute).toHaveBeenCalledWith(
-            'UPDATE OZON_PERC SET AVAILABLE_PRICE = 0',
-            []
-        );
+        expect(execute).toHaveBeenCalledWith('UPDATE OZON_PERC SET AVAILABLE_PRICE = 0', []);
     });
 
     it('должен обнулять AVAILABLE_PRICE для указанных товаров', async () => {
@@ -371,7 +376,7 @@ describe('Trade2006GoodService', () => {
 
         expect(execute).toHaveBeenCalledWith(
             'UPDATE OZON_PERC SET AVAILABLE_PRICE = 0 WHERE GOODSCODE IN (?,?,?)',
-            goodCodes
+            goodCodes,
         );
     });
 
@@ -389,7 +394,7 @@ describe('Trade2006GoodService', () => {
             init: jest.fn(),
             rollback: jest.fn(),
             query: jest.fn(),
-            inTransaction: true
+            inTransaction: true,
         };
 
         await service.resetAvailablePrice(goodCodes, existingTransaction as any);
@@ -403,7 +408,7 @@ describe('Trade2006GoodService', () => {
         expect(execute).toHaveBeenNthCalledWith(
             1,
             `UPDATE OZON_PERC SET AVAILABLE_PRICE = 0 WHERE GOODSCODE IN (${placeholders1})`,
-            firstBatch
+            firstBatch,
         );
 
         // Проверяем второй вызов со следующими 50 товарами
@@ -412,7 +417,7 @@ describe('Trade2006GoodService', () => {
         expect(execute).toHaveBeenNthCalledWith(
             2,
             `UPDATE OZON_PERC SET AVAILABLE_PRICE = 0 WHERE GOODSCODE IN (${placeholders2})`,
-            secondBatch
+            secondBatch,
         );
     });
 
@@ -430,7 +435,7 @@ describe('Trade2006GoodService', () => {
             transaction: {},
             init: jest.fn(),
             rollback: jest.fn(),
-            inTransaction: true
+            inTransaction: true,
         };
 
         const operation = jest.fn().mockImplementation(async (transaction) => {
@@ -464,7 +469,7 @@ describe('Trade2006GoodService', () => {
             isolation: 0,
             transaction: {},
             init: jest.fn(),
-            inTransaction: true
+            inTransaction: true,
         });
 
         // Мокаем logger.error через spy
@@ -491,38 +496,42 @@ describe('Trade2006GoodService', () => {
         // Предположим, что getSku() возвращает '1-1'
         const goodPercentsDto = new Map<string, Partial<GoodPercentDto>>();
         goodPercentsDto.set('1-1', { available_price: 150 });
-    
+
         // Моки для preparePricesContext
         mockPriceCalculationHelper.preparePricesContext.mockResolvedValue({
             goods: [],
-            percents: [{
-                offer_id: 1,
-                pieces: 1,
-                adv_perc: 0,
-                old_perc: 0,
-                perc: 0,
-                min_perc: 0,
-                packing_price: 0,
-                available_price: 0,
-            }],
-            products: [{
-                getSku: () => '1-1',
-                getTransMaxAmount: () => 0,
-                getSalesPercent: () => 0,
-            }]
+            percents: [
+                {
+                    offer_id: 1,
+                    pieces: 1,
+                    adv_perc: 0,
+                    old_perc: 0,
+                    perc: 0,
+                    min_perc: 0,
+                    packing_price: 0,
+                    available_price: 0,
+                },
+            ],
+            products: [
+                {
+                    getSku: () => '1-1',
+                    getTransMaxAmount: () => 0,
+                    getSalesPercent: () => 0,
+                },
+            ],
         });
         mockPriceCalculationHelper.getIncomingPrice.mockReturnValue(100);
         mockPriceCalculationHelper.adjustPercents.mockReturnValue({
             min_perc: 10,
             perc: 20,
-            old_perc: 30
+            old_perc: 30,
         });
-    
+
         // Мок для setPercents (если он вызывает execute)
         const setPercents = jest.spyOn(service, 'setPercents').mockResolvedValue(undefined);
-    
+
         await service.updatePercentsForService(priceUdateable, ['1'], goodPercentsDto);
-    
+
         expect(mockPriceCalculationHelper.preparePricesContext).toHaveBeenCalledWith(priceUdateable, ['1'], service);
         expect(mockPriceCalculationHelper.getIncomingPrice).toHaveBeenCalled();
         expect(mockPriceCalculationHelper.adjustPercents).toHaveBeenCalled();
@@ -533,27 +542,31 @@ describe('Trade2006GoodService', () => {
         // Моки для preparePricesContext
         mockPriceCalculationHelper.preparePricesContext.mockResolvedValue({
             goods: [],
-            percents: [{
-                offer_id: 1,
-                pieces: 1,
-                adv_perc: 0,
-                old_perc: 0,
-                perc: 0,
-                min_perc: 0,
-                packing_price: 0,
-                available_price: 0,
-            }],
-            products: [{
-                getSku: () => '1-1',
-                getTransMaxAmount: () => 0,
-                getSalesPercent: () => 0,
-            }]
+            percents: [
+                {
+                    offer_id: 1,
+                    pieces: 1,
+                    adv_perc: 0,
+                    old_perc: 0,
+                    perc: 0,
+                    min_perc: 0,
+                    packing_price: 0,
+                    available_price: 0,
+                },
+            ],
+            products: [
+                {
+                    getSku: () => '1-1',
+                    getTransMaxAmount: () => 0,
+                    getSalesPercent: () => 0,
+                },
+            ],
         });
         mockPriceCalculationHelper.getIncomingPrice.mockReturnValue(100);
         mockPriceCalculationHelper.adjustPercents.mockReturnValue({
             min_perc: 10,
             perc: 20,
-            old_perc: 30
+            old_perc: 30,
         });
 
         // Мок для setPercents
@@ -567,49 +580,54 @@ describe('Trade2006GoodService', () => {
         expect(setPercents).toHaveBeenCalled(); // Проверяем, что setPercents вызван
     });
 
-
     it('generatePercentsForService without available_prices', async () => {
         const result = await service.generatePercentsForService(priceUdateable, ['1']);
         expect(mockPriceCalculationHelper.preparePricesContext).toHaveBeenCalledWith(priceUdateable, ['1'], service);
         expect(mockPriceCalculationHelper.getIncomingPrice).toHaveBeenCalled();
         expect(mockPriceCalculationHelper.adjustPercents).toHaveBeenCalled();
-        expect(result).toEqual([{
-            offer_id: '1',
-            pieces: 1,
-            perc: 20,
-            adv_perc: 0,
-            min_perc: 10,
-            old_perc: 30,
-            packing_price: 0,
-            available_price: 0
-        }]);
+        expect(result).toEqual([
+            {
+                offer_id: '1',
+                pieces: 1,
+                perc: 20,
+                adv_perc: 0,
+                min_perc: 10,
+                old_perc: 30,
+                packing_price: 0,
+                available_price: 0,
+            },
+        ]);
     });
 
     it('generatePercentsForService with available_prices', async () => {
         // Моки для preparePricesContext
         mockPriceCalculationHelper.preparePricesContext.mockResolvedValue({
             goods: [],
-            percents: [{
-                offer_id: '1',
-                pieces: 1,
-                adv_perc: 5,
-                old_perc: 30,
-                perc: 20,
-                min_perc: 10,
-                packing_price: 0,
-                available_price: 150, // Указываем available_price
-            }],
-            products: [{
-                getSku: () => '1',
-                getTransMaxAmount: () => 40,
-                getSalesPercent: () => 10,
-            }]
+            percents: [
+                {
+                    offer_id: '1',
+                    pieces: 1,
+                    adv_perc: 5,
+                    old_perc: 30,
+                    perc: 20,
+                    min_perc: 10,
+                    packing_price: 0,
+                    available_price: 150, // Указываем available_price
+                },
+            ],
+            products: [
+                {
+                    getSku: () => '1',
+                    getTransMaxAmount: () => 40,
+                    getSalesPercent: () => 10,
+                },
+            ],
         });
         mockPriceCalculationHelper.getIncomingPrice.mockReturnValue(100);
         mockPriceCalculationHelper.adjustPercents.mockReturnValue({
             min_perc: 10,
             perc: 20,
-            old_perc: 30
+            old_perc: 30,
         });
 
         // Вызов метода
@@ -619,23 +637,36 @@ describe('Trade2006GoodService', () => {
         expect(mockPriceCalculationHelper.preparePricesContext).toHaveBeenCalledWith(priceUdateable, ['1'], service);
         expect(mockPriceCalculationHelper.getIncomingPrice).toHaveBeenCalled();
         expect(mockPriceCalculationHelper.adjustPercents).toHaveBeenCalled();
-        expect(result).toEqual([{
-            offer_id: '1',
-            pieces: 1,
-            perc: 20,
-            adv_perc: 5,
-            min_perc: 10,
-            old_perc: 30,
-            packing_price: 0,
-            available_price: 150 // Проверяем, что available_price корректно обработан
-        }]);
+        expect(result).toEqual([
+            {
+                offer_id: '1',
+                pieces: 1,
+                perc: 20,
+                adv_perc: 5,
+                min_perc: 10,
+                old_perc: 30,
+                packing_price: 0,
+                available_price: 150, // Проверяем, что available_price корректно обработан
+            },
+        ]);
     });
 
     it('generatePercentsForService returns empty array if products is empty', async () => {
         mockPriceCalculationHelper.preparePricesContext.mockResolvedValue({
             goods: [],
-            percents: [{ offer_id: '1', pieces: 1, adv_perc: 0, old_perc: 0, perc: 0, min_perc: 0, packing_price: 0, available_price: 0 }],
-            products: []
+            percents: [
+                {
+                    offer_id: '1',
+                    pieces: 1,
+                    adv_perc: 0,
+                    old_perc: 0,
+                    perc: 0,
+                    min_perc: 0,
+                    packing_price: 0,
+                    available_price: 0,
+                },
+            ],
+            products: [],
         });
         const result = await service.generatePercentsForService(priceUdateable, ['1']);
         expect(result).toEqual([]);
@@ -645,7 +676,7 @@ describe('Trade2006GoodService', () => {
         mockPriceCalculationHelper.preparePricesContext.mockResolvedValue({
             goods: [{ code: 1, name: 'Test', price: 100 }],
             percents: [],
-            products: [{ getSku: () => '1', getTransMaxAmount: () => 0, getSalesPercent: () => 0 }]
+            products: [{ getSku: () => '1', getTransMaxAmount: () => 0, getSalesPercent: () => 0 }],
         });
         mockPriceCalculationHelper.getIncomingPrice.mockReturnValue(100);
         mockPriceCalculationHelper.adjustPercents.mockReturnValue({ min_perc: 15, perc: 25, old_perc: 50 });
@@ -658,30 +689,54 @@ describe('Trade2006GoodService', () => {
     it('generatePercentsForService uses percent values if goodPercentsDto does not contain sku', async () => {
         mockPriceCalculationHelper.preparePricesContext.mockResolvedValue({
             goods: [],
-            percents: [{ offer_id: '1', pieces: 1, adv_perc: 5, old_perc: 30, perc: 20, min_perc: 10, packing_price: 0, available_price: 150 }],
-            products: [{ getSku: () => '1', getTransMaxAmount: () => 40, getSalesPercent: () => 10 }]
+            percents: [
+                {
+                    offer_id: '1',
+                    pieces: 1,
+                    adv_perc: 5,
+                    old_perc: 30,
+                    perc: 20,
+                    min_perc: 10,
+                    packing_price: 0,
+                    available_price: 150,
+                },
+            ],
+            products: [{ getSku: () => '1', getTransMaxAmount: () => 40, getSalesPercent: () => 10 }],
         });
         mockPriceCalculationHelper.getIncomingPrice.mockReturnValue(100);
         mockPriceCalculationHelper.adjustPercents.mockReturnValue({ min_perc: 10, perc: 20, old_perc: 30 });
         const goodPercentsDto = new Map<string, Partial<GoodPercentDto>>(); // пустой
         const result = await service.generatePercentsForService(priceUdateable, ['1'], goodPercentsDto);
-        expect(result).toEqual([{
-            offer_id: '1',
-            pieces: 1,
-            perc: 20,
-            adv_perc: 5,
-            min_perc: 10,
-            old_perc: 30,
-            packing_price: 0,
-            available_price: 150
-        }]);
+        expect(result).toEqual([
+            {
+                offer_id: '1',
+                pieces: 1,
+                perc: 20,
+                adv_perc: 5,
+                min_perc: 10,
+                old_perc: 30,
+                packing_price: 0,
+                available_price: 150,
+            },
+        ]);
     });
 
     it('generatePercentsForService returns empty array if no percent passes filter', async () => {
         mockPriceCalculationHelper.preparePricesContext.mockResolvedValue({
             goods: [],
-            percents: [{ offer_id: '1', pieces: 1, adv_perc: 0, old_perc: 0, perc: 0, min_perc: 0, packing_price: 0, available_price: 0 }],
-            products: [{ getSku: () => '2', getTransMaxAmount: () => 0, getSalesPercent: () => 0 }]
+            percents: [
+                {
+                    offer_id: '1',
+                    pieces: 1,
+                    adv_perc: 0,
+                    old_perc: 0,
+                    perc: 0,
+                    min_perc: 0,
+                    packing_price: 0,
+                    available_price: 0,
+                },
+            ],
+            products: [{ getSku: () => '2', getTransMaxAmount: () => 0, getSalesPercent: () => 0 }],
         });
         mockPriceCalculationHelper.getIncomingPrice.mockReturnValue(0); // не проходит фильтр
         const result = await service.generatePercentsForService(priceUdateable, ['1']);
@@ -699,44 +754,46 @@ describe('Trade2006GoodService', () => {
     it('getAvitoData', async () => {
         query.mockReturnValue([
             { ID: 'avito123', GOODSCODE: '456', COEFF: 2, COMMISSION: 15.5 },
-            { ID: 'avito789', GOODSCODE: '101', COEFF: 1, COMMISSION: 12.0 }
+            { ID: 'avito789', GOODSCODE: '101', COEFF: 1, COMMISSION: 12.0 },
         ]);
-        
+
         const result = await service.getAvitoData(['avito123', 'avito789']);
-        
+
         expect(query).toHaveBeenCalledWith(
             'SELECT ID, GOODSCODE, COEFF, COMMISSION\n                     FROM AVITO_GOOD\n                     WHERE ID IN (?,?)',
             ['avito123', 'avito789'],
-            false
+            false,
         );
-        
+
         expect(result).toEqual([
             { id: 'avito123', goodsCode: '456', coeff: 2, commission: 15.5 },
-            { id: 'avito789', goodsCode: '101', coeff: 1, commission: 12.0 }
+            { id: 'avito789', goodsCode: '101', coeff: 1, commission: 12.0 },
         ]);
     });
 
     it('getAvitoData with chunks', async () => {
         const ids = Array.from({ length: 60 }, (_, i) => `avito${i}`);
         query.mockReturnValue([]);
-        
+
         await service.getAvitoData(ids);
-        
+
         // Should make 2 calls (50 + 10 items)
         expect(query).toHaveBeenCalledTimes(2);
-        
+
         // First call with 50 items
-        expect(query).toHaveBeenNthCalledWith(1,
+        expect(query).toHaveBeenNthCalledWith(
+            1,
             expect.stringContaining('WHERE ID IN (' + '?'.repeat(50).split('').join(',') + ')'),
             expect.arrayContaining(ids.slice(0, 50)),
-            false
+            false,
         );
-        
+
         // Second call with remaining 10 items
-        expect(query).toHaveBeenNthCalledWith(2,
+        expect(query).toHaveBeenNthCalledWith(
+            2,
             expect.stringContaining('WHERE ID IN (' + '?'.repeat(10).split('').join(',') + ')'),
             expect.arrayContaining(ids.slice(50, 60)),
-            false
+            false,
         );
     });
 
@@ -745,11 +802,11 @@ describe('Trade2006GoodService', () => {
             id: 'avito123',
             goodsCode: '456',
             coeff: 2,
-            commission: 15.5
+            commission: 15.5,
         };
-        
+
         await service.setAvitoData(avitoData);
-        
+
         const [sql, params] = execute.mock.calls[0];
         expect(sql).toContain('UPDATE OR INSERT INTO AVITO_GOOD');
         expect(sql).toContain('DISABLED, DISABLED_AT, DISABLED_REASON');
@@ -762,11 +819,7 @@ describe('Trade2006GoodService', () => {
 
         const result = await service.getDisabledCodes(GoodServiceEnum.WB);
 
-        expect(query).toHaveBeenCalledWith(
-            'SELECT CODE FROM GOODS_DISABLED WHERE SERVICE = ?',
-            ['wb'],
-            false,
-        );
+        expect(query).toHaveBeenCalledWith('SELECT CODE FROM GOODS_DISABLED WHERE SERVICE = ?', ['wb'], false);
         expect(result).toEqual(['1000', '2500-10']);
     });
 
@@ -813,17 +866,17 @@ describe('Trade2006GoodService', () => {
             id: 'avito456',
             goodsCode: '789',
             coeff: 1,
-            commission: 10.0
+            commission: 10.0,
         };
-        
+
         await service.setAvitoData(avitoData, mockTransaction as any);
-        
+
         expect(mockTransaction.execute).toHaveBeenCalledWith(
             expect.stringContaining('DISABLED, DISABLED_AT, DISABLED_REASON'),
             ['avito456', '789', 1, 10.0],
-            false
+            false,
         );
-        
+
         // Should not call the service's execute
         expect(execute).not.toHaveBeenCalled();
     });
@@ -871,7 +924,8 @@ describe('Trade2006GoodService', () => {
             new Trade2006GoodService(
                 { getTransaction: () => ({ query, execute, commit }) } as any,
                 {
-                    get: (key: string) => (key === 'STORAGE_TYPE' ? 'SHOPSKLAD' : key === 'MARK_CODES_ENABLED' ? 'true' : null),
+                    get: (key: string) =>
+                        key === 'STORAGE_TYPE' ? 'SHOPSKLAD' : key === 'MARK_CODES_ENABLED' ? 'true' : null,
                 } as any,
                 { emit } as any,
                 { get, set, del } as any,
@@ -925,7 +979,14 @@ describe('Trade2006GoodService', () => {
 
             expect(result).toEqual(
                 new Map([
-                    ['498824', new Map([[1, 16], [100, 12], [800, 9]])],
+                    [
+                        '498824',
+                        new Map([
+                            [1, 16],
+                            [100, 12],
+                            [800, 9],
+                        ]),
+                    ],
                     ['552601', new Map([[40, 32]])],
                 ]),
             );

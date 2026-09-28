@@ -6,10 +6,10 @@ import { GoodServiceEnum } from '../../good/good.service.enum';
 
 @Injectable()
 export class TradeSkusCommand implements ICommandAsync<IGoodsProcessingContext> {
-  constructor(private readonly extraGoodService: ExtraGoodService) {}
+    constructor(private readonly extraGoodService: ExtraGoodService) {}
 
-  async execute(context: IGoodsProcessingContext): Promise<IGoodsProcessingContext> {
-    context.ozonSkus = await this.extraGoodService.tradeSkusToServiceSkus(context.skus, GoodServiceEnum.OZON);
-    return context;
-  }
-} 
+    async execute(context: IGoodsProcessingContext): Promise<IGoodsProcessingContext> {
+        context.ozonSkus = await this.extraGoodService.tradeSkusToServiceSkus(context.skus, GoodServiceEnum.OZON);
+        return context;
+    }
+}

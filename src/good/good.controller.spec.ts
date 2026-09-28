@@ -118,7 +118,12 @@ describe('GoodController', () => {
         });
 
         it('getStatus', async () => {
-            const data = { isSwitchedOn: true, total: 3, active: 1, disabled: [{ code: '1000', level: 'sku' as const }] };
+            const data = {
+                isSwitchedOn: true,
+                total: 3,
+                active: 1,
+                disabled: [{ code: '1000', level: 'sku' as const }],
+            };
             extraGoodService.getStatus.mockResolvedValue(data);
             const res = await controller.getStatus(GoodServiceEnum.WB);
             expect(extraGoodService.getStatus).toHaveBeenCalledWith(GoodServiceEnum.WB);

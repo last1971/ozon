@@ -3,14 +3,24 @@ import { BarcodeOffer, GtinBaseItem } from '../interfaces/i.gtin.sync';
 
 describe('checkGtinOffers — общее решение режима GTIN', () => {
     const row = (goodscode: string, gtins: string[]): GtinBaseItem => ({ goodscode, gtins });
-    const offer = (o: string, barcodes: string[] = [], extra: Partial<BarcodeOffer> = {}): BarcodeOffer => ({ offer: o, barcodes, name: `N-${o}`, ...extra });
+    const offer = (o: string, barcodes: string[] = [], extra: Partial<BarcodeOffer> = {}): BarcodeOffer => ({
+        offer: o,
+        barcodes,
+        name: `N-${o}`,
+        ...extra,
+    });
     const map = (entries: [string, BarcodeOffer[]][]) => new Map(entries);
 
     it('целевая — минимальная фасовка; не хватает — в add и reason; прогресс «сверка»', () => {
         const progress = { done: 0, counters: {} };
         const res = checkGtinOffers(
             [row('569593', ['04600000000011', '04600000000028'])],
-            map([['569593', [offer('569593-10'), offer('569593-5', ['OZN2']), offer('569593', ['OZN1', '4600000000028'])]]]),
+            map([
+                [
+                    '569593',
+                    [offer('569593-10'), offer('569593-5', ['OZN2']), offer('569593', ['OZN1', '4600000000028'])],
+                ],
+            ]),
             progress,
         );
 
@@ -28,14 +38,20 @@ describe('checkGtinOffers — общее решение режима GTIN', () =
     });
 
     it('всё стоит → ok, даже если карточка спорная для записи', () => {
-        const res = checkGtinOffers([row('1', ['00400001759547'])], map([['1', [offer('1', ['0400001759547'], { ambiguousReason: 'нет SKU' })]]]));
+        const res = checkGtinOffers(
+            [row('1', ['00400001759547'])],
+            map([['1', [offer('1', ['0400001759547'], { ambiguousReason: 'нет SKU' })]]]),
+        );
 
         expect(res.items[0]).toMatchObject({ ok: true, add: [] });
         expect(res.items[0].ambiguousReason).toBeUndefined();
     });
 
     it('не хватает, а карточка спорная (нет SKU / несколько размеров) → ambiguousReason площадки', () => {
-        const res = checkGtinOffers([row('1', ['111'])], map([['1', [offer('1', [], { ambiguousReason: 'нет SKU' })]]]));
+        const res = checkGtinOffers(
+            [row('1', ['111'])],
+            map([['1', [offer('1', [], { ambiguousReason: 'нет SKU' })]]]),
+        );
 
         expect(res.items[0]).toMatchObject({ ok: false, ambiguousReason: 'нет SKU' });
     });

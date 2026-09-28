@@ -36,11 +36,10 @@ export class SyliusProductService extends ICountUpdateable {
         const itemsPerPage = 100;
         const goods = new Map<string, number>();
 
-        const response = await this.api.method<SyliusVariantsResponse>(
-            '/api/v2/admin/product-variants',
-            'get',
-            { itemsPerPage, page },
-        );
+        const response = await this.api.method<SyliusVariantsResponse>('/api/v2/admin/product-variants', 'get', {
+            itemsPerPage,
+            page,
+        });
 
         const variants = response['hydra:member'] || [];
         for (const variant of variants) {
@@ -66,11 +65,9 @@ export class SyliusProductService extends ICountUpdateable {
             goodsObj[code] = quantity;
         }
 
-        const response = await this.api.method<SyliusStockUpdateResponse>(
-            '/api/v2/admin/stock/update',
-            'post',
-            { goods: goodsObj },
-        );
+        const response = await this.api.method<SyliusStockUpdateResponse>('/api/v2/admin/stock/update', 'post', {
+            goods: goodsObj,
+        });
 
         return response.updated || 0;
     }

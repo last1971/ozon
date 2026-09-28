@@ -26,8 +26,8 @@ describe('FindCategoryCommand', () => {
     it('should pick the most relevant category (first result)', async () => {
         const results = [
             { typeId: 1, typeName: 'A', categoryPath: 'A', similarity: 0.95, fbsCommission: 0.15 },
-            { typeId: 2, typeName: 'B', categoryPath: 'B', similarity: 0.90, fbsCommission: 0.05 },
-            { typeId: 3, typeName: 'C', categoryPath: 'C', similarity: 0.85, fbsCommission: 0.10 },
+            { typeId: 2, typeName: 'B', categoryPath: 'B', similarity: 0.9, fbsCommission: 0.05 },
+            { typeId: 3, typeName: 'C', categoryPath: 'C', similarity: 0.85, fbsCommission: 0.1 },
         ];
         const ozonCategoryService = { searchSimilar: jest.fn().mockResolvedValue(results) } as any;
         const pool = makePool([{ CATEGORY_ID: 999 }]);
@@ -46,8 +46,17 @@ describe('FindCategoryCommand', () => {
     });
 
     it('should use findByPath when category_path is provided', async () => {
-        const pathResult = { typeId: 42, typeName: 'Конденсаторы', categoryPath: 'Электроника -> Компоненты -> Конденсаторы', similarity: 1, fbsCommission: 0.1 };
-        const ozonCategoryService = { findByPath: jest.fn().mockResolvedValue(pathResult), searchSimilar: jest.fn() } as any;
+        const pathResult = {
+            typeId: 42,
+            typeName: 'Конденсаторы',
+            categoryPath: 'Электроника -> Компоненты -> Конденсаторы',
+            similarity: 1,
+            fbsCommission: 0.1,
+        };
+        const ozonCategoryService = {
+            findByPath: jest.fn().mockResolvedValue(pathResult),
+            searchSimilar: jest.fn(),
+        } as any;
         const pool = makePool([{ CATEGORY_ID: 555 }]);
         const command = new FindCategoryCommand(ozonCategoryService, pool as any);
         const context: IProductCreateContext = {
@@ -65,7 +74,10 @@ describe('FindCategoryCommand', () => {
 
     it('should fallback to HNSW when findByPath returns null', async () => {
         const hnswResult = { typeId: 7, typeName: 'X', categoryPath: 'X', similarity: 0.9, fbsCommission: 0.05 };
-        const ozonCategoryService = { findByPath: jest.fn().mockResolvedValue(null), searchSimilar: jest.fn().mockResolvedValue([hnswResult]) } as any;
+        const ozonCategoryService = {
+            findByPath: jest.fn().mockResolvedValue(null),
+            searchSimilar: jest.fn().mockResolvedValue([hnswResult]),
+        } as any;
         const pool = makePool([{ CATEGORY_ID: 777 }]);
         const command = new FindCategoryCommand(ozonCategoryService, pool as any);
         const context: IProductCreateContext = {

@@ -1,18 +1,18 @@
-import { Test, TestingModule } from "@nestjs/testing";
-import { ExtraPriceService } from "./extra.price.service";
-import { ConfigService } from "@nestjs/config";
-import { PriceService } from "./price.service";
-import { YandexPriceService } from "../yandex.price/yandex.price.service";
-import { WbPriceService } from "../wb.price/wb.price.service";
-import { GOOD_SERVICE, IGood } from "../interfaces/IGood";
-import { GoodServiceEnum } from "../good/good.service.enum";
-import { UpdatePriceDto } from "./dto/update.price.dto";
-import { WbCommissionDto } from "../wb.card/dto/wb.commission.dto";
-import { ExtraGoodService } from "../good/extra.good.service";
-import { EventEmitter2 } from "@nestjs/event-emitter";
-import { PriceDto } from "./dto/price.dto";
-import { PriceResponseDto } from "./dto/price.response.dto";
-import { GoodPercentDto } from "../good/dto/good.percent.dto";
+import { Test, TestingModule } from '@nestjs/testing';
+import { ExtraPriceService } from './extra.price.service';
+import { ConfigService } from '@nestjs/config';
+import { PriceService } from './price.service';
+import { YandexPriceService } from '../yandex.price/yandex.price.service';
+import { WbPriceService } from '../wb.price/wb.price.service';
+import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
+import { GoodServiceEnum } from '../good/good.service.enum';
+import { UpdatePriceDto } from './dto/update.price.dto';
+import { WbCommissionDto } from '../wb.card/dto/wb.commission.dto';
+import { ExtraGoodService } from '../good/extra.good.service';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { PriceDto } from './dto/price.dto';
+import { PriceResponseDto } from './dto/price.response.dto';
+import { GoodPercentDto } from '../good/dto/good.percent.dto';
 import { TradeSkusCommand } from './commands/trade-skus.command';
 import { ResetAvailablePriceCommand } from './commands/reset-available-price.command';
 import { UpdatePercentsForGoodSkusCommand } from './commands/update-percents-for-good-skus.command';
@@ -26,8 +26,8 @@ import { ValidateSkusNotEmptyCommand } from './commands/validate-skus-not-empty.
 import { SetResultProcessingMessageCommand } from './commands/set-result-processing-message.command';
 import { CheckVatCommand } from './commands/check-vat.command';
 import { UpdateVatCommand } from './commands/update-vat.command';
-import { AvitoPriceService } from "../avito.price/avito.price.service";
-import { SyliusPriceService } from "../sylius.price/sylius.price.service";
+import { AvitoPriceService } from '../avito.price/avito.price.service';
+import { SyliusPriceService } from '../sylius.price/sylius.price.service';
 import { LoadOzonPricesCommand } from './commands/load-ozon-prices.command';
 import { FilterBySellingPriceAboveCommand } from './commands/filter-by-selling-price-above.command';
 import { FilterByIncomingPriceBelowCommand } from './commands/filter-by-incoming-price-below.command';
@@ -39,17 +39,17 @@ import { CalculateUnprofitableCommand } from './commands/calculate-unprofitable.
 import { ExportUnprofitableXlsxCommand } from './commands/export-unprofitable-xlsx.command';
 import { NotifyTopic } from '../notify/notify.types';
 
-jest.mock("../yandex.price/yandex.price.service");
-jest.mock("../wb.price/wb.price.service");
-jest.mock("./price.service");
-jest.mock("../good/extra.good.service");
+jest.mock('../yandex.price/yandex.price.service');
+jest.mock('../wb.price/wb.price.service');
+jest.mock('./price.service');
+jest.mock('../good/extra.good.service');
 
 class MockCommand {
-  extraGoodService = {};
-  execute = jest.fn(async (ctx) => ctx);
+    extraGoodService = {};
+    execute = jest.fn(async (ctx) => ctx);
 }
 
-describe("ExtraPriceService", () => {
+describe('ExtraPriceService', () => {
     let extraPriceService: ExtraPriceService;
 
     // Корректный мок для ConfigService
@@ -62,7 +62,7 @@ describe("ExtraPriceService", () => {
         isNotInProcessRef: jest.fn(),
         processRef: jest.fn(),
         createProxy: jest.fn(),
-        validate: jest.fn()
+        validate: jest.fn(),
     };
 
     // Моки для сервисов, используем настоящие классы
@@ -73,7 +73,13 @@ describe("ExtraPriceService", () => {
     mockPriceService.updateAllPrices = jest.fn();
     mockPriceService.createAction = jest.fn();
 
-    const mockYandexPriceService = new YandexPriceService(null, null, null, null, null) as jest.Mocked<YandexPriceService>;
+    const mockYandexPriceService = new YandexPriceService(
+        null,
+        null,
+        null,
+        null,
+        null,
+    ) as jest.Mocked<YandexPriceService>;
     mockYandexPriceService.getObtainCoeffs = jest.fn();
     mockYandexPriceService.getProductsWithCoeffs = jest.fn();
     mockYandexPriceService.updatePrices = jest.fn();
@@ -123,7 +129,7 @@ describe("ExtraPriceService", () => {
         getWbCategoryByName: jest.fn(),
         resetAvailablePrice: jest.fn(),
         generatePercentsForService: jest.fn(),
-        updatePercentsForService: jest.fn()
+        updatePercentsForService: jest.fn(),
     };
 
     const mockCommand = new MockCommand();
@@ -165,7 +171,7 @@ describe("ExtraPriceService", () => {
                 { provide: NotifyHighPriceCommand, useValue: mockCommand },
                 { provide: CalculateUnprofitableCommand, useValue: mockCommand },
                 { provide: ExportUnprofitableXlsxCommand, useValue: mockCommand },
-            ]
+            ],
         }).compile();
 
         extraPriceService = new ExtraPriceService(
@@ -203,8 +209,8 @@ describe("ExtraPriceService", () => {
         );
     });
 
-    describe("getService", () => {
-        it("should return the correct service based on the service type", () => {
+    describe('getService', () => {
+        it('should return the correct service based on the service type', () => {
             // Перезаписываем мок для конкретного теста
             mockConfigService.get.mockImplementation((key, defaultValue) => {
                 if (key === 'SERVICES') return [GoodServiceEnum.OZON, GoodServiceEnum.YANDEX];
@@ -251,59 +257,58 @@ describe("ExtraPriceService", () => {
 
             const service = extraPriceService.getService(GoodServiceEnum.OZON);
             expect(service).toBe(mockPriceService);
-
         });
 
-        it("should return null if the service type is not found", () => {
+        it('should return null if the service type is not found', () => {
             mockConfigService.get.mockReturnValue([]);
 
             // Сбрасываем карту сервисов
-            extraPriceService["services"] = new Map();
+            extraPriceService['services'] = new Map();
 
             const service = extraPriceService.getService(GoodServiceEnum.EXPRESS);
             expect(service).toBeNull();
         });
     });
 
-    describe("getServices", () => {
-        it("should return all registered services", () => {
+    describe('getServices', () => {
+        it('should return all registered services', () => {
             mockConfigService.get.mockReturnValue([GoodServiceEnum.OZON, GoodServiceEnum.YANDEX, GoodServiceEnum.WB]);
 
             // Устанавливаем сервисы напрямую
-            extraPriceService["services"] = new Map();
-            extraPriceService["services"].set(GoodServiceEnum.OZON, mockPriceService);
-            extraPriceService["services"].set(GoodServiceEnum.YANDEX, mockYandexPriceService);
-            extraPriceService["services"].set(GoodServiceEnum.WB, mockWbPriceService);
+            extraPriceService['services'] = new Map();
+            extraPriceService['services'].set(GoodServiceEnum.OZON, mockPriceService);
+            extraPriceService['services'].set(GoodServiceEnum.YANDEX, mockYandexPriceService);
+            extraPriceService['services'].set(GoodServiceEnum.WB, mockWbPriceService);
 
             const services = extraPriceService.getServices();
             expect(services).toEqual([mockPriceService, mockYandexPriceService, mockWbPriceService]);
         });
     });
 
-    describe("updatePriceForServices", () => {
-        it("should call updatePriceForService for each service with the correct arguments", async () => {
+    describe('updatePriceForServices', () => {
+        it('should call updatePriceForService for each service with the correct arguments', async () => {
             // Устанавливаем сервисы напрямую
-            extraPriceService["services"] = new Map();
-            extraPriceService["services"].set(GoodServiceEnum.OZON, mockPriceService);
-            extraPriceService["services"].set(GoodServiceEnum.WB, mockWbPriceService);
+            extraPriceService['services'] = new Map();
+            extraPriceService['services'].set(GoodServiceEnum.OZON, mockPriceService);
+            extraPriceService['services'].set(GoodServiceEnum.WB, mockWbPriceService);
 
-            const skus = ["sku1", "sku2"];
+            const skus = ['sku1', 'sku2'];
             const pricesMap = new Map<string, UpdatePriceDto>();
 
-            pricesMap.set("sku1", {
-                min_price: "100",
-                old_price: "150",
-                price: "120",
-                offer_id: "sku1",
-                currency_code: "RUB"
+            pricesMap.set('sku1', {
+                min_price: '100',
+                old_price: '150',
+                price: '120',
+                offer_id: 'sku1',
+                currency_code: 'RUB',
             });
 
-            pricesMap.set("sku2", {
-                min_price: "200",
-                old_price: "250",
-                price: "220",
-                offer_id: "sku2",
-                currency_code: "RUB"
+            pricesMap.set('sku2', {
+                min_price: '200',
+                old_price: '250',
+                price: '220',
+                offer_id: 'sku2',
+                currency_code: 'RUB',
             });
 
             mockGoodService.updatePriceForService.mockResolvedValue({});
@@ -315,15 +320,17 @@ describe("ExtraPriceService", () => {
         });
     });
 
-    describe("updatePriceForGoodSkus", () => {
-        it("should call tradeSkusToServiceSkus for each serviceEnum", async () => {
+    describe('updatePriceForGoodSkus', () => {
+        it('should call tradeSkusToServiceSkus for each serviceEnum', async () => {
             // Mock the services map
-            extraPriceService["services"] = new Map();
-            extraPriceService["services"].set(GoodServiceEnum.YANDEX, mockYandexPriceService);
-            extraPriceService["services"].set(GoodServiceEnum.WB, mockWbPriceService);
+            extraPriceService['services'] = new Map();
+            extraPriceService['services'].set(GoodServiceEnum.YANDEX, mockYandexPriceService);
+            extraPriceService['services'].set(GoodServiceEnum.WB, mockWbPriceService);
 
-            const skus = ["sku1", "sku2"];
-            mockExtraGoodService.tradeSkusToServiceSkus.mockReturnValueOnce(["serviceSku1"]).mockReturnValueOnce(["serviceSku2"]);
+            const skus = ['sku1', 'sku2'];
+            mockExtraGoodService.tradeSkusToServiceSkus
+                .mockReturnValueOnce(['serviceSku1'])
+                .mockReturnValueOnce(['serviceSku2']);
             mockGoodService.updatePriceForService.mockResolvedValue({});
 
             await extraPriceService.updatePriceForGoodSkus(skus);
@@ -332,17 +339,19 @@ describe("ExtraPriceService", () => {
             expect(mockExtraGoodService.tradeSkusToServiceSkus).toHaveBeenCalledWith(skus, GoodServiceEnum.WB);
         });
 
-        it("should call updatePriceForService for each service with mapped SKUs", async () => {
+        it('should call updatePriceForService for each service with mapped SKUs', async () => {
             // Mock the services map
-            extraPriceService["services"] = new Map();
-            extraPriceService["services"].set(GoodServiceEnum.YANDEX, mockYandexPriceService);
-            extraPriceService["services"].set(GoodServiceEnum.WB, mockWbPriceService);
+            extraPriceService['services'] = new Map();
+            extraPriceService['services'].set(GoodServiceEnum.YANDEX, mockYandexPriceService);
+            extraPriceService['services'].set(GoodServiceEnum.WB, mockWbPriceService);
 
-            const skus = ["sku1", "sku2"];
-            const mappedSkus1 = ["serviceSku1"];
-            const mappedSkus2 = ["serviceSku2"];
+            const skus = ['sku1', 'sku2'];
+            const mappedSkus1 = ['serviceSku1'];
+            const mappedSkus2 = ['serviceSku2'];
 
-            mockExtraGoodService.tradeSkusToServiceSkus.mockReturnValueOnce(mappedSkus1).mockReturnValueOnce(mappedSkus2);
+            mockExtraGoodService.tradeSkusToServiceSkus
+                .mockReturnValueOnce(mappedSkus1)
+                .mockReturnValueOnce(mappedSkus2);
             mockGoodService.updatePriceForService.mockResolvedValue({});
 
             await extraPriceService.updatePriceForGoodSkus(skus);
@@ -351,11 +360,11 @@ describe("ExtraPriceService", () => {
             expect(mockGoodService.updatePriceForService).toHaveBeenCalledWith(mockWbPriceService, mappedSkus2);
         });
 
-        it("should handle the case when no services are registered", async () => {
+        it('should handle the case when no services are registered', async () => {
             // Set the services map to empty
-            extraPriceService["services"] = new Map();
+            extraPriceService['services'] = new Map();
 
-            const skus = ["sku1", "sku2"];
+            const skus = ['sku1', 'sku2'];
             await extraPriceService.updatePriceForGoodSkus(skus);
 
             expect(mockExtraGoodService.tradeSkusToServiceSkus).not.toHaveBeenCalled();
@@ -363,15 +372,15 @@ describe("ExtraPriceService", () => {
         });
     });
 
-    describe("updateAllPrices", () => {
+    describe('updateAllPrices', () => {
         beforeEach(() => {
-            extraPriceService["services"] = new Map();
-            extraPriceService["services"].set(GoodServiceEnum.OZON, mockPriceService);
-            extraPriceService["services"].set(GoodServiceEnum.WB, mockWbPriceService);
+            extraPriceService['services'] = new Map();
+            extraPriceService['services'].set(GoodServiceEnum.OZON, mockPriceService);
+            extraPriceService['services'].set(GoodServiceEnum.WB, mockWbPriceService);
             (mockEventEmitter.emit as jest.Mock).mockClear();
         });
 
-        it("should call updateAllPrices on all services", async () => {
+        it('should call updateAllPrices on all services', async () => {
             mockPriceService.updateAllPrices.mockResolvedValue([]);
             mockWbPriceService.updateAllPrices.mockResolvedValue([]);
 
@@ -381,7 +390,7 @@ describe("ExtraPriceService", () => {
             expect(mockWbPriceService.updateAllPrices).toHaveBeenCalled();
         });
 
-        it("should send email when there are errors", async () => {
+        it('should send email when there are errors', async () => {
             const errors = [{ offer_id: 'sku1', error: 'failed' }];
             mockPriceService.updateAllPrices.mockResolvedValue(errors);
             mockWbPriceService.updateAllPrices.mockResolvedValue([]);
@@ -396,7 +405,7 @@ describe("ExtraPriceService", () => {
             );
         });
 
-        it("should not send email when no errors", async () => {
+        it('should not send email when no errors', async () => {
             mockPriceService.updateAllPrices.mockResolvedValue([]);
             mockWbPriceService.updateAllPrices.mockResolvedValue([]);
 
@@ -405,11 +414,11 @@ describe("ExtraPriceService", () => {
             expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(
                 'error.message',
                 expect.anything(),
-                expect.anything()
+                expect.anything(),
             );
         });
 
-        it("should handle null/undefined errors from services", async () => {
+        it('should handle null/undefined errors from services', async () => {
             mockPriceService.updateAllPrices.mockResolvedValue(null);
             mockWbPriceService.updateAllPrices.mockResolvedValue(undefined);
 
@@ -418,18 +427,18 @@ describe("ExtraPriceService", () => {
             expect(mockEventEmitter.emit).not.toHaveBeenCalledWith(
                 'error.message',
                 expect.anything(),
-                expect.anything()
+                expect.anything(),
             );
         });
     });
 
-    describe("getWbCoeff", () => {
-        it("should call getWbCategoryByName from goodService with the correct name", async () => {
-            const name = "testName";
+    describe('getWbCoeff', () => {
+        it('should call getWbCategoryByName from goodService with the correct name', async () => {
+            const name = 'testName';
             const mockResponse: WbCommissionDto = {
                 id: 1,
-                name: "testName",
-                commission: 10
+                name: 'testName',
+                commission: 10,
             };
 
             mockGoodService.getWbCategoryByName.mockResolvedValue(mockResponse);
@@ -445,13 +454,13 @@ describe("ExtraPriceService", () => {
         it('только выше порога, процент со знаком, пустая мин. цена пропущена', () => {
             const products: PriceDto[] = [
                 {
-                    marketing_seller_price: "200",
-                    min_price: "100",
-                    offer_id: "1",
-                    product_id: "p1",
-                    name: "Product 1",
-                    marketing_price: "200",
-                    incoming_price: "90"
+                    marketing_seller_price: '200',
+                    min_price: '100',
+                    offer_id: '1',
+                    product_id: 'p1',
+                    name: 'Product 1',
+                    marketing_price: '200',
+                    incoming_price: '90',
                 } as unknown as PriceDto,
                 {
                     marketing_seller_price: '150',
@@ -460,7 +469,7 @@ describe("ExtraPriceService", () => {
                     product_id: 'p2',
                     name: 'Product 2',
                     marketing_price: '150',
-                    incoming_price: '140'
+                    incoming_price: '140',
                 } as unknown as PriceDto,
                 {
                     marketing_seller_price: '300',
@@ -469,26 +478,28 @@ describe("ExtraPriceService", () => {
                     product_id: 'p3',
                     name: 'Product 3',
                     marketing_price: '300',
-                    incoming_price: '190'
+                    incoming_price: '190',
                 } as unknown as PriceDto,
             ];
 
             products.push(
                 { marketing_seller_price: '1191', min_price: '1269', offer_id: '4' } as unknown as PriceDto, // −6.1
                 { marketing_seller_price: '1048', min_price: '1000', offer_id: '5' } as unknown as PriceDto, // +4.8, округлилось бы в 5
-                { marketing_seller_price: '100', min_price: '0', offer_id: '6' } as unknown as PriceDto,     // мин. цены нет
+                { marketing_seller_price: '100', min_price: '0', offer_id: '6' } as unknown as PriceDto, // мин. цены нет
             );
             const result = extraPriceService['filterProblematicProducts'](products, 5);
 
             expect(result.map((p) => [p.offer_id, p.diffPercent])).toEqual([
-                ['1', 100],  // (200-100)/100
-                ['3', 50],   // (300-200)/200
+                ['1', 100], // (200-100)/100
+                ['3', 50], // (300-200)/200
                 ['4', -6.1], // (1191-1269)/1269 — в пользу маркетплейса
             ]);
         });
 
         it('ровно на пороге — не проблема', () => {
-            const products = [{ marketing_seller_price: '105', min_price: '100', offer_id: '1' } as unknown as PriceDto];
+            const products = [
+                { marketing_seller_price: '105', min_price: '100', offer_id: '1' } as unknown as PriceDto,
+            ];
             expect(extraPriceService['filterProblematicProducts'](products, 5)).toEqual([]);
         });
     });
@@ -500,7 +511,7 @@ describe("ExtraPriceService", () => {
                 min_perc: 10,
                 perc: 15,
                 old_perc: 20,
-                available_price: 100
+                available_price: 100,
             };
 
             mockGoodService.generatePercentsForService.mockResolvedValue([goodPercentDto]);
@@ -510,7 +521,7 @@ describe("ExtraPriceService", () => {
             expect(mockGoodService.generatePercentsForService).toHaveBeenCalledWith(
                 mockPriceService,
                 [sku],
-                new Map([[sku, goodPercentDto]])
+                new Map([[sku, goodPercentDto]]),
             );
             expect(result).toEqual(goodPercentDto);
         });
@@ -521,35 +532,31 @@ describe("ExtraPriceService", () => {
                 min_perc: 10,
                 perc: 15,
                 old_perc: 20,
-                available_price: 100
+                available_price: 100,
             };
 
             mockGoodService.generatePercentsForService.mockResolvedValue([goodPercentDto]);
 
             const result = await extraPriceService.generatePercentsForOzon(sku);
 
-            expect(mockGoodService.generatePercentsForService).toHaveBeenCalledWith(
-                mockPriceService,
-                [sku],
-                undefined
-            );
+            expect(mockGoodService.generatePercentsForService).toHaveBeenCalledWith(mockPriceService, [sku], undefined);
             expect(result).toEqual(goodPercentDto);
         });
     });
 
-    describe("ExtraPriceService - handleIncomingGoods", () => {
-        it("should call the command chain with correct context", async () => {
-            const skus = ["sku1", "sku2"];
+    describe('ExtraPriceService - handleIncomingGoods', () => {
+        it('should call the command chain with correct context', async () => {
+            const skus = ['sku1', 'sku2'];
             // Сбросить вызовы
             mockCommand.execute.mockClear();
             await extraPriceService.handleIncomingGoods(skus);
             // Проверяем, что любая команда была вызвана с нужным контекстом
             expect(mockCommand.execute).toHaveBeenCalled();
             // Проверяем, что хотя бы один вызов был с нужными skus
-            expect(mockCommand.execute.mock.calls.some(call => call[0] && call[0].skus === skus)).toBe(true);
+            expect(mockCommand.execute.mock.calls.some((call) => call[0] && call[0].skus === skus)).toBe(true);
         });
 
-        it("should call validateSkusNotEmptyCommand and log warning if skus is empty", async () => {
+        it('should call validateSkusNotEmptyCommand and log warning if skus is empty', async () => {
             const skus: string[] = [];
             // Сбросить вызовы
             mockCommand.execute.mockClear();
@@ -559,33 +566,34 @@ describe("ExtraPriceService", () => {
             await extraPriceService.handleIncomingGoods(skus);
             // Проверяем, что любая команда была вызвана с пустым skus
             expect(mockCommand.execute).toHaveBeenCalled();
-            expect(mockCommand.execute.mock.calls.some(call => call[0] && Array.isArray(call[0].skus) && call[0].skus.length === 0)).toBe(true);
+            expect(
+                mockCommand.execute.mock.calls.some(
+                    (call) => call[0] && Array.isArray(call[0].skus) && call[0].skus.length === 0,
+                ),
+            ).toBe(true);
             // Проверяем, что логгер был вызван (если логгер есть в контексте)
             // (Если логгер не используется — этот expect можно убрать)
         });
     });
 
-    describe("ExtraPriceService - updatePercentsForGoodSkus", () => {
+    describe('ExtraPriceService - updatePercentsForGoodSkus', () => {
         beforeEach(() => {
             // Setup OZON service in services map
-            extraPriceService["services"] = new Map();
-            extraPriceService["services"].set(GoodServiceEnum.OZON, mockPriceService);
+            extraPriceService['services'] = new Map();
+            extraPriceService['services'].set(GoodServiceEnum.OZON, mockPriceService);
         });
 
-        it("should call updatePercentsForService for Ozon SKUs", async () => {
-            const ozonSkus = ["ozon-sku1", "ozon-sku2"];
+        it('should call updatePercentsForService for Ozon SKUs', async () => {
+            const ozonSkus = ['ozon-sku1', 'ozon-sku2'];
 
             mockGoodService.updatePercentsForService.mockResolvedValue([]);
 
             await extraPriceService.updatePercentsForGoodSkus(ozonSkus);
 
-            expect(mockGoodService.updatePercentsForService).toHaveBeenCalledWith(
-                mockPriceService,
-                ozonSkus
-            );
+            expect(mockGoodService.updatePercentsForService).toHaveBeenCalledWith(mockPriceService, ozonSkus);
         });
 
-        it("should not call updatePercentsForService when ozonSkus is empty", async () => {
+        it('should not call updatePercentsForService when ozonSkus is empty', async () => {
             const ozonSkus: string[] = [];
 
             mockGoodService.updatePercentsForService.mockResolvedValue([]);
@@ -595,29 +603,26 @@ describe("ExtraPriceService", () => {
             expect(mockGoodService.updatePercentsForService).not.toHaveBeenCalled();
         });
 
-        it("should call updatePercentsForService with null for generic SKUs", async () => {
-            const ozonSkus = ["ozon-sku1"];
-            const allSkus = ["ozon-sku1", "generic-sku1", "generic-sku2"];
+        it('should call updatePercentsForService with null for generic SKUs', async () => {
+            const ozonSkus = ['ozon-sku1'];
+            const allSkus = ['ozon-sku1', 'generic-sku1', 'generic-sku2'];
 
             mockGoodService.updatePercentsForService.mockResolvedValue([]);
 
             await extraPriceService.updatePercentsForGoodSkus(ozonSkus, allSkus);
 
             // Первый вызов для Ozon SKUs
-            expect(mockGoodService.updatePercentsForService).toHaveBeenCalledWith(
-                mockPriceService,
-                ozonSkus
-            );
+            expect(mockGoodService.updatePercentsForService).toHaveBeenCalledWith(mockPriceService, ozonSkus);
             // Второй вызов для generic SKUs с null
-            expect(mockGoodService.updatePercentsForService).toHaveBeenCalledWith(
-                null,
-                ["generic-sku1", "generic-sku2"]
-            );
+            expect(mockGoodService.updatePercentsForService).toHaveBeenCalledWith(null, [
+                'generic-sku1',
+                'generic-sku2',
+            ]);
         });
 
-        it("should not call for generic if allSkus only contains ozonSkus", async () => {
-            const ozonSkus = ["ozon-sku1", "ozon-sku2"];
-            const allSkus = ["ozon-sku1", "ozon-sku2"];
+        it('should not call for generic if allSkus only contains ozonSkus', async () => {
+            const ozonSkus = ['ozon-sku1', 'ozon-sku2'];
+            const allSkus = ['ozon-sku1', 'ozon-sku2'];
 
             mockGoodService.updatePercentsForService.mockResolvedValue([]);
 
@@ -625,29 +630,26 @@ describe("ExtraPriceService", () => {
 
             // Только один вызов для Ozon SKUs
             expect(mockGoodService.updatePercentsForService).toHaveBeenCalledTimes(1);
-            expect(mockGoodService.updatePercentsForService).toHaveBeenCalledWith(
-                mockPriceService,
-                ozonSkus
-            );
+            expect(mockGoodService.updatePercentsForService).toHaveBeenCalledWith(mockPriceService, ozonSkus);
         });
     });
 
-    describe("ExtraPriceService - checkPriceDifferenceAndNotify", () => {
-        it("нет товаров выше порога — события нет", async () => {
+    describe('ExtraPriceService - checkPriceDifferenceAndNotify', () => {
+        it('нет товаров выше порога — события нет', async () => {
             mockPriceService.index = jest.fn().mockResolvedValue({
-                data: [{ marketing_seller_price: "100", min_price: "100", offer_id: "1" }],
+                data: [{ marketing_seller_price: '100', min_price: '100', offer_id: '1' }],
             } as unknown as PriceResponseDto);
-            const eventEmitterSpy = jest.spyOn(mockEventEmitter, "emit");
+            const eventEmitterSpy = jest.spyOn(mockEventEmitter, 'emit');
             eventEmitterSpy.mockClear();
-            await extraPriceService.checkPriceDifferenceAndNotify(["1"]);
-            expect(eventEmitterSpy).not.toHaveBeenCalledWith("problematic.prices", expect.anything());
+            await extraPriceService.checkPriceDifferenceAndNotify(['1']);
+            expect(eventEmitterSpy).not.toHaveBeenCalledWith('problematic.prices', expect.anything());
         });
 
-        it("should emit an event if problematic products are found", async () => {
-            const ozonSkus = ["ozon-sku1", "ozon-sku2"];
+        it('should emit an event if problematic products are found', async () => {
+            const ozonSkus = ['ozon-sku1', 'ozon-sku2'];
             const mockProducts = [
-                { marketing_seller_price: "200", min_price: "100", offer_id: "1" } as unknown as PriceDto,
-                { marketing_seller_price: "300", min_price: "200", offer_id: "2" } as unknown as PriceDto,
+                { marketing_seller_price: '200', min_price: '100', offer_id: '1' } as unknown as PriceDto,
+                { marketing_seller_price: '300', min_price: '200', offer_id: '2' } as unknown as PriceDto,
             ];
 
             const mockResponse = {
@@ -657,39 +659,39 @@ describe("ExtraPriceService", () => {
             } as unknown as PriceResponseDto;
 
             mockPriceService.index = jest.fn().mockResolvedValue(mockResponse);
-            const eventEmitterSpy = jest.spyOn(mockEventEmitter, "emit");
+            const eventEmitterSpy = jest.spyOn(mockEventEmitter, 'emit');
 
             await extraPriceService.checkPriceDifferenceAndNotify(ozonSkus);
 
             expect(mockPriceService.index).toHaveBeenCalledWith({
                 offer_id: ozonSkus,
                 limit: 4,
-                visibility: "ALL"
+                visibility: 'ALL',
             });
-            expect(eventEmitterSpy).toHaveBeenCalledWith("problematic.prices", expect.any(Object));
+            expect(eventEmitterSpy).toHaveBeenCalledWith('problematic.prices', expect.any(Object));
         });
 
-        it("should log a warning if no SKUs are provided", async () => {
+        it('should log a warning if no SKUs are provided', async () => {
             const ozonSkus: string[] = [];
-            const loggerSpy = jest.spyOn(extraPriceService["logger"], "warn");
+            const loggerSpy = jest.spyOn(extraPriceService['logger'], 'warn');
 
             await extraPriceService.checkPriceDifferenceAndNotify(ozonSkus);
 
-            expect(loggerSpy).toHaveBeenCalledWith("No trade SKUs provided for price difference check.");
+            expect(loggerSpy).toHaveBeenCalledWith('No trade SKUs provided for price difference check.');
         });
     });
 
-    describe("ExtraPriceService - handleDiscounts", () => {
-        it("should call the command chain with correct context", async () => {
-            const skus = ["sku1", "sku2"];
+    describe('ExtraPriceService - handleDiscounts', () => {
+        it('should call the command chain with correct context', async () => {
+            const skus = ['sku1', 'sku2'];
             mockCommand.execute.mockClear();
             await extraPriceService.handleDiscounts(skus);
             expect(mockCommand.execute).toHaveBeenCalled();
-            expect(mockCommand.execute.mock.calls.some(call => call[0] && call[0].skus === skus)).toBe(true);
+            expect(mockCommand.execute.mock.calls.some((call) => call[0] && call[0].skus === skus)).toBe(true);
         });
     });
 
-    describe("ExtraPriceService - updateAllPercentsAndPrices", () => {
+    describe('ExtraPriceService - updateAllPercentsAndPrices', () => {
         let mockGetAllOzonSkusCommand: any;
         let mockOzonSkusToTradeSkusCommand: any;
 
@@ -702,7 +704,7 @@ describe("ExtraPriceService", () => {
             (extraPriceService as any).ozonSkusToTradeSkusCommand = mockOzonSkusToTradeSkusCommand;
         });
 
-        it("should execute command chain successfully", async () => {
+        it('should execute command chain successfully', async () => {
             // Сбросить вызовы
             mockCommand.execute.mockClear();
             mockCommand.execute.mockResolvedValue({});
@@ -713,7 +715,7 @@ describe("ExtraPriceService", () => {
             expect(mockCommand.execute).toHaveBeenCalled();
         });
 
-        it("should handle errors and log them", async () => {
+        it('should handle errors and log them', async () => {
             const error = new Error('Test error');
             mockCommand.execute.mockRejectedValue(error);
 
@@ -723,11 +725,11 @@ describe("ExtraPriceService", () => {
 
             expect(loggerErrorSpy).toHaveBeenCalledWith(
                 'Ошибка при массовом обновлении процентов и цен: Test error',
-                error.stack
+                error.stack,
             );
         });
 
-        it("should initialize context with correct structure", async () => {
+        it('should initialize context with correct structure', async () => {
             // Сбросить вызовы
             mockCommand.execute.mockClear();
             mockCommand.execute.mockResolvedValue({});
@@ -738,7 +740,7 @@ describe("ExtraPriceService", () => {
             expect(mockCommand.execute).toHaveBeenCalled();
         });
 
-        it("should use logger from service", async () => {
+        it('should use logger from service', async () => {
             // Сбросить вызовы
             mockCommand.execute.mockClear();
             mockCommand.execute.mockResolvedValue({});
@@ -815,9 +817,9 @@ describe("ExtraPriceService", () => {
         });
 
         it('should throw error if service not found', async () => {
-            await expect(
-                extraPriceService.updateVatForAllMismatches('UNKNOWN' as any, 20)
-            ).rejects.toThrow('Service UNKNOWN not found');
+            await expect(extraPriceService.updateVatForAllMismatches('UNKNOWN' as any, 20)).rejects.toThrow(
+                'Service UNKNOWN not found',
+            );
         });
 
         it('should throw error if service does not support VAT operations', async () => {
@@ -869,9 +871,9 @@ describe("ExtraPriceService", () => {
                 mockCommand as any,
             );
 
-            await expect(
-                extraPriceService.updateVatForAllMismatches(GoodServiceEnum.YANDEX, 20)
-            ).rejects.toThrow('Service yandex does not support VAT operations');
+            await expect(extraPriceService.updateVatForAllMismatches(GoodServiceEnum.YANDEX, 20)).rejects.toThrow(
+                'Service yandex does not support VAT operations',
+            );
         });
 
         it('should use default limit of 1000 if not provided', async () => {
@@ -933,7 +935,7 @@ describe("ExtraPriceService", () => {
 
             expect(loggerErrorSpy).toHaveBeenCalledWith(
                 'Ошибка при оптимизации цен Ozon: Optimization error',
-                error.stack
+                error.stack,
             );
         });
 

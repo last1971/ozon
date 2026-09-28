@@ -74,8 +74,7 @@ export interface CategoryAttributesResult {
 }
 
 const SKIP_ATTRIBUTE_IDS = new Set([
-    4180, 4384, 4385, 8789, 8790, 9024, 9546, 10096,
-    11254, 11650, 21837, 21841, 21845, 22232, 22270, 22273, 22390,
+    4180, 4384, 4385, 8789, 8790, 9024, 9546, 10096, 11254, 11650, 21837, 21841, 21845, 22232, 22270, 22273, 22390,
 ]);
 
 const EMBEDDING_DIM = 1536;
@@ -83,8 +82,16 @@ const INDEX_PATH = path.join(process.cwd(), 'data', 'ozon_categories.hnsw');
 const WB_INDEX_PATH = path.join(process.cwd(), 'data', 'wb_categories.hnsw');
 
 const SUBSCRIPT_MAP: Record<string, string> = {
-    '₀': '0', '₁': '1', '₂': '2', '₃': '3', '₄': '4',
-    '₅': '5', '₆': '6', '₇': '7', '₈': '8', '₉': '9',
+    '₀': '0',
+    '₁': '1',
+    '₂': '2',
+    '₃': '3',
+    '₄': '4',
+    '₅': '5',
+    '₆': '6',
+    '₇': '7',
+    '₈': '8',
+    '₉': '9',
 };
 
 function sanitizeForWin1251(str: string): string {
@@ -157,14 +164,19 @@ export class OzonCategoryService implements OnModuleInit {
                     this.wbIdMap = idMap;
                     this.wbDataMap = dataMap;
                 }
-                this.logger.log(`${label} HNSW index loaded: ${index.getCurrentCount()} vectors, ${records.length} maps`);
+                this.logger.log(
+                    `${label} HNSW index loaded: ${index.getCurrentCount()} vectors, ${records.length} maps`,
+                );
             } catch (error) {
                 this.logger.error(`Failed to load ${label} index: ${error.message}`);
             }
         }
     }
 
-    private async rebuildHnswIndex(prefix: string, indexPath: string): Promise<{
+    private async rebuildHnswIndex(
+        prefix: string,
+        indexPath: string,
+    ): Promise<{
         index: HierarchicalNSW;
         idMap: Map<number, number>;
         dataMap: Map<number, Record<string, string>>;
@@ -215,14 +227,18 @@ export class OzonCategoryService implements OnModuleInit {
 
     async searchSimilar(text: string, limit = 10): Promise<SearchResult[]> {
         if (!this.index?.getCurrentCount()) {
-            try { await this.rebuildIndex(); } catch { return []; }
+            try {
+                await this.rebuildIndex();
+            } catch {
+                return [];
+            }
         }
 
         const embedding = await this.aiService.generateEmbedding(text);
         const hits = this.searchByVector(this.index, this.typeIdMap, embedding, limit);
-        return Promise.all(hits.map(hit =>
-            this.buildSearchResult(hit.id, this.typeDataMap.get(hit.id) || {}, hit.similarity),
-        ));
+        return Promise.all(
+            hits.map((hit) => this.buildSearchResult(hit.id, this.typeDataMap.get(hit.id) || {}, hit.similarity)),
+        );
     }
 
     async findByPath(inputPath: string): Promise<SearchResult | null> {
@@ -232,7 +248,11 @@ export class OzonCategoryService implements OnModuleInit {
                 return this.buildSearchResult(typeId, data);
             }
         }
-        const lastSegment = inputPath.split(/\s*>\s*/).pop()?.trim().toLowerCase();
+        const lastSegment = inputPath
+            .split(/\s*>\s*/)
+            .pop()
+            ?.trim()
+            .toLowerCase();
         if (lastSegment) {
             for (const [typeId, data] of this.typeDataMap) {
                 if ((data.name || '').toLowerCase() === lastSegment) {
@@ -243,11 +263,13 @@ export class OzonCategoryService implements OnModuleInit {
         return null;
     }
 
-    private async buildSearchResult(typeId: number, data: Record<string, string>, similarity = 1): Promise<SearchResult> {
+    private async buildSearchResult(
+        typeId: number,
+        data: Record<string, string>,
+        similarity = 1,
+    ): Promise<SearchResult> {
         const commissions = await this.getCommissions(typeId);
-        const maxFbs = commissions?.fbs.length
-            ? Math.max(...commissions.fbs.map(r => r.rate))
-            : null;
+        const maxFbs = commissions?.fbs.length ? Math.max(...commissions.fbs.map((r) => r.rate)) : null;
         return {
             typeId,
             typeName: data?.name || '',
@@ -262,7 +284,8 @@ export class OzonCategoryService implements OnModuleInit {
     async exportToRedis(): Promise<{ exported: number; total: number }> {
         return this.exportEmbeddingsToRedis({
             prefix: 'ozon',
-            metaQuery: 'SELECT TYPE_ID, TYPE_NAME, CATEGORY_PATH FROM OZON_TYPES WHERE EMBEDDING IS NOT NULL AND DISABLED = 0',
+            metaQuery:
+                'SELECT TYPE_ID, TYPE_NAME, CATEGORY_PATH FROM OZON_TYPES WHERE EMBEDDING IS NOT NULL AND DISABLED = 0',
             blobQuery: (ids: string) => `SELECT TYPE_ID, EMBEDDING FROM OZON_TYPES WHERE TYPE_ID IN (${ids})`,
             idField: 'TYPE_ID',
             fieldsFn: (meta: any) => ({ name: meta.TYPE_NAME, path: meta.CATEGORY_PATH }),
@@ -278,7 +301,8 @@ export class OzonCategoryService implements OnModuleInit {
         this.logger.log(`Got ${tree.result.length} root categories`);
 
         const t = await this.pool.getTransaction();
-        let categories = 0, types = 0;
+        let categories = 0,
+            types = 0;
 
         try {
             const process = async (node: CategoryNode, parentId: number | null, pathArr: string[]) => {
@@ -286,7 +310,12 @@ export class OzonCategoryService implements OnModuleInit {
                     await t.execute(
                         `UPDATE OR INSERT INTO OZON_CATEGORIES (CATEGORY_ID, PARENT_ID, CATEGORY_NAME, DISABLED)
                          VALUES (?, ?, ?, ?) MATCHING (CATEGORY_ID)`,
-                        [node.description_category_id, parentId, sanitizeForWin1251(node.category_name || ''), node.disabled ? 1 : 0],
+                        [
+                            node.description_category_id,
+                            parentId,
+                            sanitizeForWin1251(node.category_name || ''),
+                            node.disabled ? 1 : 0,
+                        ],
                         false,
                     );
                     categories++;
@@ -299,7 +328,13 @@ export class OzonCategoryService implements OnModuleInit {
                     await t.execute(
                         `UPDATE OR INSERT INTO OZON_TYPES (TYPE_ID, CATEGORY_ID, TYPE_NAME, CATEGORY_PATH, DISABLED)
                          VALUES (?, ?, ?, ?, ?) MATCHING (TYPE_ID)`,
-                        [node.type_id, parentId, sanitizeForWin1251(node.type_name || ''), [...pathArr, sanitizeForWin1251(node.type_name || '')].join(' -> '), node.disabled ? 1 : 0],
+                        [
+                            node.type_id,
+                            parentId,
+                            sanitizeForWin1251(node.type_name || ''),
+                            [...pathArr, sanitizeForWin1251(node.type_name || '')].join(' -> '),
+                            node.disabled ? 1 : 0,
+                        ],
                         false,
                     );
                     types++;
@@ -325,10 +360,15 @@ export class OzonCategoryService implements OnModuleInit {
         await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
 
         const ranges = [
-            { min: 0, max: 100 }, { min: 100, max: 300 }, { min: 300, max: 1500 },
-            { min: 1500, max: 5000 }, { min: 5000, max: 10000 }, { min: 10000, max: null },
+            { min: 0, max: 100 },
+            { min: 100, max: 300 },
+            { min: 300, max: 1500 },
+            { min: 1500, max: 5000 },
+            { min: 5000, max: 10000 },
+            { min: 10000, max: null },
         ];
-        const fboCol = [3, 4, 5, 6, 7, 8], fbsCol = [15, 16, 17, 18, 19, 20];
+        const fboCol = [3, 4, 5, 6, 7, 8],
+            fbsCol = [15, 16, 17, 18, 19, 20];
         const commissions = new Map<string, { fbo: CommissionRange[]; fbs: CommissionRange[] }>();
 
         workbook.worksheets[0].eachRow((row, num) => {
@@ -384,7 +424,11 @@ export class OzonCategoryService implements OnModuleInit {
         const t = await this.pool.getTransaction();
         const transaction = (t as any).transaction;
         try {
-            const [row] = await t.query('SELECT FBO_COMMISSIONS, FBS_COMMISSIONS FROM OZON_TYPES WHERE TYPE_ID = ?', [typeId], false);
+            const [row] = await t.query(
+                'SELECT FBO_COMMISSIONS, FBS_COMMISSIONS FROM OZON_TYPES WHERE TYPE_ID = ?',
+                [typeId],
+                false,
+            );
             if (!row) {
                 await t.commit(true);
                 return null;
@@ -408,7 +452,7 @@ export class OzonCategoryService implements OnModuleInit {
     async getCommissionForPrice(typeId: number, price: number, scheme: 'fbo' | 'fbs' = 'fbs'): Promise<number | null> {
         const c = await this.getCommissions(typeId);
         if (!c) return null;
-        const range = c[scheme].find(r => price >= r.min && (r.max === null || price < r.max));
+        const range = c[scheme].find((r) => price >= r.min && (r.max === null || price < r.max));
         return range?.rate ?? null;
     }
 
@@ -416,8 +460,11 @@ export class OzonCategoryService implements OnModuleInit {
 
     async generateEmbeddings(batchSize = 100): Promise<{ processed: number; errors: number }> {
         return this.generateEmbeddingsForTable({
-            prefix: 'ozon', table: 'OZON_TYPES', idField: 'TYPE_ID',
-            selectQuery: 'SELECT TYPE_ID, TYPE_NAME, CATEGORY_PATH FROM OZON_TYPES WHERE EMBEDDING IS NULL AND DISABLED = 0',
+            prefix: 'ozon',
+            table: 'OZON_TYPES',
+            idField: 'TYPE_ID',
+            selectQuery:
+                'SELECT TYPE_ID, TYPE_NAME, CATEGORY_PATH FROM OZON_TYPES WHERE EMBEDDING IS NULL AND DISABLED = 0',
             textFn: (row: any) => row.CATEGORY_PATH,
             redisFn: (row: any) => ({ name: row.TYPE_NAME, path: row.CATEGORY_PATH }),
             batchSize,
@@ -429,7 +476,10 @@ export class OzonCategoryService implements OnModuleInit {
         const transaction = (t as any).transaction;
         try {
             const [row] = await t.query('SELECT EMBEDDING FROM OZON_TYPES WHERE TYPE_ID = ?', [typeId], false);
-            if (!row) { await t.commit(true); return null; }
+            if (!row) {
+                await t.commit(true);
+                return null;
+            }
             const buf = await readBlob(row.EMBEDDING, transaction, true);
             await t.commit(true);
             if (!buf) return null;
@@ -454,12 +504,15 @@ export class OzonCategoryService implements OnModuleInit {
             if (attr.dictionary_id > 0) {
                 this.logger.log(`  Loading values for attr ${attr.id} "${attr.name}" (dict=${attr.dictionary_id})`);
             }
-            const allValues: CategoryAttributeValue[] = attr.dictionary_id > 0
-                ? await this.productService.getCategoryAttributeValues(attr.id, desc_cat_id, type_id)
-                : [];
+            const allValues: CategoryAttributeValue[] =
+                attr.dictionary_id > 0
+                    ? await this.productService.getCategoryAttributeValues(attr.id, desc_cat_id, type_id)
+                    : [];
             const truncated = allValues.length > this.attrValuesLimit;
             const values = truncated ? [] : allValues;
-            this.logger.log(`  attr ${attr.id} "${attr.name}": ${allValues.length} values${truncated ? ` (truncated, limit=${this.attrValuesLimit})` : ''}`);
+            this.logger.log(
+                `  attr ${attr.id} "${attr.name}": ${allValues.length} values${truncated ? ` (truncated, limit=${this.attrValuesLimit})` : ''}`,
+            );
             attributes.push({ ...attr, values, ...(truncated ? { values_count: allValues.length } : {}) });
         }
 
@@ -501,9 +554,11 @@ export class OzonCategoryService implements OnModuleInit {
 
     async generateWbEmbeddings(batchSize = 100): Promise<{ processed: number; errors: number }> {
         return this.generateEmbeddingsForTable({
-            prefix: 'wb', table: 'WB_CATEGORIES', idField: 'ID',
+            prefix: 'wb',
+            table: 'WB_CATEGORIES',
+            idField: 'ID',
             selectQuery: 'SELECT ID, NAME, PARENT_NAME FROM WB_CATEGORIES WHERE EMBEDDING IS NULL',
-            textFn: (row: any) => row.PARENT_NAME ? `${row.PARENT_NAME} -> ${row.NAME}` : row.NAME,
+            textFn: (row: any) => (row.PARENT_NAME ? `${row.PARENT_NAME} -> ${row.NAME}` : row.NAME),
             redisFn: (row: any) => ({ name: row.NAME, parentName: row.PARENT_NAME || '' }),
             batchSize,
         });
@@ -527,26 +582,44 @@ export class OzonCategoryService implements OnModuleInit {
         return { indexed };
     }
 
-    private mapWbHits(hits: { id: number; similarity: number }[]): { subjectID: number; name: string; parentName: string; similarity: number }[] {
-        return hits.map(hit => {
+    private mapWbHits(
+        hits: { id: number; similarity: number }[],
+    ): { subjectID: number; name: string; parentName: string; similarity: number }[] {
+        return hits.map((hit) => {
             const data = this.wbDataMap.get(hit.id);
-            return { subjectID: hit.id, name: data?.name || '', parentName: data?.parentName || '', similarity: hit.similarity };
+            return {
+                subjectID: hit.id,
+                name: data?.name || '',
+                parentName: data?.parentName || '',
+                similarity: hit.similarity,
+            };
         });
     }
 
     private async ensureWbIndex(): Promise<boolean> {
         if (this.wbIndex?.getCurrentCount()) return true;
-        try { await this.rebuildWbIndex(); return true; } catch { return false; }
+        try {
+            await this.rebuildWbIndex();
+            return true;
+        } catch {
+            return false;
+        }
     }
 
-    async searchWbCategory(text: string, limit = 5): Promise<{ subjectID: number; name: string; parentName: string; similarity: number }[]> {
-        if (!await this.ensureWbIndex()) return [];
+    async searchWbCategory(
+        text: string,
+        limit = 5,
+    ): Promise<{ subjectID: number; name: string; parentName: string; similarity: number }[]> {
+        if (!(await this.ensureWbIndex())) return [];
         const embedding = await this.aiService.generateEmbedding(text);
         return this.mapWbHits(this.searchByVector(this.wbIndex, this.wbIdMap, embedding, limit));
     }
 
-    async searchWbByOzonType(typeId: number, limit = 5): Promise<{ subjectID: number; name: string; parentName: string; similarity: number }[]> {
-        if (!await this.ensureWbIndex()) return [];
+    async searchWbByOzonType(
+        typeId: number,
+        limit = 5,
+    ): Promise<{ subjectID: number; name: string; parentName: string; similarity: number }[]> {
+        if (!(await this.ensureWbIndex())) return [];
         const data = await this.cacheManager.get<string>(`ozon:emb:${typeId}`);
         if (!data) throw new Error(`No Ozon embedding for type_id=${typeId}`);
         const { emb } = JSON.parse(data);
@@ -570,7 +643,9 @@ export class OzonCategoryService implements OnModuleInit {
         const exportedIds = new Set<number>(idsJson ? JSON.parse(idsJson) : []);
         const toExport = allRows.filter((r: any) => !exportedIds.has(r[opts.idField]));
 
-        this.logger.log(`export ${opts.prefix}: ${allRows.length} total, ${exportedIds.size} in Redis, ${toExport.length} to export`);
+        this.logger.log(
+            `export ${opts.prefix}: ${allRows.length} total, ${exportedIds.size} in Redis, ${toExport.length} to export`,
+        );
         if (toExport.length === 0) return { exported: 0, total: exportedIds.size };
 
         let exported = 0;
@@ -590,20 +665,29 @@ export class OzonCategoryService implements OnModuleInit {
                     if (!buf || buf.length !== EMBEDDING_DIM * 4) continue;
 
                     const meta = batch.find((r: any) => r[opts.idField] === dbRow[opts.idField]);
-                    await this.cacheManager.set(`${opts.prefix}:emb:${dbRow[opts.idField]}`, JSON.stringify({
-                        ...opts.fieldsFn(meta),
-                        emb: buf.toString('base64'),
-                    }), 0);
+                    await this.cacheManager.set(
+                        `${opts.prefix}:emb:${dbRow[opts.idField]}`,
+                        JSON.stringify({
+                            ...opts.fieldsFn(meta),
+                            emb: buf.toString('base64'),
+                        }),
+                        0,
+                    );
                     exportedIds.add(dbRow[opts.idField]);
                     exported++;
-                    if ((j + 1) % 50 === 0) this.logger.log(`  export ${opts.prefix} batch ${Math.floor(i / batchSize) + 1}: ${j + 1}/${rows.length}`);
+                    if ((j + 1) % 50 === 0)
+                        this.logger.log(
+                            `  export ${opts.prefix} batch ${Math.floor(i / batchSize) + 1}: ${j + 1}/${rows.length}`,
+                        );
                 }
 
                 await t.commit(true);
                 await this.cacheManager.set(`${opts.prefix}:emb:ids`, JSON.stringify([...exportedIds]), 0);
                 this.logger.log(`export ${opts.prefix}: ${exported}/${toExport.length}`);
             } catch (error) {
-                try { await t.rollback(true); } catch {}
+                try {
+                    await t.rollback(true);
+                } catch {}
                 this.logger.error(`export ${opts.prefix} batch failed at ${i}: ${error.message}`);
                 await this.cacheManager.set(`${opts.prefix}:emb:ids`, JSON.stringify([...exportedIds]), 0);
                 return { exported, total: exportedIds.size };
@@ -615,9 +699,13 @@ export class OzonCategoryService implements OnModuleInit {
     }
 
     private async generateEmbeddingsForTable(opts: {
-        prefix: string; table: string; idField: string;
-        selectQuery: string; textFn: (row: any) => string;
-        redisFn: (row: any) => Record<string, string>; batchSize: number;
+        prefix: string;
+        table: string;
+        idField: string;
+        selectQuery: string;
+        textFn: (row: any) => string;
+        redisFn: (row: any) => Record<string, string>;
+        batchSize: number;
     }): Promise<{ processed: number; errors: number }> {
         const dbBatchSize = 5;
         const tr = await this.pool.getTransaction();
@@ -626,20 +714,25 @@ export class OzonCategoryService implements OnModuleInit {
             const totalBatches = Math.ceil(rows.length / opts.batchSize);
             this.logger.log(`${opts.prefix}: Found ${rows.length} without embeddings (${totalBatches} batches)`);
 
-            let processed = 0, errors = 0;
+            let processed = 0,
+                errors = 0;
 
             for (let i = 0; i < rows.length; i += opts.batchSize) {
                 const batch = rows.slice(i, i + opts.batchSize);
                 const batchNum = Math.floor(i / opts.batchSize) + 1;
                 try {
-                    this.logger.log(`${opts.prefix} Batch ${batchNum}/${totalBatches}: generating ${batch.length} embeddings...`);
+                    this.logger.log(
+                        `${opts.prefix} Batch ${batchNum}/${totalBatches}: generating ${batch.length} embeddings...`,
+                    );
                     const embeddings = await this.aiService.generateEmbeddings(batch.map(opts.textFn));
 
                     for (let k = 0; k < batch.length; k += dbBatchSize) {
                         const dbBatch = batch.slice(k, k + dbBatchSize);
                         let block = 'EXECUTE BLOCK AS BEGIN\n';
                         for (let j = 0; j < dbBatch.length; j++) {
-                            const hex = this.embeddingToBuffer(embeddings[k + j]).toString('hex').toUpperCase();
+                            const hex = this.embeddingToBuffer(embeddings[k + j])
+                                .toString('hex')
+                                .toUpperCase();
                             block += `UPDATE ${opts.table} SET EMBEDDING = x'${hex}' WHERE ${opts.idField} = ${dbBatch[j][opts.idField]};\n`;
                         }
                         block += 'END';
@@ -650,16 +743,22 @@ export class OzonCategoryService implements OnModuleInit {
                     const idsJson = await this.cacheManager.get<string>(`${opts.prefix}:emb:ids`);
                     const redisIds: number[] = idsJson ? JSON.parse(idsJson) : [];
                     for (let idx = 0; idx < batch.length; idx++) {
-                        await this.cacheManager.set(`${opts.prefix}:emb:${batch[idx][opts.idField]}`, JSON.stringify({
-                            ...opts.redisFn(batch[idx]),
-                            emb: this.embeddingToBuffer(embeddings[idx]).toString('base64'),
-                        }), 0);
+                        await this.cacheManager.set(
+                            `${opts.prefix}:emb:${batch[idx][opts.idField]}`,
+                            JSON.stringify({
+                                ...opts.redisFn(batch[idx]),
+                                emb: this.embeddingToBuffer(embeddings[idx]).toString('base64'),
+                            }),
+                            0,
+                        );
                         redisIds.push(batch[idx][opts.idField]);
                     }
                     await this.cacheManager.set(`${opts.prefix}:emb:ids`, JSON.stringify(redisIds), 0);
 
                     processed += batch.length;
-                    this.logger.log(`${opts.prefix} Batch ${batchNum}/${totalBatches}: done. ${processed}/${rows.length} (${Math.round(processed / rows.length * 100)}%)`);
+                    this.logger.log(
+                        `${opts.prefix} Batch ${batchNum}/${totalBatches}: done. ${processed}/${rows.length} (${Math.round((processed / rows.length) * 100)}%)`,
+                    );
                 } catch (e) {
                     this.logger.error(`${opts.prefix} Batch ${batchNum} error: ${e.message}`);
                     errors += batch.length;
@@ -674,7 +773,9 @@ export class OzonCategoryService implements OnModuleInit {
         }
     }
 
-    private async loadFromRedisCache(prefix: string): Promise<{ id: number; fields: Record<string, string>; embedding: Buffer }[]> {
+    private async loadFromRedisCache(
+        prefix: string,
+    ): Promise<{ id: number; fields: Record<string, string>; embedding: Buffer }[]> {
         const idsJson = await this.cacheManager.get<string>(`${prefix}:emb:ids`);
         if (!idsJson) return [];
         const ids: number[] = JSON.parse(idsJson);
@@ -682,13 +783,15 @@ export class OzonCategoryService implements OnModuleInit {
         const results: { id: number; fields: Record<string, string>; embedding: Buffer }[] = [];
         for (let i = 0; i < ids.length; i += 100) {
             const batch = ids.slice(i, i + 100);
-            const batchResults = await Promise.all(batch.map(async (id) => {
-                const data = await this.cacheManager.get<string>(`${prefix}:emb:${id}`);
-                if (!data) return null;
-                const { emb, ...fields } = JSON.parse(data);
-                return { id, fields, embedding: Buffer.from(emb, 'base64') };
-            }));
-            results.push(...batchResults.filter(r => r !== null));
+            const batchResults = await Promise.all(
+                batch.map(async (id) => {
+                    const data = await this.cacheManager.get<string>(`${prefix}:emb:${id}`);
+                    if (!data) return null;
+                    const { emb, ...fields } = JSON.parse(data);
+                    return { id, fields, embedding: Buffer.from(emb, 'base64') };
+                }),
+            );
+            results.push(...batchResults.filter((r) => r !== null));
         }
         this.logger.log(`Loaded ${results.length} embeddings from Redis (${prefix})`);
         return results;

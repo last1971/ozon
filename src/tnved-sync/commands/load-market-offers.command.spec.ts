@@ -8,7 +8,11 @@ describe('LoadMarketOffersCommand', () => {
         const listOffers = jest.fn().mockResolvedValue(offers);
         const progress = emptyProgress();
 
-        const res = await new LoadMarketOffersCommand().execute({ progress, market: GoodServiceEnum.WB, service: { listOffers } as any });
+        const res = await new LoadMarketOffersCommand().execute({
+            progress,
+            market: GoodServiceEnum.WB,
+            service: { listOffers } as any,
+        });
 
         expect(listOffers).toHaveBeenCalledWith(progress);
         expect(res.offers).toBe(offers);

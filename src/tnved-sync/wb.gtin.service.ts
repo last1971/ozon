@@ -21,7 +21,10 @@ export class WbGtinService implements ICardSyncable<GtinBaseItem, GtinCheckItem>
         private readonly writer: WbCardWriter,
     ) {}
 
-    async check(base: GtinBaseItem[], progress: JobProgress = emptyProgress()): Promise<SyncCheckResult<GtinCheckItem>> {
+    async check(
+        base: GtinBaseItem[],
+        progress: JobProgress = emptyProgress(),
+    ): Promise<SyncCheckResult<GtinCheckItem>> {
         Object.assign(progress, { phase: 'каталог', done: 0, total: undefined });
         const cards = groupByGoodCode(
             await this.cardService.getAllWbCards(100, (loaded) => (progress.done = loaded)),
@@ -51,7 +54,9 @@ export class WbGtinService implements ICardSyncable<GtinBaseItem, GtinCheckItem>
             offer: card.vendorCode,
             name: card.title,
             barcodes: sizes.flatMap((s) => s.skus ?? []),
-            ...(sizes.length === 1 ? {} : { ambiguousReason: `у карточки размеров: ${sizes.length} — в какой писать баркод, неясно` }),
+            ...(sizes.length === 1
+                ? {}
+                : { ambiguousReason: `у карточки размеров: ${sizes.length} — в какой писать баркод, неясно` }),
         };
     }
 

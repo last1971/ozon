@@ -25,7 +25,13 @@ describe('YandexOrderService', () => {
 
     const invoice: any = { id: 77, remark: '61062457474', buyerId: 2222 };
     const startedOrder = (items: any[]) => ({
-        order: { id: 61062457474, status: 'PROCESSING', substatus: 'STARTED', creationDate: '16-07-2023 11:35:08', items },
+        order: {
+            id: 61062457474,
+            status: 'PROCESSING',
+            substatus: 'STARTED',
+            creationDate: '16-07-2023 11:35:08',
+            items,
+        },
     });
 
     beforeEach(async () => {
@@ -55,7 +61,10 @@ describe('YandexOrderService', () => {
                     },
                 },
                 { provide: MpEventService, useValue: { record, listUnhandled } },
-                { provide: MpDecisionRunnerService, useValue: { salesEnabled, observePosting, handleDelivered, flush } },
+                {
+                    provide: MpDecisionRunnerService,
+                    useValue: { salesEnabled, observePosting, handleDelivered, flush },
+                },
             ],
         }).compile();
 
@@ -102,7 +111,10 @@ describe('YandexOrderService', () => {
     });
     it('list идёт по страницам pageToken', async () => {
         method
-            .mockResolvedValueOnce({ orders: [{ id: 1, items: [], creationDate: '16-07-2023 11:35:08' }], paging: { nextPageToken: 'p2' } })
+            .mockResolvedValueOnce({
+                orders: [{ id: 1, items: [], creationDate: '16-07-2023 11:35:08' }],
+                paging: { nextPageToken: 'p2' },
+            })
             .mockResolvedValueOnce({ orders: [{ id: 2, items: [], creationDate: '16-07-2023 11:35:08' }], paging: {} });
         const res = await service.list(null);
         expect(res.map((p) => p.posting_number)).toEqual(['1', '2']);
@@ -170,7 +182,9 @@ describe('YandexOrderService', () => {
 
     describe('getByPostingNumber', () => {
         it('заказ по номеру через getOrder', async () => {
-            method.mockResolvedValueOnce(startedOrder([{ id: 9, offerId: '552601', count: 2, priceBeforeDiscount: 5 }]));
+            method.mockResolvedValueOnce(
+                startedOrder([{ id: 9, offerId: '552601', count: 2, priceBeforeDiscount: 5 }]),
+            );
             const res = await service.getByPostingNumber('61062457474');
             expect(method.mock.calls[0][0]).toBe('campaigns/undefined/orders/61062457474');
             expect(res.posting_number).toBe('61062457474');
@@ -261,7 +275,9 @@ describe('YandexOrderService', () => {
         });
         it('кодов меньше, чем единиц — ничего не шлём', async () => {
             method.mockResolvedValueOnce(startedOrder([{ id: 11, offerId: '552601', count: 2 }]));
-            getAttachedMarkCodesByScode.mockResolvedValueOnce([{ ki: 'k1', goodscode: '552601', realpricecode: 1, quantity: 1 }]);
+            getAttachedMarkCodesByScode.mockResolvedValueOnce([
+                { ki: 'k1', goodscode: '552601', realpricecode: 1, quantity: 1 },
+            ]);
             getKmFullByKi.mockResolvedValue('k1-full');
             const res = await service.submitFbsMarkCodes(invoice);
             expect(res.ok).toBe(false);
@@ -270,8 +286,12 @@ describe('YandexOrderService', () => {
             expect(method).toHaveBeenCalledTimes(1);
         });
         it('Яндекс требует CIS, кодов нет — провал до отправки', async () => {
-            method.mockResolvedValueOnce(startedOrder([{ id: 11, offerId: '552601', count: 1, requiredInstanceTypes: ['CIS'] }]));
-            getAttachedMarkCodesByScode.mockResolvedValueOnce([{ ki: 'k1', goodscode: '999', realpricecode: 1, quantity: 1 }]);
+            method.mockResolvedValueOnce(
+                startedOrder([{ id: 11, offerId: '552601', count: 1, requiredInstanceTypes: ['CIS'] }]),
+            );
+            getAttachedMarkCodesByScode.mockResolvedValueOnce([
+                { ki: 'k1', goodscode: '999', realpricecode: 1, quantity: 1 },
+            ]);
             getKmFullByKi.mockResolvedValue('k1-full');
             const res = await service.submitFbsMarkCodes(invoice);
             expect(res.ok).toBe(false);
@@ -282,7 +302,9 @@ describe('YandexOrderService', () => {
             expect(method).toHaveBeenCalledTimes(1);
         });
         it('немаркированный заказ: boxes не трогаем, только статус', async () => {
-            method.mockResolvedValueOnce(startedOrder([{ id: 11, offerId: '552601', count: 1 }])).mockResolvedValueOnce({ status: 'OK' });
+            method
+                .mockResolvedValueOnce(startedOrder([{ id: 11, offerId: '552601', count: 1 }]))
+                .mockResolvedValueOnce({ status: 'OK' });
             getAttachedMarkCodesByScode.mockResolvedValueOnce([]);
             const res = await service.submitFbsMarkCodes(invoice);
             expect(res).toEqual({ ok: true, shipped: true });
@@ -293,8 +315,13 @@ describe('YandexOrderService', () => {
             method
                 .mockResolvedValueOnce(startedOrder([{ id: 11, offerId: '552601', count: 1 }]))
                 .mockResolvedValueOnce({ status: 'OK' })
-                .mockResolvedValueOnce({ status: 'NotOk', error: { status: 400, message: 'BAD_REQUEST: cis invalid' } });
-            getAttachedMarkCodesByScode.mockResolvedValueOnce([{ ki: 'k1', goodscode: '552601', realpricecode: 1, quantity: 1 }]);
+                .mockResolvedValueOnce({
+                    status: 'NotOk',
+                    error: { status: 400, message: 'BAD_REQUEST: cis invalid' },
+                });
+            getAttachedMarkCodesByScode.mockResolvedValueOnce([
+                { ki: 'k1', goodscode: '552601', realpricecode: 1, quantity: 1 },
+            ]);
             getKmFullByKi.mockResolvedValue('k1-full');
             const res = await service.submitFbsMarkCodes(invoice);
             expect(res.ok).toBe(false);
@@ -312,7 +339,9 @@ describe('YandexOrderService', () => {
                     items: [{ id: 11, offerId: '552601', count: 1, instances: [{ cis: 'x' }] }],
                 },
             });
-            getAttachedMarkCodesByScode.mockResolvedValueOnce([{ ki: 'k1', goodscode: '552601', realpricecode: 1, quantity: 1 }]);
+            getAttachedMarkCodesByScode.mockResolvedValueOnce([
+                { ki: 'k1', goodscode: '552601', realpricecode: 1, quantity: 1 },
+            ]);
             const res = await service.submitFbsMarkCodes(invoice);
             expect(res.ok).toBe(true);
             expect(res.skipped).toContain('READY_TO_SHIP');
@@ -328,7 +357,9 @@ describe('YandexOrderService', () => {
                     items: [{ id: 11, offerId: '552601', count: 1 }],
                 },
             });
-            getAttachedMarkCodesByScode.mockResolvedValueOnce([{ ki: 'k1', goodscode: '552601', realpricecode: 1, quantity: 1 }]);
+            getAttachedMarkCodesByScode.mockResolvedValueOnce([
+                { ki: 'k1', goodscode: '552601', realpricecode: 1, quantity: 1 },
+            ]);
             const res = await service.submitFbsMarkCodes(invoice);
             expect(res.ok).toBe(false);
             expect(res.skipRetry).toBe(true);
@@ -346,7 +377,11 @@ describe('YandexOrderService', () => {
             expect(method.mock.calls[0][2]).toMatchObject({ status: 'DELIVERED', limit: 50 });
             expect(method.mock.calls[0][2].updatedAtFrom).toBeDefined();
             expect(handleDelivered.mock.calls.map((c) => c[0].extId)).toEqual(['1', '3']);
-            expect(handleDelivered.mock.calls[0][0]).toMatchObject({ service: 'YANDEX', kind: 'POSTING_FBS', state: 'delivered' });
+            expect(handleDelivered.mock.calls[0][0]).toMatchObject({
+                service: 'YANDEX',
+                kind: 'POSTING_FBS',
+                state: 'delivered',
+            });
             expect(flush).toHaveBeenCalledWith('observeYandexFbs');
         });
         it('продажи выключены → только наблюдение', async () => {

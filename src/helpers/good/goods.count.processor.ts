@@ -1,17 +1,17 @@
-import { Injectable } from "@nestjs/common";
-import { ICountUpdateable } from "../../interfaces/ICountUpdatebale";
-import { GoodDto } from "../../good/dto/good.dto";
-import { GoodServiceEnum } from "../../good/good.service.enum";
-import { skusToGoodIds } from "../index";
-import { CommandChainAsync } from "../command/command.chain.async";
-import { IGoodsCountContext } from "./commands/i.goods.count.context";
-import { LoadSnapshotCommand } from "./commands/load-snapshot.command";
-import { MapSkusToGoodsCommand } from "./commands/map-skus-to-goods.command";
-import { DistributePlainCountsCommand } from "./commands/distribute-plain-counts.command";
-import { DistributeMarkedCountsCommand } from "./commands/distribute-marked-counts.command";
-import { ApplyDisabledCommand } from "./commands/apply-disabled.command";
-import { KeepChangedOnlyCommand } from "./commands/keep-changed-only.command";
-import { PushCountsCommand } from "./commands/push-counts.command";
+import { Injectable } from '@nestjs/common';
+import { ICountUpdateable } from '../../interfaces/ICountUpdatebale';
+import { GoodDto } from '../../good/dto/good.dto';
+import { GoodServiceEnum } from '../../good/good.service.enum';
+import { skusToGoodIds } from '../index';
+import { CommandChainAsync } from '../command/command.chain.async';
+import { IGoodsCountContext } from './commands/i.goods.count.context';
+import { LoadSnapshotCommand } from './commands/load-snapshot.command';
+import { MapSkusToGoodsCommand } from './commands/map-skus-to-goods.command';
+import { DistributePlainCountsCommand } from './commands/distribute-plain-counts.command';
+import { DistributeMarkedCountsCommand } from './commands/distribute-marked-counts.command';
+import { ApplyDisabledCommand } from './commands/apply-disabled.command';
+import { KeepChangedOnlyCommand } from './commands/keep-changed-only.command';
+import { PushCountsCommand } from './commands/push-counts.command';
 
 /** Карта маркетплейсов, которую держит ExtraGoodService. */
 export type CountUpdateableServices = Map<GoodServiceEnum, { service: ICountUpdateable; isSwitchedOn: boolean }>;
@@ -96,7 +96,9 @@ export class GoodsCountProcessor {
 
         // Следующая порция, если есть
         if (serviceGoods.nextArgs) {
-            return updatedCount + (await this.processGoodsCountForService(services, marketService, serviceGoods.nextArgs));
+            return (
+                updatedCount + (await this.processGoodsCountForService(services, marketService, serviceGoods.nextArgs))
+            );
         }
 
         return updatedCount;

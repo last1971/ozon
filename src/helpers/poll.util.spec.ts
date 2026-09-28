@@ -37,10 +37,7 @@ describe('pollUntil', () => {
     });
 
     it('continue → fail прерывает цикл', async () => {
-        const probe = jest
-            .fn()
-            .mockResolvedValueOnce('pending')
-            .mockResolvedValueOnce('error');
+        const probe = jest.fn().mockResolvedValueOnce('pending').mockResolvedValueOnce('error');
         const decide = (v: string): PollDecision => {
             if (v === 'error') return 'fail';
             return 'continue';
@@ -74,10 +71,7 @@ describe('pollUntil', () => {
     });
 
     it('дефолтные задержки используются если не переданы', async () => {
-        const probe = jest
-            .fn()
-            .mockResolvedValueOnce('pending')
-            .mockResolvedValueOnce('ready');
+        const probe = jest.fn().mockResolvedValueOnce('pending').mockResolvedValueOnce('ready');
         const decide = (v: string): PollDecision => (v === 'ready' ? 'done' : 'continue');
         const promise = pollUntil(probe, decide);
         await jest.advanceTimersByTimeAsync(2000);

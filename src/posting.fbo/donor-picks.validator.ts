@@ -69,14 +69,21 @@ export function validatePicks(
         perLine.set(rpc, (perLine.get(rpc) ?? 0) + qty);
         perDonor.set(donor.podbposcode, (perDonor.get(donor.podbposcode) ?? 0) + qty);
         if (perDonor.get(donor.podbposcode) > donor.quantity) {
-            errors.push(`${label}: со счёта №${donor.invoiceNumber} взято ${perDonor.get(donor.podbposcode)}, подобрано там ${donor.quantity}`);
+            errors.push(
+                `${label}: со счёта №${donor.invoiceNumber} взято ${perDonor.get(donor.podbposcode)}, подобрано там ${donor.quantity}`,
+            );
             continue;
         }
         plan.push({
             realpricecode: rpc,
             goodscode: String(line.goodscode),
             nominal,
-            donor: { podbposcode: donor.podbposcode, scode: donor.scode, realpricecode: donor.realpricecode, invoiceNumber: donor.invoiceNumber },
+            donor: {
+                podbposcode: donor.podbposcode,
+                scode: donor.scode,
+                realpricecode: donor.realpricecode,
+                invoiceNumber: donor.invoiceNumber,
+            },
             quantity: qty,
         });
     }
@@ -84,7 +91,9 @@ export function validatePicks(
     for (const [rpc, sum] of perLine) {
         const line = lines.get(rpc);
         if (sum !== line.shortage) {
-            errors.push(`${line.name ?? line.goodscode} (строка ${rpc}): взято ${sum} из ${line.shortage} — нужно ровно ${line.shortage}`);
+            errors.push(
+                `${line.name ?? line.goodscode} (строка ${rpc}): взято ${sum} из ${line.shortage} — нужно ровно ${line.shortage}`,
+            );
         }
     }
     return { errors: [...new Set(errors)], plan: errors.length ? [] : plan };

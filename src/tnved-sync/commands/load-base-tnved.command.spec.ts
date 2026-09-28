@@ -9,12 +9,20 @@ describe('LoadBaseTnvedCommand', () => {
     const rollback = jest.fn();
     const pool = { getTransaction: jest.fn().mockResolvedValue({ query, commit, rollback }) };
     const command = new LoadBaseTnvedCommand(pool as any);
-    const ctx = (offer?: string): ITnvedProcessingContext => ({ progress: emptyProgress(), service: {} as any, opts: { market: GoodServiceEnum.WB, offer }, progressCache: 'tnved' });
+    const ctx = (offer?: string): ITnvedProcessingContext => ({
+        progress: emptyProgress(),
+        service: {} as any,
+        opts: { market: GoodServiceEnum.WB, offer },
+        progressCache: 'tnved',
+    });
 
     beforeEach(() => [query, commit, rollback].forEach((m) => m.mockReset()));
 
     it('все товары с ТН ВЭД → ctx.all, строки нормализованы', async () => {
-        query.mockResolvedValue([{ GOODSCODE: 565831, TNVED: ' 8504408300 ', MARK_REQUIRED: 1 }, { GOODSCODE: 376743, TNVED: '8532220000', MARK_REQUIRED: 0 }]);
+        query.mockResolvedValue([
+            { GOODSCODE: 565831, TNVED: ' 8504408300 ', MARK_REQUIRED: 1 },
+            { GOODSCODE: 376743, TNVED: '8532220000', MARK_REQUIRED: 0 },
+        ]);
 
         const res = await command.execute(ctx());
 

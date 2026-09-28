@@ -22,7 +22,9 @@ export class LoadTnvedCommand implements IJobCommand<IDictContext> {
             const dir = await service.directory(subject);
             if (dir === null) {
                 progress.counters.failed++;
-                context.logger?.error(`[dict] ${service.market}: предмет ${subject.id} «${subject.name}» — справочник не отдан`);
+                context.logger?.error(
+                    `[dict] ${service.market}: предмет ${subject.id} «${subject.name}» — справочник не отдан`,
+                );
             } else {
                 await service.saveTnved(subject.id, dir);
                 progress.counters[dir.length ? 'saved' : 'empty']++;

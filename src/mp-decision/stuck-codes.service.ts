@@ -124,9 +124,11 @@ export class StuckCodesService {
     private async reportUnsentChz(): Promise<void> {
         const edge = DateTime.now().minus({ days: StuckCodesService.MIN_AGE_DAYS });
         const old = (kind: 'retire' | 'return') =>
-            this.chzDb.pending(kind).then((codes) =>
-                codes.filter((code) => code.since && DateTime.fromJSDate(new Date(code.since)) < edge),
-            );
+            this.chzDb
+                .pending(kind)
+                .then((codes) =>
+                    codes.filter((code) => code.since && DateTime.fromJSDate(new Date(code.since)) < edge),
+                );
         const retire = await old('retire');
         const giveBack = await old('return');
         if (!retire.length && !giveBack.length) return;
@@ -179,7 +181,12 @@ export class StuckCodesService {
                 }
                 if (match.mark || match.invoice.status === 0) {
                     // Возврат разобрал счёт (донор) либо его расформировали руками — ожидание закрыто.
-                    await this.mpEvent.markHandled({ service: svc, kind: 'CANCEL_WAIT', extId: wait.extId, state: 'waiting' });
+                    await this.mpEvent.markHandled({
+                        service: svc,
+                        kind: 'CANCEL_WAIT',
+                        extId: wait.extId,
+                        state: 'waiting',
+                    });
                     continue;
                 }
                 const age = Math.floor(-DateTime.fromJSDate(wait.firstSeen).diffNow('days').days);
@@ -188,12 +195,19 @@ export class StuckCodesService {
                     // Товар до нас не доедет (списан/утилизирован/потерян): письмо об этом
                     // уже уходило веткой return/lost, ждать больше нечего — иначе строка
                     // «завис в пути» про несуществующий товар повторялась бы вечно.
-                    await this.mpEvent.markHandled({ service: svc, kind: 'CANCEL_WAIT', extId: wait.extId, state: 'waiting' });
+                    await this.mpEvent.markHandled({
+                        service: svc,
+                        kind: 'CANCEL_WAIT',
+                        extId: wait.extId,
+                        state: 'waiting',
+                    });
                     continue;
                 }
                 if (states.includes(RETURN_STATE.RECEIVED_BY_SELLER)) {
                     // Не закрываем: напоминание погаснет само, когда счёт расформируют (STATUS=0).
-                    lines.push(`${posting} — возврат ПРИЕХАЛ к нам, счёт ждёт расформирования (отменён ${age} дн назад)`);
+                    lines.push(
+                        `${posting} — возврат ПРИЕХАЛ к нам, счёт ждёт расформирования (отменён ${age} дн назад)`,
+                    );
                     continue;
                 }
                 // Заявочные записи (отклонена, деньги вернули без товара) физики не обещают —
@@ -204,7 +218,9 @@ export class StuckCodesService {
                         `${posting} — отменён ${age} дн назад, живой заявки возврата НЕТ — проверить в кабинете маркетплейса`,
                     );
                 } else if (hasReturn && age >= StuckCodesService.WAIT_IN_TRANSIT_DAYS) {
-                    lines.push(`${posting} — отменён ${age} дн назад, возврат завис в пути (заявка есть, склада не достигла)`);
+                    lines.push(
+                        `${posting} — отменён ${age} дн назад, возврат завис в пути (заявка есть, склада не достигла)`,
+                    );
                 }
             }
         }

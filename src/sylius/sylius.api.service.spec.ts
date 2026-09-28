@@ -155,9 +155,7 @@ describe('SyliusApiService', () => {
             const error401 = { response: { status: 401 } };
 
             httpService.post.mockReturnValue(of(tokenResponse));
-            httpService.get
-                .mockReturnValueOnce(throwError(() => error401))
-                .mockReturnValueOnce(of(dataResponse));
+            httpService.get.mockReturnValueOnce(throwError(() => error401)).mockReturnValueOnce(of(dataResponse));
 
             const result = await service.method('/test', 'get');
 

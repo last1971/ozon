@@ -1,7 +1,7 @@
-import { ValidationArguments, ValidatorConstraint, ValidatorConstraintInterface } from "class-validator";
-import { Inject, Injectable } from "@nestjs/common";
-import { IInvoice, INVOICE_SERVICE } from "../interfaces/IInvoice";
-import { RemarkDto } from "../invoice/dto/remark.dto";
+import { ValidationArguments, ValidatorConstraint, ValidatorConstraintInterface } from 'class-validator';
+import { Inject, Injectable } from '@nestjs/common';
+import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
+import { RemarkDto } from '../invoice/dto/remark.dto';
 
 @ValidatorConstraint({ async: true })
 @Injectable()

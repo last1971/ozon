@@ -28,7 +28,13 @@ describe('CalculateUnprofitableCommand', () => {
         const context: IGoodsProcessingContext = {
             skus: [],
             ozonPrices: [
-                { offer_id: 'sku1', name: 'Product 1', incoming_price: 100, available_price: 0, marketing_seller_price: 150 } as PriceDto,
+                {
+                    offer_id: 'sku1',
+                    name: 'Product 1',
+                    incoming_price: 100,
+                    available_price: 0,
+                    marketing_seller_price: 150,
+                } as PriceDto,
             ],
         };
 
@@ -50,7 +56,13 @@ describe('CalculateUnprofitableCommand', () => {
         const context: IGoodsProcessingContext = {
             skus: [],
             ozonPrices: [
-                { offer_id: 'sku1', name: 'Product 1', incoming_price: 100, available_price: 0, marketing_seller_price: 200 } as PriceDto,
+                {
+                    offer_id: 'sku1',
+                    name: 'Product 1',
+                    incoming_price: 100,
+                    available_price: 0,
+                    marketing_seller_price: 200,
+                } as PriceDto,
             ],
         };
 
@@ -65,7 +77,13 @@ describe('CalculateUnprofitableCommand', () => {
         const context: IGoodsProcessingContext = {
             skus: [],
             ozonPrices: [
-                { offer_id: 'sku1', name: 'Product 1', incoming_price: 200, available_price: 80, marketing_seller_price: 150 } as PriceDto,
+                {
+                    offer_id: 'sku1',
+                    name: 'Product 1',
+                    incoming_price: 200,
+                    available_price: 80,
+                    marketing_seller_price: 150,
+                } as PriceDto,
             ],
         };
 
@@ -78,7 +96,13 @@ describe('CalculateUnprofitableCommand', () => {
         const context: IGoodsProcessingContext = {
             skus: [],
             ozonPrices: [
-                { offer_id: 'sku1', name: 'Product 1', incoming_price: 0, available_price: 0, marketing_seller_price: 150 } as PriceDto,
+                {
+                    offer_id: 'sku1',
+                    name: 'Product 1',
+                    incoming_price: 0,
+                    available_price: 0,
+                    marketing_seller_price: 150,
+                } as PriceDto,
             ],
         };
 
@@ -94,7 +118,13 @@ describe('CalculateUnprofitableCommand', () => {
         const context: IGoodsProcessingContext = {
             skus: [],
             ozonPrices: [
-                { offer_id: 'sku1', name: 'Product 1', incoming_price: 100, available_price: 0, marketing_seller_price: 150 } as PriceDto,
+                {
+                    offer_id: 'sku1',
+                    name: 'Product 1',
+                    incoming_price: 100,
+                    available_price: 0,
+                    marketing_seller_price: 150,
+                } as PriceDto,
             ],
         };
 

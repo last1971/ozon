@@ -4,10 +4,10 @@ import { IGoodsProcessingContext } from 'src/interfaces/i.good.processing.contex
 
 @Injectable()
 export class ValidateSkusNotEmptyCommand implements ICommandAsync<IGoodsProcessingContext> {
-  async execute(context: IGoodsProcessingContext): Promise<IGoodsProcessingContext> {
-    if (!context.skus || context.skus.length === 0) {
-      throw new Error('No incoming goods SKUs provided');
+    async execute(context: IGoodsProcessingContext): Promise<IGoodsProcessingContext> {
+        if (!context.skus || context.skus.length === 0) {
+            throw new Error('No incoming goods SKUs provided');
+        }
+        return context;
     }
-    return context;
-  }
-} 
+}

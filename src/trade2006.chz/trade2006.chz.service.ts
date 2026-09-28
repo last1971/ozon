@@ -201,7 +201,11 @@ export class Trade2006ChzService {
             return null;
         }
         const [{ ID: id }] = await t.query('SELECT GEN_ID(GEN_CHZ_BATCH, 1) AS ID FROM RDB$DATABASE', [], false);
-        await t.execute('INSERT INTO CHZ_BATCH (ID, KIND, CNT, SFCODE) VALUES (?, ?, ?, ?)', [id, kind, codes.length, sfcode], false);
+        await t.execute(
+            'INSERT INTO CHZ_BATCH (ID, KIND, CNT, SFCODE) VALUES (?, ?, ?, ?)',
+            [id, kind, codes.length, sfcode],
+            false,
+        );
         for (const code of codes) {
             await t.execute('INSERT INTO CHZ_BATCH_KI (BATCH_ID, KI) VALUES (?, ?)', [id, code.ki], false);
         }

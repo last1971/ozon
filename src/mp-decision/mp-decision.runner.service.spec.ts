@@ -40,9 +40,15 @@ describe('MpDecisionRunnerService', () => {
         );
         delete flags.MP_SALE_ACTIONS_ENABLED;
         delete flags.MP_RETURN_ACTIONS_ENABLED;
-        [getTransaction, markCodeFbsSold, markCodeFbsUnsold, markCodeReturnToStock, updatePrim, tx.commit, tx.rollback].forEach(
-            (m) => m.mockReset(),
-        );
+        [
+            getTransaction,
+            markCodeFbsSold,
+            markCodeFbsUnsold,
+            markCodeReturnToStock,
+            updatePrim,
+            tx.commit,
+            tx.rollback,
+        ].forEach((m) => m.mockReset());
         getTransaction.mockResolvedValue(tx);
         findByPosting.mockResolvedValue(match());
         getMarkCodesStateByScode.mockResolvedValue([]);
@@ -68,7 +74,10 @@ describe('MpDecisionRunnerService', () => {
                         updatePrim,
                     },
                 },
-                { provide: MpEventService, useValue: { hasAnyState, isHandled: evIsHandled, markHandled: evMarkHandled } },
+                {
+                    provide: MpEventService,
+                    useValue: { hasAnyState, isHandled: evIsHandled, markHandled: evMarkHandled },
+                },
                 { provide: EventEmitter2, useValue: { emit } },
                 { provide: ConfigService, useValue: { get: configGet } },
             ],
@@ -80,10 +89,7 @@ describe('MpDecisionRunnerService', () => {
         hasAnyState.mockResolvedValue(true);
         findByPosting.mockResolvedValue(match({ invoice: { id: 91694, status: 4, remark: '72067989-0727-1' } }));
         const decision = await service.observePosting('72067989-0727-1', 'FBS', 'cancel');
-        expect(hasAnyState).toHaveBeenCalledWith('OZON', 'POSTING_FBS', '72067989-0727-1', [
-            'delivering',
-            'delivered',
-        ]);
+        expect(hasAnyState).toHaveBeenCalledWith('OZON', 'POSTING_FBS', '72067989-0727-1', ['delivering', 'delivered']);
         expect(decision.branch).toBe('cancel-fbs/transferred');
     });
 
@@ -280,7 +286,13 @@ describe('MpDecisionRunnerService', () => {
             flags.MP_SALE_ACTIONS_ENABLED = true;
             findByPosting.mockResolvedValue(match({ invoice: { id: 91694, status: 4, remark: '568746' } }));
             getMarkCodesStateByScode.mockResolvedValue([codeState({ status: 5, transferType: 3 })]);
-            const event = { service: 'WB', kind: 'POSTING_FBS', extId: '568746', state: 'delivered', posting: '568746' } as any;
+            const event = {
+                service: 'WB',
+                kind: 'POSTING_FBS',
+                extId: '568746',
+                state: 'delivered',
+                posting: '568746',
+            } as any;
 
             await service.handleDelivered(event);
 

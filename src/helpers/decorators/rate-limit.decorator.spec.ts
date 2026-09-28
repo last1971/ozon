@@ -120,10 +120,7 @@ describe('RateLimit Decorator', () => {
         const start = Date.now();
 
         // Both services calling at the same time
-        await Promise.all([
-            service1.fastMethod(),
-            service2.fastMethod(),
-        ]);
+        await Promise.all([service1.fastMethod(), service2.fastMethod()]);
 
         const end = Date.now();
         const duration = end - start;

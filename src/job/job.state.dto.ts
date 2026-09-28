@@ -15,7 +15,8 @@ export class JobStateDto {
     @ApiProperty({ description: 'uuid запуска' }) id: string;
     @ApiProperty({ description: 'Вид задачи: tnved-sync, tnved-missing…' }) kind: string;
     @ApiProperty({ description: 'С чем запущена' }) params: Record<string, unknown>;
-    @ApiPropertyOptional({ description: 'Метка браузера, откуда запущена (X-Client-Id). Не защита.' }) clientId?: string;
+    @ApiPropertyOptional({ description: 'Метка браузера, откуда запущена (X-Client-Id). Не защита.' })
+    clientId?: string;
     @ApiProperty({ enum: ['running', 'done', 'failed'] }) status: JobStatus;
     @ApiProperty({ type: JobProgressDto }) progress: JobProgressDto;
     @ApiPropertyOptional({ description: 'Результат по завершении' }) result?: unknown;

@@ -48,13 +48,12 @@ export class SyliusApiService {
             'Content-Type': method === 'patch' ? 'application/merge-patch+json' : 'application/json',
         };
 
-        const obs = method === 'get'
-            ? this.http.get(url, { params: data, headers })
-            : this.http.request({ url, method, data, headers });
+        const obs =
+            method === 'get'
+                ? this.http.get(url, { params: data, headers })
+                : this.http.request({ url, method, data, headers });
 
-        return await firstValueFrom(
-            obs.pipe(map((res) => res.data as T)),
-        );
+        return await firstValueFrom(obs.pipe(map((res) => res.data as T)));
     }
 
     private isUnauthorized(error: AxiosError | any): boolean {
@@ -66,7 +65,12 @@ export class SyliusApiService {
         const now = Date.now();
         const bufferMs = 60_000;
 
-        if (!forceRefresh && this.accessToken && this.accessTokenExpiresAt && now + bufferMs < this.accessTokenExpiresAt) {
+        if (
+            !forceRefresh &&
+            this.accessToken &&
+            this.accessTokenExpiresAt &&
+            now + bufferMs < this.accessTokenExpiresAt
+        ) {
             return this.accessToken;
         }
 
@@ -85,12 +89,16 @@ export class SyliusApiService {
 
         try {
             const res = await firstValueFrom(
-                this.http.post(tokenUrl, { email, password }, {
-                    headers: {
-                        'Content-Type': 'application/json',
-                        Accept: 'application/json',
+                this.http.post(
+                    tokenUrl,
+                    { email, password },
+                    {
+                        headers: {
+                            'Content-Type': 'application/json',
+                            Accept: 'application/json',
+                        },
                     },
-                }),
+                ),
             );
 
             const accessToken = res.data?.token as string;

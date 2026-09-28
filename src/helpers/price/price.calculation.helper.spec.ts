@@ -6,10 +6,10 @@ import { IGood } from '../../interfaces/IGood';
 import { UpdatePriceDto } from '../../price/dto/update.price.dto';
 import { IProductCoeffsable } from '../../interfaces/i.product.coeffsable';
 import { GoodPriceDto } from '../../good/dto/good.price.dto';
-import { IPriceable } from "../../interfaces/i.priceable";
+import { IPriceable } from '../../interfaces/i.priceable';
 import * as helpers from '../price/price.helpers';
 
-describe("PriceCalculationHelper", () => {
+describe('PriceCalculationHelper', () => {
     let helper: PriceCalculationHelper;
     let configService: ConfigService;
 
@@ -22,43 +22,40 @@ describe("PriceCalculationHelper", () => {
                     useValue: {
                         get: jest.fn((key, defaultValue) => {
                             const config = {
-                                "PERC_MAX": 80,
-                                "PERC_NOR": 40,
-                                "PERC_MIN": 20,
-                                "SUM_PACK": 10,
-                                "MIN_PROFIT_PERC": 10,
-                                "MIN_PROFIT_TARGET": 103,
-                                "PRICE_SMOOTHING_OFFSET": 500,
-                                "MIN_PROFIT_RUB": 10,
-                                "MIN_STOCK_PERCENT": 80,
+                                PERC_MAX: 80,
+                                PERC_NOR: 40,
+                                PERC_MIN: 20,
+                                SUM_PACK: 10,
+                                MIN_PROFIT_PERC: 10,
+                                MIN_PROFIT_TARGET: 103,
+                                PRICE_SMOOTHING_OFFSET: 500,
+                                MIN_PROFIT_RUB: 10,
+                                MIN_STOCK_PERCENT: 80,
                             };
                             return config[key] || defaultValue;
-                        })
-                    }
-                }
-            ]
+                        }),
+                    },
+                },
+            ],
         }).compile();
 
         helper = module.get<PriceCalculationHelper>(PriceCalculationHelper);
         configService = module.get<ConfigService>(ConfigService);
     });
 
-    describe("preparePricesContext", () => {
-        it("should prepare prices context correctly", async () => {
+    describe('preparePricesContext', () => {
+        it('should prepare prices context correctly', async () => {
             // Mock data
-            const skus = ["SKU1", "SKU2"];
+            const skus = ['SKU1', 'SKU2'];
             const mockGoods = [
-                { code: "1", price: 100, name: "Product 1" },
-                { code: "2", price: 200, name: "Product 2" }
+                { code: '1', price: 100, name: 'Product 1' },
+                { code: '2', price: 200, name: 'Product 2' },
             ];
             const mockPercents = [
-                { offer_id: "1", pieces: 1, perc: 40 },
-                { offer_id: "2", pieces: 1, perc: 40 }
+                { offer_id: '1', pieces: 1, perc: 40 },
+                { offer_id: '2', pieces: 1, perc: 40 },
             ];
-            const mockProducts = [
-                { getSku: () => "SKU1" },
-                { getSku: () => "SKU2" }
-            ];
+            const mockProducts = [{ getSku: () => 'SKU1' }, { getSku: () => 'SKU2' }];
 
             // Mock services
             const mockService: IPriceUpdateable = {
@@ -73,7 +70,7 @@ describe("PriceCalculationHelper", () => {
                 }),
                 updatePrices: jest.fn(),
                 updateAllPrices: jest.fn(),
-                createAction: jest.fn()
+                createAction: jest.fn(),
             };
 
             const mockGoodService: IGood = {
@@ -97,36 +94,32 @@ describe("PriceCalculationHelper", () => {
                 getMarkRequiredCodes: jest.fn().mockResolvedValue(new Set()),
                 getGoodsWithMarkCodes: jest.fn().mockResolvedValue(new Set()),
                 getFreeMarkCodesByNominal: jest.fn().mockResolvedValue(new Map()),
-                updatePercentsForService:  jest.fn().mockResolvedValue(undefined),
-                generatePercentsForService:  jest.fn().mockResolvedValue(undefined),
+                updatePercentsForService: jest.fn().mockResolvedValue(undefined),
+                generatePercentsForService: jest.fn().mockResolvedValue(undefined),
             };
 
-            const result = await helper.preparePricesContext(
-                mockService,
-                skus,
-                mockGoodService
-            );
+            const result = await helper.preparePricesContext(mockService, skus, mockGoodService);
 
             expect(result).toEqual({
                 codes: expect.any(Array),
                 goods: mockGoods,
                 percents: mockPercents,
-                products: mockProducts
+                products: mockProducts,
             });
             expect(mockService.getProductsWithCoeffs).toHaveBeenCalledWith(skus);
             expect(mockGoodService.prices).toHaveBeenCalled();
             expect(mockGoodService.getPerc).toHaveBeenCalled();
         });
 
-        it("should create generic adapters when service is null", async () => {
-            const skus = ["SKU1", "SKU2"];
+        it('should create generic adapters when service is null', async () => {
+            const skus = ['SKU1', 'SKU2'];
             const mockGoods = [
-                { code: "1", price: 100, name: "Product 1" },
-                { code: "2", price: 200, name: "Product 2" }
+                { code: '1', price: 100, name: 'Product 1' },
+                { code: '2', price: 200, name: 'Product 2' },
             ];
             const mockPercents = [
-                { offer_id: "1", pieces: 1, perc: 40 },
-                { offer_id: "2", pieces: 1, perc: 40 }
+                { offer_id: '1', pieces: 1, perc: 40 },
+                { offer_id: '2', pieces: 1, perc: 40 },
             ];
 
             const mockGoodService: IGood = {
@@ -153,17 +146,13 @@ describe("PriceCalculationHelper", () => {
                 generatePercentsForService: jest.fn().mockResolvedValue(undefined),
             };
 
-            const result = await helper.preparePricesContext(
-                null,
-                skus,
-                mockGoodService
-            );
+            const result = await helper.preparePricesContext(null, skus, mockGoodService);
 
             expect(result.products).toHaveLength(2);
-            expect(result.products[0].getSku()).toBe("SKU1");
+            expect(result.products[0].getSku()).toBe('SKU1');
             expect(result.products[0].getTransMaxAmount()).toBe(0);
             expect(result.products[0].getSalesPercent()).toBe(0);
-            expect(result.products[1].getSku()).toBe("SKU2");
+            expect(result.products[1].getSku()).toBe('SKU2');
         });
     });
 
@@ -172,11 +161,9 @@ describe("PriceCalculationHelper", () => {
             const product: IProductCoeffsable = {
                 getSku: () => '1234-2',
                 getTransMaxAmount: () => 40,
-                getSalesPercent: () => 10
+                getSalesPercent: () => 10,
             };
-            const goods: GoodPriceDto[] = [
-                { code: 1234, price: 100, name: 'Test Product' }
-            ];
+            const goods: GoodPriceDto[] = [{ code: 1234, price: 100, name: 'Test Product' }];
             const prices = new Map<string, UpdatePriceDto>();
             prices.set('1234-2', { incoming_price: 150 } as UpdatePriceDto);
 
@@ -188,11 +175,9 @@ describe("PriceCalculationHelper", () => {
             const product: IProductCoeffsable = {
                 getSku: () => '1234-2',
                 getTransMaxAmount: () => 40,
-                getSalesPercent: () => 10
+                getSalesPercent: () => 10,
             };
-            const goods: GoodPriceDto[] = [
-                { code: 1234, price: 100, name: 'Test Product' }
-            ];
+            const goods: GoodPriceDto[] = [{ code: 1234, price: 100, name: 'Test Product' }];
 
             const result = helper.getIncomingPrice(product, goods);
             expect(result).toBe(200); // 100 * 2
@@ -202,9 +187,9 @@ describe("PriceCalculationHelper", () => {
     it('should return correct initial percents for default (no incoming_price)', () => {
         const result = helper.getInitialPercents();
         expect(result).toEqual({
-            old_perc: 80,  // PERC_MAX
-            perc: 40,      // PERC_NOR
-            min_perc: 20   // PERC_MIN
+            old_perc: 80, // PERC_MAX
+            perc: 40, // PERC_NOR
+            min_perc: 20, // PERC_MIN
         });
     });
 
@@ -218,7 +203,7 @@ describe("PriceCalculationHelper", () => {
         expect(result).toEqual({
             old_perc: 67,
             perc: 34,
-            min_perc: 17
+            min_perc: 17,
         });
     });
 
@@ -233,7 +218,7 @@ describe("PriceCalculationHelper", () => {
                 packing_price: 15,
                 available_price: 0,
                 offer_id: '',
-                pieces: 1
+                pieces: 1,
             });
         });
 
@@ -247,7 +232,7 @@ describe("PriceCalculationHelper", () => {
                 packing_price: 10,
                 available_price: 0,
                 offer_id: '',
-                pieces: 1
+                pieces: 1,
             });
         });
     });
@@ -264,12 +249,12 @@ describe("PriceCalculationHelper", () => {
                     percEkv: 1,
                     sumObtain: 25,
                     sumLabel: 10,
-                    taxUnit: 6
+                    taxUnit: 6,
                 }),
                 getProductsWithCoeffs: jest.fn(),
                 updatePrices: jest.fn(),
                 updateAllPrices: jest.fn(),
-                createAction: jest.fn()
+                createAction: jest.fn(),
             };
 
             initialPrice = {
@@ -282,7 +267,7 @@ describe("PriceCalculationHelper", () => {
                 sum_pack: 10,
                 min_perc: 20,
                 perc: 40,
-                old_perc: 80
+                old_perc: 80,
             };
         });
 
@@ -325,12 +310,12 @@ describe("PriceCalculationHelper", () => {
                     percEkv: 1,
                     sumObtain: 25,
                     sumLabel: 10,
-                    taxUnit: 6
+                    taxUnit: 6,
                 }),
                 getProductsWithCoeffs: jest.fn(),
                 updatePrices: jest.fn(),
                 updateAllPrices: jest.fn(),
-                createAction: jest.fn()
+                createAction: jest.fn(),
             };
         });
 
@@ -345,16 +330,10 @@ describe("PriceCalculationHelper", () => {
                 sum_pack: 10,
                 min_perc: 20,
                 perc: 40,
-                old_perc: 80
+                old_perc: 80,
             };
 
-            const result = (helper as any).calculatePriceWithPercents(
-                price,
-                mockService,
-                20,
-                40,
-                80
-            );
+            const result = (helper as any).calculatePriceWithPercents(price, mockService, 20, 40, 80);
 
             expect(result).toBeDefined();
             expect(result.min_price).toBeDefined();
@@ -375,7 +354,7 @@ describe("PriceCalculationHelper", () => {
                 sum_pack: 10,
                 min_perc: 20,
                 perc: 40,
-                old_perc: 80
+                old_perc: 80,
             };
 
             const zeroCoeffs = {
@@ -384,16 +363,10 @@ describe("PriceCalculationHelper", () => {
                 percEkv: 0,
                 sumObtain: 0,
                 sumLabel: 0,
-                taxUnit: 0
+                taxUnit: 0,
             };
 
-            const result = (helper as any).calculatePriceWithCoeffs(
-                price,
-                zeroCoeffs,
-                20,
-                40,
-                80
-            );
+            const result = (helper as any).calculatePriceWithCoeffs(price, zeroCoeffs, 20, 40, 80);
 
             expect(result).toBeDefined();
             expect(result.min_price).toBeDefined();
@@ -412,7 +385,7 @@ describe("PriceCalculationHelper", () => {
                 sum_pack: 10,
                 min_perc: 20,
                 perc: 40,
-                old_perc: 80
+                old_perc: 80,
             };
 
             const zeroCoeffs = {
@@ -421,7 +394,7 @@ describe("PriceCalculationHelper", () => {
                 percEkv: 0,
                 sumObtain: 0,
                 sumLabel: 0,
-                taxUnit: 0
+                taxUnit: 0,
             };
 
             const serviceCoeffs = {
@@ -430,7 +403,7 @@ describe("PriceCalculationHelper", () => {
                 percEkv: 1,
                 sumObtain: 25,
                 sumLabel: 10,
-                taxUnit: 6
+                taxUnit: 6,
             };
 
             const resultZero = (helper as any).calculatePriceWithCoeffs(price, zeroCoeffs, 20, 40, 80);
@@ -459,7 +432,7 @@ describe("PriceCalculationHelper", () => {
                     getProductsWithCoeffs: jest.fn(),
                     updatePrices: jest.fn(),
                     updateAllPrices: jest.fn(),
-                    createAction: jest.fn()
+                    createAction: jest.fn(),
                 };
             });
 
@@ -492,7 +465,7 @@ describe("PriceCalculationHelper", () => {
                 percEkv: 0,
                 sumObtain: 0,
                 sumLabel: 0,
-                taxUnit: 0
+                taxUnit: 0,
             };
 
             it('returns true if profit is less than threshold with zero coeffs', () => {
@@ -514,7 +487,7 @@ describe("PriceCalculationHelper", () => {
             it('should return true when difference between price and min_price is less than threshold', () => {
                 const price = {
                     price: '30',
-                    min_price: '15'
+                    min_price: '15',
                 } as UpdatePriceDto;
                 expect((helper as any).shouldAdjustNormalPrice(price)).toBe(true);
             });
@@ -522,7 +495,7 @@ describe("PriceCalculationHelper", () => {
             it('should return false when difference is adequate', () => {
                 const price = {
                     price: '40',
-                    min_price: '15'
+                    min_price: '15',
                 } as UpdatePriceDto;
                 expect((helper as any).shouldAdjustNormalPrice(price)).toBe(false);
             });
@@ -532,7 +505,7 @@ describe("PriceCalculationHelper", () => {
             it('should return true when difference between old_price and price is less than threshold*2', () => {
                 const price = {
                     old_price: '50',
-                    price: '30'
+                    price: '30',
                 } as UpdatePriceDto;
                 expect((helper as any).shouldAdjustOldPrice(price)).toBe(true);
             });
@@ -540,7 +513,7 @@ describe("PriceCalculationHelper", () => {
             it('should return false when difference is adequate', () => {
                 const price = {
                     old_price: '90',
-                    price: '30'
+                    price: '30',
                 } as UpdatePriceDto;
                 expect((helper as any).shouldAdjustOldPrice(price)).toBe(false);
             });

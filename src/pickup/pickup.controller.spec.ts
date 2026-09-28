@@ -169,10 +169,7 @@ describe('PickupController', () => {
 
             expect(orderService.getShipmentLabelForInvoice).toHaveBeenCalledWith(invoice);
             expect(res.setHeader).toHaveBeenCalledWith('Content-Type', 'application/pdf');
-            expect(res.setHeader).toHaveBeenCalledWith(
-                'Content-Disposition',
-                `inline; filename=${invoice.remark}.pdf`,
-            );
+            expect(res.setHeader).toHaveBeenCalledWith('Content-Disposition', `inline; filename=${invoice.remark}.pdf`);
             expect(res.send).toHaveBeenCalledWith(pdf);
         });
     });

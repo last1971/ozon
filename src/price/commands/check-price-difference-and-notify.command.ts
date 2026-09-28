@@ -5,13 +5,13 @@ import { ExtraPriceService } from '../extra.price.service';
 
 @Injectable()
 export class CheckPriceDifferenceAndNotifyCommand implements ICommandAsync<IGoodsProcessingContext> {
-  constructor(
-    @Inject(forwardRef(() => ExtraPriceService))
-    private readonly extraPriceService: ExtraPriceService
-  ) {}
+    constructor(
+        @Inject(forwardRef(() => ExtraPriceService))
+        private readonly extraPriceService: ExtraPriceService,
+    ) {}
 
-  async execute(context: IGoodsProcessingContext): Promise<IGoodsProcessingContext> {
-    await this.extraPriceService.checkPriceDifferenceAndNotify(context.ozonSkus);
-    return context;
-  }
-} 
+    async execute(context: IGoodsProcessingContext): Promise<IGoodsProcessingContext> {
+        await this.extraPriceService.checkPriceDifferenceAndNotify(context.ozonSkus);
+        return context;
+    }
+}

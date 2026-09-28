@@ -79,7 +79,8 @@ export class NotifyRetryService {
         await this.save(left);
         if (left.length > 0) await this.markDown();
         else await this.markUp();
-        if (sent || dropped) this.logger.log(`notify:retry отправлено ${sent}, выброшено ${dropped}, осталось ${left.length}`);
+        if (sent || dropped)
+            this.logger.log(`notify:retry отправлено ${sent}, выброшено ${dropped}, осталось ${left.length}`);
         return { sent, dropped, left: left.length };
     }
 
@@ -129,7 +130,12 @@ export class NotifyRetryService {
     private async save(items: RetryItem[]): Promise<void> {
         try {
             if (items.length === 0) await this.cache.del(NotifyRetryService.KEY);
-            else await this.cache.set(NotifyRetryService.KEY, JSON.stringify(items), (NotifyRetryService.TTL_HOURS + 1) * 3600_000);
+            else
+                await this.cache.set(
+                    NotifyRetryService.KEY,
+                    JSON.stringify(items),
+                    (NotifyRetryService.TTL_HOURS + 1) * 3600_000,
+                );
         } catch (e) {
             this.logger.error(`очередь повтора не записана: ${e.message}`);
         }

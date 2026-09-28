@@ -18,11 +18,7 @@ export class AIService {
     private logger = new Logger(AIService.name);
     private providers: Map<AIProviderName, AIProvider>;
 
-    constructor(
-        anthropicProvider: AnthropicProvider,
-        openaiProvider: OpenAIProvider,
-        yandexProvider: YandexProvider,
-    ) {
+    constructor(anthropicProvider: AnthropicProvider, openaiProvider: OpenAIProvider, yandexProvider: YandexProvider) {
         this.providers = new Map<AIProviderName, AIProvider>([
             [AIProviderName.ANTHROPIC, anthropicProvider],
             [AIProviderName.OPENAI, openaiProvider],
@@ -30,11 +26,7 @@ export class AIService {
         ]);
     }
 
-    async chat(
-        provider: AIProviderName,
-        messages: AIChatMessage[],
-        options?: AIChatOptions,
-    ): Promise<AIChatResponse> {
+    async chat(provider: AIProviderName, messages: AIChatMessage[], options?: AIChatOptions): Promise<AIChatResponse> {
         const p = this.getProvider(provider);
         this.logger.log(`Chat request to ${provider}, model: ${options?.model || 'default'}`);
         return p.chat(messages, options);
@@ -65,12 +57,7 @@ export class AIService {
         return this.getProvider(provider).supportsFeature(feature);
     }
 
-    estimateCost(
-        provider: AIProviderName,
-        inputTokens: number,
-        outputTokens: number,
-        model?: string,
-    ): number {
+    estimateCost(provider: AIProviderName, inputTokens: number, outputTokens: number, model?: string): number {
         return this.getProvider(provider).estimateCost(inputTokens, outputTokens, model);
     }
 

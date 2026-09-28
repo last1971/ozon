@@ -113,11 +113,7 @@ export class YandexPriceService implements IPriceUpdateable, IVatUpdateable, OnM
      * @returns массив маппингов офферов
      */
     async getOfferMappings(offerIds: string[]): Promise<any[]> {
-        const response = await this.api.method(
-            `businesses/${this.businessId}/offer-mappings`,
-            'post',
-            { offerIds }
-        );
+        const response = await this.api.method(`businesses/${this.businessId}/offer-mappings`, 'post', { offerIds });
         return response.result?.offerMappings ?? [];
     }
 
@@ -166,7 +162,10 @@ export class YandexPriceService implements IPriceUpdateable, IVatUpdateable, OnM
     }
 
     // IVatUpdateable interface methods
-    async checkVatForAll(expectedVat: number, limit?: number): Promise<Array<{ offer_id: string; current_vat: number; expected_vat: number; }>> {
+    async checkVatForAll(
+        expectedVat: number,
+        limit?: number,
+    ): Promise<Array<{ offer_id: string; current_vat: number; expected_vat: number }>> {
         this.logger.log(`Проверка НДС для Yandex. Ожидаемая ставка: ${expectedVat}%`);
 
         // 1. Получить все офферы через старый API campaigns (он возвращает НДС в campaignPrice.vat)
@@ -188,11 +187,11 @@ export class YandexPriceService implements IPriceUpdateable, IVatUpdateable, OnM
         // 2. Фильтруем несоответствия
         // Если vat не установлен (undefined), vatToNumber вернет 0
         const mismatches = allOffers
-            .filter(offer => {
+            .filter((offer) => {
                 const currentVat = this.vatToNumber(offer.campaignPrice?.vat);
                 return currentVat !== expectedVat;
             })
-            .map(offer => ({
+            .map((offer) => ({
                 offer_id: offer.offerId,
                 current_vat: this.vatToNumber(offer.campaignPrice?.vat),
                 expected_vat: expectedVat,
@@ -226,16 +225,12 @@ export class YandexPriceService implements IPriceUpdateable, IVatUpdateable, OnM
         for (const offerIdsChunk of chunk(offerIds, 500)) {
             const offers = offerIdsChunk.map((offerId: string) => ({
                 offerId,
-                vat: vatId
+                vat: vatId,
             }));
 
             this.logger.log(`Обновление чанка из ${offers.length} товаров`);
 
-            const response = await this.api.method(
-                `v2/campaigns/${campaignId}/offers/update`,
-                'post',
-                { offers }
-            );
+            const response = await this.api.method(`v2/campaigns/${campaignId}/offers/update`, 'post', { offers });
 
             results.push(response);
         }
@@ -252,12 +247,12 @@ export class YandexPriceService implements IPriceUpdateable, IVatUpdateable, OnM
     vatToNumber(vat: any): number {
         const vatId = parseInt(String(vat), 10);
         const mapping: Record<number, number> = {
-            2: 10,   // НДС 10%
-            5: 0,    // НДС 0%
-            6: -1,   // Не облагается
-            7: 20,   // НДС 20%
-            10: 5,   // НДС 5% (УСН)
-            11: 7,   // НДС 7% (УСН)
+            2: 10, // НДС 10%
+            5: 0, // НДС 0%
+            6: -1, // Не облагается
+            7: 20, // НДС 20%
+            10: 5, // НДС 5% (УСН)
+            11: 7, // НДС 7% (УСН)
         };
         return mapping[vatId] ?? 0;
     }
@@ -268,12 +263,12 @@ export class YandexPriceService implements IPriceUpdateable, IVatUpdateable, OnM
      */
     numberToVat(vat: number): string {
         const mapping: Record<number, number> = {
-            10: 2,   // НДС 10%
-            0: 5,    // НДС 0%
+            10: 2, // НДС 10%
+            0: 5, // НДС 0%
             [-1]: 6, // Не облагается
-            20: 7,   // НДС 20%
-            5: 10,   // НДС 5% (УСН)
-            7: 11,   // НДС 7% (УСН)
+            20: 7, // НДС 20%
+            5: 10, // НДС 5% (УСН)
+            7: 11, // НДС 7% (УСН)
         };
         return String(mapping[vat] ?? 7); // По умолчанию 7 (20%)
     }

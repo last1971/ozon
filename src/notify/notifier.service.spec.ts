@@ -16,7 +16,14 @@ function make(env: Record<string, string>, routes: Record<string, string[]>) {
         del: jest.fn(),
     };
     const config = { get: jest.fn((k: string) => env[k]) };
-    const service = new NotifierService([mail, matrix], repo as any, retry as any, matrix as any, cache as any, config as any);
+    const service = new NotifierService(
+        [mail, matrix],
+        repo as any,
+        retry as any,
+        matrix as any,
+        cache as any,
+        config as any,
+    );
     return { service, mail, matrix, repo, retry };
 }
 
@@ -26,7 +33,10 @@ describe('NotifierService', () => {
     it('тема → все адресаты по каналам, тег в заголовке, m.text для OPS', async () => {
         const { service, mail, matrix } = make(prod, { 'OPS:mail': ['a@b.c'], 'OPS:matrix': ['!r1:s', '!r2:s'] });
         await service.errorMessage('Разобрать посылку', 'текст', NotifyTopic.OPS);
-        expect(mail.send).toHaveBeenCalledWith('a@b.c', expect.objectContaining({ subject: '[опт] Разобрать посылку', notice: false }));
+        expect(mail.send).toHaveBeenCalledWith(
+            'a@b.c',
+            expect.objectContaining({ subject: '[опт] Разобрать посылку', notice: false }),
+        );
         expect(matrix.send).toHaveBeenCalledTimes(2);
         expect(matrix.send.mock.calls[1][0]).toBe('!r2:s');
     });
@@ -64,7 +74,10 @@ describe('NotifierService', () => {
     });
 
     it('не production: транспорты не вызываются, но результат true', async () => {
-        const { service, mail, matrix } = make({ NODE_ENV: 'development', FB_BASE: '/var/db/magazin.fdb' }, { 'OPS:mail': ['a@b.c'] });
+        const { service, mail, matrix } = make(
+            { NODE_ENV: 'development', FB_BASE: '/var/db/magazin.fdb' },
+            { 'OPS:mail': ['a@b.c'] },
+        );
         expect(await service.errorMessage('s', 'x', NotifyTopic.OPS)).toBe(true);
         expect(mail.send).not.toHaveBeenCalled();
         expect(matrix.send).not.toHaveBeenCalled();
@@ -82,7 +95,10 @@ describe('NotifierService', () => {
     it('структурные события идут в PRICES/OPS с hbs-шаблоном и plain-текстом', async () => {
         const { service, mail, matrix } = make(prod, { 'PRICES:mail': ['n@x.y'], 'OPS:matrix': ['!o:s'] });
         await service.halfStore({ name: 'Резистор', quantity: 3, reserve: 1 }, { AMOUNT: 40 });
-        expect(mail.send.mock.calls[0][1]).toMatchObject({ mail: { template: 'half_store' }, text: expect.stringContaining('Резистор') });
+        expect(mail.send.mock.calls[0][1]).toMatchObject({
+            mail: { template: 'half_store' },
+            text: expect.stringContaining('Резистор'),
+        });
         await service.wbOrders('Добавлены WB FBO заказы', [{ prim: 'srid1', offer_id: 'ART' }]);
         expect(matrix.send.mock.calls[0][1]).toMatchObject({ notice: true, text: 'srid1 — ART' });
     });

@@ -1,6 +1,6 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { LabelController } from './label.controller';
-import { LabelService } from "./label.service";
+import { LabelService } from './label.service';
 
 describe('LabelController', () => {
     let controller: LabelController;

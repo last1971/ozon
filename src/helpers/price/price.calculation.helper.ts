@@ -3,13 +3,13 @@ import { ConfigService } from '@nestjs/config';
 import { IProductCoeffsable } from '../../interfaces/i.product.coeffsable';
 import { GoodPriceDto } from '../../good/dto/good.price.dto';
 import { UpdatePriceDto } from '../../price/dto/update.price.dto';
-import { calculatePay, calculatePrice, goodCode, goodQuantityCoeff } from "../index";
+import { calculatePay, calculatePrice, goodCode, goodQuantityCoeff } from '../index';
 import { IPriceUpdateable } from '../../interfaces/i.price.updateable';
 import { GoodPercentDto } from '../../good/dto/good.percent.dto';
 import { IGood } from '../../interfaces/IGood';
-import { FirebirdTransaction } from "ts-firebird";
-import { IPriceable } from "../../interfaces/i.priceable";
-import { toNumber } from "lodash";
+import { FirebirdTransaction } from 'ts-firebird';
+import { IPriceable } from '../../interfaces/i.priceable';
+import { toNumber } from 'lodash';
 import { ObtainCoeffsDto } from '../dto/obtain.coeffs.dto';
 import { GenericProductCoeffsAdapter } from './generic.product.coeffs.adapter';
 
@@ -28,19 +28,12 @@ export class PriceCalculationHelper {
         taxUnit: 0,
     };
 
-    constructor(
-        private readonly configService: ConfigService
-    ) {
+    constructor(private readonly configService: ConfigService) {
         this.MIN_PROFIT_RUB = this.configService.get<number>('MIN_PROFIT_RUB', 20);
         this.MIN_STOCK_PERCENT = this.configService.get<number>('MIN_STOCK_PERCENT', 80);
     }
 
-    selectWarehouse(
-        fboCount: number,
-        fbsCount: number,
-        fboCommission: number,
-        fbsCommission: number,
-    ): 'fbo' | 'fbs' {
+    selectWarehouse(fboCount: number, fbsCount: number, fboCommission: number, fbsCommission: number): 'fbo' | 'fbs' {
         const total = fboCount + fbsCount;
         if (total === 0) return 'fbs';
 
@@ -67,22 +60,22 @@ export class PriceCalculationHelper {
         warehouse: 'fbo' | 'fbs',
         percDirectFlow: number,
     ): number {
-        const max = warehouse === 'fbo'
-            ? commissions.fbo_direct_flow_trans_max_amount
-            : commissions.fbs_direct_flow_trans_max_amount;
-        const min = warehouse === 'fbo'
-            ? commissions.fbo_direct_flow_trans_min_amount
-            : commissions.fbs_direct_flow_trans_min_amount;
-        return (max + min) / 2 * percDirectFlow;
+        const max =
+            warehouse === 'fbo'
+                ? commissions.fbo_direct_flow_trans_max_amount
+                : commissions.fbs_direct_flow_trans_max_amount;
+        const min =
+            warehouse === 'fbo'
+                ? commissions.fbo_direct_flow_trans_min_amount
+                : commissions.fbs_direct_flow_trans_min_amount;
+        return ((max + min) / 2) * percDirectFlow;
     }
 
     getCommission(
         commissions: { sales_percent_fbo: number; sales_percent_fbs: number },
         warehouse: 'fbo' | 'fbs',
     ): number {
-        return warehouse === 'fbo'
-            ? commissions.sales_percent_fbo
-            : commissions.sales_percent_fbs;
+        return warehouse === 'fbo' ? commissions.sales_percent_fbo : commissions.sales_percent_fbs;
     }
 
     async preparePricesContext(
@@ -106,17 +99,11 @@ export class PriceCalculationHelper {
         return { codes, goods, percents, products };
     }
 
-    getIncomingPrice(
-        product: IProductCoeffsable, 
-        goods: GoodPriceDto[], 
-        prices?: Map<string, UpdatePriceDto>
-    ): number {
+    getIncomingPrice(product: IProductCoeffsable, goods: GoodPriceDto[], prices?: Map<string, UpdatePriceDto>): number {
         const gCode = goodCode({ offer_id: product.getSku() });
         const gCoeff = goodQuantityCoeff({ offer_id: product.getSku() });
         const incoming_price = prices?.get(product.getSku())?.incoming_price;
-        return incoming_price
-            ? incoming_price
-            : goods.find((g) => g.code.toString() === gCode)?.price * gCoeff;
+        return incoming_price ? incoming_price : goods.find((g) => g.code.toString() === gCode)?.price * gCoeff;
     }
 
     getInitialPercents(incoming_price: number = 0): { min_perc: number; perc: number; old_perc: number } {
@@ -126,7 +113,7 @@ export class PriceCalculationHelper {
         let old_perc: number, perc: number, min_perc: number;
 
         if (incoming_price) {
-            const base = minPercent + basePercent / (incoming_price + priceOffset) * 100;
+            const base = minPercent + (basePercent / (incoming_price + priceOffset)) * 100;
             old_perc = Math.round(base * 4);
             perc = Math.round(base * 2);
             min_perc = Math.round(base);
@@ -147,27 +134,23 @@ export class PriceCalculationHelper {
             packing_price: packing_price ?? this.configService.get<number>('SUM_PACK', 10),
             available_price: 0,
             offer_id: '',
-            pieces: 1
+            pieces: 1,
         };
     }
 
     adjustPercents(
         initialPrice: IPriceable,
-        service?: IPriceUpdateable
+        service?: IPriceUpdateable,
     ): { min_perc: number; perc: number; old_perc: number } {
         const coeffs = service?.getObtainCoeffs() ?? PriceCalculationHelper.ZERO_COEFFS;
 
         let { min_perc, perc, old_perc } = this.getInitialPercents(
-            initialPrice.available_price != null && initialPrice.available_price > 0 ? initialPrice.available_price : initialPrice.incoming_price
+            initialPrice.available_price != null && initialPrice.available_price > 0
+                ? initialPrice.available_price
+                : initialPrice.incoming_price,
         );
 
-        let calculatedPrice = this.calculatePriceWithCoeffs(
-            initialPrice,
-            coeffs,
-            min_perc,
-            perc,
-            old_perc
-        );
+        let calculatedPrice = this.calculatePriceWithCoeffs(initialPrice, coeffs, min_perc, perc, old_perc);
 
         // Шаг 1: Проверяем минимальную цену
         while (this.shouldAdjustMinPriceWithCoeffs(calculatedPrice, initialPrice, coeffs)) {
@@ -175,13 +158,7 @@ export class PriceCalculationHelper {
             perc = min_perc * 2;
             old_perc = perc * 2;
 
-            calculatedPrice = this.calculatePriceWithCoeffs(
-                initialPrice,
-                coeffs,
-                min_perc,
-                perc,
-                old_perc
-            );
+            calculatedPrice = this.calculatePriceWithCoeffs(initialPrice, coeffs, min_perc, perc, old_perc);
         }
 
         // Шаг 2: Проверяем разницу между минимальной ценой и обычной ценой
@@ -189,26 +166,14 @@ export class PriceCalculationHelper {
             perc += this.PERCENT_STEP;
             old_perc = perc * 2;
 
-            calculatedPrice = this.calculatePriceWithCoeffs(
-                initialPrice,
-                coeffs,
-                min_perc,
-                perc,
-                old_perc
-            );
+            calculatedPrice = this.calculatePriceWithCoeffs(initialPrice, coeffs, min_perc, perc, old_perc);
         }
 
         // Шаг 3: Проверяем разницу между обычной ценой и старой ценой
         while (this.shouldAdjustOldPrice(calculatedPrice)) {
             old_perc += this.PERCENT_STEP;
 
-            calculatedPrice = this.calculatePriceWithCoeffs(
-                initialPrice,
-                coeffs,
-                min_perc,
-                perc,
-                old_perc
-            );
+            calculatedPrice = this.calculatePriceWithCoeffs(initialPrice, coeffs, min_perc, perc, old_perc);
         }
 
         return { min_perc, perc, old_perc };
@@ -219,7 +184,7 @@ export class PriceCalculationHelper {
         coeffs: ObtainCoeffsDto,
         min_perc: number,
         perc: number,
-        old_perc: number
+        old_perc: number,
     ): UpdatePriceDto {
         return calculatePrice(
             {
@@ -228,20 +193,20 @@ export class PriceCalculationHelper {
                 perc,
                 old_perc,
             },
-            coeffs
+            coeffs,
         );
     }
 
-    private shouldAdjustMinPriceWithCoeffs(price: UpdatePriceDto, initialPrice: IPriceable, coeffs: ObtainCoeffsDto): boolean {
+    private shouldAdjustMinPriceWithCoeffs(
+        price: UpdatePriceDto,
+        initialPrice: IPriceable,
+        coeffs: ObtainCoeffsDto,
+    ): boolean {
         const minPrice = toNumber(price.min_price);
-        const payResult = calculatePay(
-            initialPrice,
-            coeffs,
-            minPrice
-        );
+        const payResult = calculatePay(initialPrice, coeffs, minPrice);
         const incomingPrice = initialPrice.available_price || initialPrice.incoming_price;
         const profit = payResult.netProfit !== undefined ? payResult.netProfit : payResult.pay - incomingPrice;
-        return profit < (this.MIN_PROFIT_RUB);
+        return profit < this.MIN_PROFIT_RUB;
     }
 
     // Backward compatibility - старые методы
@@ -250,7 +215,7 @@ export class PriceCalculationHelper {
         service: IPriceUpdateable,
         min_perc: number,
         perc: number,
-        old_perc: number
+        old_perc: number,
     ): UpdatePriceDto {
         return this.calculatePriceWithCoeffs(price, service.getObtainCoeffs(), min_perc, perc, old_perc);
     }
@@ -260,10 +225,10 @@ export class PriceCalculationHelper {
     }
 
     private shouldAdjustNormalPrice(price: UpdatePriceDto): boolean {
-        return (toNumber(price.price) - toNumber(price.min_price)) < (this.MIN_PROFIT_RUB * 2);
+        return toNumber(price.price) - toNumber(price.min_price) < this.MIN_PROFIT_RUB * 2;
     }
 
     private shouldAdjustOldPrice(price: UpdatePriceDto): boolean {
-        return (toNumber(price.old_price) - toNumber(price.price)) < (this.MIN_PROFIT_RUB * 4);
+        return toNumber(price.old_price) - toNumber(price.price) < this.MIN_PROFIT_RUB * 4;
     }
 }

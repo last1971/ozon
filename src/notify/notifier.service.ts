@@ -5,13 +5,7 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import { createHash } from 'crypto';
 import { Environment } from '../env.validation';
-import {
-    halfStoreMessage,
-    isNoticeTopic,
-    problematicPricesMessage,
-    tickMessage,
-    wbOrdersMessage,
-} from './formatters';
+import { halfStoreMessage, isNoticeTopic, problematicPricesMessage, tickMessage, wbOrdersMessage } from './formatters';
 import { instanceTag, resolveInstance } from './instance';
 import { NotifyRetryService } from './notify-retry.service';
 import { NotifyRouteRepository } from './notify-route.repository';

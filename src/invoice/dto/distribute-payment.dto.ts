@@ -22,10 +22,10 @@ export class DistributePaymentDto {
 
     @ApiProperty({
         description: 'Сумма платежа для распределения',
-        example: 1000.50,
+        example: 1000.5,
         type: 'number',
     })
     @IsNumber()
     @IsNotEmpty()
     amount: number;
-} 
+}

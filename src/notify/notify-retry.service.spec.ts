@@ -10,7 +10,7 @@ describe('NotifyRetryService', () => {
     const matrix = { deliver: jest.fn() };
     const mail = { send: jest.fn().mockResolvedValue(true) };
     const routes = { targets: jest.fn().mockResolvedValue(['dev@x.y']) };
-    const config = { get: jest.fn((k: string) => ({ INSTANCE: 'opt' }[k])) };
+    const config = { get: jest.fn((k: string) => ({ INSTANCE: 'opt' })[k]) };
     let service: NotifyRetryService;
 
     beforeEach(() => {
@@ -35,7 +35,10 @@ describe('NotifyRetryService', () => {
     });
 
     it('просроченное выбрасывается', async () => {
-        store.set(NotifyRetryService.KEY, JSON.stringify([{ ts: Date.now() - 25 * 3600_000, room: '!a:s', message: { subject: 's', text: 't' } }]));
+        store.set(
+            NotifyRetryService.KEY,
+            JSON.stringify([{ ts: Date.now() - 25 * 3600_000, room: '!a:s', message: { subject: 's', text: 't' } }]),
+        );
         expect(await service.retry()).toEqual({ sent: 0, dropped: 1, left: 0 });
         expect(matrix.deliver).not.toHaveBeenCalled();
     });

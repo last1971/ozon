@@ -11,8 +11,8 @@ import { FirebirdPool } from 'ts-firebird';
 import { ExtraGoodService } from './extra.good.service';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
-import { PriceCalculationHelper } from "../helpers/price/price.calculation.helper";
-import { HelpersModule } from "../helpers/helpers.module";
+import { PriceCalculationHelper } from '../helpers/price/price.calculation.helper';
+import { HelpersModule } from '../helpers/helpers.module';
 import { AvitoCardModule } from '../avito.card/avito.card.module';
 import { SyliusModule } from '../sylius/sylius.module';
 import { ResolveDisableTokensCommand } from './commands/resolve-disable-tokens.command';
@@ -31,7 +31,15 @@ import { PushCountsCommand } from '../helpers/good/commands/push-counts.command'
 import { AVITO_GOOD_STORE } from '../interfaces/i.avito.good.store';
 
 @Module({
-    imports: [FirebirdModule, ProductModule, YandexOfferModule, WbCardModule, HelpersModule, forwardRef(() => AvitoCardModule), SyliusModule],
+    imports: [
+        FirebirdModule,
+        ProductModule,
+        YandexOfferModule,
+        WbCardModule,
+        HelpersModule,
+        forwardRef(() => AvitoCardModule),
+        SyliusModule,
+    ],
     providers: [
         {
             provide: GOOD_SERVICE,

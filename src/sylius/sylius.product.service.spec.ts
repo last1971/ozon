@@ -87,11 +87,10 @@ describe('SyliusProductService', () => {
 
             await service.getGoodIds(null);
 
-            expect(apiService.method).toHaveBeenCalledWith(
-                '/api/v2/admin/product-variants',
-                'get',
-                { itemsPerPage: 100, page: 1 },
-            );
+            expect(apiService.method).toHaveBeenCalledWith('/api/v2/admin/product-variants', 'get', {
+                itemsPerPage: 100,
+                page: 1,
+            });
         });
     });
 
@@ -107,11 +106,9 @@ describe('SyliusProductService', () => {
             const result = await service.updateGoodCounts(goods);
 
             expect(result).toBe(2);
-            expect(apiService.method).toHaveBeenCalledWith(
-                '/api/v2/admin/stock/update',
-                'post',
-                { goods: { '560166': 50, '123456': 30 } },
-            );
+            expect(apiService.method).toHaveBeenCalledWith('/api/v2/admin/stock/update', 'post', {
+                goods: { '560166': 50, '123456': 30 },
+            });
         });
 
         it('should return 0 for empty goods', async () => {

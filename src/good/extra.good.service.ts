@@ -1,35 +1,35 @@
-import { Inject, Injectable, Logger, OnApplicationBootstrap } from "@nestjs/common";
-import { ProductService } from "../product/product.service";
-import { YandexOfferService } from "../yandex.offer/yandex.offer.service";
-import { ExpressOfferService } from "../yandex.offer/express.offer.service";
-import { WbCardService } from "../wb.card/wb.card.service";
-import { AvitoCardService } from "../avito.card/avito.card.service";
-import { SyliusProductService } from "../sylius/sylius.product.service";
-import { GOOD_SERVICE, IGood } from "../interfaces/IGood";
-import { AVITO_GOOD_STORE, IAvitoGoodStore } from "../interfaces/i.avito.good.store";
-import { ICountUpdateable } from "../interfaces/ICountUpdatebale";
-import { GoodServiceEnum } from "./good.service.enum";
-import { ResultDto } from "../helpers/dto/result.dto";
-import { EventEmitter2, OnEvent } from "@nestjs/event-emitter";
-import { IsSwitchedDto } from "./dto/is.switched.dto";
-import { chunk } from "lodash";
-import { Cron } from "@nestjs/schedule";
-import { GoodDto } from "./dto/good.dto";
-import { ConfigService } from "@nestjs/config";
-import { Environment } from "../env.validation";
-import { ProductInfoDto } from "../product/dto/product.info.dto";
-import { GoodsCountProcessor } from "../helpers/good/goods.count.processor";
+import { Inject, Injectable, Logger, OnApplicationBootstrap } from '@nestjs/common';
+import { ProductService } from '../product/product.service';
+import { YandexOfferService } from '../yandex.offer/yandex.offer.service';
+import { ExpressOfferService } from '../yandex.offer/express.offer.service';
+import { WbCardService } from '../wb.card/wb.card.service';
+import { AvitoCardService } from '../avito.card/avito.card.service';
+import { SyliusProductService } from '../sylius/sylius.product.service';
+import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
+import { AVITO_GOOD_STORE, IAvitoGoodStore } from '../interfaces/i.avito.good.store';
+import { ICountUpdateable } from '../interfaces/ICountUpdatebale';
+import { GoodServiceEnum } from './good.service.enum';
+import { ResultDto } from '../helpers/dto/result.dto';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
+import { IsSwitchedDto } from './dto/is.switched.dto';
+import { chunk } from 'lodash';
+import { Cron } from '@nestjs/schedule';
+import { GoodDto } from './dto/good.dto';
+import { ConfigService } from '@nestjs/config';
+import { Environment } from '../env.validation';
+import { ProductInfoDto } from '../product/dto/product.info.dto';
+import { GoodsCountProcessor } from '../helpers/good/goods.count.processor';
 import { DisabledLevel, isDisabled, loadRows, parseDisabled, readColumnByHeader } from '../helpers';
-import { GoodWbDto } from "./dto/good.wb.dto";
-import { GoodAvitoDto } from "./dto/good.avito.dto";
-import { GoodPercentDto } from "./dto/good.percent.dto";
-import { CommandChainAsync } from "../helpers/command/command.chain.async";
-import { IDisableGoodsContext } from "./commands/i.disable.goods.context";
-import { ResolveDisableTokensCommand } from "./commands/resolve-disable-tokens.command";
-import { WriteDisabledFlagCommand } from "./commands/write-disabled-flag.command";
-import { ClearDisabledFlagCommand } from "./commands/clear-disabled-flag.command";
-import { PushZeroCountsCommand } from "./commands/push-zero-counts.command";
-import { RestoreCountsCommand } from "./commands/restore-counts.command";
+import { GoodWbDto } from './dto/good.wb.dto';
+import { GoodAvitoDto } from './dto/good.avito.dto';
+import { GoodPercentDto } from './dto/good.percent.dto';
+import { CommandChainAsync } from '../helpers/command/command.chain.async';
+import { IDisableGoodsContext } from './commands/i.disable.goods.context';
+import { ResolveDisableTokensCommand } from './commands/resolve-disable-tokens.command';
+import { WriteDisabledFlagCommand } from './commands/write-disabled-flag.command';
+import { ClearDisabledFlagCommand } from './commands/clear-disabled-flag.command';
+import { PushZeroCountsCommand } from './commands/push-zero-counts.command';
+import { RestoreCountsCommand } from './commands/restore-counts.command';
 
 @Injectable()
 export class ExtraGoodService implements OnApplicationBootstrap {
@@ -90,9 +90,9 @@ export class ExtraGoodService implements OnApplicationBootstrap {
             isSuccess: service.isSwitchedOn,
             message: service.isSwitchedOn
                 ? `Was updated ${await this.goodsCountProcessor.processGoodsCountForService(
-                    this.services,
-                    serviceEnum,
-                    ''
+                      this.services,
+                      serviceEnum,
+                      '',
                   )} offers in ${serviceEnum}`
                 : `${serviceEnum} switched off`,
         };
@@ -232,7 +232,12 @@ export class ExtraGoodService implements OnApplicationBootstrap {
     /** Сводка по сервису: вкл/выкл + активные/замороженные SKU. */
     async getStatus(
         serviceEnum: GoodServiceEnum,
-    ): Promise<{ isSwitchedOn: boolean; total: number; active: number; disabled: { code: string; level: DisabledLevel }[] }> {
+    ): Promise<{
+        isSwitchedOn: boolean;
+        total: number;
+        active: number;
+        disabled: { code: string; level: DisabledLevel }[];
+    }> {
         const entry = this.services.get(serviceEnum);
         if (!entry) return { isSwitchedOn: false, total: 0, active: 0, disabled: [] };
         const skuList = entry.service.skuList ?? [];
@@ -253,9 +258,7 @@ export class ExtraGoodService implements OnApplicationBootstrap {
         }
         // Загружаем все сервисы параллельно — они независимы (свой маркетплейс, свой skuList, свой ключ Map).
         // loadSkuList сам ловит падение и наружу не бросает; allSettled — подстраховка от неожиданного throw.
-        await Promise.allSettled(
-            Array.from(this.services.keys()).map((serviceEnum) => this.loadSkuList(serviceEnum)),
-        );
+        await Promise.allSettled(Array.from(this.services.keys()).map((serviceEnum) => this.loadSkuList(serviceEnum)));
     }
 
     async loadSkuList(serviceEnum: GoodServiceEnum): Promise<ResultDto> {
@@ -301,7 +304,6 @@ export class ExtraGoodService implements OnApplicationBootstrap {
                     '',
                 )} goods in ${service}`,
             );
-
         }
     }
 
@@ -319,10 +321,7 @@ export class ExtraGoodService implements OnApplicationBootstrap {
     tradeSkusToServiceSkus(tradeSkus: string[], serviceEnum: GoodServiceEnum): string[] {
         const service = this.getCountUpdateableService(serviceEnum);
         if (!service || !service.skuList) return [];
-        return service.skuList
-            .filter(
-                (serviceSku) => tradeSkus.some((tradeSku) => serviceSku.startsWith(tradeSku))
-            );
+        return service.skuList.filter((serviceSku) => tradeSkus.some((tradeSku) => serviceSku.startsWith(tradeSku)));
     }
 
     getSkuList(serviceEnum: GoodServiceEnum): string[] {
@@ -331,7 +330,8 @@ export class ExtraGoodService implements OnApplicationBootstrap {
     }
 
     async importWbFromXlsx(buffer: Buffer): Promise<{ updated: number; errors: number }> {
-        let updated = 0, errors = 0;
+        let updated = 0,
+            errors = 0;
         for (const row of await loadRows(buffer)) {
             try {
                 const id = row[0];
@@ -354,7 +354,8 @@ export class ExtraGoodService implements OnApplicationBootstrap {
     }
 
     async importAvitoFromXlsx(buffer: Buffer): Promise<{ updated: number; errors: number }> {
-        let updated = 0, errors = 0;
+        let updated = 0,
+            errors = 0;
         for (const row of await loadRows(buffer)) {
             try {
                 const id = row[0];
@@ -376,7 +377,8 @@ export class ExtraGoodService implements OnApplicationBootstrap {
     }
 
     async importPercentFromXlsx(buffer: Buffer): Promise<{ updated: number; errors: number }> {
-        let updated = 0, errors = 0;
+        let updated = 0,
+            errors = 0;
         for (const row of await loadRows(buffer)) {
             try {
                 const offer_id = row[0];

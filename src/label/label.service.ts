@@ -1,12 +1,12 @@
-import { Injectable } from "@nestjs/common";
-import * as bwipjs from "bwip-js";
-import PDFDocument from "pdfkit";
-import * as path from "path";
-import { createCanvas } from "@napi-rs/canvas";
-import { calculateOptimalFontSize } from "../helpers";
-import { BarcodeType } from "./dto/barcodeType";
-import { GenerateBarcodeDto } from "./dto/generateBarcodeDto";
-import { GenerateLabelsDto } from "./dto/generateLabelsDto";
+import { Injectable } from '@nestjs/common';
+import * as bwipjs from 'bwip-js';
+import PDFDocument from 'pdfkit';
+import * as path from 'path';
+import { createCanvas } from '@napi-rs/canvas';
+import { calculateOptimalFontSize } from '../helpers';
+import { BarcodeType } from './dto/barcodeType';
+import { GenerateBarcodeDto } from './dto/generateBarcodeDto';
+import { GenerateLabelsDto } from './dto/generateLabelsDto';
 import TextOptions = PDFKit.Mixins.TextOptions;
 
 @Injectable()
@@ -16,15 +16,15 @@ export class LabelService {
     async generateBarcode(barcodeDto: GenerateBarcodeDto): Promise<Buffer> {
         const { bcid, text, height, width } = barcodeDto;
         return bcid === BarcodeType.TEXT
-        ? this.generateImageWithText(text, height, width)
-        : bwipjs.toBuffer({
-            bcid,
-            text,
-            scale: 10, // Увеличенный scale для повышения четкости штрихкода
-            height,
-            width,
-            includetext: true,
-        });
+            ? this.generateImageWithText(text, height, width)
+            : bwipjs.toBuffer({
+                  bcid,
+                  text,
+                  scale: 10, // Увеличенный scale для повышения четкости штрихкода
+                  height,
+                  width,
+                  includetext: true,
+              });
     }
 
     async generateImageWithText(text: string, h: number, w: number): Promise<Buffer> {
@@ -63,7 +63,7 @@ export class LabelService {
             marginY,
             barcodeHeightPercent,
             barcodeWidthPercent,
-            spacingBetweenBarcodeAndText
+            spacingBetweenBarcodeAndText,
         } = generateLabelsDto;
 
         const pointSize = this.pointSize;
@@ -71,8 +71,10 @@ export class LabelService {
         const horizontalMargin = Math.ceil(size.width * (marginX / 100));
         const verticalMargin = Math.ceil(size.height * (marginY / 100));
         const barcodeHeight = Math.ceil(size.height * (barcodeHeightPercent / 100)) * pointSize;
-        const textHeight = Math.ceil(size.height * ((100 - barcodeHeightPercent) / 100)) * pointSize
-            - verticalMargin * 2 - spacingBetweenBarcodeAndText;
+        const textHeight =
+            Math.ceil(size.height * ((100 - barcodeHeightPercent) / 100)) * pointSize -
+            verticalMargin * 2 -
+            spacingBetweenBarcodeAndText;
         const barcodeWidth = Math.ceil(size.width * (barcodeWidthPercent / 100)) * pointSize;
 
         const doc = new PDFDocument({ size: pageSize, margin: 0 });
@@ -96,14 +98,13 @@ export class LabelService {
                     // Печать текста вместо штрих-кода
                     const text = `${label.code} / ${label.description}`;
                     const maxTextHeight = size.height * this.pointSize - verticalMargin * 2;
-                    const fontSize = calculateOptimalFontSize({doc, text, maxTextHeight, options});
-                    doc.fontSize(fontSize)
-                        .text(
-                            `${label.code} / ${label.description}`,
-                            horizontalMargin,
-                            verticalMargin,
-                            { ...options, height: maxTextHeight },
-                        );
+                    const fontSize = calculateOptimalFontSize({ doc, text, maxTextHeight, options });
+                    doc.fontSize(fontSize).text(
+                        `${label.code} / ${label.description}`,
+                        horizontalMargin,
+                        verticalMargin,
+                        { ...options, height: maxTextHeight },
+                    );
                 } else {
                     // Генерация штрих-кода
                     const barcode = await bwipjs.toBuffer({
@@ -116,25 +117,22 @@ export class LabelService {
                     });
 
                     // Добавление штрих-кода и текста на PDF
-                    doc.image(
-                        barcode,
-                        horizontalMargin,
-                        verticalMargin,
-                        { width: barcodeWidth, height: barcodeHeight }
-                    );
+                    doc.image(barcode, horizontalMargin, verticalMargin, {
+                        width: barcodeWidth,
+                        height: barcodeHeight,
+                    });
                     const dynamicFontSize = calculateOptimalFontSize({
                         doc,
                         text: label.description,
                         maxTextHeight: textHeight,
-                        options
+                        options,
                     });
-                    doc.fontSize(dynamicFontSize)
-                        .text(
-                            label.description,
-                            horizontalMargin,
-                            verticalMargin + barcodeHeight + spacingBetweenBarcodeAndText,
-                            { ...options, height: textHeight },
-                        );
+                    doc.fontSize(dynamicFontSize).text(
+                        label.description,
+                        horizontalMargin,
+                        verticalMargin + barcodeHeight + spacingBetweenBarcodeAndText,
+                        { ...options, height: textHeight },
+                    );
                 }
                 if (i < labelsData.length - 1) {
                     doc.addPage(); // Переход на новую страницу для следующей этикетки

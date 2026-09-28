@@ -89,10 +89,7 @@ describe('Trade2006AccrualService', () => {
     describe('getMissingDays', () => {
         it('находит дырки в непрерывности', async () => {
             query.mockResolvedValueOnce([{ ACCRUAL_DATE: '2026-07-13' }, { ACCRUAL_DATE: '2026-07-15' }]);
-            expect(await service.getMissingDays('2026-07-13', '2026-07-16')).toEqual([
-                '2026-07-14',
-                '2026-07-16',
-            ]);
+            expect(await service.getMissingDays('2026-07-13', '2026-07-16')).toEqual(['2026-07-14', '2026-07-16']);
         });
 
         it('дата из драйвера не съезжает на сутки назад', async () => {
@@ -114,10 +111,7 @@ describe('Trade2006AccrualService', () => {
         });
 
         it('на полной неделе дырок нет', async () => {
-            query.mockResolvedValueOnce([
-                { ACCRUAL_DATE: '2026-07-13' },
-                { ACCRUAL_DATE: '2026-07-14' },
-            ]);
+            query.mockResolvedValueOnce([{ ACCRUAL_DATE: '2026-07-13' }, { ACCRUAL_DATE: '2026-07-14' }]);
             expect(await service.getMissingDays('2026-07-13', '2026-07-14')).toEqual([]);
         });
     });

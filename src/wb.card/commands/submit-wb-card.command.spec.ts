@@ -17,7 +17,9 @@ describe('SubmitWbCardCommand', () => {
 
         const uploadBody = [{ subjectID: 2009, variants: [{}] }];
         const ctx: IWbCreateCardContext = {
-            productName: 'Test', description: '', subjectId: 2009,
+            productName: 'Test',
+            description: '',
+            subjectId: 2009,
             uploadBody,
         };
         const result = await command.execute(ctx);
@@ -38,7 +40,9 @@ describe('SubmitWbCardCommand', () => {
         });
 
         const ctx: IWbCreateCardContext = {
-            productName: 'Test', description: '', subjectId: 2009,
+            productName: 'Test',
+            description: '',
+            subjectId: 2009,
             uploadBody: [],
         };
         const result = await command.execute(ctx);

@@ -28,7 +28,7 @@ describe('WithTransactions', () => {
             class {
                 pool = mockPool;
                 logger = mockLogger;
-            }
+            },
         );
 
         instance = new TestClass();
@@ -37,9 +37,7 @@ describe('WithTransactions', () => {
     it('должен успешно выполнить транзакцию', async () => {
         const operation = jest.fn().mockResolvedValue('result');
 
-        const result = await instance.withTransaction(
-            operation
-        );
+        const result = await instance.withTransaction(operation);
 
         expect(result).toBe('result');
         expect(mockTransaction.commit).toHaveBeenCalledWith(true);
@@ -50,9 +48,7 @@ describe('WithTransactions', () => {
         const error = new Error('test error');
         const operation = jest.fn().mockRejectedValue(error);
 
-        await expect(
-            instance.withTransaction(operation)
-        ).rejects.toThrow(error);
+        await expect(instance.withTransaction(operation)).rejects.toThrow(error);
 
         expect(mockTransaction.rollback).toHaveBeenCalledWith(true);
         expect(mockTransaction.commit).not.toHaveBeenCalled();
@@ -62,15 +58,12 @@ describe('WithTransactions', () => {
     it('должен использовать существующую транзакцию', async () => {
         const existingTransaction = {
             commit: jest.fn(),
-            rollback: jest.fn()
+            rollback: jest.fn(),
         } as any;
 
         const operation = jest.fn().mockResolvedValue('result');
 
-        const result = await instance.withTransaction(
-            operation,
-            existingTransaction
-        );
+        const result = await instance.withTransaction(operation, existingTransaction);
 
         expect(result).toBe('result');
         expect(existingTransaction.commit).not.toHaveBeenCalled();

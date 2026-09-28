@@ -8,7 +8,8 @@ export class DonorPickDto {
 }
 
 export class FboShortageApplyDto {
-    @ApiProperty({ description: 'Счёт-приёмник (S.SCODE) из предложения GET /api/invoice/donors/:posting' }) scode: number;
+    @ApiProperty({ description: 'Счёт-приёмник (S.SCODE) из предложения GET /api/invoice/donors/:posting' })
+    scode: number;
     @ApiProperty({ type: [DonorPickDto] }) picks: DonorPickDto[];
     @ApiPropertyOptional({
         description: 'Номинал кода для строк без фасовки (REALPRICE.PIECES пуст): { realpricecode: номинал }',

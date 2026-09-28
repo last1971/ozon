@@ -3,10 +3,10 @@ export type PackageType = 'bag' | 'box';
 export interface PackagingOption {
     name: string;
     type: PackageType;
-    length: number;  // мм
-    width: number;   // мм
+    length: number; // мм
+    width: number; // мм
     height?: number; // мм (только для box)
-    weight: number;  // г (вес тары)
+    weight: number; // г (вес тары)
 }
 
 export const PACKAGING_OPTIONS: PackagingOption[] = [

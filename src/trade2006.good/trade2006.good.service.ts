@@ -6,13 +6,7 @@ import { FIREBIRD } from '../firebird/firebird.module';
 import { FirebirdPool, FirebirdTransaction } from 'ts-firebird';
 import { GoodPriceDto } from '../good/dto/good.price.dto';
 import { GoodPercentDto } from '../good/dto/good.percent.dto';
-import {
-    calculatePrice,
-    getPieces,
-    goodCode,
-    goodQuantityCoeff,
-    isMarkCodesEnabled,
-} from '../helpers';
+import { calculatePrice, getPieces, goodCode, goodQuantityCoeff, isMarkCodesEnabled } from '../helpers';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
 import { UpdatePriceDto } from '../price/dto/update.price.dto';
 import { ConfigService } from '@nestjs/config';
@@ -31,7 +25,6 @@ import { PriceCalculationHelper } from '../helpers/price/price.calculation.helpe
 
 @Injectable()
 export class Trade2006GoodService extends WithTransactions(class {}) implements IGood, IAvitoGoodStore {
-
     private storageTable: string;
     private readonly logger = new Logger(Trade2006GoodService.name);
     constructor(
@@ -126,7 +119,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                     ) r ON r.goodscode = g.goodscode
                     WHERE g.goodscode IN (${placeholders})`,
                     batch,
-                    false
+                    false,
                 );
 
                 const batchResults = response.map(
@@ -134,7 +127,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                         code: good.GOODSCODE,
                         name: good.NAME,
                         price: good.PRIC,
-                    })
+                    }),
                 );
 
                 allResults.push(...batchResults);
@@ -158,7 +151,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                 const pecents = await transaction.query(
                     `select * from ozon_perc where goodscode in (${placeholders})`,
                     batch,
-                    false
+                    false,
                 );
 
                 const batchResults = pecents.map((percent: any) => ({
@@ -371,10 +364,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
      * Именно построчно, а не суммой: склад закрывает каждый заказ своим кодом, и от разбивки
      * зависит, какие коды уйдут (552601: резерв 7 — это заказы 1, 3, 3).
      */
-    async getReservedQuantities(
-        goodCodes: string[],
-        t: FirebirdTransaction = null,
-    ): Promise<Map<string, number[]>> {
+    async getReservedQuantities(goodCodes: string[], t: FirebirdTransaction = null): Promise<Map<string, number[]>> {
         const result = new Map<string, number[]>();
         if (goodCodes.length === 0) return result;
         return this.withTransaction(async (transaction) => {
@@ -520,9 +510,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
             }
 
             // Ищем существующий percent или создаём дефолтный
-            const existingPercent = percents.find(
-                (p) => p.offer_id.toString() === gCode && p.pieces === gCoeff
-            );
+            const existingPercent = percents.find((p) => p.offer_id.toString() === gCode && p.pieces === gCoeff);
 
             const dto = goodPercentsDto?.get(sku);
 
@@ -596,7 +584,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                         );
                         // Продолжаем с остальными
                     }
-                })
+                }),
             );
         }
     }
@@ -697,7 +685,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
             }),
         );
     }
-    
+
     @OnEvent('counts.changed', { async: true })
     async checkBounds(goods: GoodDto[]): Promise<void> {
         const t = await this.pool.getTransaction();
@@ -721,7 +709,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
             const quantity = good.quantity - (good.reserve ?? 0);
             const halfStoreKey = `half_store:${good.code}`;
             const boundCheckKey = `bound_check:${good.code}`;
-            
+
             if (quantity < bound.AMOUNT / 2 && bound.QUAN > 1) {
                 if (!(await this.cacheManager.get(halfStoreKey))) {
                     this.eventEmitter.emit('half.store', good, bound);
@@ -730,8 +718,8 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
             } else {
                 await this.cacheManager.del(halfStoreKey);
             }
-            
-            if (bound.BOUND !== null && quantity <= bound.BOUND) {    
+
+            if (bound.BOUND !== null && quantity <= bound.BOUND) {
                 if (!(await this.cacheManager.get(boundCheckKey))) {
                     this.eventEmitter.emit('bound.check', good, bound);
                     await this.cacheManager.set(boundCheckKey, true);
@@ -746,7 +734,13 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         const t = await this.pool.getTransaction();
         await t.execute(
             'UPDATE OR INSERT INTO WB_CATEGORIES (ID, COMMISSION, NAME, PARENT_ID, PARENT_NAME) VALUES (?, ?, ?, ?, ?) MATCHING (ID)',
-            [wbCard.subjectID, wbCard.kgvpMarketplace ?? 25, wbCard.subjectName, wbCard.parentID ?? null, wbCard.parentName ?? null],
+            [
+                wbCard.subjectID,
+                wbCard.kgvpMarketplace ?? 25,
+                wbCard.subjectName,
+                wbCard.parentID ?? null,
+                wbCard.parentName ?? null,
+            ],
             true,
         );
     }

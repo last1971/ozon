@@ -20,14 +20,54 @@ describe('DonorApplyService', () => {
     const transfer = jest.fn();
     const emit = jest.fn();
 
-    const donor = { invoiceNumber: 10, scode: 100, date: null, prim: null, podbposcode: 1, realpricecode: 101, quantity: 6, canTake: true };
-    const offer = () => [{
-        invoiceNumber: 1, scode: 500, status: 1, date: null, prim: 'P-1', buyerCode: 7, inShortage: true,
-        lines: [{ realpricecode: 900, goodscode: '444', name: 'Реле', quantity: 6, pieces: 1, picked: 0, shortage: 6, inShortage: true, donors: [donor] }],
-    }];
+    const donor = {
+        invoiceNumber: 10,
+        scode: 100,
+        date: null,
+        prim: null,
+        podbposcode: 1,
+        realpricecode: 101,
+        quantity: 6,
+        canTake: true,
+    };
+    const offer = () => [
+        {
+            invoiceNumber: 1,
+            scode: 500,
+            status: 1,
+            date: null,
+            prim: 'P-1',
+            buyerCode: 7,
+            inShortage: true,
+            lines: [
+                {
+                    realpricecode: 900,
+                    goodscode: '444',
+                    name: 'Реле',
+                    quantity: 6,
+                    pieces: 1,
+                    picked: 0,
+                    shortage: 6,
+                    inShortage: true,
+                    donors: [donor],
+                },
+            ],
+        },
+    ];
 
     beforeEach(async () => {
-        [commit, rollback, findDonorsByPrim, clearInvoiceReserve, closeFboShortage, isInFboShortage, getPrimContaining, pickupFboUnlessShortage, transfer, emit].forEach((m) => m.mockReset());
+        [
+            commit,
+            rollback,
+            findDonorsByPrim,
+            clearInvoiceReserve,
+            closeFboShortage,
+            isInFboShortage,
+            getPrimContaining,
+            pickupFboUnlessShortage,
+            transfer,
+            emit,
+        ].forEach((m) => m.mockReset());
         getTransaction.mockResolvedValue(t);
         findDonorsByPrim.mockResolvedValue(offer());
         isInFboShortage.mockResolvedValue(false);
@@ -35,7 +75,18 @@ describe('DonorApplyService', () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 DonorApplyService,
-                { provide: INVOICE_SERVICE, useValue: { getTransaction, findDonorsByPrim, clearInvoiceReserve, closeFboShortage, isInFboShortage, getPrimContaining, pickupFboUnlessShortage } },
+                {
+                    provide: INVOICE_SERVICE,
+                    useValue: {
+                        getTransaction,
+                        findDonorsByPrim,
+                        clearInvoiceReserve,
+                        closeFboShortage,
+                        isInFboShortage,
+                        getPrimContaining,
+                        pickupFboUnlessShortage,
+                    },
+                },
                 { provide: DonorTransferService, useValue: { transfer } },
                 { provide: EventEmitter2, useValue: { emit } },
             ],
@@ -46,7 +97,10 @@ describe('DonorApplyService', () => {
     it('выбор проходит: резерв снят, перенос той же точкой, журнал закрыт, счёт в подбор, commit', async () => {
         transfer.mockResolvedValue({ moved: 6, codes: ['KI-1'], stuck: 0 });
 
-        const res = await service.apply('P-1', { scode: 500, picks: [{ realpricecode: 900, podbposcode: 1, quantity: 6 }] });
+        const res = await service.apply('P-1', {
+            scode: 500,
+            picks: [{ realpricecode: 900, podbposcode: 1, quantity: 6 }],
+        });
 
         expect(clearInvoiceReserve).toHaveBeenCalledWith(500, t);
         expect(transfer).toHaveBeenCalledWith(
@@ -59,23 +113,32 @@ describe('DonorApplyService', () => {
         expect(pickupFboUnlessShortage).toHaveBeenCalledWith({ id: 500, remark: 'P-1' }, t);
         expect(commit).toHaveBeenCalled();
         expect(res).toEqual({
-            posting: 'P-1', scode: 500, shortageClosed: true, pickedUp: true,
+            posting: 'P-1',
+            scode: 500,
+            shortageClosed: true,
+            pickedUp: true,
             moved: [{ realpricecode: 900, goodscode: '444', donorInvoiceNumber: 10, quantity: 6, codes: ['KI-1'] }],
         });
         expect(emit).toHaveBeenCalled();
     });
 
     it('неверный выбор → 400 с текстом, ничего не переносится, rollback', async () => {
-        await expect(service.apply('P-1', { scode: 500, picks: [{ realpricecode: 900, podbposcode: 1, quantity: 4 }] })).rejects.toBeInstanceOf(BadRequestException);
+        await expect(
+            service.apply('P-1', { scode: 500, picks: [{ realpricecode: 900, podbposcode: 1, quantity: 4 }] }),
+        ).rejects.toBeInstanceOf(BadRequestException);
         expect(transfer).not.toHaveBeenCalled();
         expect(rollback).toHaveBeenCalled();
         expect(commit).not.toHaveBeenCalled();
     });
 
     it('перенос упал → всё или ничего: rollback, 400', async () => {
-        transfer.mockRejectedValue(new DonorTransferError('меньше переносимого', { podbposcode: 1, scode: 100, realpricecode: 101 }, []));
+        transfer.mockRejectedValue(
+            new DonorTransferError('меньше переносимого', { podbposcode: 1, scode: 100, realpricecode: 101 }, []),
+        );
 
-        await expect(service.apply('P-1', { scode: 500, picks: [{ realpricecode: 900, podbposcode: 1, quantity: 6 }] })).rejects.toThrow('перенос не прошёл');
+        await expect(
+            service.apply('P-1', { scode: 500, picks: [{ realpricecode: 900, podbposcode: 1, quantity: 6 }] }),
+        ).rejects.toThrow('перенос не прошёл');
         expect(closeFboShortage).not.toHaveBeenCalled();
         expect(rollback).toHaveBeenCalled();
     });
@@ -83,7 +146,9 @@ describe('DonorApplyService', () => {
     it('застрявший код уменьшил перенос → откат, повторить выбор', async () => {
         transfer.mockResolvedValue({ moved: 5, codes: [], stuck: 1 });
 
-        await expect(service.apply('P-1', { scode: 500, picks: [{ realpricecode: 900, podbposcode: 1, quantity: 6 }] })).rejects.toThrow('переехало 5 из 6');
+        await expect(
+            service.apply('P-1', { scode: 500, picks: [{ realpricecode: 900, podbposcode: 1, quantity: 6 }] }),
+        ).rejects.toThrow('переехало 5 из 6');
         expect(rollback).toHaveBeenCalled();
     });
 });

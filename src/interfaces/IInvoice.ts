@@ -7,7 +7,7 @@ import { ResultDto } from '../helpers/dto/result.dto';
 import { FirebirdTransaction } from 'ts-firebird';
 import { InvoiceGetDto } from '../invoice/dto/invoice.get.dto';
 import { InvoiceLineDto } from '../invoice/dto/invoice.line.dto';
-import { InvoiceUpdateDto } from "../invoice/dto/invoice.update.dto";
+import { InvoiceUpdateDto } from '../invoice/dto/invoice.update.dto';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { FboMigrationLinkDto } from '../posting.fbo/dto/fbo-migration-link.dto';
 import { InvoiceMatchDto } from '../invoice/dto/invoice.match.dto';
@@ -40,7 +40,12 @@ export interface IInvoice {
     /** Открытые недоборы: счёт в подборке (STATUS=3) и по строке подобрано меньше, чем нужно; журнал — только кандидаты. */
     listFboShortages(transaction?: FirebirdTransaction): Promise<FboShortageRowDto[]>;
     /** Недобор по товару закрыт на quantity штук: строка журнала уменьшается, при нуле исчезает. */
-    closeFboShortage(posting: string, goodscode: string, quantity: number, transaction: FirebirdTransaction): Promise<void>;
+    closeFboShortage(
+        posting: string,
+        goodscode: string,
+        quantity: number,
+        transaction: FirebirdTransaction,
+    ): Promise<void>;
     /** Зависшие FBO-счета (STATUS=3, IGK=NOT1C, без пометок и недоборов) для суточной сверки. */
     getStuckFboInvoices(buyerId: number, since: Date, transaction: FirebirdTransaction): Promise<InvoiceDto[]>;
     pickupFboUnlessShortage(invoice: InvoiceDto, transaction: FirebirdTransaction): Promise<void>;
@@ -51,7 +56,19 @@ export interface IInvoice {
         nominal: number,
         transaction: FirebirdTransaction,
         onWrongNominal?: (cand: { scode: number; realpricecode: number; quanAvail: number; cntLive: number }) => void,
-    ): Promise<{ podbposcode: number; scode: number; realpricecode: number; quanAvail: number; prim: string; cntNom: number; cntLive: number; cntTt3: number; cntDead: number }[]>;
+    ): Promise<
+        {
+            podbposcode: number;
+            scode: number;
+            realpricecode: number;
+            quanAvail: number;
+            prim: string;
+            cntNom: number;
+            cntLive: number;
+            cntTt3: number;
+            cntDead: number;
+        }[]
+    >;
     findFboPodbposDonor(
         goodscode: string,
         prims: string[],
@@ -89,12 +106,7 @@ export interface IInvoice {
         km_full: string,
         transaction: FirebirdTransaction,
     ): Promise<void>;
-    detachMarkCodeForFbs(
-        ki: string,
-        rpc: number,
-        s_s: 0 | 1,
-        transaction: FirebirdTransaction,
-    ): Promise<void>;
+    detachMarkCodeForFbs(ki: string, rpc: number, s_s: 0 | 1, transaction: FirebirdTransaction): Promise<void>;
     countFreeMarkCodesForGood(goodscode: string, transaction: FirebirdTransaction): Promise<number>;
     /** Вернуть коды счёта на склад: TT 3→0, привязка к строке остаётся (Дельфи требует по ней скан). */
     returnMarkCodesToStock(scode: number, transaction: FirebirdTransaction): Promise<number>;
@@ -183,6 +195,8 @@ export interface IInvoice {
     findPlainCancelledInvoices(
         days: number,
         transaction?: FirebirdTransaction,
-    ): Promise<{ scode: number; number: number | null; prim: string; posting: string; status: number; date: Date | null }[]>;
+    ): Promise<
+        { scode: number; number: number | null; prim: string; posting: string; status: number; date: Date | null }[]
+    >;
 }
 export const INVOICE_SERVICE = 'INVOICE_SERVICE';

@@ -27,13 +27,30 @@ export class CreateProductInput {
     @ApiProperty({ type: [String], description: 'Ссылки на картинки' })
     images: string[];
 
-    @ApiPropertyOptional({ type: 'array', items: { type: 'object', properties: { index: { type: 'integer' }, name: { type: 'string' }, src_url: { type: 'string' } } }, description: 'PDF файлы [{index, name, src_url}]' })
+    @ApiPropertyOptional({
+        type: 'array',
+        items: {
+            type: 'object',
+            properties: { index: { type: 'integer' }, name: { type: 'string' }, src_url: { type: 'string' } },
+        },
+        description: 'PDF файлы [{index, name, src_url}]',
+    })
     pdf_list?: { index: number; name: string; src_url: string }[];
 
-    @ApiPropertyOptional({ type: 'array', items: { type: 'integer' }, description: 'Варианты количества, напр. [1, 10, 50, 100]' })
+    @ApiPropertyOptional({
+        type: 'array',
+        items: { type: 'integer' },
+        description: 'Варианты количества, напр. [1, 10, 50, 100]',
+    })
     quantities?: number[];
 
-    @ApiPropertyOptional({ type: 'array', items: { oneOf: [{ type: 'integer' }, { type: 'array', items: { type: 'integer' }, minItems: 3, maxItems: 3 }] }, description: 'Упаковки для каждого варианта: 1 = те же размеры, [d,w,h] = кастомные мм' })
+    @ApiPropertyOptional({
+        type: 'array',
+        items: {
+            oneOf: [{ type: 'integer' }, { type: 'array', items: { type: 'integer' }, minItems: 3, maxItems: 3 }],
+        },
+        description: 'Упаковки для каждого варианта: 1 = те же размеры, [d,w,h] = кастомные мм',
+    })
     packages?: (number | [number, number, number])[];
 
     @ApiPropertyOptional({ description: 'Путь категории, напр. "Электроника > Электронные компоненты > Конденсаторы"' })
@@ -72,7 +89,11 @@ export interface IProductCreateContext {
     ai_cost?: { tokens: number; cost: number };
 
     // Шаг 5: Резолв словарей
-    resolved_attributes?: { id: number; complex_id: number; values: { dictionary_value_id?: number; value: string }[] }[];
+    resolved_attributes?: {
+        id: number;
+        complex_id: number;
+        values: { dictionary_value_id?: number; value: string }[];
+    }[];
 
     // Шаг 6: Варианты (кол-во, упаковка)
     variants?: ProductVariant[];

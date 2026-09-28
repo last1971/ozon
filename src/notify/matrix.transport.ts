@@ -51,9 +51,12 @@ export class MatrixTransport implements INotifyTransport {
     /** Тело события: plain body + HTML; длинное режется, хвост уходит письмом по той же теме. */
     static content(message: NotifyMessage): Record<string, any> {
         const { body, cut } = MatrixTransport.truncate(`${message.subject}\n${message.text}`.trim());
-        const html = message.html && !cut
-            ? `<b>${escape(message.subject)}</b><br>${message.html}`
-            : escape(body).replace(/\n/g, '<br>').replace(/^([^<]+)/, '<b>$1</b>');
+        const html =
+            message.html && !cut
+                ? `<b>${escape(message.subject)}</b><br>${message.html}`
+                : escape(body)
+                      .replace(/\n/g, '<br>')
+                      .replace(/^([^<]+)/, '<b>$1</b>');
         return {
             msgtype: message.notice ? 'm.notice' : 'm.text',
             body,
@@ -66,11 +69,17 @@ export class MatrixTransport implements INotifyTransport {
         if (text.length <= MATRIX_MAX_LENGTH) return { body: text, cut: false };
         const head = text.slice(0, MATRIX_MAX_LENGTH);
         const kept = head.slice(0, head.lastIndexOf('\n') > 0 ? head.lastIndexOf('\n') : MATRIX_MAX_LENGTH);
-        const dropped = text.slice(kept.length).split('\n').filter((line) => line.trim()).length;
+        const dropped = text
+            .slice(kept.length)
+            .split('\n')
+            .filter((line) => line.trim()).length;
         return { body: `${kept}\n…ещё ${dropped} строк, полный текст в письме`, cut: true };
     }
 
-    private async put(roomId: string, content: Record<string, any>): Promise<{ ok: boolean; status?: number; error?: string }> {
+    private async put(
+        roomId: string,
+        content: Record<string, any>,
+    ): Promise<{ ok: boolean; status?: number; error?: string }> {
         const txn = `ozon-${Date.now()}-${randomBytes(4).toString('hex')}`;
         const url = `${this.homeserver}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${txn}`;
         try {

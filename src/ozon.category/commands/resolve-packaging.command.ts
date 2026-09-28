@@ -40,7 +40,9 @@ export class ResolvePackagingCommand implements ICommandAsync<IProductCreateCont
                     variant.height = result.packageHeight;
                     variant.weightWithPackaging = result.weightWithPackaging;
                     variant.packagingName = result.packaging.name;
-                    context.logger?.log(`Упаковка для ${variant.qty} шт: ${result.packaging.name} (${variant.depth}×${variant.width}×${variant.height}мм, ${variant.weightWithPackaging}г)`);
+                    context.logger?.log(
+                        `Упаковка для ${variant.qty} шт: ${result.packaging.name} (${variant.depth}×${variant.width}×${variant.height}мм, ${variant.weightWithPackaging}г)`,
+                    );
                 } else {
                     context.logger?.log(`Упаковка для ${variant.qty} шт: не найдена, используем исходные размеры`);
                 }

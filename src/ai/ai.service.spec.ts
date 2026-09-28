@@ -17,12 +17,14 @@ describe('AIService', () => {
             finish_reason: 'end_turn',
         }),
         chatStream: jest.fn(),
-        getModels: jest.fn().mockReturnValue([
-            { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4', provider: AIProviderName.ANTHROPIC },
-        ]),
-        supportsFeature: jest.fn().mockImplementation((feature) =>
-            [AIFeature.STREAMING, AIFeature.PROMPT_CACHING].includes(feature),
-        ),
+        getModels: jest
+            .fn()
+            .mockReturnValue([
+                { id: 'claude-sonnet-4-20250514', name: 'Claude Sonnet 4', provider: AIProviderName.ANTHROPIC },
+            ]),
+        supportsFeature: jest
+            .fn()
+            .mockImplementation((feature) => [AIFeature.STREAMING, AIFeature.PROMPT_CACHING].includes(feature)),
         estimateCost: jest.fn().mockReturnValue(0.00045),
     };
 
@@ -35,12 +37,10 @@ describe('AIService', () => {
             finish_reason: 'stop',
         }),
         chatStream: jest.fn(),
-        getModels: jest.fn().mockReturnValue([
-            { id: 'gpt-4o', name: 'GPT-4o', provider: AIProviderName.OPENAI },
-        ]),
-        supportsFeature: jest.fn().mockImplementation((feature) =>
-            [AIFeature.STREAMING, AIFeature.VISION].includes(feature),
-        ),
+        getModels: jest.fn().mockReturnValue([{ id: 'gpt-4o', name: 'GPT-4o', provider: AIProviderName.OPENAI }]),
+        supportsFeature: jest
+            .fn()
+            .mockImplementation((feature) => [AIFeature.STREAMING, AIFeature.VISION].includes(feature)),
         estimateCost: jest.fn().mockReturnValue(0.0006),
     };
 
@@ -53,9 +53,9 @@ describe('AIService', () => {
             finish_reason: 'stop',
         }),
         chatStream: jest.fn(),
-        getModels: jest.fn().mockReturnValue([
-            { id: 'yandexgpt/latest', name: 'YandexGPT Pro', provider: AIProviderName.YANDEX },
-        ]),
+        getModels: jest
+            .fn()
+            .mockReturnValue([{ id: 'yandexgpt/latest', name: 'YandexGPT Pro', provider: AIProviderName.YANDEX }]),
         supportsFeature: jest.fn().mockReturnValue(false),
         estimateCost: jest.fn().mockReturnValue(0.0216),
     };

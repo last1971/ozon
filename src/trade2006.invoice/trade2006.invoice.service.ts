@@ -25,12 +25,12 @@ import { SupplyDto } from '../supply/dto/supply.dto';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { SupplyPositionDto } from '../supply/dto/supply.position.dto';
 import { IProductable } from '../interfaces/i.productable';
-import { InvoiceUpdateDto } from "../invoice/dto/invoice.update.dto";
-import { TransferOutDTO } from "./dto/transfer.out.dto";
-import { TransferOutLineDTO } from "./dto/transfer.out.line.dto";
-import { plainToClass } from "class-transformer";
-import { WithTransactions } from "../helpers/mixin/transaction.mixin";
-import { FboMigrationLinkDto } from "../posting.fbo/dto/fbo-migration-link.dto";
+import { InvoiceUpdateDto } from '../invoice/dto/invoice.update.dto';
+import { TransferOutDTO } from './dto/transfer.out.dto';
+import { TransferOutLineDTO } from './dto/transfer.out.line.dto';
+import { plainToClass } from 'class-transformer';
+import { WithTransactions } from '../helpers/mixin/transaction.mixin';
+import { FboMigrationLinkDto } from '../posting.fbo/dto/fbo-migration-link.dto';
 import { InvoiceState } from '../helpers/accrual.distribution';
 import {
     ALL_CANCELLATION_SUFFIXES,
@@ -109,16 +109,16 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             const fieldsToUpdate = Object.entries(invoiceUpdateDto)
                 .filter(([key, value]) => value !== undefined)
                 .map(([key, value]) => ({ field: key, value }));
-    
+
             if (fieldsToUpdate.length === 0) {
                 return false;
             }
-    
-            const setClauses = fieldsToUpdate.map(f => `${f.field} = ?`).join(', ');
-            const values = fieldsToUpdate.map(f => f.value);
+
+            const setClauses = fieldsToUpdate.map((f) => `${f.field} = ?`).join(', ');
+            const values = fieldsToUpdate.map((f) => f.value);
             const updateQuery = `UPDATE S SET ${setClauses} WHERE SCODE = ?`;
             values.push(invoice.id);
-            
+
             await transaction.execute(updateQuery, values);
             return true;
         }, t);
@@ -136,7 +136,11 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         await transaction.execute('UPDATE S SET PRIM = ?, STATUS = 1 WHERE PRIM = ?', [newPrim, prim], !t);
     }
 
-    async getByPosting(posting: PostingDto | string, t: FirebirdTransaction = null, containing: boolean = false): Promise<InvoiceDto> {
+    async getByPosting(
+        posting: PostingDto | string,
+        t: FirebirdTransaction = null,
+        containing: boolean = false,
+    ): Promise<InvoiceDto> {
         const transaction = t ?? (await this.pool.getTransaction());
         // String() обязателен: Яндекс отдавал номер заказа ЧИСЛОМ, а числовой параметр
         // не матчит VARCHAR PRIM — «счёта нет» на существующем счёте и дубли создания.
@@ -157,10 +161,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
      * Дублей «два счёта на один номер» на проде нет (0 из 2953 проверенных), но если
      * вдруг придут — точное совпадение приоритетнее переименованного.
      */
-    async findByPosting(
-        posting: PostingDto | string,
-        t: FirebirdTransaction = null,
-    ): Promise<InvoiceMatchDto | null> {
+    async findByPosting(posting: PostingDto | string, t: FirebirdTransaction = null): Promise<InvoiceMatchDto | null> {
         const transaction = t ?? (await this.pool.getTransaction());
         // String() обязателен: Яндекс отдавал номер заказа ЧИСЛОМ, а числовой параметр
         // не матчит VARCHAR PRIM — «счёта нет» на существующем счёте и дубли создания.
@@ -280,21 +281,23 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             for (let i = 0; i < invoiceGetDto.remarks.length; i += chunkSize) {
                 const chunkRemarks = invoiceGetDto.remarks.slice(i, i + chunkSize);
                 const placeholders = chunkRemarks.map(() => '?').join(',');
-                
+
                 // Создаем SQL для текущего чанка
                 const chunkConditions = [...conditions, `PRIM IN (${placeholders})`];
                 const chunkParams = [...params, ...chunkRemarks];
-                
+
                 const sql = `SELECT * FROM S WHERE ${chunkConditions.join(' AND ')}`;
                 const res = await t.query(sql, chunkParams, false);
-                
-                allInvoices.push(...res.map((invoice) => ({
-                    id: invoice.SCODE,
-                    buyerId: invoice.POKUPATCODE,
-                    date: new Date(invoice.DATA),
-                    remark: invoice.PRIM,
-                    status: invoice.STATUS,
-                })));
+
+                allInvoices.push(
+                    ...res.map((invoice) => ({
+                        id: invoice.SCODE,
+                        buyerId: invoice.POKUPATCODE,
+                        date: new Date(invoice.DATA),
+                        remark: invoice.PRIM,
+                        status: invoice.STATUS,
+                    })),
+                );
             }
             await t.commit(true);
 
@@ -489,12 +492,17 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         }
     }
     async pickupInvoice(invoice: InvoiceDto, t: FirebirdTransaction = null): Promise<void> {
-        const attribute = this.configService.get<string>('STORAGE_TYPE', 'SHOPSKLAD').toUpperCase() === 'SHOPSKLAD'
-            ? 'SHOP'
-            : 'SKLAD';
+        const attribute =
+            this.configService.get<string>('STORAGE_TYPE', 'SHOPSKLAD').toUpperCase() === 'SHOPSKLAD'
+                ? 'SHOP'
+                : 'SKLAD';
         if (invoice.status === 3) {
             const transaction = t ?? (await this.pool.getTransaction());
-            await transaction.execute(`UPDATE PODBPOS SET QUAN${attribute}= QUAN${attribute}NEED WHERE SCODE = ?`, [invoice.id], !t);
+            await transaction.execute(
+                `UPDATE PODBPOS SET QUAN${attribute}= QUAN${attribute}NEED WHERE SCODE = ?`,
+                [invoice.id],
+                !t,
+            );
             this.logger.log(`Order ${invoice.remark} has been pickuped`);
         }
     }
@@ -537,7 +545,8 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
     }
     async getLastIncomingPrice(id: string, transaction: FirebirdTransaction = null): Promise<number> {
         const workingTransaction = transaction || (await this.getTransaction());
-        const forPrih = this.configService.get<string>('STORAGE_TYPE', 'SHOPSKLAD').toUpperCase() === 'SHOPSKLAD' ? 1 : 0;
+        const forPrih =
+            this.configService.get<string>('STORAGE_TYPE', 'SHOPSKLAD').toUpperCase() === 'SHOPSKLAD' ? 1 : 0;
         const res = await workingTransaction.query(
             'select first 1 * from trueprih where goodscode = ? and for_shop = ? order by data desc',
             [id, forPrih],
@@ -635,7 +644,12 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
      * Недобор по товару закрыт на quantity штук (переехали с донора руками): строка журнала
      * уменьшается и исчезает, когда закрыта целиком. Ключ журнала — товар, не строка счёта.
      */
-    async closeFboShortage(posting: string, goodscode: string, quantity: number, transaction: FirebirdTransaction): Promise<void> {
+    async closeFboShortage(
+        posting: string,
+        goodscode: string,
+        quantity: number,
+        transaction: FirebirdTransaction,
+    ): Promise<void> {
         await transaction.execute(
             'UPDATE FBO_SHORTAGE SET QUANTITY = QUANTITY - ? WHERE POSTING = ? AND GOODSCODE = ?',
             [quantity, posting, Number(goodscode)],
@@ -719,7 +733,15 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         await t.execute(
             'INSERT INTO FBO_MIGRATION_LINK (POSTING, GOODSCODE, QUANTITY, DONOR_SCODE, DONOR_RPC, ' +
                 'TARGET_SCODE, TARGET_RPC, DATA) VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)',
-            [link.posting, link.goodscode, link.quantity, link.donorScode, link.donorRpc, link.targetScode, link.targetRpc],
+            [
+                link.posting,
+                link.goodscode,
+                link.quantity,
+                link.donorScode,
+                link.donorRpc,
+                link.targetScode,
+                link.targetRpc,
+            ],
             !transaction,
         );
     }
@@ -891,11 +913,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             }
 
             const goodscodes = lines.map((l) => l.GOODSCODE);
-            const donors = await this.queryDonors(
-                goodscodes,
-                { buyerCode: inv.buyerId, excludeScode: inv.id },
-                t,
-            );
+            const donors = await this.queryDonors(goodscodes, { buyerCode: inv.buyerId, excludeScode: inv.id }, t);
             const codes = await this.countDonorCodes(
                 donors.map((d) => Number(d.REALPRICECODE)),
                 t,
@@ -969,10 +987,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         ];
     }
 
-    async findRealpriceCodes(
-        scode: number,
-        transaction: FirebirdTransaction = null,
-    ): Promise<number[]> {
+    async findRealpriceCodes(scode: number, transaction: FirebirdTransaction = null): Promise<number[]> {
         const t = transaction ?? (await this.getTransaction());
         const res = await t.query(
             'SELECT REALPRICECODE FROM REALPRICE WHERE SCODE = ? ORDER BY REALPRICECODE',
@@ -1010,7 +1025,19 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         nominal: number,
         transaction: FirebirdTransaction = null,
         onWrongNominal?: (cand: { scode: number; realpricecode: number; quanAvail: number; cntLive: number }) => void,
-    ): Promise<{ podbposcode: number; scode: number; realpricecode: number; quanAvail: number; prim: string; cntNom: number; cntLive: number; cntTt3: number; cntDead: number }[]> {
+    ): Promise<
+        {
+            podbposcode: number;
+            scode: number;
+            realpricecode: number;
+            quanAvail: number;
+            prim: string;
+            cntNom: number;
+            cntLive: number;
+            cntTt3: number;
+            cntDead: number;
+        }[]
+    > {
         if (prims.length === 0) return [];
         const t = transaction ?? (await this.getTransaction());
         const attribute = this.quanAttr();
@@ -1046,14 +1073,13 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             cntDead: Number(r.CNT_DEAD) || 0,
             lvl: Number(r.LVL),
         }));
-        const wrongNominal = (c: { cntNom: number; cntLive: number }): boolean => isWrongNominalDonor(c.cntLive, c.cntNom);
+        const wrongNominal = (c: { cntNom: number; cntLive: number }): boolean =>
+            isWrongNominalDonor(c.cntLive, c.cntNom);
         const candidates = all.filter((c) => !wrongNominal(c));
         if (onWrongNominal) all.filter(wrongNominal).forEach(onWrongNominal);
         // Ярусы: (а) есть живые коды нужного номинала (вперёд — с TT=3), (б) кодов нет.
         const tierOf = (c: { cntNom: number }): number => (c.cntNom > 0 ? 0 : 1);
-        candidates.sort(
-            (a, b) => a.lvl - b.lvl || tierOf(a) - tierOf(b) || b.cntTt3 - a.cntTt3,
-        );
+        candidates.sort((a, b) => a.lvl - b.lvl || tierOf(a) - tierOf(b) || b.cntTt3 - a.cntTt3);
         return candidates;
     }
 
@@ -1145,10 +1171,9 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             'DELETE FROM RESERVEDPOS WHERE REALPRICECODE IN (SELECT REALPRICECODE FROM REALPRICE WHERE SCODE = ?)',
             [scode],
         );
-        await t.execute(
-            'UPDATE PODBPOS SET QUANSKLADNEED = 0, QUANSHOPNEED = 0, QUANNEED = 0 WHERE SCODE = ?',
-            [scode],
-        );
+        await t.execute('UPDATE PODBPOS SET QUANSKLADNEED = 0, QUANSHOPNEED = 0, QUANNEED = 0 WHERE SCODE = ?', [
+            scode,
+        ]);
         await t.execute(
             'DELETE FROM PODBPOS WHERE SCODE = ? AND QUANSKLAD = 0 AND QUANSHOP = 0 AND COALESCE(QUAN, 0) = 0',
             [scode],
@@ -1156,11 +1181,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         if (!transaction) await t.commit(true);
     }
 
-    async decrementPodbpos(
-        podbposcode: number,
-        take: number,
-        transaction: FirebirdTransaction = null,
-    ): Promise<void> {
+    async decrementPodbpos(podbposcode: number, take: number, transaction: FirebirdTransaction = null): Promise<void> {
         const t = transaction ?? (await this.getTransaction());
         const attribute = this.quanAttr();
         await t.execute(
@@ -1179,10 +1200,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         transaction: FirebirdTransaction = null,
     ): Promise<void> {
         const t = transaction ?? (await this.getTransaction());
-        await t.execute(
-            'EXECUTE PROCEDURE MARKCODE_ATTACH_FOR_FBS (?, ?, ?, ?, ?)',
-            [ki, rpc, gc, s_s, km_full],
-        );
+        await t.execute('EXECUTE PROCEDURE MARKCODE_ATTACH_FOR_FBS (?, ?, ?, ?, ?)', [ki, rpc, gc, s_s, km_full]);
         if (!transaction) await t.commit(true);
     }
 
@@ -1239,10 +1257,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         await transaction.execute('EXECUTE PROCEDURE MARKCODE_FBS_UNSOLD (?)', [ki]);
     }
 
-    async countFreeMarkCodesForGood(
-        goodscode: string,
-        transaction: FirebirdTransaction = null,
-    ): Promise<number> {
+    async countFreeMarkCodesForGood(goodscode: string, transaction: FirebirdTransaction = null): Promise<number> {
         const t = transaction ?? (await this.getTransaction());
         const res = await t.query(
             'SELECT FREE_COUNT FROM COUNT_FREE_MARKCODES_FOR_GOOD (?)',
@@ -1266,10 +1281,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         return { goodscode: String(res[0].GOODSCODE), quantity: Number(res[0].QUANTITY) || 1 };
     }
 
-    async getKmFullByKi(
-        ki: string,
-        transaction: FirebirdTransaction = null,
-    ): Promise<string | null> {
+    async getKmFullByKi(ki: string, transaction: FirebirdTransaction = null): Promise<string | null> {
         const t = transaction ?? (await this.getTransaction());
         const res = await t.query('SELECT KM_FULL FROM MARKCODES WHERE KI = ?', [ki], !transaction);
         return res?.[0]?.KM_FULL != null ? String(res[0].KM_FULL) : null;
@@ -1354,10 +1366,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         }
     }
 
-    async listFbsAwaitingShip(
-        buyerId: number,
-        transaction: FirebirdTransaction = null,
-    ): Promise<InvoiceDto[]> {
+    async listFbsAwaitingShip(buyerId: number, transaction: FirebirdTransaction = null): Promise<InvoiceDto[]> {
         const t = transaction ?? (await this.getTransaction());
         const fromDate = new Date();
         fromDate.setDate(fromDate.getDate() - 2);
@@ -1367,7 +1376,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
                 'JOIN REALPRICE rp ON rp.SCODE = s.SCODE ' +
                 'JOIN MARKCODES m ON m.REALPRICECODE = rp.REALPRICECODE ' +
                 'WHERE s.POKUPATCODE = ? ' +
-                "AND s.FINISH_PICKUP IS NOT NULL " +
+                'AND s.FINISH_PICKUP IS NOT NULL ' +
                 "AND s.IGK IS NOT NULL AND s.IGK <> '' " +
                 'AND m.TRANSFER_TYPE = 3 ' +
                 'AND s.DATA >= ?',
@@ -1450,7 +1459,14 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         scode: number,
         transaction: FirebirdTransaction = null,
     ): Promise<
-        { ki: string; status: number; transferType: number; retireReason: number | null; kmFull: string | null; price: number | null }[]
+        {
+            ki: string;
+            status: number;
+            transferType: number;
+            retireReason: number | null;
+            kmFull: string | null;
+            price: number | null;
+        }[]
     > {
         // Маркировка выключена (магазин) — таблицы MARKCODES нет.
         if (!isMarkCodesEnabled(this.configService)) return [];
@@ -1565,7 +1581,9 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
     async findPlainCancelledInvoices(
         days: number,
         transaction: FirebirdTransaction = null,
-    ): Promise<{ scode: number; number: number | null; prim: string; posting: string; status: number; date: Date | null }[]> {
+    ): Promise<
+        { scode: number; number: number | null; prim: string; posting: string; status: number; date: Date | null }[]
+    > {
         const t = transaction ?? (await this.getTransaction());
         const suffix = MP_ORDER_CANCELLATION_SUFFIX.REGULAR;
         const edge = DateTime.now().minus({ day: days }).startOf('day').toJSDate();
@@ -1647,9 +1665,9 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
 
     async getSupplyPositions(id: string, productable: IProductable): Promise<SupplyPositionDto[]> {
         const lines = await this.getInvoiceLinesByInvoiceId(toNumber(id));
-    
+
         // Собираем все SKU для batch запроса
-        const skus = lines.map(line => {
+        const skus = lines.map((line) => {
             const { goodCode, whereOrdered } = line;
             return whereOrdered ? `${goodCode}-${whereOrdered}` : goodCode.toString();
         });
@@ -1658,12 +1676,10 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         const productsInfo = await productable.infoList(skus);
 
         // Создаем мапу для быстрого доступа к информации о продуктах
-        const productsMap = new Map(
-            productsInfo.map(product => [product.sku, product])
-        );
+        const productsMap = new Map(productsInfo.map((product) => [product.sku, product]));
 
         // Формируем результат
-        return lines.map(line => {
+        return lines.map((line) => {
             const { goodCode, whereOrdered } = line;
             const sku = whereOrdered ? `${goodCode}-${whereOrdered}` : goodCode.toString();
             const product = productsMap.get(sku);
@@ -1681,7 +1697,11 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         });
     }
 
-    async getTransferOutByNumberAndDate(number: number, date: string, existingTransaction: FirebirdTransaction = null): Promise<TransferOutDTO> {
+    async getTransferOutByNumberAndDate(
+        number: number,
+        date: string,
+        existingTransaction: FirebirdTransaction = null,
+    ): Promise<TransferOutDTO> {
         return this.withTransaction(async (transaction) => {
             const res = await transaction.query(
                 'SELECT * FROM SF WHERE NSF = ? AND CAST(DATA AS DATE) = CAST(? AS DATE)',
@@ -1694,13 +1714,13 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         }, existingTransaction);
     }
 
-    async getTransferOutLines(transferOutId: number, existingTransaction: FirebirdTransaction = null): Promise<TransferOutLineDTO[]> {
+    async getTransferOutLines(
+        transferOutId: number,
+        existingTransaction: FirebirdTransaction = null,
+    ): Promise<TransferOutLineDTO[]> {
         return this.withTransaction(async (transaction) => {
-            const res = await transaction.query(
-                'SELECT * FROM REALPRICEF WHERE SFCODE = ?',
-                [transferOutId],
-            );
-            return res.map(record => plainToClass(TransferOutLineDTO, record));
+            const res = await transaction.query('SELECT * FROM REALPRICEF WHERE SFCODE = ?', [transferOutId]);
+            return res.map((record) => plainToClass(TransferOutLineDTO, record));
         }, existingTransaction);
     }
 
@@ -1711,32 +1731,35 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
 
         // Берем абсолютные значения сумм для пропорционального распределения
         const totalCurrentAmount = lines.reduce((sum, line) => sum + Math.abs(line.totalAmount), 0);
-        
+
         if (totalCurrentAmount <= 0) {
             return lines;
         }
 
-        return lines.map(line => ({
+        return lines.map((line) => ({
             ...line,
-            totalAmount: (amount * Math.abs(line.totalAmount)) / totalCurrentAmount
+            totalAmount: (amount * Math.abs(line.totalAmount)) / totalCurrentAmount,
         }));
     }
 
-    async updateTransferOutLinesAmounts(lines: TransferOutLineDTO[], existingTransaction: FirebirdTransaction = null): Promise<void> {
+    async updateTransferOutLinesAmounts(
+        lines: TransferOutLineDTO[],
+        existingTransaction: FirebirdTransaction = null,
+    ): Promise<void> {
         return this.withTransaction(async (transaction) => {
             for (const line of lines) {
                 // Обновляем сумму в строке УПД (REALPRICEF)
-                await transaction.execute(
-                    'UPDATE REALPRICEF SET SUMMAP = ? WHERE REALPRICEFCODE = ?',
-                    [line.totalAmount, line.id]
-                );
+                await transaction.execute('UPDATE REALPRICEF SET SUMMAP = ? WHERE REALPRICEFCODE = ?', [
+                    line.totalAmount,
+                    line.id,
+                ]);
 
                 // Если есть связь со строкой счета, обновляем и её
                 if (line.invoiceLineId) {
-                    await transaction.execute(
-                        'UPDATE REALPRICE SET SUMMAP = ? WHERE REALPRICECODE = ?',
-                        [line.totalAmount, line.invoiceLineId]
-                    );
+                    await transaction.execute('UPDATE REALPRICE SET SUMMAP = ? WHERE REALPRICECODE = ?', [
+                        line.totalAmount,
+                        line.invoiceLineId,
+                    ]);
                 }
             }
         }, existingTransaction);
@@ -1765,9 +1788,15 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
 
                 // 5. Обновляем сумму в деньгах
                 await this.upsertInvoiceCashFlow(
-                    { id: transferOut.invoiceId, buyerId: transferOut.buyerId, date: transferOut.date, remark: '', status: 0 },
+                    {
+                        id: transferOut.invoiceId,
+                        buyerId: transferOut.buyerId,
+                        date: transferOut.date,
+                        remark: '',
+                        status: 0,
+                    },
                     amount,
-                    transaction
+                    transaction,
                 );
 
                 return { isSuccess: true, message: 'Платеж успешно распределен' };
@@ -1779,5 +1808,4 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             }
         });
     }
-
 }

@@ -11,9 +11,8 @@ import { IVatProcessingContext } from '../../interfaces/i.vat.processing.context
 export class UpdateVatCommand implements ICommandAsync<IVatProcessingContext> {
     async execute(context: IVatProcessingContext): Promise<IVatProcessingContext> {
         // Извлекаем offer_id из mismatches
-        const offerIds = context.mismatches && context.mismatches.length > 0
-            ? context.mismatches.map(m => m.offer_id)
-            : [];
+        const offerIds =
+            context.mismatches && context.mismatches.length > 0 ? context.mismatches.map((m) => m.offer_id) : [];
 
         if (offerIds.length === 0) {
             context.logger?.log('Нет товаров для обновления НДС (несоответствий не найдено)');
@@ -33,9 +32,7 @@ export class UpdateVatCommand implements ICommandAsync<IVatProcessingContext> {
         try {
             context.updateResult = await context.service.updateVat(offerIds, context.expectedVat);
 
-            context.logger?.log(
-                `Обновление НДС завершено для ${offerIds.length} товаров`,
-            );
+            context.logger?.log(`Обновление НДС завершено для ${offerIds.length} товаров`);
         } catch (error) {
             context.logger?.error(`Ошибка при обновлении НДС: ${error.message}`);
             context.stopChain = true;

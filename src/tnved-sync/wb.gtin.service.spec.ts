@@ -25,7 +25,10 @@ describe('WbGtinService', () => {
         vendorCode,
         title: `PROD-${vendorCode}`,
         characteristics: [{ id: 15000001, value: ['8504408300'] }],
-        sizes: (Array.isArray(skus[0]) ? (skus as string[][]) : [skus as string[]]).map((s, i) => ({ chrtID: i + 1, skus: s })),
+        sizes: (Array.isArray(skus[0]) ? (skus as string[][]) : [skus as string[]]).map((s, i) => ({
+            chrtID: i + 1,
+            skus: s,
+        })),
         photos: [],
     });
     const row = (goodscode: string, gtins: string[]) => ({ goodscode, gtins });
@@ -42,7 +45,13 @@ describe('WbGtinService', () => {
                 WbContentGate,
                 { provide: WbCardService, useValue: { getAllWbCards, fetchWbCard, updateCards, rememberCard } },
                 { provide: WbApiService, useValue: { method } },
-                { provide: ConfigService, useValue: { get: (k: string, def: any) => (k === 'WB_CARD_BACKUP_DIR' ? backupDir : k === 'WB_CARD_ERRORS_DELAY_MS' ? 0 : def) } },
+                {
+                    provide: ConfigService,
+                    useValue: {
+                        get: (k: string, def: any) =>
+                            k === 'WB_CARD_BACKUP_DIR' ? backupDir : k === 'WB_CARD_ERRORS_DELAY_MS' ? 0 : def,
+                    },
+                },
             ],
         }).compile();
         service = moduleRef.get(WbGtinService);
@@ -65,9 +74,19 @@ describe('WbGtinService', () => {
         fetchWbCard.mockImplementation((o: string) => Promise.resolve(card(o, ['2000000000011'])));
         updateCards.mockResolvedValue([WB_OK]);
         const progress = { done: 0, counters: {} };
-        const item = (offer: string, add: string[]) => ({ offer, goodscode: offer, current: null, base: '', ok: false, add });
+        const item = (offer: string, add: string[]) => ({
+            offer,
+            goodscode: offer,
+            current: null,
+            base: '',
+            ok: false,
+            add,
+        });
 
-        const res = await service.update([item('1', ['04600000000011', '2000000000011']), item('2', ['04600000000028'])], progress);
+        const res = await service.update(
+            [item('1', ['04600000000011', '2000000000011']), item('2', ['04600000000028'])],
+            progress,
+        );
 
         expect(res).toEqual([{ offer: '1' }, { offer: '2' }]);
         expect(updateCards).toHaveBeenCalledTimes(2); // по одной
@@ -80,7 +99,9 @@ describe('WbGtinService', () => {
     it('update: у свежей карточки стало несколько размеров → ошибка по карточке, в ВБ не уходит', async () => {
         fetchWbCard.mockResolvedValue(card('1', [['1'], ['2']]));
 
-        const res = await service.update([{ offer: '1', goodscode: '1', current: null, base: '', ok: false, add: ['111'] }]);
+        const res = await service.update([
+            { offer: '1', goodscode: '1', current: null, base: '', ok: false, add: ['111'] },
+        ]);
 
         expect(res[0].error).toContain('правка не применена');
         expect(updateCards).not.toHaveBeenCalled();

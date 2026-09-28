@@ -26,7 +26,9 @@ export class DonorApplyService {
     async apply(posting: string, body: FboShortageApplyDto): Promise<FboShortageApplyResultDto> {
         const t = await this.invoiceService.getTransaction();
         try {
-            const offer = (await this.invoiceService.findDonorsByPrim(posting, t)).find((o) => o.scode === Number(body.scode));
+            const offer = (await this.invoiceService.findDonorsByPrim(posting, t)).find(
+                (o) => o.scode === Number(body.scode),
+            );
             if (!offer) throw new NotFoundException(`счёт ${body.scode} по отправлению ${posting} не найден`);
 
             const { errors, plan } = validatePicks(offer, body.picks, body.nominals ?? {});
@@ -43,12 +45,20 @@ export class DonorApplyService {
                     result = await this.transfer.transfer(
                         item.donor,
                         item.quantity,
-                        { scode: offer.scode, realpricecode: item.realpricecode, goodscode: item.goodscode, nominal: item.nominal, posting },
+                        {
+                            scode: offer.scode,
+                            realpricecode: item.realpricecode,
+                            goodscode: item.goodscode,
+                            nominal: item.nominal,
+                            posting,
+                        },
                         t,
                     );
                 } catch (e) {
                     if (e instanceof DonorTransferError) {
-                        throw new BadRequestException(`счёт №${item.donor.invoiceNumber}: перенос не прошёл — ${e.message}`);
+                        throw new BadRequestException(
+                            `счёт №${item.donor.invoiceNumber}: перенос не прошёл — ${e.message}`,
+                        );
                     }
                     throw e;
                 }
@@ -74,7 +84,9 @@ export class DonorApplyService {
             const shortageClosed = !(await this.invoiceService.isInFboShortage(posting, t));
             let pickedUp = false;
             if (shortageClosed) {
-                const invoice = (await this.invoiceService.getPrimContaining(posting, t)).find((i) => i.id === offer.scode);
+                const invoice = (await this.invoiceService.getPrimContaining(posting, t)).find(
+                    (i) => i.id === offer.scode,
+                );
                 if (invoice) {
                     await this.invoiceService.pickupFboUnlessShortage(invoice, t);
                     pickedUp = true;
@@ -82,13 +94,19 @@ export class DonorApplyService {
             }
             await t.commit(true);
 
-            const summary = moved.map((m) => `${m.goodscode} × ${m.quantity} со счёта №${m.donorInvoiceNumber}`).join('; ');
-            this.logger.log(`[donor-apply] ${posting} SCODE ${offer.scode}: ${summary}; журнал ${shortageClosed ? 'закрыт' : 'не закрыт'}`);
+            const summary = moved
+                .map((m) => `${m.goodscode} × ${m.quantity} со счёта №${m.donorInvoiceNumber}`)
+                .join('; ');
+            this.logger.log(
+                `[donor-apply] ${posting} SCODE ${offer.scode}: ${summary}; журнал ${shortageClosed ? 'закрыт' : 'не закрыт'}`,
+            );
             this.eventEmitter.emit(
                 'error.message',
                 'FBO: недобор закрыт руками',
                 `Заказ: ${posting}\nСчёт: №${offer.invoiceNumber}\nПереехало: ${summary}\n` +
-                    (shortageClosed ? 'Недобора не осталось, счёт отдан в подбор.' : 'По другим позициям недобор ещё открыт.'),
+                    (shortageClosed
+                        ? 'Недобора не осталось, счёт отдан в подбор.'
+                        : 'По другим позициям недобор ещё открыт.'),
                 NotifyTopic.OPS,
             );
             return { posting, scode: offer.scode, moved, shortageClosed, pickedUp };

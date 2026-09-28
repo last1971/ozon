@@ -74,7 +74,11 @@ describe('distributeAccruals', () => {
     });
 
     it('списание на заказ делится между его телами пропорционально нетто', () => {
-        const { settlements } = distributeAccruals([body('111-222-1', 300), body('111-222-2', 100), acc('111-222', -40)]);
+        const { settlements } = distributeAccruals([
+            body('111-222-1', 300),
+            body('111-222-2', 100),
+            acc('111-222', -40),
+        ]);
         const byNumber = new Map(settlements.map((s) => [s.postingNumber, s.amount]));
         expect(byNumber.get('111-222-1')).toBe(270);
         expect(byNumber.get('111-222-2')).toBe(90);
@@ -148,10 +152,7 @@ describe('distributeAccruals', () => {
         ];
         const { settlements, returns, pending, unattributed } = distributeAccruals(input);
         const out =
-            settlements.reduce((s, x) => s + x.amount, 0) +
-            totalOf(returns) +
-            totalOf(pending) +
-            totalOf(unattributed);
+            settlements.reduce((s, x) => s + x.amount, 0) + totalOf(returns) + totalOf(pending) + totalOf(unattributed);
         expect(Math.round(out * 100) / 100).toBe(totalOf(input));
     });
 

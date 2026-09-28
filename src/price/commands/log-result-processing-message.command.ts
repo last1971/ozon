@@ -4,10 +4,10 @@ import { IGoodsProcessingContext } from '../../interfaces/i.good.processing.cont
 
 @Injectable()
 export class LogResultProcessingMessageCommand implements ICommandAsync<IGoodsProcessingContext> {
-  async execute(context: IGoodsProcessingContext): Promise<IGoodsProcessingContext> {
-    if (context.resultProcessingMessage && context.logger) {
-      context.logger.log(context.resultProcessingMessage);
+    async execute(context: IGoodsProcessingContext): Promise<IGoodsProcessingContext> {
+        if (context.resultProcessingMessage && context.logger) {
+            context.logger.log(context.resultProcessingMessage);
+        }
+        return context;
     }
-    return context;
-  }
-} 
+}

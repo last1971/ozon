@@ -158,13 +158,13 @@ describe('YandexPriceService', () => {
 
     describe('VAT methods', () => {
         it('vatToNumber should convert Yandex VAT IDs to percentages', () => {
-            expect(service.vatToNumber(2)).toBe(10);   // 10%
-            expect(service.vatToNumber(5)).toBe(0);    // 0%
-            expect(service.vatToNumber(6)).toBe(-1);   // Не облагается
-            expect(service.vatToNumber(7)).toBe(20);   // 20%
-            expect(service.vatToNumber(10)).toBe(5);   // 5% (УСН)
-            expect(service.vatToNumber(11)).toBe(7);   // 7% (УСН)
-            expect(service.vatToNumber(999)).toBe(0);  // Unknown -> default 0
+            expect(service.vatToNumber(2)).toBe(10); // 10%
+            expect(service.vatToNumber(5)).toBe(0); // 0%
+            expect(service.vatToNumber(6)).toBe(-1); // Не облагается
+            expect(service.vatToNumber(7)).toBe(20); // 20%
+            expect(service.vatToNumber(10)).toBe(5); // 5% (УСН)
+            expect(service.vatToNumber(11)).toBe(7); // 7% (УСН)
+            expect(service.vatToNumber(999)).toBe(0); // Unknown -> default 0
         });
 
         it('numberToVat should convert percentages to Yandex VAT IDs', () => {
@@ -181,8 +181,8 @@ describe('YandexPriceService', () => {
             index.mockResolvedValueOnce({
                 offers: [
                     { offerId: '123', campaignPrice: { vat: 10 } }, // 5% НДС
-                    { offerId: '456', campaignPrice: { vat: 7 } },  // 20% НДС
-                    { offerId: '789' },                              // Нет campaignPrice (считается как 0%)
+                    { offerId: '456', campaignPrice: { vat: 7 } }, // 20% НДС
+                    { offerId: '789' }, // Нет campaignPrice (считается как 0%)
                 ],
                 paging: {},
             });
@@ -220,16 +220,12 @@ describe('YandexPriceService', () => {
 
             const result = await service.updateVat(['123', '456'], 20);
 
-            expect(method).toHaveBeenCalledWith(
-                'v2/campaigns/12345/offers/update',
-                'post',
-                {
-                    offers: [
-                        { offerId: '123', vat: 7 },
-                        { offerId: '456', vat: 7 },
-                    ],
-                }
-            );
+            expect(method).toHaveBeenCalledWith('v2/campaigns/12345/offers/update', 'post', {
+                offers: [
+                    { offerId: '123', vat: 7 },
+                    { offerId: '456', vat: 7 },
+                ],
+            });
             expect(result).toEqual({ status: 'OK' });
         });
 

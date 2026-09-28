@@ -15,13 +15,15 @@ export class OzonSkusToTradeSkusCommand implements ICommandAsync<IGoodsProcessin
         // Конвертируем Ozon SKU в trade коды, убирая дубликаты
         const tradeCodesSet = new Set<string>();
 
-        context.ozonSkus.forEach(sku => {
+        context.ozonSkus.forEach((sku) => {
             const tradeCode = goodCode({ offer_id: sku });
             tradeCodesSet.add(tradeCode);
         });
 
         context.skus = Array.from(tradeCodesSet);
-        context.logger?.log(`Конвертировано ${context.ozonSkus.length} Ozon SKU в ${context.skus.length} уникальных trade кодов`);
+        context.logger?.log(
+            `Конвертировано ${context.ozonSkus.length} Ozon SKU в ${context.skus.length} уникальных trade кодов`,
+        );
 
         return context;
     }

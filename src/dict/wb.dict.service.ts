@@ -3,7 +3,13 @@ import { FirebirdPool } from 'ts-firebird';
 import { FIREBIRD } from '../firebird/firebird.module';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { JobProgress } from '../interfaces/i.job.context';
-import { DictStats, DictSubject, DictSubjectTnved, ITnvedDictionary, TnvedEntry } from '../interfaces/i.tnved.dictionary';
+import {
+    DictStats,
+    DictSubject,
+    DictSubjectTnved,
+    ITnvedDictionary,
+    TnvedEntry,
+} from '../interfaces/i.tnved.dictionary';
 import { WbTnvedService } from '../tnved-sync/wb.tnved.service';
 import { WbPriceService } from '../wb.price/wb.price.service';
 import { DictTableRepository } from './dict-table.repository';

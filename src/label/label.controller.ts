@@ -1,9 +1,9 @@
-import { Body, Controller, Get, Post, Query, Res } from "@nestjs/common";
-import { LabelService } from "./label.service";
-import { ApiBody, ApiOperation, ApiResponse, ApiTags } from "@nestjs/swagger";
-import { Response} from 'express';
-import { GenerateBarcodeDto } from "./dto/generateBarcodeDto";
-import { GenerateLabelsDto } from "./dto/generateLabelsDto";
+import { Body, Controller, Get, Post, Query, Res } from '@nestjs/common';
+import { LabelService } from './label.service';
+import { ApiBody, ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { Response } from 'express';
+import { GenerateBarcodeDto } from './dto/generateBarcodeDto';
+import { GenerateLabelsDto } from './dto/generateLabelsDto';
 
 @ApiTags('label')
 @Controller('label')
@@ -40,10 +40,7 @@ export class LabelController {
         content: { 'image/png': { schema: { type: 'string', format: 'binary' } } },
     })
     @ApiResponse({ status: 400, description: 'Неверные параметры запроса' })
-    async generateBarcode(
-        @Query() query: GenerateBarcodeDto,
-        @Res() res: Response,
-    ) {
+    async generateBarcode(@Query() query: GenerateBarcodeDto, @Res() res: Response) {
         try {
             const barcodeBuffer = await this.labelService.generateBarcode(query);
             res.setHeader('Content-Type', 'image/png'); // Устанавливаем заголовок для изображения
@@ -52,5 +49,4 @@ export class LabelController {
             res.status(500).send({ message: 'Error generating barcode' });
         }
     }
-
 }

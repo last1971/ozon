@@ -42,11 +42,7 @@ export class FindCategoryCommand implements ICommandAsync<IProductCreateContext>
         // Получаем description_category_id из БД
         const t = await this.pool.getTransaction();
         try {
-            const [row] = await t.query(
-                'SELECT CATEGORY_ID FROM OZON_TYPES WHERE TYPE_ID = ?',
-                [best.typeId],
-                false,
-            );
+            const [row] = await t.query('SELECT CATEGORY_ID FROM OZON_TYPES WHERE TYPE_ID = ?', [best.typeId], false);
             await t.commit(true);
 
             context.description_category_id = row?.CATEGORY_ID;

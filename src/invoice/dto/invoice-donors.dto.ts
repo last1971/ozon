@@ -15,8 +15,10 @@ export class DonorDto {
     @ApiProperty({ required: false, description: 'Покупатель донора — нужен там, где ищем не в рамках одного счёта' })
     buyerCode?: number;
     @ApiPropertyOptional({ description: 'Живых кодов маркировки на строке донора' }) codesLive?: number;
-    @ApiPropertyOptional({ description: 'Из них кодов номинала строки-приёмника — только такие переезжают' }) codesNominal?: number;
-    @ApiPropertyOptional({ description: 'Выведенных кодов (возврат проданного без оживления) — сигнал, не запрет' }) codesDead?: number;
+    @ApiPropertyOptional({ description: 'Из них кодов номинала строки-приёмника — только такие переезжают' })
+    codesNominal?: number;
+    @ApiPropertyOptional({ description: 'Выведенных кодов (возврат проданного без оживления) — сигнал, не запрет' })
+    codesDead?: number;
     @ApiPropertyOptional({ description: 'Можно ли брать с этого донора руками; причина — в reason' }) canTake?: boolean;
     @ApiPropertyOptional() reason?: string;
 }
@@ -28,7 +30,10 @@ export class DonorLineDto {
     @ApiProperty({ nullable: true }) name: string | null;
     @ApiProperty({ description: 'Сколько штук нужно по строке счёта' })
     quantity: number;
-    @ApiProperty({ nullable: true, description: 'Фасовка строки (REALPRICE.PIECES): номинал кода; null — неизвестна (старый счёт)' })
+    @ApiProperty({
+        nullable: true,
+        description: 'Фасовка строки (REALPRICE.PIECES): номинал кода; null — неизвестна (старый счёт)',
+    })
     pieces: number | null;
     @ApiProperty({ description: 'Сколько штук уже подобрано на этой строке' }) picked: number;
     @ApiProperty({ description: 'Недобор строки = нужно − подобрано' }) shortage: number;
@@ -41,7 +46,8 @@ export class InvoiceDonorsDto {
     @ApiProperty({ description: 'Номер счёта (S.NS), для которого искали доноров' })
     invoiceNumber: number;
     @ApiProperty() scode: number;
-    @ApiProperty({ description: 'Статус счёта (S.STATUS): 1 — сформирован, 3 — в подборке, 4 — подобран' }) status: number;
+    @ApiProperty({ description: 'Статус счёта (S.STATUS): 1 — сформирован, 3 — в подборке, 4 — подобран' })
+    status: number;
     @ApiProperty({ type: String, format: 'date-time', nullable: true })
     date: Date | null;
     @ApiProperty({ nullable: true }) prim: string | null;

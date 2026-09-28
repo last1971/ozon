@@ -67,7 +67,9 @@ describe('LoadSnapshotCommand', () => {
             getReservedQuantities: jest.fn().mockResolvedValue(new Map([['498824', [1, 3, 3]]])),
         });
 
-        const result = await new LoadSnapshotCommand(good as any).execute(context({ goodIds: ['498824', '548580', '111'] }));
+        const result = await new LoadSnapshotCommand(good as any).execute(
+            context({ goodIds: ['498824', '548580', '111'] }),
+        );
 
         // на проверку кодов уходят только маркируемые, немаркируемый 111 не спрашиваем
         expect(good.getGoodsWithMarkCodes).toHaveBeenCalledWith(['498824', '548580'], transaction);

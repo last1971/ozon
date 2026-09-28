@@ -70,7 +70,7 @@ describe('AvitoCardService', () => {
             expect(avitoApiService.request).toHaveBeenCalledWith(
                 '/stock-management/1/info',
                 { item_ids: [123, 456], strong_consistency: true },
-                'post'
+                'post',
             );
             expect(result).toEqual(mockResponse);
         });
@@ -84,7 +84,7 @@ describe('AvitoCardService', () => {
             expect(avitoApiService.request).toHaveBeenCalledWith(
                 '/stock-management/1/info',
                 { item_ids: [123], strong_consistency: false },
-                'post'
+                'post',
             );
         });
     });
@@ -122,12 +122,12 @@ describe('AvitoCardService', () => {
             expect(avitoApiService.request).toHaveBeenCalledWith(
                 '/stock-management/1/info',
                 { item_ids: [123, 456, 789], strong_consistency: true },
-                'post'
+                'post',
             );
 
             const expectedMap = new Map([
                 ['456', 5],
-                ['101', 999999], 
+                ['101', 999999],
                 ['789', 0],
             ]);
             expect(result.goods).toEqual(expectedMap);
@@ -139,7 +139,7 @@ describe('AvitoCardService', () => {
                 id: (i + 1).toString(),
                 goodsCode: `goods${i + 1}`,
                 coeff: 1,
-                commission: 10.0
+                commission: 10.0,
             }));
             store.getAllAvitoGoods.mockResolvedValue(largeIdArray);
 
@@ -197,14 +197,14 @@ describe('AvitoCardService', () => {
         it('should update stocks via API and return success count', async () => {
             const goods = new Map([
                 ['goods1', 10],
-                ['goods2', 20]
+                ['goods2', 20],
             ]);
 
             avitoApiService.request.mockResolvedValue({
                 stocks: [
                     { item_id: 123, success: true, errors: [], external_id: null },
-                    { item_id: 456, success: true, errors: [], external_id: null }
-                ]
+                    { item_id: 456, success: true, errors: [], external_id: null },
+                ],
             });
 
             const result = await service.updateGoodCounts(goods);
@@ -214,10 +214,10 @@ describe('AvitoCardService', () => {
                 {
                     stocks: [
                         { item_id: 123, quantity: 10 },
-                        { item_id: 456, quantity: 20 }
-                    ]
+                        { item_id: 456, quantity: 20 },
+                    ],
                 },
-                'put'
+                'put',
             );
             expect(result).toBe(2);
         });
@@ -225,14 +225,14 @@ describe('AvitoCardService', () => {
         it('should handle partial success responses', async () => {
             const goods = new Map([
                 ['goods1', 10],
-                ['goods2', 20]
+                ['goods2', 20],
             ]);
 
             avitoApiService.request.mockResolvedValue({
                 stocks: [
                     { item_id: 123, success: true, errors: [], external_id: null },
-                    { item_id: 456, success: false, errors: ['Some error'], external_id: null }
-                ]
+                    { item_id: 456, success: false, errors: ['Some error'], external_id: null },
+                ],
             });
 
             const result = await service.updateGoodCounts(goods);
@@ -242,13 +242,11 @@ describe('AvitoCardService', () => {
 
         it('should limit quantities to 999999', async () => {
             const goods = new Map([
-                ['goods1', 1000000] // Exceeds limit
+                ['goods1', 1000000], // Exceeds limit
             ]);
 
             avitoApiService.request.mockResolvedValue({
-                stocks: [
-                    { item_id: 123, success: true, errors: [], external_id: null }
-                ]
+                stocks: [{ item_id: 123, success: true, errors: [], external_id: null }],
             });
 
             await service.updateGoodCounts(goods);
@@ -256,11 +254,9 @@ describe('AvitoCardService', () => {
             expect(avitoApiService.request).toHaveBeenCalledWith(
                 '/stock-management/1/stocks',
                 {
-                    stocks: [
-                        { item_id: 123, quantity: 999999 }
-                    ]
+                    stocks: [{ item_id: 123, quantity: 999999 }],
                 },
-                'put'
+                'put',
             );
         });
 
@@ -278,16 +274,16 @@ describe('AvitoCardService', () => {
                         item_id: i + 1,
                         success: true,
                         errors: [],
-                        external_id: null
-                    }))
+                        external_id: null,
+                    })),
                 })
                 .mockResolvedValueOnce({
                     stocks: Array.from({ length: 50 }, (_, i) => ({
                         item_id: i + 201,
                         success: true,
                         errors: [],
-                        external_id: null
-                    }))
+                        external_id: null,
+                    })),
                 });
 
             const result = await service.updateGoodCounts(goods);
@@ -308,14 +304,12 @@ describe('AvitoCardService', () => {
 
         it('should skip goods without valid Avito IDs', async () => {
             const goods = new Map([
-                ['goods1', 10],        // Has valid ID
-                ['unknown', 20]        // No ID mapping
+                ['goods1', 10], // Has valid ID
+                ['unknown', 20], // No ID mapping
             ]);
 
             avitoApiService.request.mockResolvedValue({
-                stocks: [
-                    { item_id: 123, success: true, errors: [], external_id: null }
-                ]
+                stocks: [{ item_id: 123, success: true, errors: [], external_id: null }],
             });
 
             const result = await service.updateGoodCounts(goods);
@@ -324,11 +318,11 @@ describe('AvitoCardService', () => {
                 '/stock-management/1/stocks',
                 {
                     stocks: [
-                        { item_id: 123, quantity: 10 }
+                        { item_id: 123, quantity: 10 },
                         // 'unknown' should be filtered out
-                    ]
+                    ],
                 },
-                'put'
+                'put',
             );
             expect(result).toBe(1);
         });
@@ -391,9 +385,7 @@ describe('AvitoCardService', () => {
 
             await service.getGoodIds(null);
 
-            expect(maintenance.disableDeadLinks).toHaveBeenCalledWith([
-                expect.objectContaining({ id: '2' }),
-            ]);
+            expect(maintenance.disableDeadLinks).toHaveBeenCalledWith([expect.objectContaining({ id: '2' })]);
         });
 
         it('необъяснённый провал (объявление живо) роняет прогон', async () => {
@@ -437,9 +429,7 @@ describe('AvitoCardService', () => {
         });
 
         it('справочник не пуст, но все id нечисловые — авария', async () => {
-            store.getAllAvitoGoods.mockResolvedValue([
-                { id: 'avito1', goodsCode: 'goodsA', coeff: 1, commission: 10 },
-            ]);
+            store.getAllAvitoGoods.mockResolvedValue([{ id: 'avito1', goodsCode: 'goodsA', coeff: 1, commission: 10 }]);
 
             await expect(service.getGoodIds(null)).rejects.toThrow('не пригоден для запроса');
             expect(avitoApiService.request).not.toHaveBeenCalled();

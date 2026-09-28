@@ -43,10 +43,7 @@ export class AvitoPriceService implements IPriceUpdateable {
         }
 
         return avitoData.map(
-            (avitoItem) => new AvitoPriceCoeffsAdapter(
-                avitoItem,
-                this.configService.get<number>('AVITO_EXT_PERC', 0)
-            )
+            (avitoItem) => new AvitoPriceCoeffsAdapter(avitoItem, this.configService.get<number>('AVITO_EXT_PERC', 0)),
         );
     }
 
@@ -72,7 +69,7 @@ export class AvitoPriceService implements IPriceUpdateable {
                 const response = await this.api.request<{ result: { success: boolean } }>(
                     `/core/v1/items/${avitoId}/update_price`,
                     { price: parseInt(updatePrice.min_price) },
-                    'post'
+                    'post',
                 );
 
                 if (response.result.success) {
@@ -80,12 +77,11 @@ export class AvitoPriceService implements IPriceUpdateable {
                         offer_id: updatePrice.offer_id,
                         avito_id: avitoId,
                         price: updatePrice.price,
-                        success: true
+                        success: true,
                     });
                 } else {
                     errors.push(`Failed to update price for SKU ${updatePrice.offer_id}`);
                 }
-
             } catch (error) {
                 this.logger.error(`Error updating price for SKU ${updatePrice.offer_id}:`, error);
                 errors.push(`Error updating SKU ${updatePrice.offer_id}: ${error.message}`);
@@ -97,7 +93,7 @@ export class AvitoPriceService implements IPriceUpdateable {
         return {
             updated: results.length,
             errors,
-            results
+            results,
         };
     }
 

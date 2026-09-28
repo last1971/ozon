@@ -23,10 +23,7 @@ describe('MpEventService', () => {
         commit.mockResolvedValue(undefined);
         rollback.mockResolvedValue(undefined);
         const module: TestingModule = await Test.createTestingModule({
-            providers: [
-                MpEventService,
-                { provide: FIREBIRD, useValue: { getTransaction: async () => transaction } },
-            ],
+            providers: [MpEventService, { provide: FIREBIRD, useValue: { getTransaction: async () => transaction } }],
         }).compile();
         service = module.get(MpEventService);
     });
@@ -36,12 +33,7 @@ describe('MpEventService', () => {
             query.mockResolvedValueOnce([]);
             await expect(service.record(event)).resolves.toBe(true);
             expect(execute.mock.calls[0][0]).toContain('INSERT INTO MP_EVENT');
-            expect(execute.mock.calls[0][1].slice(0, 4)).toEqual([
-                'OZON',
-                'RETURN',
-                '1003975443',
-                'ReturnedToOzon',
-            ]);
+            expect(execute.mock.calls[0][1].slice(0, 4)).toEqual(['OZON', 'RETURN', '1003975443', 'ReturnedToOzon']);
             expect(commit).toHaveBeenCalled();
         });
 
@@ -143,9 +135,7 @@ describe('MpEventService', () => {
             const lastSeen = DateTime.now().minus({ hour: 3 }).toJSDate();
             query.mockResolvedValueOnce([{ LAST_SEEN: lastSeen }]);
             const from = await service.windowStart('OZON', 'RETURN', 45, 2);
-            expect(DateTime.fromJSDate(from).toISO()).toBe(
-                DateTime.fromJSDate(lastSeen).minus({ day: 2 }).toISO(),
-            );
+            expect(DateTime.fromJSDate(from).toISO()).toBe(DateTime.fromJSDate(lastSeen).minus({ day: 2 }).toISO());
         });
 
         it('простой дольше дефолтного окна → берём журнал, а не «сейчас минус N»', async () => {

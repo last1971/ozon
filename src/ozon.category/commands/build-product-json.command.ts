@@ -31,18 +31,19 @@ export class BuildProductJsonCommand implements ICommandAsync<IProductCreateCont
         const hashtags = formatHashtags(context.hashtags || '');
 
         // Проверяем что AI заполнил все обязательные атрибуты
-        const resolvedIds = new Set((context.resolved_attributes || []).map(a => a.id));
-        const missingRequired = (context.required_attributes || [])
-            .filter(a => a.is_required && !MANUAL_ATTRIBUTE_IDS.has(a.id) && !resolvedIds.has(a.id));
+        const resolvedIds = new Set((context.resolved_attributes || []).map((a) => a.id));
+        const missingRequired = (context.required_attributes || []).filter(
+            (a) => a.is_required && !MANUAL_ATTRIBUTE_IDS.has(a.id) && !resolvedIds.has(a.id),
+        );
 
         if (missingRequired.length > 0) {
-            const names = missingRequired.map(a => `${a.id} "${a.name}"`).join(', ');
+            const names = missingRequired.map((a) => `${a.id} "${a.name}"`).join(', ');
             context.logger?.log(`ВНИМАНИЕ: AI не заполнил обязательные атрибуты: ${names}`);
         }
 
         const items = (context.variants || []).map((variant) => {
             // Дополняем пропущенные обязательные атрибуты пустым значением
-            const missingAttrs = missingRequired.map(a => ({
+            const missingAttrs = missingRequired.map((a) => ({
                 id: a.id,
                 complex_id: 0,
                 values: [{ value: '' }],
@@ -69,7 +70,13 @@ export class BuildProductJsonCommand implements ICommandAsync<IProductCreateCont
                 height: variant.height,
                 width: variant.width,
                 images: [...new Set(input.images)],
-                ...(input.pdf_list?.length ? { pdf_list: input.pdf_list.filter((p, i, arr) => arr.findIndex(x => x.src_url === p.src_url) === i) } : {}),
+                ...(input.pdf_list?.length
+                    ? {
+                          pdf_list: input.pdf_list.filter(
+                              (p, i, arr) => arr.findIndex((x) => x.src_url === p.src_url) === i,
+                          ),
+                      }
+                    : {}),
                 name: variant.name,
                 offer_id: variant.offerId,
                 price: '100000',
@@ -82,7 +89,9 @@ export class BuildProductJsonCommand implements ICommandAsync<IProductCreateCont
 
         context.product_json = { items };
 
-        context.logger?.log(`JSON собран: ${items.length} товар(ов), ${items[0]?.attributes.length || 0} атрибутов, vat=${vat}`);
+        context.logger?.log(
+            `JSON собран: ${items.length} товар(ов), ${items[0]?.attributes.length || 0} атрибутов, vat=${vat}`,
+        );
         return context;
     }
 }

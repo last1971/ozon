@@ -1,9 +1,9 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { LabelService } from "./label.service";
+import { LabelService } from './label.service';
 import * as bwipjs from 'bwip-js';
 import PDFDocument from 'pdfkit';
-import { BarcodeType } from "./dto/barcodeType";
-import { GenerateLabelsDto } from "./dto/generateLabelsDto";
+import { BarcodeType } from './dto/barcodeType';
+import { GenerateLabelsDto } from './dto/generateLabelsDto';
 
 jest.mock('bwip-js');
 jest.mock('pdfkit');
@@ -30,9 +30,7 @@ describe('LabelService', () => {
     it('should generate a PDF buffer with labels', async () => {
         // Мокаем данные для теста
         const generateLabelsDto: GenerateLabelsDto = {
-            labelsData: [
-                { code: '123456789', description: 'Test Label' },
-            ],
+            labelsData: [{ code: '123456789', description: 'Test Label' }],
             size: { width: 50, height: 30 },
             barcodeType: BarcodeType.CODE128,
             marginX: 5,
@@ -71,7 +69,6 @@ describe('LabelService', () => {
 
         // Мокируем конструктор PDFDocument, чтобы он возвращал наш мок-объект
         (PDFDocument as unknown as jest.Mock<typeof PDFDocument>).mockImplementation(() => pdfMock as any);
-
 
         // Вызов метода
         const result = await service.generateLabels(generateLabelsDto);

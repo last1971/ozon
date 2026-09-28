@@ -156,7 +156,7 @@ export class PerformanceService implements OnModuleInit {
     async enablePlanedCampaigns(): Promise<void> {
         const campaigns = await this.getCampaignIds();
         if (campaigns.length === 0) return;
-        
+
         for (const campaign of campaigns) {
             await this.activateCampaign(campaign);
         }

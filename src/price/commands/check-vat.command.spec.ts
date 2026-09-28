@@ -114,8 +114,6 @@ describe('CheckVatCommand', () => {
 
         await command.execute(context);
 
-        expect(mockLogger.log).toHaveBeenCalledWith(
-            expect.stringContaining('Примеры несоответствий (первые 5):')
-        );
+        expect(mockLogger.log).toHaveBeenCalledWith(expect.stringContaining('Примеры несоответствий (первые 5):'));
     });
 });

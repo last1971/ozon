@@ -54,11 +54,7 @@ describe('ProcessedCacheService', () => {
     describe('save', () => {
         it('пишет CSV под правильным ключом с TTL из CACHE_TTL_DAYS', async () => {
             await service.save('orders', 'WbOrderService', new Set(['a', 'b']));
-            expect(cacheSet).toHaveBeenCalledWith(
-                'processed:orders:WbOrderService',
-                'a,b',
-                14 * 24 * 60 * 60 * 1000,
-            );
+            expect(cacheSet).toHaveBeenCalledWith('processed:orders:WbOrderService', 'a,b', 14 * 24 * 60 * 60 * 1000);
         });
 
         it('пустой Set → пишет пустую строку', async () => {
@@ -129,10 +125,7 @@ describe('ProcessedCacheService', () => {
             // упавшее отправление обязано попасть в следующий прогон, а соседние —
             // доработать. Плюс раньше упавший элемент помечался обработанным и
             // не обрабатывался больше никогда: ключ живёт CACHE_TTL_DAYS.
-            const processor = jest
-                .fn()
-                .mockRejectedValueOnce(new Error('boom'))
-                .mockResolvedValueOnce(undefined);
+            const processor = jest.fn().mockRejectedValueOnce(new Error('boom')).mockResolvedValueOnce(undefined);
             const flushers: (() => Promise<void>)[] = [];
 
             const res = await service.process(

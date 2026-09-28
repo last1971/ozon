@@ -21,18 +21,15 @@ export const WB_CHARACTERISTICS_SYSTEM_PROMPT = `Ты специалист по 
 - Числовые значения — только число, без текста
 - Если описание товара длиннее 2000 символов — верни поле "description" с сокращённой версией (≤2000 символов). Сохрани ключевые характеристики и преимущества, убери воду и повторы. Без эмодзи. Если описание ≤2000 символов — НЕ включай поле "description"`;
 
-export function buildWbCharcsPrompt(
-    productName: string,
-    description: string,
-    charcs: WbCharc[],
-): string {
-    const filtered = charcs.filter(
-        (c) => c.charcType !== 0 && !WB_MANUAL_CHARC_NAMES.has(c.name),
-    );
+export function buildWbCharcsPrompt(productName: string, description: string, charcs: WbCharc[]): string {
+    const filtered = charcs.filter((c) => c.charcType !== 0 && !WB_MANUAL_CHARC_NAMES.has(c.name));
 
     let prompt = `Товар: "${productName}"\n`;
     if (description) {
-        const clean = description.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim();
+        const clean = description
+            .replace(/<[^>]+>/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
         prompt += `Описание: "${clean.slice(0, 2000)}"\n`;
     }
     prompt += `\nЗаполни следующие характеристики WB:\n\n`;

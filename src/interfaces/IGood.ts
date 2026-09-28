@@ -7,7 +7,7 @@ import { GoodWbDto } from '../good/dto/good.wb.dto';
 import { FirebirdTransaction } from 'ts-firebird';
 import { WbCardDto } from '../wb.card/dto/wb.card.dto';
 import { WbCommissionDto } from '../wb.card/dto/wb.commission.dto';
-import { UpdatePriceDto } from "../price/dto/update.price.dto";
+import { UpdatePriceDto } from '../price/dto/update.price.dto';
 import { GoodServiceEnum } from '../good/good.service.enum';
 
 export interface IGood {
@@ -21,12 +21,24 @@ export interface IGood {
     getWbData(ids: string[]): Promise<GoodWbDto[]>;
     getQuantities(goodCodes: string[], t: FirebirdTransaction): Promise<Map<string, number>>;
     //updateCountForService(service: ICountUpdateable, args: any): Promise<number>;
-    updatePriceForService(service: IPriceUpdateable, skus: string[], prices?: Map<string, UpdatePriceDto>): Promise<any>;
-    generatePercentsForService(service: IPriceUpdateable | null, skus: string[], goodPercentsDto?: Map<string, Partial<GoodPercentDto>>): Promise<GoodPercentDto[]>;
-    updatePercentsForService(service: IPriceUpdateable, skus: string[], goodPercentsDto?: Map<string, Partial<GoodPercentDto>>): Promise<void>;
+    updatePriceForService(
+        service: IPriceUpdateable,
+        skus: string[],
+        prices?: Map<string, UpdatePriceDto>,
+    ): Promise<any>;
+    generatePercentsForService(
+        service: IPriceUpdateable | null,
+        skus: string[],
+        goodPercentsDto?: Map<string, Partial<GoodPercentDto>>,
+    ): Promise<GoodPercentDto[]>;
+    updatePercentsForService(
+        service: IPriceUpdateable,
+        skus: string[],
+        goodPercentsDto?: Map<string, Partial<GoodPercentDto>>,
+    ): Promise<void>;
     updateWbCategory(wbCard: WbCardDto): Promise<void>;
     getWbCategoryByName(name: string): Promise<WbCommissionDto>;
-    resetAvailablePrice(goodCodes?: string[], t?: FirebirdTransaction): Promise<void>
+    resetAvailablePrice(goodCodes?: string[], t?: FirebirdTransaction): Promise<void>;
     getDisabledCodes(service: GoodServiceEnum, t?: FirebirdTransaction): Promise<string[]>;
     /** Товары, подлежащие маркировке (GOODS_CLASSIF.MARK_REQUIRED = 1). */
     getMarkRequiredCodes(t?: FirebirdTransaction): Promise<Set<string>>;

@@ -4,7 +4,13 @@ import { FirebirdPool } from 'ts-firebird';
 import { FIREBIRD } from '../firebird/firebird.module';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { JobProgress } from '../interfaces/i.job.context';
-import { DictStats, DictSubject, DictSubjectTnved, ITnvedDictionary, TnvedEntry } from '../interfaces/i.tnved.dictionary';
+import {
+    DictStats,
+    DictSubject,
+    DictSubjectTnved,
+    ITnvedDictionary,
+    TnvedEntry,
+} from '../interfaces/i.tnved.dictionary';
 import { OzonCategoryService } from '../ozon.category/ozon.category.service';
 import { ProductService } from '../product/product.service';
 import { MARK_LABEL } from '../tnved-sync/ozon.tnved.service';
@@ -76,7 +82,11 @@ export class OzonDictService implements ITnvedDictionary {
             return null;
         }
         try {
-            const values = await this.products.fetchCategoryAttributeValues(this.tnvedAttrId, subject.categoryId, subject.id);
+            const values = await this.products.fetchCategoryAttributeValues(
+                this.tnvedAttrId,
+                subject.categoryId,
+                subject.id,
+            );
             return parseOzonTnvedValues(values);
         } catch (e) {
             this.logger.warn(`[dict] attribute/values тип ${subject.id}: ${e?.message ?? e}`);

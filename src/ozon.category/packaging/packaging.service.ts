@@ -1,8 +1,8 @@
 import { PACKAGING_OPTIONS, PackagingOption } from './packaging.config';
 
 export interface ProductDimensions {
-    depth: number;  // мм
-    width: number;  // мм
+    depth: number; // мм
+    width: number; // мм
     height: number; // мм
     weight: number; // г (вес товара без упаковки)
 }

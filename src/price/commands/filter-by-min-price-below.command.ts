@@ -12,12 +12,14 @@ export class FilterByMinPriceBelowCommand implements ICommandAsync<IGoodsProcess
         const before = prices.length;
 
         // Оставляем где min_price <= 300
-        context.ozonPrices = prices.filter(p => p.min_price <= threshold);
+        context.ozonPrices = prices.filter((p) => p.min_price <= threshold);
 
         // Из оставшихся — уведомить где price > 300
-        context.ozonPricesHighPrice = context.ozonPrices.filter(p => p.price > threshold);
+        context.ozonPricesHighPrice = context.ozonPrices.filter((p) => p.price > threshold);
 
-        context.logger?.log(`Фильтр по min_price <= ${threshold}: ${before} -> ${context.ozonPrices.length}, для уведомления: ${context.ozonPricesHighPrice.length}`);
+        context.logger?.log(
+            `Фильтр по min_price <= ${threshold}: ${before} -> ${context.ozonPrices.length}, для уведомления: ${context.ozonPricesHighPrice.length}`,
+        );
         return context;
     }
 }

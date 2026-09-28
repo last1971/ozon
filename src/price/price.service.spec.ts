@@ -5,7 +5,7 @@ import { GOOD_SERVICE } from '../interfaces/IGood';
 import { ConfigService } from '@nestjs/config';
 import { ProductVisibility } from '../product/product.visibility';
 import { OzonProductCoeffsAdapter } from './ozon.product.coeffs.adapter';
-import { Cache } from "@nestjs/cache-manager";
+import { Cache } from '@nestjs/cache-manager';
 import { PriceCalculationHelper } from '../helpers/price/price.calculation.helper';
 import { OzonCategoryService } from '../ozon.category/ozon.category.service';
 
@@ -24,8 +24,15 @@ describe('PriceService', () => {
         provide: PriceCalculationHelper,
         useValue: {
             selectWarehouse: jest.fn(() => 'fbs'),
-            getCommission: jest.fn((commissions, warehouse) => warehouse === 'fbo' ? commissions.sales_percent_fbo : commissions.sales_percent_fbs),
-            calculateDelivery: jest.fn((commissions, warehouse, percDirectFlow) => (commissions.fbs_direct_flow_trans_max_amount + commissions.fbs_direct_flow_trans_min_amount) / 2 * percDirectFlow),
+            getCommission: jest.fn((commissions, warehouse) =>
+                warehouse === 'fbo' ? commissions.sales_percent_fbo : commissions.sales_percent_fbs,
+            ),
+            calculateDelivery: jest.fn(
+                (commissions, warehouse, percDirectFlow) =>
+                    ((commissions.fbs_direct_flow_trans_max_amount + commissions.fbs_direct_flow_trans_min_amount) /
+                        2) *
+                    percDirectFlow,
+            ),
         },
     };
 
@@ -35,7 +42,7 @@ describe('PriceService', () => {
                 PriceService,
                 { provide: ProductService, useValue: { getPrices, setPrice, skuList: ['sku1', 'sku2', 'sku3'] } },
                 { provide: GOOD_SERVICE, useValue: { prices, getPerc, updatePriceForService } },
-                { provide: Cache, useValue: { get: () => [], set: () => {}}},
+                { provide: Cache, useValue: { get: () => [], set: () => {} } },
                 {
                     provide: ConfigService,
                     useValue: {
@@ -64,7 +71,10 @@ describe('PriceService', () => {
                     },
                 },
                 mockPriceCalculationHelper,
-                { provide: OzonCategoryService, useValue: { getCommissions: jest.fn(), getCommissionForPrice: jest.fn() } },
+                {
+                    provide: OzonCategoryService,
+                    useValue: { getCommissions: jest.fn(), getCommissionForPrice: jest.fn() },
+                },
             ],
         }).compile();
 
@@ -84,12 +94,12 @@ describe('PriceService', () => {
         jest.spyOn(service, 'index').mockResolvedValue({
             data: [
                 {
-                    offer_id: "offer1",
+                    offer_id: 'offer1',
                     marketing_price: 100,
                     incoming_price: 10,
                     available_price: 90,
                     product_id: 1,
-                    name: "Product 1",
+                    name: 'Product 1',
                     marketing_seller_price: 95,
                     min_price: 85,
                     price: 100,
@@ -106,12 +116,12 @@ describe('PriceService', () => {
                     fboCount: 2,
                 },
                 {
-                    offer_id: "offer2",
+                    offer_id: 'offer2',
                     marketing_price: 200,
                     incoming_price: 10,
                     available_price: 0,
                     product_id: 2,
-                    name: "Product 2",
+                    name: 'Product 2',
                     marketing_seller_price: 205,
                     min_price: 190,
                     price: 220,
@@ -128,12 +138,12 @@ describe('PriceService', () => {
                     fboCount: 1,
                 },
                 {
-                    offer_id: "offer3",
+                    offer_id: 'offer3',
                     marketing_price: 50,
                     incoming_price: 60,
                     available_price: 0,
                     product_id: 3,
-                    name: "Product 3",
+                    name: 'Product 3',
                     marketing_seller_price: 45,
                     min_price: 40,
                     price: 55,
@@ -248,35 +258,37 @@ describe('PriceService', () => {
                 {
                     offer_id: '1',
                     price: {},
-                    commissions: { 
-                        sales_percent_fbs: 1, 
+                    commissions: {
+                        sales_percent_fbs: 1,
                         sales_percent_fbo: 2,
-                        fbs_direct_flow_trans_max_amount: 2 
+                        fbs_direct_flow_trans_max_amount: 2,
                     },
                 },
             ],
         });
 
-        const mockInfoList = jest.fn().mockResolvedValueOnce([{
-            sku: '1',
-            fbsCount: 5,
-            fboCount: 3
-        }]);
+        const mockInfoList = jest.fn().mockResolvedValueOnce([
+            {
+                sku: '1',
+                fbsCount: 5,
+                fboCount: 3,
+            },
+        ]);
 
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 PriceService,
-                { 
-                    provide: ProductService, 
-                    useValue: { 
-                        getPrices, 
-                        setPrice, 
+                {
+                    provide: ProductService,
+                    useValue: {
+                        getPrices,
+                        setPrice,
                         skuList: ['sku1', 'sku2', 'sku3'],
-                        infoList: mockInfoList
-                    } 
+                        infoList: mockInfoList,
+                    },
                 },
                 { provide: GOOD_SERVICE, useValue: { prices, getPerc, updatePriceForService } },
-                { provide: Cache, useValue: { get: () => [], set: () => {}}},
+                { provide: Cache, useValue: { get: () => [], set: () => {} } },
                 {
                     provide: ConfigService,
                     useValue: {
@@ -305,7 +317,10 @@ describe('PriceService', () => {
                     },
                 },
                 mockPriceCalculationHelper,
-                { provide: OzonCategoryService, useValue: { getCommissions: jest.fn(), getCommissionForPrice: jest.fn() } },
+                {
+                    provide: OzonCategoryService,
+                    useValue: { getCommissions: jest.fn(), getCommissionForPrice: jest.fn() },
+                },
             ],
         }).compile();
 
@@ -319,31 +334,31 @@ describe('PriceService', () => {
     it('checkVatForAll collects mismatches across pages', async () => {
         // page 1
         getPrices
-          .mockResolvedValueOnce({
-            items: [
-              { offer_id: 'A', price: { vat: '0.2' } }, // ok (20% = '0.2')
-              { offer_id: 'B', price: { vat: '0.1' } }, // mismatch (10% = '0.1')
-            ],
-            cursor: 'next',
-          })
-          // page 2
-          .mockResolvedValueOnce({
-            items: [{ offer_id: 'C', price: { vat: '0' } }], // mismatch (0% = '0')
-            cursor: '',
-          });
+            .mockResolvedValueOnce({
+                items: [
+                    { offer_id: 'A', price: { vat: '0.2' } }, // ok (20% = '0.2')
+                    { offer_id: 'B', price: { vat: '0.1' } }, // mismatch (10% = '0.1')
+                ],
+                cursor: 'next',
+            })
+            // page 2
+            .mockResolvedValueOnce({
+                items: [{ offer_id: 'C', price: { vat: '0' } }], // mismatch (0% = '0')
+                cursor: '',
+            });
 
         const expectedVat = 20; // ожидаем 20%
         const res = await service.checkVatForAll(expectedVat, 1000);
 
         expect(res).toEqual([
-          { offer_id: 'B', current_vat: 10, expected_vat: 20 },
-          { offer_id: 'C', current_vat: 0, expected_vat: 20 },
+            { offer_id: 'B', current_vat: 10, expected_vat: 20 },
+            { offer_id: 'C', current_vat: 0, expected_vat: 20 },
         ]);
 
         // called twice with visibility ALL and correct cursors
         expect(getPrices.mock.calls[0]).toEqual([{ limit: 1000, cursor: '', visibility: 'ALL' }]);
         expect(getPrices.mock.calls[1]).toEqual([{ limit: 1000, cursor: 'next', visibility: 'ALL' }]);
-      });
+    });
 
     it('updateVat should call update with correct prices structure', async () => {
         const offerIds = ['SKU123', 'SKU456', 'SKU789'];
@@ -356,7 +371,7 @@ describe('PriceService', () => {
                 { offer_id: 'SKU123', vat: '0.2', currency_code: 'RUB' },
                 { offer_id: 'SKU456', vat: '0.2', currency_code: 'RUB' },
                 { offer_id: 'SKU789', vat: '0.2', currency_code: 'RUB' },
-            ]
+            ],
         });
     });
 
@@ -364,7 +379,7 @@ describe('PriceService', () => {
         await service.updateVat([], 0);
 
         expect(setPrice).toHaveBeenCalledWith({
-            prices: []
+            prices: [],
         });
     });
 
@@ -437,13 +452,11 @@ describe('PriceService', () => {
 
     describe('index with volumeWeight', () => {
         it('should include volumeWeight from productInfo', async () => {
-            const mockInfoList = jest.fn().mockResolvedValueOnce([
-                { sku: 'sku1', fbsCount: 5, fboCount: 3, typeId: 123, volumeWeight: 0.5 },
-            ]);
+            const mockInfoList = jest
+                .fn()
+                .mockResolvedValueOnce([{ sku: 'sku1', fbsCount: 5, fboCount: 3, typeId: 123, volumeWeight: 0.5 }]);
 
-            const mockPrices = jest.fn().mockResolvedValueOnce([
-                { code: 'sku1', name: 'Product 1', price: 100 },
-            ]);
+            const mockPrices = jest.fn().mockResolvedValueOnce([{ code: 'sku1', name: 'Product 1', price: 100 }]);
 
             const mockGetPerc = jest.fn().mockResolvedValueOnce([]);
 
@@ -469,14 +482,20 @@ describe('PriceService', () => {
                             infoList: mockInfoList,
                         },
                     },
-                    { provide: GOOD_SERVICE, useValue: { prices: mockPrices, getPerc: mockGetPerc, updatePriceForService } },
+                    {
+                        provide: GOOD_SERVICE,
+                        useValue: { prices: mockPrices, getPerc: mockGetPerc, updatePriceForService },
+                    },
                     { provide: Cache, useValue: { get: () => [], set: () => {} } },
                     {
                         provide: ConfigService,
                         useValue: { get: () => null },
                     },
                     mockPriceCalculationHelper,
-                    { provide: OzonCategoryService, useValue: { getCommissions: jest.fn(), getCommissionForPrice: jest.fn() } },
+                    {
+                        provide: OzonCategoryService,
+                        useValue: { getCommissions: jest.fn(), getCommissionForPrice: jest.fn() },
+                    },
                 ],
             }).compile();
 
@@ -513,7 +532,10 @@ describe('PriceService', () => {
                     { provide: Cache, useValue: { get: jest.fn(), set: jest.fn() } },
                     { provide: ConfigService, useValue: { get: () => null } },
                     mockPriceCalculationHelper,
-                    { provide: OzonCategoryService, useValue: { getCommissions: mockGetCommissions, getCommissionForPrice: jest.fn() } },
+                    {
+                        provide: OzonCategoryService,
+                        useValue: { getCommissions: mockGetCommissions, getCommissionForPrice: jest.fn() },
+                    },
                 ],
             }).compile();
 
@@ -535,7 +557,10 @@ describe('PriceService', () => {
                     { provide: Cache, useValue: { get: jest.fn(), set: jest.fn() } },
                     { provide: ConfigService, useValue: { get: () => null } },
                     mockPriceCalculationHelper,
-                    { provide: OzonCategoryService, useValue: { getCommissions: mockGetCommissions, getCommissionForPrice: jest.fn() } },
+                    {
+                        provide: OzonCategoryService,
+                        useValue: { getCommissions: mockGetCommissions, getCommissionForPrice: jest.fn() },
+                    },
                 ],
             }).compile();
 
@@ -559,7 +584,10 @@ describe('PriceService', () => {
                     { provide: Cache, useValue: { get: mockCacheGet, set: jest.fn() } },
                     { provide: ConfigService, useValue: { get: () => null } },
                     mockPriceCalculationHelper,
-                    { provide: OzonCategoryService, useValue: { getCommissions: jest.fn(), getCommissionForPrice: jest.fn() } },
+                    {
+                        provide: OzonCategoryService,
+                        useValue: { getCommissions: jest.fn(), getCommissionForPrice: jest.fn() },
+                    },
                 ],
             }).compile();
 
@@ -583,7 +611,10 @@ describe('PriceService', () => {
                     { provide: Cache, useValue: { get: mockCacheGet, set: mockCacheSet } },
                     { provide: ConfigService, useValue: { get: () => null } },
                     mockPriceCalculationHelper,
-                    { provide: OzonCategoryService, useValue: { getCommissions: jest.fn(), getCommissionForPrice: jest.fn() } },
+                    {
+                        provide: OzonCategoryService,
+                        useValue: { getCommissions: jest.fn(), getCommissionForPrice: jest.fn() },
+                    },
                 ],
             }).compile();
 
@@ -607,7 +638,10 @@ describe('PriceService', () => {
                     { provide: Cache, useValue: { get: mockCacheGet, set: jest.fn() } },
                     { provide: ConfigService, useValue: { get: () => null } },
                     mockPriceCalculationHelper,
-                    { provide: OzonCategoryService, useValue: { getCommissions: jest.fn(), getCommissionForPrice: jest.fn() } },
+                    {
+                        provide: OzonCategoryService,
+                        useValue: { getCommissions: jest.fn(), getCommissionForPrice: jest.fn() },
+                    },
                 ],
             }).compile();
 
@@ -652,7 +686,10 @@ describe('PriceService', () => {
                     { provide: Cache, useValue: { get: mockCacheGet, set: jest.fn() } },
                     { provide: ConfigService, useValue: { get: () => null } },
                     mockPriceCalculationHelper,
-                    { provide: OzonCategoryService, useValue: { getCommissions: jest.fn(), getCommissionForPrice: jest.fn() } },
+                    {
+                        provide: OzonCategoryService,
+                        useValue: { getCommissions: jest.fn(), getCommissionForPrice: jest.fn() },
+                    },
                 ],
             }).compile();
 
@@ -675,7 +712,10 @@ describe('PriceService', () => {
                     { provide: Cache, useValue: { get: mockCacheGet, set: jest.fn() } },
                     { provide: ConfigService, useValue: { get: () => null } },
                     mockPriceCalculationHelper,
-                    { provide: OzonCategoryService, useValue: { getCommissions: jest.fn(), getCommissionForPrice: jest.fn() } },
+                    {
+                        provide: OzonCategoryService,
+                        useValue: { getCommissions: jest.fn(), getCommissionForPrice: jest.fn() },
+                    },
                 ],
             }).compile();
 
@@ -696,7 +736,10 @@ describe('PriceService', () => {
                     { provide: Cache, useValue: { get: mockCacheGet, set: jest.fn() } },
                     { provide: ConfigService, useValue: { get: () => null } },
                     mockPriceCalculationHelper,
-                    { provide: OzonCategoryService, useValue: { getCommissions: jest.fn(), getCommissionForPrice: jest.fn() } },
+                    {
+                        provide: OzonCategoryService,
+                        useValue: { getCommissions: jest.fn(), getCommissionForPrice: jest.fn() },
+                    },
                 ],
             }).compile();
 

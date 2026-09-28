@@ -6,7 +6,7 @@ import { GOOD_SERVICE } from '../interfaces/IGood';
 import { WbPriceService } from '../wb.price/wb.price.service';
 import { ConfigService } from '@nestjs/config';
 import { GoodServiceEnum } from '../good/good.service.enum';
-import { ExtraPriceService } from "./extra.price.service";
+import { ExtraPriceService } from './extra.price.service';
 
 describe('PriceController', () => {
     let controller: PriceController;
@@ -94,7 +94,7 @@ describe('PriceController', () => {
             const body = {
                 service: GoodServiceEnum.OZON,
                 offerIds: ['SKU123', 'SKU456'],
-                vat: 20
+                vat: 20,
             };
             const expectedResult = { success: true };
             const mockServiceUpdateVat = jest.fn().mockResolvedValue(expectedResult);
@@ -111,7 +111,7 @@ describe('PriceController', () => {
             const body = {
                 service: GoodServiceEnum.WB,
                 offerIds: [],
-                vat: 0
+                vat: 0,
             };
             const mockServiceUpdateVat = jest.fn().mockResolvedValue({ success: true });
             extraPriceService.getService.mockReturnValue({ updateVat: mockServiceUpdateVat } as any);
@@ -135,7 +135,7 @@ describe('PriceController', () => {
                 const body = {
                     service: testCase.service,
                     offerIds: ['TEST'],
-                    vat: testCase.vat
+                    vat: testCase.vat,
                 };
 
                 await controller.updateVat(body);
@@ -188,7 +188,7 @@ describe('PriceController', () => {
 
             expect(extraPriceService.getUnprofitableReport).toHaveBeenCalled();
             expect(mockResponse.contentType).toHaveBeenCalledWith(
-                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
+                'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
             );
             expect(mockResponse.attachment).toHaveBeenCalledWith('unprofitable-ozon.xlsx');
             expect(mockResponse.send).toHaveBeenCalledWith(mockBuffer);
@@ -209,5 +209,4 @@ describe('PriceController', () => {
             expect(extraPriceService.getUnprofitableReport).toHaveBeenCalledTimes(1);
         });
     });
-
 });

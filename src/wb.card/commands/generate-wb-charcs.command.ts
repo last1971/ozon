@@ -18,11 +18,7 @@ export class GenerateWbCharcsCommand implements ICommandAsync<IWbCreateCardConte
             return context;
         }
 
-        const userPrompt = buildWbCharcsPrompt(
-            context.productName,
-            context.description,
-            context.charcs,
-        );
+        const userPrompt = buildWbCharcsPrompt(context.productName, context.description, context.charcs);
 
         const response = await this.aiService.chat(
             AIProviderName.ANTHROPIC,
@@ -64,7 +60,9 @@ export class GenerateWbCharcsCommand implements ICommandAsync<IWbCreateCardConte
             cost: this.aiService.estimateCost(AIProviderName.ANTHROPIC, inputTokens, outputTokens, 'claude-sonnet-4-6'),
         };
 
-        this.logger.log(`AI заполнил ${context.aiCharacteristics.length} характеристик, cost: $${context.aiCost.cost.toFixed(4)}`);
+        this.logger.log(
+            `AI заполнил ${context.aiCharacteristics.length} характеристик, cost: $${context.aiCost.cost.toFixed(4)}`,
+        );
         return context;
     }
 }

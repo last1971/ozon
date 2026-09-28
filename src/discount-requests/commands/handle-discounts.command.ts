@@ -5,15 +5,15 @@ import { ExtraPriceService } from '../../price/extra.price.service';
 
 @Injectable()
 export class HandleDiscountsCommand implements ICommandAsync<IDiscountProcessingContext> {
-  constructor(
-    @Inject(forwardRef(() => ExtraPriceService))
-    private readonly extraPriceService: ExtraPriceService,
-  ) {}
+    constructor(
+        @Inject(forwardRef(() => ExtraPriceService))
+        private readonly extraPriceService: ExtraPriceService,
+    ) {}
 
-  async execute(context: IDiscountProcessingContext): Promise<IDiscountProcessingContext> {
-    if (context.originalOfferIds && context.originalOfferIds.length > 0) {
-      await this.extraPriceService.handleDiscounts(context.originalOfferIds);
+    async execute(context: IDiscountProcessingContext): Promise<IDiscountProcessingContext> {
+        if (context.originalOfferIds && context.originalOfferIds.length > 0) {
+            await this.extraPriceService.handleDiscounts(context.originalOfferIds);
+        }
+        return context;
     }
-    return context;
-  }
-} 
+}

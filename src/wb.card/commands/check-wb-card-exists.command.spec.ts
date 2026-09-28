@@ -15,7 +15,9 @@ describe('CheckWbCardExistsCommand', () => {
         getWbCardAsync.mockResolvedValue(null);
 
         const ctx: IWbCreateCardContext = {
-            productName: 'Test', description: '', subjectId: 0,
+            productName: 'Test',
+            description: '',
+            subjectId: 0,
             offerId: '531557',
         };
         const result = await command.execute(ctx);
@@ -28,7 +30,9 @@ describe('CheckWbCardExistsCommand', () => {
         getWbCardAsync.mockResolvedValue({ nmID: 542516127, vendorCode: '531557' });
 
         const ctx: IWbCreateCardContext = {
-            productName: 'Test', description: '', subjectId: 0,
+            productName: 'Test',
+            description: '',
+            subjectId: 0,
             offerId: '531557',
         };
         const result = await command.execute(ctx);

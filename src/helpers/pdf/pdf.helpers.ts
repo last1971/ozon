@@ -48,4 +48,4 @@ export const calculateOptimalFontSize = ({
         }
     }
     return fontSize;
-}; 
+};

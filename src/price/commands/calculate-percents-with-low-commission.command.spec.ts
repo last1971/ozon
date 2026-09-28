@@ -61,9 +61,7 @@ describe('CalculatePercentsWithLowCommissionCommand', () => {
     it('should skip items without typeId', async () => {
         const context: IGoodsProcessingContext = {
             skus: [],
-            ozonPrices: [
-                { offer_id: 'sku1', typeId: undefined } as PriceDto,
-            ],
+            ozonPrices: [{ offer_id: 'sku1', typeId: undefined } as PriceDto],
         };
 
         const result = await command.execute(context);
@@ -77,9 +75,7 @@ describe('CalculatePercentsWithLowCommissionCommand', () => {
 
         const context: IGoodsProcessingContext = {
             skus: [],
-            ozonPrices: [
-                { offer_id: 'sku1', typeId: 123 } as PriceDto,
-            ],
+            ozonPrices: [{ offer_id: 'sku1', typeId: 123 } as PriceDto],
         };
 
         const result = await command.execute(context);

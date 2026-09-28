@@ -30,7 +30,11 @@ describe('LoadBaseGtinCommand', () => {
         const res = await command.execute(ctx());
 
         expect(res.all).toEqual([
-            { goodscode: '569593', gtins: ['04600000000011', '04600000000028'], progressKey: '569593:04600000000011|04600000000028' },
+            {
+                goodscode: '569593',
+                gtins: ['04600000000011', '04600000000028'],
+                progressKey: '569593:04600000000011|04600000000028',
+            },
             { goodscode: '12', gtins: ['00400001759547'], progressKey: '12:00400001759547' },
         ]);
         const sql: string = query.mock.calls[0][0];

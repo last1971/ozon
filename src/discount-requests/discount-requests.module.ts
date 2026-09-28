@@ -41,4 +41,4 @@ import { LogResultCommand } from './commands/log-result.command';
         LogResultCommand,
     ],
 })
-export class DiscountRequestsModule {} 
+export class DiscountRequestsModule {}

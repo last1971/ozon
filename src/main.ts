@@ -3,7 +3,7 @@ import { AppModule } from './app.module';
 import { ConfigService } from '@nestjs/config';
 import { DocumentBuilder, SwaggerModule } from '@nestjs/swagger';
 import { ValidationPipe } from '@nestjs/common';
-import { useContainer } from "class-validator";
+import { useContainer } from 'class-validator';
 
 async function bootstrap() {
     const app = await NestFactory.create(AppModule);
@@ -19,6 +19,9 @@ async function bootstrap() {
         .build();
     const document = SwaggerModule.createDocument(app, config);
     SwaggerModule.setup('docs', app, document);
-    await app.listen(app.get(ConfigService).get<number>('APP_PORT', 3002), app.get(ConfigService).get<string>('APP_HOST', 'localhost'));
+    await app.listen(
+        app.get(ConfigService).get<number>('APP_PORT', 3002),
+        app.get(ConfigService).get<string>('APP_HOST', 'localhost'),
+    );
 }
 bootstrap();

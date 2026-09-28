@@ -15,11 +15,11 @@ import { GoodCountsDto, ICountUpdateable } from '../interfaces/ICountUpdatebale'
 import { StockType } from './stock.type';
 import { PostingsFboRequestDto } from '../posting.fbo/dto/postings.fbo.request.dto';
 import { ConfigService } from '@nestjs/config';
-import { ProductFilterDto } from "./dto/product.filter.dto";
-import { ProductInfoDto } from "./dto/product.info.dto";
-import { GoodServiceEnum } from "../good/good.service.enum";
-import { VaultService } from "vault-module/lib/vault.service";
-import { ProductListDto } from "./dto/product.list.dto";
+import { ProductFilterDto } from './dto/product.filter.dto';
+import { ProductInfoDto } from './dto/product.info.dto';
+import { GoodServiceEnum } from '../good/good.service.enum';
+import { VaultService } from 'vault-module/lib/vault.service';
+import { ProductListDto } from './dto/product.list.dto';
 import { IProductable } from 'src/interfaces/i.productable';
 import { ActionListProduct } from 'src/promos/dto/actionsCandidate.dto';
 import { ProductPriceDto } from 'src/price/dto/product.price.dto';
@@ -45,7 +45,11 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
         this.warehouseId = ozon.STORE as number;
     }
     /** Одна страница каталога (/v3/product/list). Весь каталог — listAllOfferIds. */
-    async list(last_id = '', limit = 100, filter: ProductFilterDto = new ProductFilterDto()): Promise<ProductListResultDto> {
+    async list(
+        last_id = '',
+        limit = 100,
+        filter: ProductFilterDto = new ProductFilterDto(),
+    ): Promise<ProductListResultDto> {
         return this.ozonApiService.method('/v3/product/list', { filter, last_id, limit });
     }
 
@@ -77,7 +81,7 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
             const { stocks } = item.stocks;
             const fbs = stocks.find((stock: any) => stock.source === StockType.FBS);
             const fbo = stocks.find((stock: any) => stock.source === StockType.FBO);
-            return{
+            return {
                 sku: item.offer_id,
                 barCode: item.barcodes[0],
                 barcodes: item.barcodes ?? [],
@@ -90,7 +94,8 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
                 fboCount: (fbo?.present || 0) - (fbo?.reserved || 0),
                 typeId: item.type_id,
                 volumeWeight: item.volume_weight,
-            }});
+            };
+        });
     }
 
     /**
@@ -116,7 +121,7 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
             res.items.forEach((item) => {
                 const totalStock = (item.stocks || []).reduce(
                     (sum, stock) => sum + (stock.present || 0) - (stock.reserved || 0),
-                    0
+                    0,
                 );
                 productCounts.push({
                     id: item.product_id ?? 0, // Используем product_id, если он определен
@@ -127,14 +132,9 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
         return productCounts;
     }
     async updateCount(stocks: ProductCodeStockDto[]): Promise<ProductCodeUpdateStockResultDto> {
-        return this.ozonApiService.method(
-            '/v2/products/stocks',
-            {
-                stocks: stocks.map(
-                    (stock) => ({ ...stock, warehouse_id: this.warehouseId })
-                )
-            }
-        );
+        return this.ozonApiService.method('/v2/products/stocks', {
+            stocks: stocks.map((stock) => ({ ...stock, warehouse_id: this.warehouseId })),
+        });
     }
     /**
      * Сбой ручки списка — исключение, а не пустой ответ.
@@ -186,7 +186,7 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
         const res = await this.ozonApiService.method('/v5/product/info/prices', options);
         return res || { items: [], cursor: '' };
     }
-    async   setPrice(prices: UpdatePricesDto): Promise<any> {
+    async setPrice(prices: UpdatePricesDto): Promise<any> {
         const batchSize = 1000;
         const results = [];
 
@@ -229,7 +229,6 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
         }
 
         return totalUpdated;
-
     }
     async getStoreList(): Promise<any> {
         return this.ozonApiService.method('/v1/warehouse/list', {});
@@ -258,20 +257,12 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
         namespace: 'ozon:attr-vals',
         ttl: 86400,
     })
-    async getCategoryAttributeValues(
-        attribute_id: number,
-        desc_cat_id: number,
-        type_id: number,
-    ): Promise<any[]> {
+    async getCategoryAttributeValues(attribute_id: number, desc_cat_id: number, type_id: number): Promise<any[]> {
         return this.fetchCategoryAttributeValues(attribute_id, desc_cat_id, type_id);
     }
 
     /** Словарь атрибута категории целиком, без кэша: для массовой выкачки (справочник ТН ВЭД по типам). */
-    async fetchCategoryAttributeValues(
-        attribute_id: number,
-        desc_cat_id: number,
-        type_id: number,
-    ): Promise<any[]> {
+    async fetchCategoryAttributeValues(attribute_id: number, desc_cat_id: number, type_id: number): Promise<any[]> {
         const allValues: any[] = [];
         let lastValueId = 0;
         let hasNext = true;
@@ -355,7 +346,7 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
 
     async updateAttributes(body: UpdateAttributesBodyDto): Promise<UpdateAttributesResponseDto[]> {
         const offerIds = body.offer_ids?.length ? body.offer_ids : this.skuList;
-        const items = offerIds.map(offer_id => ({ offer_id, attributes: body.attributes }));
+        const items = offerIds.map((offer_id) => ({ offer_id, attributes: body.attributes }));
         const results: UpdateAttributesResponseDto[] = [];
 
         for (const batch of chunk(items, 100)) {
@@ -419,6 +410,4 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
         });
         return res?.result?.cash_flows || [];
     }
-
-
 }

@@ -17,12 +17,12 @@ describe('LoadRequiredAttributesCommand', () => {
                 attributes: [
                     { id: 85, name: 'Бренд', is_required: true },
                     { id: 100, name: 'Цвет', is_required: false },
-                    { id: 4191, name: 'Описание', is_required: true },   // manual
-                    { id: 4383, name: 'Вес', is_required: true },         // manual
+                    { id: 4191, name: 'Описание', is_required: true }, // manual
+                    { id: 4383, name: 'Вес', is_required: true }, // manual
                     { id: 8513, name: 'Кол-во в упаковке', is_required: true }, // manual
-                    { id: 23171, name: 'Хэштеги', is_required: true },    // manual
-                    { id: 23249, name: 'Fix1', is_required: true },       // manual
-                    { id: 23518, name: 'Fix2', is_required: true },       // manual
+                    { id: 23171, name: 'Хэштеги', is_required: true }, // manual
+                    { id: 23249, name: 'Fix1', is_required: true }, // manual
+                    { id: 23518, name: 'Fix2', is_required: true }, // manual
                     { id: 9048, name: 'Модель', is_required: true },
                 ],
             }),
@@ -37,7 +37,7 @@ describe('LoadRequiredAttributesCommand', () => {
         const result = await command.execute(context);
 
         expect(result.required_attributes).toHaveLength(2);
-        expect(result.required_attributes!.map(a => a.id)).toEqual([85, 9048]);
+        expect(result.required_attributes!.map((a) => a.id)).toEqual([85, 9048]);
         expect(ozonCategoryService.getCategoryAttributes).toHaveBeenCalledWith(1, 2);
     });
 
@@ -47,7 +47,7 @@ describe('LoadRequiredAttributesCommand', () => {
                 attributes: [
                     { id: 85, name: 'Бренд', is_required: true },
                     { id: 100, name: 'Цвет', is_required: false },
-                    { id: 4191, name: 'Описание', is_required: true },   // manual
+                    { id: 4191, name: 'Описание', is_required: true }, // manual
                     { id: 200, name: 'Материал', is_required: false },
                     { id: 9048, name: 'Модель', is_required: true },
                 ],
@@ -63,7 +63,7 @@ describe('LoadRequiredAttributesCommand', () => {
         const result = await command.execute(context);
 
         expect(result.required_attributes).toHaveLength(4);
-        expect(result.required_attributes!.map(a => a.id)).toEqual([85, 100, 200, 9048]);
+        expect(result.required_attributes!.map((a) => a.id)).toEqual([85, 100, 200, 9048]);
     });
 
     it('should handle empty attributes', async () => {

@@ -12,16 +12,14 @@ export class GenerateNameCommand implements ICommandAsync<IProductCreateContext>
         const { text, provider, model } = context.input;
         context.logger?.log(`Генерация названия для: "${text}"`);
 
-        const result = await this.aiProductService.generateName(
-            text,
-            provider || AIProviderName.ANTHROPIC,
-            model,
-        );
+        const result = await this.aiProductService.generateName(text, provider || AIProviderName.ANTHROPIC, model);
 
         context.generated_name = result.name;
         context.name_cost = { tokens: result.tokens_used || 0, cost: result.cost || 0 };
 
-        context.logger?.log(`Название: "${result.name}" (tokens: ${result.tokens_used}, cost: $${result.cost?.toFixed(6)})`);
+        context.logger?.log(
+            `Название: "${result.name}" (tokens: ${result.tokens_used}, cost: $${result.cost?.toFixed(6)})`,
+        );
         return context;
     }
 }

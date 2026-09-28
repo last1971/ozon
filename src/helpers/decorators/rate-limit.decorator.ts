@@ -41,11 +41,7 @@ export function getRateLimitBlockedUntil(className: string, methodName: string):
  * }
  */
 export function RateLimit(intervalMs: number) {
-    return function (
-        target: any,
-        propertyKey: string,
-        descriptor: PropertyDescriptor
-    ) {
+    return function (target: any, propertyKey: string, descriptor: PropertyDescriptor) {
         const originalMethod = descriptor.value;
         const cacheKey = `${target.constructor.name}.${propertyKey}`;
 
@@ -56,7 +52,7 @@ export function RateLimit(intervalMs: number) {
             const blockedUntil = globalBlockedUntil.get(cacheKey) || 0;
             if (now < blockedUntil) {
                 const blockWaitTime = blockedUntil - now;
-                await new Promise(resolve => setTimeout(resolve, blockWaitTime));
+                await new Promise((resolve) => setTimeout(resolve, blockWaitTime));
             }
 
             // Check regular interval
@@ -65,7 +61,7 @@ export function RateLimit(intervalMs: number) {
 
             if (timeSinceLastCall < intervalMs) {
                 const waitTime = intervalMs - timeSinceLastCall;
-                await new Promise(resolve => setTimeout(resolve, waitTime));
+                await new Promise((resolve) => setTimeout(resolve, waitTime));
             }
 
             globalLastCallTimes.set(cacheKey, Date.now());

@@ -7,7 +7,7 @@ export function WithTransactions<T extends new (...args: any[]) => {}>(Base: T) 
     return class extends Base {
         public async withTransaction<T>(
             operation: (transaction: FirebirdTransaction) => Promise<T>,
-            existingTransaction?: FirebirdTransaction
+            existingTransaction?: FirebirdTransaction,
         ): Promise<T> {
             // Используем this.pool и this.logger напрямую из класса
             const pool = this['pool'];
@@ -17,7 +17,7 @@ export function WithTransactions<T extends new (...args: any[]) => {}>(Base: T) 
                 throw new Error('Pool not found in class. Make sure you inject it with @Inject(FIREBIRD)');
             }
 
-            const transaction = existingTransaction ?? await pool.getTransaction();
+            const transaction = existingTransaction ?? (await pool.getTransaction());
             try {
                 const result = await operation(transaction);
                 if (!existingTransaction) {

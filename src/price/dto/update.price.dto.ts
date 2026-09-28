@@ -64,7 +64,7 @@ export class UpdatePriceDto {
     @ApiProperty({
         description: 'Ставка НДС (число или строка)',
         required: false,
-        example: 0
+        example: 0,
     })
     @IsOptional()
     vat?: string | number;

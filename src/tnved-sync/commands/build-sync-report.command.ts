@@ -19,7 +19,8 @@ export class BuildSyncReportCommand implements IJobCommand<ICardSyncContext<any,
             remaining: 0,
         };
         for (const item of items) {
-            if (item.ambiguousReason) context.report.ambiguous.push({ offer: item.offer, reason: item.ambiguousReason });
+            if (item.ambiguousReason)
+                context.report.ambiguous.push({ offer: item.offer, reason: item.ambiguousReason });
             else if (item.ok) context.report.alreadyOk++;
             else context.report.toFix.push({ ...item });
         }

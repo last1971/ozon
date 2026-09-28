@@ -107,4 +107,4 @@ describe('PerformanceController', () => {
             expect(service.deactivateCampaign).toHaveBeenCalledWith(123456);
         });
     });
-}); 
+});

@@ -111,10 +111,17 @@ describe('ResolveDictionaryValuesCommand', () => {
         const context: IProductCreateContext = {
             input: { text: 'x' } as CreateProductInput,
             ai_attributes: [{ id: 85, value: 'nike' }],
-            required_attributes: [{
-                id: 85, name: 'Бренд', dictionary_id: 100,
-                values: [{ id: 10, value: 'Nike' }, { id: 20, value: 'Adidas' }],
-            }] as any,
+            required_attributes: [
+                {
+                    id: 85,
+                    name: 'Бренд',
+                    dictionary_id: 100,
+                    values: [
+                        { id: 10, value: 'Nike' },
+                        { id: 20, value: 'Adidas' },
+                    ],
+                },
+            ] as any,
             description_category_id: 1,
             type_id: 2,
         };
@@ -131,10 +138,17 @@ describe('ResolveDictionaryValuesCommand', () => {
         const context: IProductCreateContext = {
             input: { text: 'x' } as CreateProductInput,
             ai_attributes: [{ id: 85, value: 'Винтовые клеммы' }],
-            required_attributes: [{
-                id: 85, name: 'Коннектор', dictionary_id: 100,
-                values: [{ id: 10, value: '3 Hole' }, { id: 20, value: 'USB' }],
-            }] as any,
+            required_attributes: [
+                {
+                    id: 85,
+                    name: 'Коннектор',
+                    dictionary_id: 100,
+                    values: [
+                        { id: 10, value: '3 Hole' },
+                        { id: 20, value: 'USB' },
+                    ],
+                },
+            ] as any,
             description_category_id: 1,
             type_id: 2,
         };

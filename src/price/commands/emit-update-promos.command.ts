@@ -5,10 +5,10 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 
 @Injectable()
 export class EmitUpdatePromosCommand implements ICommandAsync<IGoodsProcessingContext> {
-  constructor(private readonly eventEmitter: EventEmitter2) {}
+    constructor(private readonly eventEmitter: EventEmitter2) {}
 
-  async execute(context: IGoodsProcessingContext): Promise<IGoodsProcessingContext> {
-    this.eventEmitter.emit('update.promos', context.ozonSkus);
-    return context;
-  }
-} 
+    async execute(context: IGoodsProcessingContext): Promise<IGoodsProcessingContext> {
+        this.eventEmitter.emit('update.promos', context.ozonSkus);
+        return context;
+    }
+}

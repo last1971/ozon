@@ -18,7 +18,9 @@ describe('ShortenTitleCommand', () => {
         });
 
         const ctx: IWbCreateCardContext = {
-            productName: '', description: '', subjectId: 0,
+            productName: '',
+            description: '',
+            subjectId: 0,
             ozonName: 'LRS-350-24, Блок питания корпусной 24В 14,6А 350Вт (MW)',
         };
         const result = await command.execute(ctx);
@@ -32,7 +34,9 @@ describe('ShortenTitleCommand', () => {
         shortenTitle.mockResolvedValue({ title: shortName, original: shortName });
 
         const ctx: IWbCreateCardContext = {
-            productName: '', description: '', subjectId: 0,
+            productName: '',
+            description: '',
+            subjectId: 0,
             ozonName: shortName,
         };
         const result = await command.execute(ctx);
@@ -44,7 +48,9 @@ describe('ShortenTitleCommand', () => {
         shortenTitle.mockResolvedValue({ title: 'Fallback', original: 'Fallback' });
 
         const ctx: IWbCreateCardContext = {
-            productName: 'Fallback', description: '', subjectId: 0,
+            productName: 'Fallback',
+            description: '',
+            subjectId: 0,
         };
         const result = await command.execute(ctx);
 
@@ -53,7 +59,9 @@ describe('ShortenTitleCommand', () => {
 
     it('should skip AI when title is already set', async () => {
         const ctx: IWbCreateCardContext = {
-            productName: 'Original', description: '', subjectId: 0,
+            productName: 'Original',
+            description: '',
+            subjectId: 0,
             title: 'Ручное название',
         };
         const result = await command.execute(ctx);

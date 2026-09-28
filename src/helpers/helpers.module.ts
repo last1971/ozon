@@ -6,13 +6,7 @@ import { HttpModule } from '@nestjs/axios';
 
 @Module({
     imports: [ConfigModule, HttpModule],
-    providers: [
-        PriceCalculationHelper,
-        HttpWrapperService,
-    ],
-    exports: [
-        PriceCalculationHelper,
-        HttpWrapperService,
-    ]
+    providers: [PriceCalculationHelper, HttpWrapperService],
+    exports: [PriceCalculationHelper, HttpWrapperService],
 })
 export class HelpersModule {}

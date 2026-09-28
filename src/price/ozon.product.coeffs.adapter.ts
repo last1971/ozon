@@ -19,7 +19,9 @@ export class OzonProductCoeffsAdapter implements IProductCoeffsable {
                   product.commissions.sales_percent_fbo,
                   product.commissions.sales_percent_fbs,
               )
-            : (productInfo?.fboCount > productInfo?.fbsCount ? 'fbo' : 'fbs');
+            : productInfo?.fboCount > productInfo?.fbsCount
+              ? 'fbo'
+              : 'fbs';
     }
 
     getSalesPercent(): number {
@@ -43,12 +45,14 @@ export class OzonProductCoeffsAdapter implements IProductCoeffsable {
                 this.percDirectFlow,
             );
         }
-        const max = this.warehouse === 'fbo'
-            ? this.product.commissions.fbo_direct_flow_trans_max_amount
-            : this.product.commissions.fbs_direct_flow_trans_max_amount;
-        const min = this.warehouse === 'fbo'
-            ? this.product.commissions.fbo_direct_flow_trans_min_amount
-            : this.product.commissions.fbs_direct_flow_trans_min_amount;
-        return (max + min) / 2 * this.percDirectFlow;
+        const max =
+            this.warehouse === 'fbo'
+                ? this.product.commissions.fbo_direct_flow_trans_max_amount
+                : this.product.commissions.fbs_direct_flow_trans_max_amount;
+        const min =
+            this.warehouse === 'fbo'
+                ? this.product.commissions.fbo_direct_flow_trans_min_amount
+                : this.product.commissions.fbs_direct_flow_trans_min_amount;
+        return ((max + min) / 2) * this.percDirectFlow;
     }
 }

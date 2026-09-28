@@ -218,7 +218,9 @@ describe('StuckCodesService — еженедельный отчёт «подви
 
         it('счёт помечен (возврат разобрал) → ожидание закрывается, письма нет', async () => {
             mockCancelWaits([wait()]);
-            findByPosting.mockResolvedValue(match({ mark: ' отмена FBO', cancelled: true, invoice: { id: 91694, status: 1 } }));
+            findByPosting.mockResolvedValue(
+                match({ mark: ' отмена FBO', cancelled: true, invoice: { id: 91694, status: 1 } }),
+            );
 
             await service.report();
 

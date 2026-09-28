@@ -4,22 +4,22 @@ import { OzonApiService } from '../ozon.api/ozon.api.service';
 import { ProductVisibility } from './product.visibility';
 import { StockType } from './stock.type';
 import { ConfigService } from '@nestjs/config';
-import { ProductFilterDto } from "./dto/product.filter.dto";
-import { VaultService } from "vault-module/lib/vault.service";
+import { ProductFilterDto } from './dto/product.filter.dto';
+import { VaultService } from 'vault-module/lib/vault.service';
 import { ActionListProduct } from 'src/promos/dto/actionsCandidate.dto';
 
 describe('ProductService', () => {
     let service: ProductService;
 
     const method = jest.fn();
-    
+
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 ProductService,
                 { provide: OzonApiService, useValue: { method } },
                 { provide: ConfigService, useValue: {} },
-                { provide: VaultService, useValue: { get: { STORE: 444 }}},
+                { provide: VaultService, useValue: { get: { STORE: 444 } } },
             ],
         }).compile();
         method.mockClear();
@@ -34,7 +34,7 @@ describe('ProductService', () => {
         await service.list();
         expect(method.mock.calls[0]).toEqual([
             '/v3/product/list',
-            { filter: new ProductFilterDto(), last_id: '', limit: 100 }
+            { filter: new ProductFilterDto(), last_id: '', limit: 100 },
         ]);
     });
 
@@ -47,9 +47,9 @@ describe('ProductService', () => {
                     name: 'Product 1',
                     primary_image: 'image1.jpg',
                     id: 1,
-                    stocks: { stocks: [] }
-                }
-            ]
+                    stocks: { stocks: [] },
+                },
+            ],
         });
         await service.infoList(['123', '123-5']);
         expect(method.mock.calls[0]).toEqual(['/v3/product/info/list', { offer_id: ['123', '123-5'] }]);
@@ -70,10 +70,10 @@ describe('ProductService', () => {
                         stocks: [
                             { source: 'fbs', present: 10, reserved: 2 },
                             { source: 'fbo', present: 5, reserved: 1 },
-                        ]
-                    }
-                }
-            ]
+                        ],
+                    },
+                },
+            ],
         });
 
         const result = await service.infoList(['sku1']);
@@ -95,9 +95,9 @@ describe('ProductService', () => {
                     primary_image: '',
                     id: 2,
                     type_id: 456,
-                    stocks: { stocks: [] }
-                }
-            ]
+                    stocks: { stocks: [] },
+                },
+            ],
         });
 
         const result = await service.infoList(['sku2']);
@@ -179,16 +179,18 @@ describe('ProductService', () => {
     });
     it('getGoods', async () => {
         method.mockResolvedValueOnce({
-            items: [{
-                offer_id: '345',
-                stocks: [
-                    { type: StockType.FBS, present: 2, reserved: 1 },
-                    { type: StockType.FBO, present: 4, reserved: 0 }
-                ],
-            }],
+            items: [
+                {
+                    offer_id: '345',
+                    stocks: [
+                        { type: StockType.FBS, present: 2, reserved: 1 },
+                        { type: StockType.FBO, present: 4, reserved: 0 },
+                    ],
+                },
+            ],
             cursor: '123',
         });
-        const res = await service.getGoods('', [ StockType.FBO]);
+        const res = await service.getGoods('', [StockType.FBO]);
         expect(res).toEqual({ goods: new Map([['345', 4]]), nextArgs: '123' });
     });
     it('getGoodIds', async () => {
@@ -203,7 +205,10 @@ describe('ProductService', () => {
         method.mockResolvedValueOnce({ result: [2] });
         const res = await service.updateGoodCounts(new Map([['1', 1]]));
         expect(res).toEqual(1);
-        expect(method.mock.calls[0]).toEqual(['/v2/products/stocks', { stocks: [{ offer_id: '1', stock: 1, warehouse_id: undefined }] }]);
+        expect(method.mock.calls[0]).toEqual([
+            '/v2/products/stocks',
+            { stocks: [{ offer_id: '1', stock: 1, warehouse_id: undefined }] },
+        ]);
     });
     it('getAccrualsByDay: первая страница без last_id', async () => {
         method.mockResolvedValueOnce({ accruals: [{ accrual_id: 1 }], last_id: 77 });
@@ -258,39 +263,39 @@ describe('ProductService', () => {
             },
         ]);
     });
-    it("test getFreeProductCount with valid data", async () => {
+    it('test getFreeProductCount with valid data', async () => {
         method.mockResolvedValueOnce({
             items: [
                 {
                     product_id: 1,
-                    stocks: [{ present: 10, reserved: 3 }]
+                    stocks: [{ present: 10, reserved: 3 }],
                 },
                 {
                     product_id: 2,
-                    stocks: [{ present: 5, reserved: 2 }]
-                }
-            ]
+                    stocks: [{ present: 5, reserved: 2 }],
+                },
+            ],
         });
         const result = await service.getFreeProductCount([1, 2]);
         expect(result).toEqual([
             { id: 1, count: 7 },
-            { id: 2, count: 3 }
+            { id: 2, count: 3 },
         ]);
         expect(method.mock.calls[0]).toEqual([
-            "/v4/product/info/stocks",
-            { filter: { product_id: [1, 2] }, limit: 100, cursor: "" }
+            '/v4/product/info/stocks',
+            { filter: { product_id: [1, 2] }, limit: 100, cursor: '' },
         ]);
     });
 
-    it("test getFreeProductCount with empty productIds", async () => {
+    it('test getFreeProductCount with empty productIds', async () => {
         const result = await service.getFreeProductCount([]);
         expect(result).toEqual([]);
         expect(method.mock.calls.length).toBe(0);
     });
 
-    it("test getFreeProductCount handles API error gracefully", async () => {
-        method.mockRejectedValueOnce(new Error("API Error"));
-        await expect(service.getFreeProductCount([1, 2])).rejects.toThrow("API Error");
+    it('test getFreeProductCount handles API error gracefully', async () => {
+        method.mockRejectedValueOnce(new Error('API Error'));
+        await expect(service.getFreeProductCount([1, 2])).rejects.toThrow('API Error');
     });
 
     it('getProductsPrices works', async () => {
@@ -309,10 +314,10 @@ describe('ProductService', () => {
             filter: {
                 product_id: [1, 2, 3, 4],
                 offer_id: null,
-                visibility: 'ALL'
+                visibility: 'ALL',
             },
             limit: 100,
-            cursor: null
+            cursor: null,
         };
 
         method.mockResolvedValue({ items: productPrices, cursor: '' });
@@ -426,20 +431,33 @@ describe('ProductService', () => {
     });
 
     it('getCategoryAttributeValues single page', async () => {
-        const mockValues = [{ id: 1, value: 'Value1' }, { id: 2, value: 'Value2' }];
+        const mockValues = [
+            { id: 1, value: 'Value1' },
+            { id: 2, value: 'Value2' },
+        ];
         method.mockResolvedValue({ result: mockValues, has_next: false });
 
         const result = await service.getCategoryAttributeValues(85, 53884411, 971025231);
 
         expect(method.mock.calls[0]).toEqual([
             '/v1/description-category/attribute/values',
-            { attribute_id: 85, description_category_id: 53884411, language: 'DEFAULT', last_value_id: 0, limit: 5000, type_id: 971025231 },
+            {
+                attribute_id: 85,
+                description_category_id: 53884411,
+                language: 'DEFAULT',
+                last_value_id: 0,
+                limit: 5000,
+                type_id: 971025231,
+            },
         ]);
         expect(result).toEqual(mockValues);
     });
 
     it('getCategoryAttributeValues with pagination', async () => {
-        const page1 = [{ id: 1, value: 'V1' }, { id: 2, value: 'V2' }];
+        const page1 = [
+            { id: 1, value: 'V1' },
+            { id: 2, value: 'V2' },
+        ];
         const page2 = [{ id: 3, value: 'V3' }];
         method
             .mockResolvedValueOnce({ result: page1, has_next: true })

@@ -21,11 +21,30 @@ describe('WbTnvedService', () => {
     let backupDir: string;
 
     const SUBJECT = 2009; // «Блоки питания»
-    const TNVED_CHARC = { charcID: 15000001, name: 'ТНВЭД', required: false, unitName: '', maxCount: 1, popular: false, charcType: 1 };
-    const DIRECTORY = { data: [{ tnved: '8504403003', isKiz: false }, { tnved: '8504408300', isKiz: false }] };
+    const TNVED_CHARC = {
+        charcID: 15000001,
+        name: 'ТНВЭД',
+        required: false,
+        unitName: '',
+        maxCount: 1,
+        popular: false,
+        charcType: 1,
+    };
+    const DIRECTORY = {
+        data: [
+            { tnved: '8504403003', isKiz: false },
+            { tnved: '8504408300', isKiz: false },
+        ],
+    };
 
     // карточка ВБ: tnved — значение характеристики 15000001 (undefined = характеристики нет)
-    const card = (vendorCode: string, tnved?: string | string[], subjectID = SUBJECT, needKiz = true, kizMarked = needKiz) => ({
+    const card = (
+        vendorCode: string,
+        tnved?: string | string[],
+        subjectID = SUBJECT,
+        needKiz = true,
+        kizMarked = needKiz,
+    ) => ({
         nmID: 1,
         needKiz,
         kizMarked,
@@ -41,7 +60,9 @@ describe('WbTnvedService', () => {
     const base = (goodscode: string, tnved: string, markRequired = true) => ({ goodscode, tnved, markRequired });
 
     beforeEach(async () => {
-        [getAllWbCards, fetchCharacteristics, fetchWbCard, rememberCard, updateCards, method].forEach((m) => m.mockReset());
+        [getAllWbCards, fetchCharacteristics, fetchWbCard, rememberCard, updateCards, method].forEach((m) =>
+            m.mockReset(),
+        );
         clearRateLimitCache();
         backupDir = mkdtempSync(join(tmpdir(), 'wb-tnved-'));
         fetchCharacteristics.mockResolvedValue({ data: [TNVED_CHARC], error: false });
@@ -52,9 +73,18 @@ describe('WbTnvedService', () => {
                 // настоящие писатель и калитка: запись ТН ВЭД проверяется целиком, как уходит в ВБ
                 WbCardWriter,
                 WbContentGate,
-                { provide: WbCardService, useValue: { getAllWbCards, fetchCharacteristics, fetchWbCard, rememberCard, updateCards } },
+                {
+                    provide: WbCardService,
+                    useValue: { getAllWbCards, fetchCharacteristics, fetchWbCard, rememberCard, updateCards },
+                },
                 { provide: WbApiService, useValue: { method } },
-                { provide: ConfigService, useValue: { get: (k: string, def: any) => (k === 'WB_CARD_BACKUP_DIR' ? backupDir : k === 'WB_CARD_ERRORS_DELAY_MS' ? 0 : def) } },
+                {
+                    provide: ConfigService,
+                    useValue: {
+                        get: (k: string, def: any) =>
+                            k === 'WB_CARD_BACKUP_DIR' ? backupDir : k === 'WB_CARD_ERRORS_DELAY_MS' ? 0 : def,
+                    },
+                },
             ],
         }).compile();
         service = moduleRef.get(WbTnvedService);
@@ -72,7 +102,13 @@ describe('WbTnvedService', () => {
         const phases: string[] = [];
         const orig = Object.assign;
         // фазы ловим по изменению progress.phase
-        const seen = new Proxy(progress, { set: (t, k, v) => { if (k === 'phase') phases.push(String(v)); (t as any)[k] = v; return true; } });
+        const seen = new Proxy(progress, {
+            set: (t, k, v) => {
+                if (k === 'phase') phases.push(String(v));
+                (t as any)[k] = v;
+                return true;
+            },
+        });
 
         await service.check([base('565831', '8504408300'), base('2', '8504408300')], seen as any);
 
@@ -182,7 +218,11 @@ describe('WbTnvedService', () => {
 
     it('характеристики предмета не отданы (429 три раза подряд) → спорно «не отданы», не «нет характеристики»', async () => {
         getAllWbCards.mockResolvedValue([card('565831', '8504408300')]);
-        fetchCharacteristics.mockResolvedValue({ result: null, status: 'NotOk', error: { status: 429, retryAfterMs: 10 } });
+        fetchCharacteristics.mockResolvedValue({
+            result: null,
+            status: 'NotOk',
+            error: { status: 429, retryAfterMs: 10 },
+        });
 
         const res = await service.check([base('565831', '8504408300')]);
 
@@ -204,7 +244,10 @@ describe('WbTnvedService', () => {
 
     it('у предмета нет характеристики ТНВЭД → спорно, справочник не запрашиваем', async () => {
         getAllWbCards.mockResolvedValue([card('565831', undefined, 964)]);
-        fetchCharacteristics.mockResolvedValue({ data: [{ ...TNVED_CHARC, charcID: 15004139, name: 'Код ТН ВЭД' }], error: false });
+        fetchCharacteristics.mockResolvedValue({
+            data: [{ ...TNVED_CHARC, charcID: 15004139, name: 'Код ТН ВЭД' }],
+            error: false,
+        });
 
         const res = await service.check([base('565831', '8504408300')]);
 
@@ -248,7 +291,14 @@ describe('WbTnvedService', () => {
     });
 
     describe('update — через общий WbCardWriter', () => {
-        const fix = (offer: string, base = '8504408300', markRequired = true) => ({ offer, goodscode: offer, current: null, base, markRequired, ok: false });
+        const fix = (offer: string, base = '8504408300', markRequired = true) => ({
+            offer,
+            goodscode: offer,
+            current: null,
+            base,
+            markRequired,
+            ok: false,
+        });
         const WB_OK = { data: null, error: false, errorText: '', additionalErrors: null };
 
         it('пишет копию карточки с нашим кодом в характеристике, оригинал не трогает', async () => {
@@ -305,7 +355,9 @@ describe('WbTnvedService', () => {
 
         it('принято с ошибкой ({error:true, errorText}) → error с additionalErrors', async () => {
             fetchWbCard.mockResolvedValue(card('565831'));
-            updateCards.mockResolvedValue([{ data: null, error: true, errorText: 'Ошибка', additionalErrors: { x: 1 } }]);
+            updateCards.mockResolvedValue([
+                { data: null, error: true, errorText: 'Ошибка', additionalErrors: { x: 1 } },
+            ]);
 
             const res = await service.update([fix('565831')]);
 
@@ -321,21 +373,31 @@ describe('WbTnvedService', () => {
             method.mockImplementation((url: string) =>
                 Promise.resolve(
                     url.endsWith('cards/error/list')
-                        ? { data: { items: [
-                            { batchUUID: 'b1', updatedAt: fresh, errors: { '488434': ['Бренд «STM» не найден'], '999': ['чужая'] } },
-                            { batchUUID: 'b0', updatedAt: old, errors: { '565831': ['старый отказ'] } },
-                          ] } }
+                        ? {
+                              data: {
+                                  items: [
+                                      {
+                                          batchUUID: 'b1',
+                                          updatedAt: fresh,
+                                          errors: { '488434': ['Бренд «STM» не найден'], '999': ['чужая'] },
+                                      },
+                                      { batchUUID: 'b0', updatedAt: old, errors: { '565831': ['старый отказ'] } },
+                                  ],
+                              },
+                          }
                         : DIRECTORY,
                 ),
             );
 
             const res = await service.update([fix('488434'), fix('565831')]);
 
-            expect(res).toEqual([
-                { offer: '488434', error: 'ВБ отверг: Бренд «STM» не найден' },
-                { offer: '565831' },
-            ]);
-            expect(method).toHaveBeenCalledWith('https://content-api.wildberries.ru/content/v2/cards/error/list', 'post', {}, true);
+            expect(res).toEqual([{ offer: '488434', error: 'ВБ отверг: Бренд «STM» не найден' }, { offer: '565831' }]);
+            expect(method).toHaveBeenCalledWith(
+                'https://content-api.wildberries.ru/content/v2/cards/error/list',
+                'post',
+                {},
+                true,
+            );
         });
 
         it('прогресс записи: фаза «запись», done = отправлено', async () => {

@@ -105,8 +105,11 @@ describe('GenerateAttributeValuesCommand', () => {
         const context: IProductCreateContext = {
             input: {
                 text: 'NDR-75-12',
-                package_depth: 0, package_width: 0, package_height: 0,
-                weight_without_packaging: 0, weight_with_packaging: 0,
+                package_depth: 0,
+                package_width: 0,
+                package_height: 0,
+                weight_without_packaging: 0,
+                weight_with_packaging: 0,
             } as any as CreateProductInput,
             required_attributes: [],
         };
@@ -132,8 +135,11 @@ describe('GenerateAttributeValuesCommand', () => {
         const context: IProductCreateContext = {
             input: {
                 text: 'NDR-75-12',
-                package_depth: 100, package_width: 80, package_height: 40,
-                weight_without_packaging: 350, weight_with_packaging: 400,
+                package_depth: 100,
+                package_width: 80,
+                package_height: 40,
+                weight_without_packaging: 350,
+                weight_with_packaging: 400,
             } as any as CreateProductInput,
             required_attributes: [],
         };
@@ -159,8 +165,11 @@ describe('GenerateAttributeValuesCommand', () => {
         const context: IProductCreateContext = {
             input: {
                 text: 'test',
-                package_depth: 100, package_width: 0, package_height: 40,
-                weight_without_packaging: 0, weight_with_packaging: 400,
+                package_depth: 100,
+                package_width: 0,
+                package_height: 40,
+                weight_without_packaging: 0,
+                weight_with_packaging: 400,
             } as any as CreateProductInput,
             required_attributes: [],
         };
@@ -182,8 +191,11 @@ describe('GenerateAttributeValuesCommand', () => {
         const context: IProductCreateContext = {
             input: {
                 text: 'test',
-                package_depth: 0, package_width: 0, package_height: 0,
-                weight_without_packaging: 0, weight_with_packaging: 0,
+                package_depth: 0,
+                package_width: 0,
+                package_height: 0,
+                weight_without_packaging: 0,
+                weight_with_packaging: 0,
             } as any as CreateProductInput,
             required_attributes: [],
         };

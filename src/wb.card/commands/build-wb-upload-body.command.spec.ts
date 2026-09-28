@@ -10,7 +10,9 @@ describe('BuildWbUploadBodyCommand', () => {
 
     it('should build upload body with correct structure', async () => {
         const ctx: IWbCreateCardContext = {
-            productName: 'Test', description: 'Описание товара', subjectId: 2009,
+            productName: 'Test',
+            description: 'Описание товара',
+            subjectId: 2009,
             offerId: '531557',
             brand: 'MEAN WELL',
             title: 'LRS-350-24 Блок питания 24В 350Вт',
@@ -39,29 +41,35 @@ describe('BuildWbUploadBodyCommand', () => {
 
     it('should convert mm to cm and g to kg', async () => {
         const ctx: IWbCreateCardContext = {
-            productName: 'Test', description: '', subjectId: 2009,
+            productName: 'Test',
+            description: '',
+            subjectId: 2009,
             offerId: '531557',
-            ozonDepth: 250,   // mm
-            ozonWidth: 135,   // mm
-            ozonHeight: 75,   // mm
-            ozonWeightGrams: 850,  // g
+            ozonDepth: 250, // mm
+            ozonWidth: 135, // mm
+            ozonHeight: 75, // mm
+            ozonWeightGrams: 850, // g
             barcodes: [],
         };
         const result = await command.execute(ctx);
         const dims = result.uploadBody[0].variants[0].dimensions;
 
-        expect(dims.length).toBe(25);      // 250/10
-        expect(dims.width).toBe(13.5);     // 135/10
-        expect(dims.height).toBe(7.5);     // 75/10
+        expect(dims.length).toBe(25); // 250/10
+        expect(dims.width).toBe(13.5); // 135/10
+        expect(dims.height).toBe(7.5); // 75/10
         expect(dims.weightBrutto).toBe(0.85); // 850/1000
     });
 
     it('should strip HTML from description', async () => {
         const ctx: IWbCreateCardContext = {
-            productName: 'Test', subjectId: 2009,
+            productName: 'Test',
+            subjectId: 2009,
             description: '<p>Текст<br/>с <b>HTML</b></p><ul><li>Пункт 1</li><li>Пункт 2</li></ul>',
             offerId: '531557',
-            ozonDepth: 100, ozonWidth: 100, ozonHeight: 100, ozonWeightGrams: 100,
+            ozonDepth: 100,
+            ozonWidth: 100,
+            ozonHeight: 100,
+            ozonWeightGrams: 100,
             barcodes: [],
         };
         const result = await command.execute(ctx);
@@ -76,10 +84,14 @@ describe('BuildWbUploadBodyCommand', () => {
 
     it('should truncate description to 2000 chars', async () => {
         const ctx: IWbCreateCardContext = {
-            productName: 'Test', subjectId: 2009,
+            productName: 'Test',
+            subjectId: 2009,
             description: 'A'.repeat(3000),
             offerId: '531557',
-            ozonDepth: 100, ozonWidth: 100, ozonHeight: 100, ozonWeightGrams: 100,
+            ozonDepth: 100,
+            ozonWidth: 100,
+            ozonHeight: 100,
+            ozonWeightGrams: 100,
             barcodes: [],
         };
         const result = await command.execute(ctx);
@@ -90,10 +102,14 @@ describe('BuildWbUploadBodyCommand', () => {
 
     it('should strip emojis from description', async () => {
         const ctx: IWbCreateCardContext = {
-            productName: 'Test', subjectId: 2009,
+            productName: 'Test',
+            subjectId: 2009,
             description: 'Модем 💾 с поддержкой 📡 5G 💪',
             offerId: '531557',
-            ozonDepth: 100, ozonWidth: 100, ozonHeight: 100, ozonWeightGrams: 100,
+            ozonDepth: 100,
+            ozonWidth: 100,
+            ozonHeight: 100,
+            ozonWeightGrams: 100,
             barcodes: [],
         };
         const result = await command.execute(ctx);
@@ -106,9 +122,14 @@ describe('BuildWbUploadBodyCommand', () => {
 
     it('should set price=10000 and skus from barcodes', async () => {
         const ctx: IWbCreateCardContext = {
-            productName: 'Test', description: '', subjectId: 2009,
+            productName: 'Test',
+            description: '',
+            subjectId: 2009,
             offerId: '531557',
-            ozonDepth: 100, ozonWidth: 100, ozonHeight: 100, ozonWeightGrams: 100,
+            ozonDepth: 100,
+            ozonWidth: 100,
+            ozonHeight: 100,
+            ozonWeightGrams: 100,
             barcodes: ['OZN123', 'OZN456'],
         };
         const result = await command.execute(ctx);

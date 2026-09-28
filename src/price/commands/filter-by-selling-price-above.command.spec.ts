@@ -24,7 +24,7 @@ describe('FilterBySellingPriceAboveCommand', () => {
         const result = await command.execute(context);
 
         expect(result.ozonPrices).toHaveLength(2);
-        expect(result.ozonPrices.map(p => p.offer_id)).toEqual(['sku1', 'sku4']);
+        expect(result.ozonPrices.map((p) => p.offer_id)).toEqual(['sku1', 'sku4']);
     });
 
     it('should use default threshold 300 if not specified', async () => {

@@ -98,7 +98,12 @@ export class CreateFboInvoiceCommand implements ICommandAsync<IFboCreateContext>
                 );
                 if (candidates.length > 0) return true;
             } else {
-                const donor = await this.invoiceService.findFboPodbposDonor(gc, context.prims, need, context.transaction);
+                const donor = await this.invoiceService.findFboPodbposDonor(
+                    gc,
+                    context.prims,
+                    need,
+                    context.transaction,
+                );
                 if (donor) return true;
             }
         }

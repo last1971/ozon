@@ -94,8 +94,26 @@ describe('BuildProductJsonCommand', () => {
             input: makeInput(),
             variants: [
                 makeVariant({ qty: 1, offerId: '123', name: 'Конденсатор, 1 шт', depth: 150, width: 100, height: 50 }),
-                makeVariant({ qty: 10, offerId: '123-10', name: 'Конденсатор, 10 шт', depth: 300, width: 200, height: 100, weightWithPackaging: 7100, weightWithoutPackaging: 7000 }),
-                makeVariant({ qty: 50, offerId: '123-50', name: 'Конденсатор, 50 шт', depth: 200, width: 200, height: 100, weightWithPackaging: 40000, weightWithoutPackaging: 35000 }),
+                makeVariant({
+                    qty: 10,
+                    offerId: '123-10',
+                    name: 'Конденсатор, 10 шт',
+                    depth: 300,
+                    width: 200,
+                    height: 100,
+                    weightWithPackaging: 7100,
+                    weightWithoutPackaging: 7000,
+                }),
+                makeVariant({
+                    qty: 50,
+                    offerId: '123-50',
+                    name: 'Конденсатор, 50 шт',
+                    depth: 200,
+                    width: 200,
+                    height: 100,
+                    weightWithPackaging: 40000,
+                    weightWithoutPackaging: 35000,
+                }),
             ],
         };
 
@@ -140,11 +158,7 @@ describe('BuildProductJsonCommand', () => {
         const command = new BuildProductJsonCommand(configService);
         const context: IProductCreateContext = {
             input: makeInput(),
-            variants: [
-                makeVariant({ qty: 1 }),
-                makeVariant({ qty: 5 }),
-                makeVariant({ qty: 10 }),
-            ],
+            variants: [makeVariant({ qty: 1 }), makeVariant({ qty: 5 }), makeVariant({ qty: 10 })],
         };
 
         const result = await command.execute(context);
@@ -205,11 +219,7 @@ describe('BuildProductJsonCommand', () => {
         const command = new BuildProductJsonCommand(configService);
         const context: IProductCreateContext = {
             input: makeInput(),
-            variants: [
-                makeVariant({ qty: 1 }),
-                makeVariant({ qty: 10 }),
-                makeVariant({ qty: 50 }),
-            ],
+            variants: [makeVariant({ qty: 1 }), makeVariant({ qty: 10 }), makeVariant({ qty: 50 })],
         };
 
         const result = await command.execute(context);

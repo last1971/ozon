@@ -90,9 +90,7 @@ describe('UpdateOzonPricesCommand', () => {
 
         const context: IGoodsProcessingContext = {
             skus: [],
-            ozonPrices: [
-                { offer_id: 'sku1', min_price: 200, price: 250, old_price: 300, sum_pack: 10 } as PriceDto,
-            ],
+            ozonPrices: [{ offer_id: 'sku1', min_price: 200, price: 250, old_price: 300, sum_pack: 10 } as PriceDto],
         };
 
         const result = await command.execute(context);

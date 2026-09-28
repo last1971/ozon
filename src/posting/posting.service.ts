@@ -14,7 +14,7 @@ import * as console from 'node:console';
 import { SupplyDto } from '../supply/dto/supply.dto';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { SupplyPositionDto } from 'src/supply/dto/supply.position.dto';
-import { OzonApiService } from "../ozon.api/ozon.api.service";
+import { OzonApiService } from '../ozon.api/ozon.api.service';
 import { isShippedToMarketplace } from '../helpers/posting.shipped';
 import { chunk } from 'lodash';
 import { ReturnsListDto } from './dto/returns.list.dto';
@@ -195,7 +195,12 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
                     // Схема FBS — по источнику события; отмены исполняет cancelOrder.
                     // Признак отгрузки — из самого отправления, как в бою: журнал про
                     // посылки, уехавшие до его старта, не знает и врал «лежит у нас».
-                    await this.mpRunner.observePosting(posting.posting_number, 'FBS', 'cancel', isShippedToMarketplace(posting));
+                    await this.mpRunner.observePosting(
+                        posting.posting_number,
+                        'FBS',
+                        'cancel',
+                        isShippedToMarketplace(posting),
+                    );
                     continue;
                 }
                 if (status !== 'delivered') continue;
@@ -604,8 +609,7 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
     async submitFbsMarkCodes(invoice: InvoiceDto): Promise<SubmitResultDto> {
         const postingNumber = invoice.remark;
         const isDryRun =
-            postingNumber?.startsWith('FBS-MIG-') &&
-            this.configService.get<string>('NODE_ENV') === 'development';
+            postingNumber?.startsWith('FBS-MIG-') && this.configService.get<string>('NODE_ENV') === 'development';
 
         // attached пуст — НЕ выходим: немаркированный заказ тоже идёт в цепочку (ГТД из подбора + ship).
         const attached = await this.invoiceService.getAttachedMarkCodesByScode(invoice.id, null);

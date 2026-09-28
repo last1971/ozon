@@ -36,7 +36,10 @@ export class LastGoodReceiptGtdCommand implements ICommandAsync<IGtdContext> {
             params,
             false,
         );
-        ctx.candidates = (rows ?? []).map((r) => r.GTD).filter((gtd) => gtd != null).map(String);
+        ctx.candidates = (rows ?? [])
+            .map((r) => r.GTD)
+            .filter((gtd) => gtd != null)
+            .map(String);
         return ctx;
     }
 }

@@ -9,7 +9,13 @@ describe('CheckCardsCommand', () => {
         const base = [{ goodscode: '1', tnved: 'x', markRequired: false }];
 
         const progress = emptyProgress();
-        const res = await new CheckCardsCommand().execute({ service: { check, update }, opts: { market: GoodServiceEnum.WB }, progressCache: 'tnved', base, progress });
+        const res = await new CheckCardsCommand().execute({
+            service: { check, update },
+            opts: { market: GoodServiceEnum.WB },
+            progressCache: 'tnved',
+            base,
+            progress,
+        });
 
         expect(check).toHaveBeenCalledWith(base, progress);
         expect(res.items).toEqual([{ offer: '1' }]);

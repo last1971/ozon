@@ -29,19 +29,19 @@ export interface IWbCreateCardContext {
     submit?: boolean;
 
     // Ozon данные для программного заполнения (опционально)
-    ozonDimensions?: string;  // attr 4382 "215x115x30"
-    ozonWeight?: string;      // attr 4383 "827"
-    ozonWarranty?: string;    // attr 4385 "14 дней"
+    ozonDimensions?: string; // attr 4382 "215x115x30"
+    ozonWeight?: string; // attr 4383 "827"
+    ozonWarranty?: string; // attr 4385 "14 дней"
 
     // Ozon card data (from FetchOzonCardCommand)
     ozonCard?: any;
     ozonName?: string;
     brand?: string;
     barcodes?: string[];
-    ozonHeight?: number;       // mm
-    ozonDepth?: number;        // mm
-    ozonWidth?: number;        // mm
-    ozonWeightGrams?: number;  // g
+    ozonHeight?: number; // mm
+    ozonDepth?: number; // mm
+    ozonWidth?: number; // mm
+    ozonWeightGrams?: number; // g
     typeId?: number;
     descriptionCategoryId?: number;
 

@@ -1,7 +1,7 @@
 import { Body, Controller, Get, Param, Post } from '@nestjs/common';
 import { ApiOkResponse, ApiTags } from '@nestjs/swagger';
 import { ProductVisibilityInterface, ProductVisibilityValues, ProductVisibilityClass } from './product.visibility';
-import { ProductService } from "./product.service";
+import { ProductService } from './product.service';
 import { UpdateAttributesBodyDto, UpdateAttributesResponseDto } from './dto/update.attributes.dto';
 
 @ApiTags('product')

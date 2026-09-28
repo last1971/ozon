@@ -11,9 +11,7 @@ export class BuildWbCharcsCommand implements ICommandAsync<IWbCreateCardContext>
     constructor(private readonly configService: ConfigService) {}
 
     async execute(context: IWbCreateCardContext): Promise<IWbCreateCardContext> {
-        const charcsMap = new Map(
-            (context.charcs || []).map((c) => [c.charcID, c]),
-        );
+        const charcsMap = new Map((context.charcs || []).map((c) => [c.charcID, c]));
 
         const result: WbCardCharacteristicDto[] = [];
 
@@ -29,7 +27,9 @@ export class BuildWbCharcsCommand implements ICommandAsync<IWbCreateCardContext>
         this.addManualCharcs(context, charcsMap, result);
 
         context.characteristics = result;
-        this.logger.log(`Собрано ${result.length} характеристик (${(context.aiCharacteristics || []).length} AI + программные)`);
+        this.logger.log(
+            `Собрано ${result.length} характеристик (${(context.aiCharacteristics || []).length} AI + программные)`,
+        );
         return context;
     }
 

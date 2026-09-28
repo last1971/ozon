@@ -84,9 +84,7 @@ export class CancelledBoxReconcilerService {
     }
 
     private async run(): Promise<void> {
-        const invoices = await this.invoiceService.findPlainCancelledInvoices(
-            CancelledBoxReconcilerService.CHECK_DAYS,
-        );
+        const invoices = await this.invoiceService.findPlainCancelledInvoices(CancelledBoxReconcilerService.CHECK_DAYS);
         if (!invoices.length) return;
 
         const buckets = await this.collect(invoices);

@@ -11,7 +11,11 @@ export class ProductInfoDto {
     @ApiProperty({ description: 'Название или комментарий', example: 'Этот товар популярный' })
     remark: string;
 
-    @ApiProperty({ description: 'Основное изображение товара', example: 'https://example.com/image.jpg', required: false })
+    @ApiProperty({
+        description: 'Основное изображение товара',
+        example: 'https://example.com/image.jpg',
+        required: false,
+    })
     primaryImage?: string;
 
     @ApiProperty({ description: 'ID товара', example: '12345' })
@@ -35,6 +39,10 @@ export class ProductInfoDto {
     @ApiProperty({ description: 'Все штрихкоды карточки (barCode — первый из них)', type: [String], required: false })
     barcodes?: string[];
 
-    @ApiProperty({ description: 'SKU площадки (Озон: числовой sku; поле sku выше — это артикул)', example: 3322443266, required: false })
+    @ApiProperty({
+        description: 'SKU площадки (Озон: числовой sku; поле sku выше — это артикул)',
+        example: 3322443266,
+        required: false,
+    })
     marketSku?: number;
 }

@@ -289,14 +289,14 @@ describe('PerformanceService', () => {
         beforeEach(() => {
             jest.spyOn(httpWrapper, 'request').mockResolvedValue(mockTokenResponse);
             service['ozon'] = {
-                PERFOMACE_CAMPAIGN_IDS: '123,456,789'
+                PERFOMACE_CAMPAIGN_IDS: '123,456,789',
             };
         });
 
         describe('getCampaignIds', () => {
             it('should return array of valid campaign IDs', async () => {
                 service['ozon'] = {
-                    PERFOMACE_CAMPAIGN_IDS: '123,456,789'
+                    PERFOMACE_CAMPAIGN_IDS: '123,456,789',
                 };
                 const ids = await service['getCampaignIds']();
                 expect(ids).toEqual([123, 456, 789]);
@@ -304,7 +304,7 @@ describe('PerformanceService', () => {
 
             it('should filter out invalid IDs', async () => {
                 service['ozon'] = {
-                    PERFOMACE_CAMPAIGN_IDS: '123,abc,456,789'
+                    PERFOMACE_CAMPAIGN_IDS: '123,abc,456,789',
                 };
                 const ids = await service['getCampaignIds']();
                 expect(ids).toEqual([123, 456, 789]);
@@ -312,7 +312,7 @@ describe('PerformanceService', () => {
 
             it('should return empty array for empty string', async () => {
                 service['ozon'] = {
-                    PERFOMACE_CAMPAIGN_IDS: ''
+                    PERFOMACE_CAMPAIGN_IDS: '',
                 };
                 const ids = await service['getCampaignIds']();
                 expect(ids).toEqual([]);
@@ -339,7 +339,7 @@ describe('PerformanceService', () => {
 
             it('should handle empty campaign list', async () => {
                 service['ozon'] = {
-                    PERFOMACE_CAMPAIGN_IDS: ''
+                    PERFOMACE_CAMPAIGN_IDS: '',
                 };
                 const activateSpy = jest.spyOn(service, 'activateCampaign').mockResolvedValue(true);
 
@@ -353,7 +353,7 @@ describe('PerformanceService', () => {
             it('should deactivate campaigns exceeding spend limit', async () => {
                 jest.spyOn(service, 'getTodayMoneySpent')
                     .mockResolvedValueOnce(1500) // превышает лимит
-                    .mockResolvedValueOnce(500)  // в пределах лимита
+                    .mockResolvedValueOnce(500) // в пределах лимита
                     .mockResolvedValueOnce(2000); // превышает лимит
                 jest.spyOn(service, 'deactivateCampaign').mockResolvedValue(true);
 
@@ -367,7 +367,7 @@ describe('PerformanceService', () => {
 
             it('should handle empty campaign list', async () => {
                 service['ozon'] = {
-                    PERFOMACE_CAMPAIGN_IDS: ''
+                    PERFOMACE_CAMPAIGN_IDS: '',
                 };
                 const getSpentSpy = jest.spyOn(service, 'getTodayMoneySpent').mockResolvedValue(0);
                 const deactivateSpy = jest.spyOn(service, 'deactivateCampaign').mockResolvedValue(true);
@@ -389,4 +389,4 @@ describe('PerformanceService', () => {
             });
         });
     });
-}); 
+});

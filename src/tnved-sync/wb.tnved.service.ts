@@ -75,7 +75,10 @@ export class WbTnvedService implements ITnvedUpdateable {
         Object.assign(progress, { phase: 'запись', done: 0, total: items.length });
         return this.writer.write(
             'tnved',
-            items.map((item) => ({ offer: item.offer, edit: (card) => this.withTnved(card, item.base, item.markRequired) })),
+            items.map((item) => ({
+                offer: item.offer,
+                edit: (card) => this.withTnved(card, item.base, item.markRequired),
+            })),
             progress,
         );
     }
@@ -155,8 +158,10 @@ export class WbTnvedService implements ITnvedUpdateable {
         }
         const reasons: string[] = [];
         if (item.current !== tnved) reasons.push(`ТНВЭД ${item.current ?? '—'}→${tnved}`);
-        if (needKiz !== markRequired) reasons.push(markRequired ? 'включить код маркировки' : 'выключить код маркировки');
-        if (kizMarked !== markRequired) reasons.push(markRequired ? 'подтвердить маркировку' : 'снять подтверждение маркировки');
+        if (needKiz !== markRequired)
+            reasons.push(markRequired ? 'включить код маркировки' : 'выключить код маркировки');
+        if (kizMarked !== markRequired)
+            reasons.push(markRequired ? 'подтвердить маркировку' : 'снять подтверждение маркировки');
         return {
             ...item,
             reason: reasons.join('; '),
@@ -180,7 +185,9 @@ export class WbTnvedService implements ITnvedUpdateable {
 
     /** Есть ли у предмета характеристика ТНВЭД. null — ВБ не отдал характеристики (в спорные, не «нет»). */
     private async subjectHasTnvedCharc(subjectId: number): Promise<boolean | null> {
-        const res = await this.gate.call(`object/charcs/${subjectId}`, () => this.cardService.fetchCharacteristics(subjectId));
+        const res = await this.gate.call(`object/charcs/${subjectId}`, () =>
+            this.cardService.fetchCharacteristics(subjectId),
+        );
         if (res?.error || !Array.isArray(res?.data)) {
             this.logger.warn(`[tnved] object/charcs/${subjectId}: ${JSON.stringify(res).slice(0, 300)}`);
             return null;

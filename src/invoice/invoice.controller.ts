@@ -1,19 +1,19 @@
-import { Body, Controller, Delete, Get, Inject, Param, Post } from "@nestjs/common";
-import { IInvoice, INVOICE_SERVICE } from "../interfaces/IInvoice";
-import { ApiBody, ApiExtraModels, ApiOkResponse, ApiParam, ApiTags } from "@nestjs/swagger";
-import { RemarkDto } from "./dto/remark.dto";
-import { InvoiceDto } from "./dto/invoice.dto";
-import { InvoiceLineDto } from "./dto/invoice.line.dto";
-import { ResultDto } from "../helpers/dto/result.dto";
-import { DistributePaymentDto } from "./dto/distribute-payment.dto";
-import { MarkScanFbsService } from "./mark-scan-fbs.service";
-import { MarkScanDto } from "./dto/mark-scan.dto";
-import { MarkScanProgressDto } from "./dto/mark-scan-progress.dto";
-import { MarkScanResultDto } from "./dto/mark-scan-result.dto";
-import { GoodDonorsDto, InvoiceDonorsDto } from "./dto/invoice-donors.dto";
+import { Body, Controller, Delete, Get, Inject, Param, Post } from '@nestjs/common';
+import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
+import { ApiBody, ApiExtraModels, ApiOkResponse, ApiParam, ApiTags } from '@nestjs/swagger';
+import { RemarkDto } from './dto/remark.dto';
+import { InvoiceDto } from './dto/invoice.dto';
+import { InvoiceLineDto } from './dto/invoice.line.dto';
+import { ResultDto } from '../helpers/dto/result.dto';
+import { DistributePaymentDto } from './dto/distribute-payment.dto';
+import { MarkScanFbsService } from './mark-scan-fbs.service';
+import { MarkScanDto } from './dto/mark-scan.dto';
+import { MarkScanProgressDto } from './dto/mark-scan-progress.dto';
+import { MarkScanResultDto } from './dto/mark-scan-result.dto';
+import { GoodDonorsDto, InvoiceDonorsDto } from './dto/invoice-donors.dto';
 
 @ApiExtraModels(InvoiceDto, InvoiceLineDto)
-@ApiTags("invoice")
+@ApiTags('invoice')
 @Controller('invoice')
 export class InvoiceController {
     constructor(
@@ -32,10 +32,7 @@ export class InvoiceController {
     @ApiParam({ name: 'remark', type: 'string' })
     @ApiBody({ type: MarkScanDto })
     @ApiOkResponse({ type: MarkScanResultDto })
-    async markcodeScan(
-        @Param() remarkDto: RemarkDto,
-        @Body() body: MarkScanDto,
-    ): Promise<MarkScanResultDto> {
+    async markcodeScan(@Param() remarkDto: RemarkDto, @Body() body: MarkScanDto): Promise<MarkScanResultDto> {
         // Гейт: счёт отменён → сообщение кладовщику и отвязка уже привязанных кодов,
         // вместо тихой привязки очередного КМ к мёртвому счёту.
         await this.markScanService.assertLive(remarkDto.match);
@@ -46,15 +43,16 @@ export class InvoiceController {
     @ApiParam({ name: 'remark', type: 'string' })
     @ApiParam({ name: 'ki', type: 'string' })
     @ApiOkResponse({ type: MarkScanProgressDto })
-    async markcodeUnscan(
-        @Param() remarkDto: RemarkDto,
-        @Param('ki') ki: string,
-    ): Promise<MarkScanProgressDto> {
+    async markcodeUnscan(@Param() remarkDto: RemarkDto, @Param('ki') ki: string): Promise<MarkScanProgressDto> {
         return this.markScanService.unscan(remarkDto.invoice, ki);
     }
 
     @Get('donors/by-article/:article')
-    @ApiParam({ name: 'article', type: 'string', description: 'Артикул маркетплейса; фасовка после дефиса отбрасывается' })
+    @ApiParam({
+        name: 'article',
+        type: 'string',
+        description: 'Артикул маркетплейса; фасовка после дефиса отбрасывается',
+    })
     @ApiOkResponse({ type: [GoodDonorsDto] })
     async donorsByArticle(@Param('article') article: string): Promise<GoodDonorsDto[]> {
         return this.invoiceService.findDonorsByArticle(article);

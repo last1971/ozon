@@ -9,39 +9,40 @@ export class DiscountRequestsController {
     constructor(private readonly discountRequestsService: DiscountRequestsService) {}
 
     @Get('unprocessed')
-    @ApiOperation({ 
+    @ApiOperation({
         summary: 'Получить все необработанные заявки на скидку',
-        description: 'Возвращает все заявки на скидку со статусом NEW'
+        description: 'Возвращает все заявки на скидку со статусом NEW',
     })
-    @ApiResponse({ 
-        status: 200, 
+    @ApiResponse({
+        status: 200,
         description: 'Список всех необработанных заявок на скидку',
-        type: [DiscountTaskDto]
+        type: [DiscountTaskDto],
     })
     async getAllUnprocessedDiscountTasks(): Promise<DiscountTaskDto[]> {
         return this.discountRequestsService.getAllUnprocessedDiscountTasks();
     }
 
     @Post('auto-process')
-    @ApiOperation({ 
+    @ApiOperation({
         summary: 'Автоматическая обработка заявок на скидку',
-        description: 'Получает новые заявки, обрабатывает входящие товары, получает цены и принимает решение об апруве/деклайне'
+        description:
+            'Получает новые заявки, обрабатывает входящие товары, получает цены и принимает решение об апруве/деклайне',
     })
-    @ApiResponse({ 
-        status: 200, 
+    @ApiResponse({
+        status: 200,
         description: 'Результат автоматической обработки заявок',
         schema: {
             type: 'object',
             properties: {
                 approved: { type: 'number', description: 'Количество одобренных заявок' },
                 declined: { type: 'number', description: 'Количество отклоненных заявок' },
-                errors: { 
-                    type: 'array', 
+                errors: {
+                    type: 'array',
                     items: { type: 'string' },
-                    description: 'Список ошибок при обработке'
-                }
-            }
-        }
+                    description: 'Список ошибок при обработке',
+                },
+            },
+        },
     })
     async autoProcessDiscountRequests(): Promise<{
         approved: number;
@@ -50,4 +51,4 @@ export class DiscountRequestsController {
     }> {
         return this.discountRequestsService.autoProcessDiscountRequests();
     }
-} 
+}

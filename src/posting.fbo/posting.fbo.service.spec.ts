@@ -32,9 +32,11 @@ describe('PostingFboService', () => {
         emit.mockReset();
         mpRecord.mockReset().mockResolvedValue(true);
         // журнал пуст → холодный старт, окно как было: «сейчас минус day»
-        mpWindowStart.mockReset().mockImplementation(async (_s: any, _k: any, days: number) =>
-            DateTime.now().minus({ day: days }).startOf('day').toJSDate(),
-        );
+        mpWindowStart
+            .mockReset()
+            .mockImplementation(async (_s: any, _k: any, days: number) =>
+                DateTime.now().minus({ day: days }).startOf('day').toJSDate(),
+            );
 
         const module: TestingModule = await Test.createTestingModule({
             providers: [

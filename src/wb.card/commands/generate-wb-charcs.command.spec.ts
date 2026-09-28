@@ -8,8 +8,24 @@ describe('GenerateWbCharcsCommand', () => {
 
     const mockCharcs: WbCharc[] = [
         { charcID: 5023, name: 'Модель', required: false, unitName: '', maxCount: 1, popular: true, charcType: 1 },
-        { charcID: 355421, name: 'Напряжение (В)', required: false, unitName: 'В', maxCount: 0, popular: false, charcType: 4 },
-        { charcID: 15001405, name: 'Ставка НДС', required: false, unitName: '', maxCount: 1, popular: false, charcType: 1 },
+        {
+            charcID: 355421,
+            name: 'Напряжение (В)',
+            required: false,
+            unitName: 'В',
+            maxCount: 0,
+            popular: false,
+            charcType: 4,
+        },
+        {
+            charcID: 15001405,
+            name: 'Ставка НДС',
+            required: false,
+            unitName: '',
+            maxCount: 1,
+            popular: false,
+            charcType: 1,
+        },
     ];
 
     beforeEach(() => {
@@ -23,7 +39,9 @@ describe('GenerateWbCharcsCommand', () => {
 
     it('should stop chain if no charcs', async () => {
         const ctx: IWbCreateCardContext = {
-            productName: 'Test', description: 'Desc', subjectId: 2009,
+            productName: 'Test',
+            description: 'Desc',
+            subjectId: 2009,
             charcs: [],
         };
         const result = await command.execute(ctx);
@@ -60,7 +78,9 @@ describe('GenerateWbCharcsCommand', () => {
         });
 
         const ctx: IWbCreateCardContext = {
-            productName: 'Test', description: 'Desc', subjectId: 2009,
+            productName: 'Test',
+            description: 'Desc',
+            subjectId: 2009,
             charcs: mockCharcs,
         };
         const result = await command.execute(ctx);
@@ -75,7 +95,9 @@ describe('GenerateWbCharcsCommand', () => {
         });
 
         const ctx: IWbCreateCardContext = {
-            productName: 'Test', description: 'A'.repeat(3000), subjectId: 2009,
+            productName: 'Test',
+            description: 'A'.repeat(3000),
+            subjectId: 2009,
             charcs: mockCharcs,
         };
         const result = await command.execute(ctx);
@@ -90,7 +112,9 @@ describe('GenerateWbCharcsCommand', () => {
         });
 
         const ctx: IWbCreateCardContext = {
-            productName: 'Test', description: 'Короткое описание', subjectId: 2009,
+            productName: 'Test',
+            description: 'Короткое описание',
+            subjectId: 2009,
             charcs: mockCharcs,
         };
         const result = await command.execute(ctx);
@@ -105,7 +129,9 @@ describe('GenerateWbCharcsCommand', () => {
         });
 
         const ctx: IWbCreateCardContext = {
-            productName: 'Test', description: 'Desc', subjectId: 2009,
+            productName: 'Test',
+            description: 'Desc',
+            subjectId: 2009,
             charcs: mockCharcs,
             webSearch: true,
         };

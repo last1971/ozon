@@ -1,13 +1,13 @@
-import { BadRequestException, Body, Controller, Get, Inject, Param, Post, Put, Res } from "@nestjs/common";
-import { Response } from "express";
-import { ApiBody, ApiOkResponse, ApiOperation, ApiParam, ApiResponse, ApiTags } from "@nestjs/swagger";
-import { IInvoice, INVOICE_SERVICE } from "../interfaces/IInvoice";
-import { RemarkDto } from "../invoice/dto/remark.dto";
-import { InvoiceUpdateDto } from "../invoice/dto/invoice.update.dto";
-import { MarkScanFbsService } from "../invoice/mark-scan-fbs.service";
-import { OrderService } from "../order/order.service";
+import { BadRequestException, Body, Controller, Get, Inject, Param, Post, Put, Res } from '@nestjs/common';
+import { Response } from 'express';
+import { ApiBody, ApiOkResponse, ApiOperation, ApiParam, ApiResponse, ApiTags } from '@nestjs/swagger';
+import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
+import { RemarkDto } from '../invoice/dto/remark.dto';
+import { InvoiceUpdateDto } from '../invoice/dto/invoice.update.dto';
+import { MarkScanFbsService } from '../invoice/mark-scan-fbs.service';
+import { OrderService } from '../order/order.service';
 
-@ApiTags("pickup")
+@ApiTags('pickup')
 @Controller('pickup')
 export class PickupController {
     constructor(

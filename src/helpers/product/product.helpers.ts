@@ -126,5 +126,7 @@ export function minPackOffer(offers: string[]): string | undefined {
  * и «400001759547» — один и тот же код, записанный разной длиной.
  */
 export function barcodeKey(code: string): string {
-    return String(code ?? '').trim().replace(/^0+/, '');
+    return String(code ?? '')
+        .trim()
+        .replace(/^0+/, '');
 }

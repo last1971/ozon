@@ -61,11 +61,15 @@ export class NotifyRouteRepository {
             await transaction.commit(true);
             return rows
                 .map((row) => ({
-                    topic: String(row.TOPIC ?? '').trim().toUpperCase(),
+                    topic: String(row.TOPIC ?? '')
+                        .trim()
+                        .toUpperCase(),
                     channel: String(row.CHANNEL ?? '').trim() as NotifyChannel,
                     target: String(row.TARGET ?? '').trim(),
                 }))
-                .filter((route) => route.topic && route.target && (route.channel === 'mail' || route.channel === 'matrix'));
+                .filter(
+                    (route) => route.topic && route.target && (route.channel === 'mail' || route.channel === 'matrix'),
+                );
         } catch (e) {
             await transaction.rollback(true).catch(() => undefined);
             throw e;

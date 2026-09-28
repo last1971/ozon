@@ -95,22 +95,16 @@ describe('SyliusPriceService', () => {
             await service.updatePrices(updatePrices as any);
 
             expect(mockApi.method).toHaveBeenCalledTimes(1);
-            expect(mockApi.method).toHaveBeenCalledWith(
-                '/api/v2/admin/price/update',
-                'post',
-                {
-                    prices: {
-                        SKU1: { price: 10000, originalPrice: 12000, minimumPrice: 9000 },
-                        SKU2: { price: 20000, originalPrice: 24000, minimumPrice: 18000 },
-                    },
+            expect(mockApi.method).toHaveBeenCalledWith('/api/v2/admin/price/update', 'post', {
+                prices: {
+                    SKU1: { price: 10000, originalPrice: 12000, minimumPrice: 9000 },
+                    SKU2: { price: 20000, originalPrice: 24000, minimumPrice: 18000 },
                 },
-            );
+            });
         });
 
         it('should skip SKUs not in skuList', async () => {
-            const updatePrices = [
-                { offer_id: 'UNKNOWN_SKU', price: '100', old_price: '120', min_price: '90' },
-            ];
+            const updatePrices = [{ offer_id: 'UNKNOWN_SKU', price: '100', old_price: '120', min_price: '90' }];
 
             const result = await service.updatePrices(updatePrices as any);
 
@@ -121,9 +115,7 @@ describe('SyliusPriceService', () => {
         it('should handle API errors', async () => {
             mockApi.method.mockRejectedValueOnce(new Error('API Error'));
 
-            const updatePrices = [
-                { offer_id: 'SKU1', price: '100', old_price: '120', min_price: '90' },
-            ];
+            const updatePrices = [{ offer_id: 'SKU1', price: '100', old_price: '120', min_price: '90' }];
 
             const result = await service.updatePrices(updatePrices as any);
 

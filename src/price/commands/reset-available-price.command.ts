@@ -5,10 +5,10 @@ import { GOOD_SERVICE, IGood } from '../../interfaces/IGood';
 
 @Injectable()
 export class ResetAvailablePriceCommand implements ICommandAsync<IGoodsProcessingContext> {
-  constructor(@Inject(GOOD_SERVICE) private readonly goodService: IGood) {}
+    constructor(@Inject(GOOD_SERVICE) private readonly goodService: IGood) {}
 
-  async execute(context: IGoodsProcessingContext): Promise<IGoodsProcessingContext> {
-    await this.goodService.resetAvailablePrice(context.skus);
-    return context;
-  }
+    async execute(context: IGoodsProcessingContext): Promise<IGoodsProcessingContext> {
+        await this.goodService.resetAvailablePrice(context.skus);
+        return context;
+    }
 }

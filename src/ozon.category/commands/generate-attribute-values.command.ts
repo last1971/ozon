@@ -91,7 +91,7 @@ export class GenerateAttributeValuesCommand implements ICommandAsync<IProductCre
                     }
                     context.logger?.log(
                         `Габариты из AI: ${input.package_depth}×${input.package_width}×${input.package_height}мм, ` +
-                        `вес: ${input.weight_without_packaging}/${input.weight_with_packaging}г`,
+                            `вес: ${input.weight_without_packaging}/${input.weight_with_packaging}г`,
                     );
                 }
             }
@@ -102,9 +102,9 @@ export class GenerateAttributeValuesCommand implements ICommandAsync<IProductCre
 
         context.logger?.log(
             `AI: описание ${context.description?.length || 0} символов, ` +
-            `хэштеги: "${context.hashtags}", ` +
-            `атрибутов: ${context.ai_attributes?.length || 0}, ` +
-            `tokens: ${totalTokens}, cost: $${cost.toFixed(6)}`,
+                `хэштеги: "${context.hashtags}", ` +
+                `атрибутов: ${context.ai_attributes?.length || 0}, ` +
+                `tokens: ${totalTokens}, cost: $${cost.toFixed(6)}`,
         );
         return context;
     }

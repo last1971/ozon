@@ -17,7 +17,7 @@ export interface PayResultDto {
  */
 export const calculateCosts = (
     price: IPriceable,
-    percents: ObtainCoeffsDto
+    percents: ObtainCoeffsDto,
 ): { fixedCosts: number; dynamicCosts: number } => {
     const fixedCosts: number =
         toNumber(percents.sumObtain) +
@@ -37,19 +37,14 @@ export const calculateCosts = (
 /**
  * Вычисляет сумму к оплате с учетом издержек
  */
-export const calculatePay = (
-    price: IPriceable,
-    percents: ObtainCoeffsDto,
-    sum: number
-): PayResultDto => {
+export const calculatePay = (price: IPriceable, percents: ObtainCoeffsDto, sum: number): PayResultDto => {
     const { fixedCosts, dynamicCosts } = calculateCosts(price, percents);
     const mil = sum * (percents.percMil / 100);
-    let ret = (
+    let ret =
         sum -
         fixedCosts -
-        (mil === 0 ? 0 : (mil < percents.minMil ? toNumber(percents.minMil) : 0)) -
-        (sum * (dynamicCosts + (mil < percents.minMil ? 0 : toNumber(percents.percMil)))) / 100
-    );
+        (mil === 0 ? 0 : mil < percents.minMil ? toNumber(percents.minMil) : 0) -
+        (sum * (dynamicCosts + (mil < percents.minMil ? 0 : toNumber(percents.percMil)))) / 100;
 
     const result: PayResultDto = { pay: ret };
 
@@ -82,20 +77,18 @@ export const calculatePrice = (
             const calcPrice = findSellingPriceOSNO(percent, price, percents);
             return Math.ceil(calcPrice).toString();
         }
-        
+
         const { fixedCosts, dynamicCosts } = calculateCosts(price, percents);
         const incoming_price = toNumber(price.available_price) > 0 ? price.available_price : price.incoming_price;
         let calcPrice = Math.ceil(
-            (toNumber(incoming_price) * (1 + toNumber(percent) / 100) + fixedCosts)
-            /
-            (1 - (dynamicCosts + toNumber(percents.percMil)) / 100)
+            (toNumber(incoming_price) * (1 + toNumber(percent) / 100) + fixedCosts) /
+                (1 - (dynamicCosts + toNumber(percents.percMil)) / 100),
         );
         const mil = calcPrice * (percents.percMil / 100);
         if (mil > 0 && mil < percents.minMil) {
             calcPrice = Math.ceil(
-                (toNumber(incoming_price) * (1 + toNumber(percent) / 100) + toNumber(percents.minMil) + fixedCosts)
-                /
-                (1 - dynamicCosts / 100)
+                (toNumber(incoming_price) * (1 + toNumber(percent) / 100) + toNumber(percents.minMil) + fixedCosts) /
+                    (1 - dynamicCosts / 100),
             );
         }
         return calcPrice.toString();
@@ -116,11 +109,7 @@ export const calculatePrice = (
 /**
  * Вычисляет чистую прибыль для ОСНО (по алгоритму из test-price.ts)
  */
-export const calcNetProfitOSNO = (
-    priceWithVAT: number,
-    price: IPriceable,
-    percents: ObtainCoeffsDto
-): number => {
+export const calcNetProfitOSNO = (priceWithVAT: number, price: IPriceable, percents: ObtainCoeffsDto): number => {
     const { profitBeforeTax, profitTax, vatToPay } = calculateOSNODetails(priceWithVAT, price, percents);
     return profitBeforeTax - profitTax - vatToPay;
 };
@@ -128,14 +117,10 @@ export const calcNetProfitOSNO = (
 /**
  * Находит цену продажи для ОСНО (бинарный поиск)
  */
-export const findSellingPriceOSNO = (
-    percent: number,
-    price: IPriceable,
-    percents: ObtainCoeffsDto
-): number => {
+export const findSellingPriceOSNO = (percent: number, price: IPriceable, percents: ObtainCoeffsDto): number => {
     const incoming_price = toNumber(price.available_price) > 0 ? price.available_price : price.incoming_price;
     const targetProfit = incoming_price * (percent / 100);
-    
+
     let low = 0;
     // Цена не может быть выше 100000 рублей
     let high = 100000;
@@ -162,8 +147,8 @@ export const findSellingPriceOSNO = (
 export const calculateOSNODetails = (
     priceWithVAT: number,
     price: IPriceable,
-    percents: ObtainCoeffsDto
-): { profitBeforeTax: number; profitTax: number; vatToPay: number; } => {
+    percents: ObtainCoeffsDto,
+): { profitBeforeTax: number; profitTax: number; vatToPay: number } => {
     const { fixedCosts, dynamicCosts } = calculateCosts(price, percents);
 
     const priceNoVAT = priceWithVAT / (1 + VAT_RATE / 100); // выручка без НДС
@@ -176,16 +161,16 @@ export const calculateOSNODetails = (
     // Расчет прибыли до налога на прибыль
     const totalCostsNoVAT = fixedNoVAT + dynamicNoVAT + costNoVAT;
     const profitBeforeTax = priceNoVAT - totalCostsNoVAT;
-    
+
     // Расчет налога на прибыль
     const profitTax = profitBeforeTax * (PROFIT_TAX_RATE / 100);
 
     // Расчет НДС
     const fixedVAT = fixedCosts - fixedNoVAT;
     const dynamicVAT = dynamicCost - dynamicNoVAT;
-    const inputVAT = (incoming_price - costNoVAT) + fixedVAT + dynamicVAT;
+    const inputVAT = incoming_price - costNoVAT + fixedVAT + dynamicVAT;
     const outputVAT = priceWithVAT - priceNoVAT;
     const vatToPay = Math.max(outputVAT - inputVAT, 0);
 
     return { profitBeforeTax, profitTax, vatToPay };
-}; 
+};

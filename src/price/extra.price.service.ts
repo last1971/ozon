@@ -1,22 +1,22 @@
-import { forwardRef, Inject, Injectable, Logger } from "@nestjs/common";
-import { GoodServiceEnum } from "../good/good.service.enum";
-import { IPriceUpdateable } from "../interfaces/i.price.updateable";
-import { PriceService } from "./price.service";
-import { YandexPriceService } from "../yandex.price/yandex.price.service";
-import { WbPriceService } from "../wb.price/wb.price.service";
-import { AvitoPriceService } from "../avito.price/avito.price.service";
-import { SyliusPriceService } from "../sylius.price/sylius.price.service";
-import { GOOD_SERVICE, IGood } from "../interfaces/IGood";
-import { ConfigService } from "@nestjs/config";
-import { UpdatePriceDto } from "./dto/update.price.dto";
-import { Cron } from "@nestjs/schedule";
-import { WbCommissionDto } from "../wb.card/dto/wb.commission.dto";
-import { EventEmitter2, OnEvent } from "@nestjs/event-emitter";
-import { ExtraGoodService } from "../good/extra.good.service";
-import { toNumber, first } from "lodash";
-import { PriceDto } from "./dto/price.dto";
-import { ProductVisibility } from "../product/product.visibility";
-import { GoodPercentDto } from "../good/dto/good.percent.dto";
+import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
+import { GoodServiceEnum } from '../good/good.service.enum';
+import { IPriceUpdateable } from '../interfaces/i.price.updateable';
+import { PriceService } from './price.service';
+import { YandexPriceService } from '../yandex.price/yandex.price.service';
+import { WbPriceService } from '../wb.price/wb.price.service';
+import { AvitoPriceService } from '../avito.price/avito.price.service';
+import { SyliusPriceService } from '../sylius.price/sylius.price.service';
+import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
+import { ConfigService } from '@nestjs/config';
+import { UpdatePriceDto } from './dto/update.price.dto';
+import { Cron } from '@nestjs/schedule';
+import { WbCommissionDto } from '../wb.card/dto/wb.commission.dto';
+import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
+import { ExtraGoodService } from '../good/extra.good.service';
+import { toNumber, first } from 'lodash';
+import { PriceDto } from './dto/price.dto';
+import { ProductVisibility } from '../product/product.visibility';
+import { GoodPercentDto } from '../good/dto/good.percent.dto';
 import { CommandChainAsync } from '../helpers/command/command.chain.async';
 import { IGoodsProcessingContext } from 'src/interfaces/i.good.processing.context';
 import { TradeSkusCommand } from './commands/trade-skus.command';
@@ -119,30 +119,27 @@ export class ExtraPriceService {
      * and the corresponding price update data as values.
      * @return {Promise<any>} A promise that resolves when the price update operation completes for all services.
      */
-    public updatePriceForServices(skus: string[], pricesMap?: Map<string, UpdatePriceDto>): Promise<{ service: GoodServiceEnum, result: any }[]> {
+    public updatePriceForServices(
+        skus: string[],
+        pricesMap?: Map<string, UpdatePriceDto>,
+    ): Promise<{ service: GoodServiceEnum; result: any }[]> {
         const serviceEntries = [...this.services.entries()];
         return Promise.all(
             serviceEntries.map(async ([serviceEnum, service]) => ({
                 service: serviceEnum, // это и есть GoodServiceEnum!
-                result: await this.goodService.updatePriceForService(service, skus, pricesMap)
-            }))
+                result: await this.goodService.updatePriceForService(service, skus, pricesMap),
+            })),
         );
-
     }
 
     public updatePriceForGoodSkus(skus: string[]): Promise<any> {
         const serviceEntries = [...this.services.entries()];
 
         return Promise.all(
-            serviceEntries
-                .map(
-                    ([serviceEnum, service]) => {
-                        const serviceSkus = this.extraGoodService.tradeSkusToServiceSkus(skus, serviceEnum);
-                        return serviceSkus.length > 0
-                            ? this.goodService.updatePriceForService(service, serviceSkus)
-                            : null
-                    }
-                ),
+            serviceEntries.map(([serviceEnum, service]) => {
+                const serviceSkus = this.extraGoodService.tradeSkusToServiceSkus(skus, serviceEnum);
+                return serviceSkus.length > 0 ? this.goodService.updatePriceForService(service, serviceSkus) : null;
+            }),
         );
     }
 
@@ -158,7 +155,9 @@ export class ExtraPriceService {
         const allErrors = results.filter((r) => r.errors.length > 0);
         if (allErrors.length > 0) {
             const message = allErrors
-                .map((r) => `${r.service}: ${r.errors.length} ошибок\n${JSON.stringify(r.errors.slice(0, 10), null, 2)}`)
+                .map(
+                    (r) => `${r.service}: ${r.errors.length} ошибок\n${JSON.stringify(r.errors.slice(0, 10), null, 2)}`,
+                )
                 .join('\n\n');
             this.eventEmitter.emit('error.message', 'Ошибки обновления цен', message, NotifyTopic.PRICES);
         }
@@ -240,7 +239,7 @@ export class ExtraPriceService {
             // 4. Фильтруем товары по разнице цен
             const problematicProducts: Array<PriceDto & { diffPercent: number }> = this.filterProblematicProducts(
                 productsToCheck,
-                thresholdPercent
+                thresholdPercent,
             );
             if (problematicProducts.length > 0) {
                 this.eventEmitter.emit(
@@ -263,7 +262,7 @@ export class ExtraPriceService {
      */
     private filterProblematicProducts(
         products: PriceDto[],
-        thresholdPercent: number
+        thresholdPercent: number,
     ): Array<PriceDto & { diffPercent: number }> {
         const problematicProducts: Array<PriceDto & { diffPercent: number }> = [];
         for (const item of products) {
@@ -282,16 +281,21 @@ export class ExtraPriceService {
         }
         return problematicProducts;
     }
-    public async generatePercentsForOzon(sku: string, goodPercentDto?: Partial<GoodPercentDto>, generic?: boolean): Promise<GoodPercentDto> {
-        const available_prices = goodPercentDto !== null && goodPercentDto !== undefined
-            ? new Map([[sku, goodPercentDto]])
-            : undefined;
+    public async generatePercentsForOzon(
+        sku: string,
+        goodPercentDto?: Partial<GoodPercentDto>,
+        generic?: boolean,
+    ): Promise<GoodPercentDto> {
+        const available_prices =
+            goodPercentDto !== null && goodPercentDto !== undefined ? new Map([[sku, goodPercentDto]]) : undefined;
         const service = generic ? null : this.getService(GoodServiceEnum.OZON);
-        return first(await this.goodService.generatePercentsForService(
-            service,
-            [sku],  // передаем как массив
-            available_prices
-        )) as GoodPercentDto;
+        return first(
+            await this.goodService.generatePercentsForService(
+                service,
+                [sku], // передаем как массив
+                available_prices,
+            ),
+        ) as GoodPercentDto;
     }
 
     /**
@@ -307,7 +311,7 @@ export class ExtraPriceService {
         // Generic SKU (не в Ozon) → через null (нулевые коэффициенты)
         if (allSkus?.length > 0) {
             const ozonSet = new Set(ozonSkus || []);
-            const genericSkus = allSkus.filter(sku => !ozonSet.has(sku));
+            const genericSkus = allSkus.filter((sku) => !ozonSet.has(sku));
             if (genericSkus.length > 0) {
                 await this.goodService.updatePercentsForService(null, genericSkus);
             }
@@ -403,10 +407,7 @@ export class ExtraPriceService {
             logger: this.logger,
         };
 
-        const chain = new CommandChainAsync<IVatProcessingContext>([
-            this.checkVatCommand,
-            this.updateVatCommand,
-        ]);
+        const chain = new CommandChainAsync<IVatProcessingContext>([this.checkVatCommand, this.updateVatCommand]);
 
         const result = await chain.execute(context);
 
@@ -420,7 +421,12 @@ export class ExtraPriceService {
      * Type guard для проверки, поддерживает ли сервис работу с НДС
      */
     private isVatUpdateable(service: IPriceUpdateable): service is IPriceUpdateable & IVatUpdateable {
-        return 'checkVatForAll' in service && 'updateVat' in service && 'vatToNumber' in service && 'numberToVat' in service;
+        return (
+            'checkVatForAll' in service &&
+            'updateVat' in service &&
+            'vatToNumber' in service &&
+            'numberToVat' in service
+        );
     }
 
     /**

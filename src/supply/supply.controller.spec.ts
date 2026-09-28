@@ -3,9 +3,9 @@ import { SupplyController } from './supply.controller';
 import { WbSupplyService } from '../wb.supply/wb.supply.service';
 import request from 'supertest';
 import { INestApplication } from '@nestjs/common';
-import { Trade2006InvoiceService } from "../trade2006.invoice/trade2006.invoice.service";
-import { ProductService } from "../product/product.service";
-import { StockType } from "../product/stock.type";
+import { Trade2006InvoiceService } from '../trade2006.invoice/trade2006.invoice.service';
+import { ProductService } from '../product/product.service';
+import { StockType } from '../product/stock.type';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { NotFoundException } from '@nestjs/common';
 import { WbCardService } from '../wb.card/wb.card.service';
@@ -18,15 +18,15 @@ describe('SupplyController', () => {
     let wbSupplyService: WbSupplyService;
 
     const mockProductServices = {
-        get: jest.fn()
+        get: jest.fn(),
     };
 
     const mockInvoiceService = {
-        getSupplyPositions: jest.fn()
+        getSupplyPositions: jest.fn(),
     };
 
     const mockWbSupplyService = {
-        getSupplyPositions: jest.fn()
+        getSupplyPositions: jest.fn(),
     };
 
     const mockWbCardService = {
@@ -39,26 +39,26 @@ describe('SupplyController', () => {
             providers: [
                 {
                     provide: WbSupplyService,
-                    useValue: { 
+                    useValue: {
                         getSupplies: jest.fn().mockReturnValue([{ id: 1, name: 'Supply1' }]),
-                        getSupplyPositions: mockWbSupplyService.getSupplyPositions
+                        getSupplyPositions: mockWbSupplyService.getSupplyPositions,
                     },
                 },
                 {
                     provide: Trade2006InvoiceService,
-                    useValue: { 
+                    useValue: {
                         getSupplies: jest.fn().mockReturnValue([{ id: 2, name: 'Supply2' }]),
-                        getSupplyPositions: mockInvoiceService.getSupplyPositions
+                        getSupplyPositions: mockInvoiceService.getSupplyPositions,
                     },
                 },
                 {
                     provide: ProductService,
-                    useValue: mockProductServices
+                    useValue: mockProductServices,
                 },
                 {
                     provide: WbCardService,
-                    useValue: mockWbCardService
-                }
+                    useValue: mockWbCardService,
+                },
             ],
         }).compile();
 
@@ -77,7 +77,10 @@ describe('SupplyController', () => {
 
     it('should return supplies', async () => {
         const response = await request(app.getHttpServer()).get('/supply/list').expect(200);
-        expect(response.body).toEqual([{ id: 1, name: 'Supply1' }, { id: 2, name: 'Supply2' }]);
+        expect(response.body).toEqual([
+            { id: 1, name: 'Supply1' },
+            { id: 2, name: 'Supply2' },
+        ]);
     });
 
     describe('getOrders', () => {
@@ -86,21 +89,15 @@ describe('SupplyController', () => {
         const mockPositions = [{ id: 1 }, { id: 2 }];
 
         it('should throw NotFoundException when service not found', async () => {
-            await expect(controller.getOrders(
-                mockId,
-                StockType.FBO,
-                GoodServiceEnum.EXPRESS,
-            )).rejects.toThrow(NotFoundException);
+            await expect(controller.getOrders(mockId, StockType.FBO, GoodServiceEnum.EXPRESS)).rejects.toThrow(
+                NotFoundException,
+            );
         });
 
         it('should return FBO positions from invoice service', async () => {
             mockInvoiceService.getSupplyPositions.mockResolvedValue(mockPositions);
 
-            const result = await controller.getOrders(
-                mockId,
-                StockType.FBO,
-                GoodServiceEnum.WB
-            );
+            const result = await controller.getOrders(mockId, StockType.FBO, GoodServiceEnum.WB);
 
             expect(result).toEqual(mockPositions);
             expect(mockInvoiceService.getSupplyPositions).toHaveBeenCalledWith(mockId, mockWbCardService);
@@ -109,11 +106,7 @@ describe('SupplyController', () => {
         it('should return positions from wb supply service for non-FBO type', async () => {
             mockWbSupplyService.getSupplyPositions.mockResolvedValue(mockPositions);
 
-            const result = await controller.getOrders(
-                mockId,
-                StockType.FBS,
-                GoodServiceEnum.WB
-            );
+            const result = await controller.getOrders(mockId, StockType.FBS, GoodServiceEnum.WB);
 
             expect(result).toEqual(mockPositions);
             expect(mockWbSupplyService.getSupplyPositions).toHaveBeenCalledWith(mockId);

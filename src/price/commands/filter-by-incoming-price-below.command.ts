@@ -15,7 +15,7 @@ export class FilterByIncomingPriceBelowCommand implements ICommandAsync<IGoodsPr
         const maxPrice = context.filterMaxIncomingPrice ?? this.DEFAULT_MAX_PRICE;
         const before = prices.length;
 
-        context.ozonPrices = prices.filter(p => {
+        context.ozonPrices = prices.filter((p) => {
             const effectivePrice = this.getEffectiveIncomingPrice(p);
             return effectivePrice > 0 && effectivePrice < maxPrice;
         });

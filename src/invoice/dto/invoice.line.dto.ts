@@ -33,7 +33,6 @@ export class InvoiceLineDto {
     })
     whereOrdered?: string;
 
-
     @ApiProperty({
         description:
             'Фасовка позиции маркетплейса: наших штук в одном юните (артикул 552601-3 → 3). ' +

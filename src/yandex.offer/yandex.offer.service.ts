@@ -16,7 +16,9 @@ export class YandexOfferService extends AbstractOfferService implements OnModule
     async infoList(offer_id: string[]): Promise<ProductInfoDto[]> {
         const result: ProductInfoDto[] = [];
         for (const offerIds of chunk(offer_id, 200)) {
-            const res = await this.yandexApi.method(`businesses/${this.businessId}/offer-mappings`, 'post', { offerIds });
+            const res = await this.yandexApi.method(`businesses/${this.businessId}/offer-mappings`, 'post', {
+                offerIds,
+            });
             const mappings: any[] = res?.result?.offerMappings ?? [];
             for (const m of mappings) {
                 const offer = m.offer ?? {};

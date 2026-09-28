@@ -51,9 +51,7 @@ export class AIProductService {
             response.model,
         );
 
-        this.logger.log(
-            `Generated name, tokens: ${totalTokens}, cost: $${cost.toFixed(6)}`,
-        );
+        this.logger.log(`Generated name, tokens: ${totalTokens}, cost: $${cost.toFixed(6)}`);
 
         return {
             name: response.content.trim(),

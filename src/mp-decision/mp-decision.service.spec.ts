@@ -65,9 +65,9 @@ describe('MpDecisionService — решающая таблица', () => {
         it.each(['ReturnedToOzon', 'ReceivedBySeller', 'WriteOff'])(
             'возврат %s → письмо: физика случилась по неизвестному заказу',
             (state) => {
-                expect(
-                    service.decide(input({ kind: 'return', returnState: state, invoice: null })),
-                ).toMatchObject({ letter: true });
+                expect(service.decide(input({ kind: 'return', returnState: state, invoice: null }))).toMatchObject({
+                    letter: true,
+                });
             },
         );
 
@@ -109,7 +109,9 @@ describe('MpDecisionService — решающая таблица', () => {
         });
 
         it('счёт уже помечен отменой → ничего и без письма (идемпотентность)', () => {
-            const decision = service.decide(input({ invoice: invoice({ mark: ' отмена', cancelled: true, status: 0 }) }));
+            const decision = service.decide(
+                input({ invoice: invoice({ mark: ' отмена', cancelled: true, status: 0 }) }),
+            );
             expect(decision).toMatchObject({ branch: 'cancel/already-marked', layer1: 'none', letter: false });
         });
 
@@ -216,7 +218,9 @@ describe('MpDecisionService — решающая таблица', () => {
         });
 
         it('ReturnedToOzon по закрытому счёту → донора НЕ делаем, письмо', () => {
-            expect(ret('ReturnedToOzon', { invoice: invoice({ status: 5, closed: true, mark: ' закрыт' }) })).toMatchObject({
+            expect(
+                ret('ReturnedToOzon', { invoice: invoice({ status: 5, closed: true, mark: ' закрыт' }) }),
+            ).toMatchObject({
                 branch: 'return/returned-to-ozon/closed-invoice',
                 layer1: 'none',
                 letter: true,
@@ -258,7 +262,9 @@ describe('MpDecisionService — решающая таблица', () => {
         });
 
         it('доставка, код уже выведен → ничего: идемпотентность', () => {
-            const decision = service.decide(input({ kind: 'delivered', codes: [code({ status: 6, retireReason: 1 })] }));
+            const decision = service.decide(
+                input({ kind: 'delivered', codes: [code({ status: 6, retireReason: 1 })] }),
+            );
             expect(decision.layer2[0]).toMatchObject({ actions: [], letter: false });
         });
 
@@ -356,9 +362,7 @@ describe('MpDecisionService — решающая таблица', () => {
         });
 
         it('статус возврата без действий над кодами не порождает писем по каждому коду', () => {
-            const decision = service.decide(
-                input({ kind: 'return', returnState: 'MovingToOzon', codes: [code()] }),
-            );
+            const decision = service.decide(input({ kind: 'return', returnState: 'MovingToOzon', codes: [code()] }));
             expect(decision.layer2[0]).toMatchObject({ actions: [], letter: false });
         });
     });

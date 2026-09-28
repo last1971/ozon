@@ -45,7 +45,8 @@ describe('ImageStorageService', () => {
     it('should throw for unknown provider', async () => {
         mockConfigService.get.mockReturnValue('unknown');
 
-        await expect(service.upload(Buffer.from('test'), 'test.jpg'))
-            .rejects.toThrow('Unknown image storage provider: unknown');
+        await expect(service.upload(Buffer.from('test'), 'test.jpg')).rejects.toThrow(
+            'Unknown image storage provider: unknown',
+        );
     });
 });

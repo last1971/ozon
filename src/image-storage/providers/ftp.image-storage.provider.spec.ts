@@ -30,10 +30,7 @@ describe('FtpImageStorageProvider', () => {
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
-            providers: [
-                FtpImageStorageProvider,
-                { provide: ConfigService, useValue: mockConfigService },
-            ],
+            providers: [FtpImageStorageProvider, { provide: ConfigService, useValue: mockConfigService }],
         }).compile();
 
         provider = module.get<FtpImageStorageProvider>(FtpImageStorageProvider);

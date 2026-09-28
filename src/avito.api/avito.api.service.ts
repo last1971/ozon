@@ -9,7 +9,7 @@ import { AvitoItemProbe, toAvitoItemProbe } from './avito.item.status';
 type HttpVerb = 'get' | 'post' | 'put' | 'patch' | 'delete';
 
 interface AvitoVaultConfig {
-    URL: string;               // e.g. https://api.avito.ru
+    URL: string; // e.g. https://api.avito.ru
     CLIENT_ID: string;
     CLIENT_SECRET: string;
 }
@@ -29,7 +29,7 @@ export class AvitoApiService {
 
     // Public high-level method (axios-based)
     async request<T = any>(path: string, data?: any, method: HttpVerb = 'post'): Promise<T> {
-        const avito = await this.vault.get('avito') as unknown as AvitoVaultConfig;
+        const avito = (await this.vault.get('avito')) as unknown as AvitoVaultConfig;
         const url = this.buildUrl(avito.URL, path);
 
         // First try with current/refresh token
@@ -54,8 +54,12 @@ export class AvitoApiService {
     }
 
     // Low-level fetch (node fetch) with same 401-once-retry semantics
-    async rawFetch<T = any>(path: string, body?: any, method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' = 'POST'): Promise<T> {
-        const avito = await this.vault.get('avito') as unknown as AvitoVaultConfig;
+    async rawFetch<T = any>(
+        path: string,
+        body?: any,
+        method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' = 'POST',
+    ): Promise<T> {
+        const avito = (await this.vault.get('avito')) as unknown as AvitoVaultConfig;
         const url = this.buildUrl(avito.URL, path);
 
         let token = await this.getAccessToken(avito, false);
@@ -109,13 +113,12 @@ export class AvitoApiService {
             Authorization: `Bearer ${token}`,
         };
         // Choose config by method
-        const obs = method === 'get'
-            ? this.http.get(url, { params: data, headers })
-            : this.http.request({ url, method, data, headers });
+        const obs =
+            method === 'get'
+                ? this.http.get(url, { params: data, headers })
+                : this.http.request({ url, method, data, headers });
 
-        return await firstValueFrom(
-            obs.pipe(map((res) => res.data as T)),
-        );
+        return await firstValueFrom(obs.pipe(map((res) => res.data as T)));
     }
 
     private async makeFetchRequest<T>(url: string, method: string, body: any, token: string): Promise<T> {
@@ -168,8 +171,13 @@ export class AvitoApiService {
         const now = Date.now();
         const bufferMs = 60_000; // refresh 60s early
 
-        if (!forceRefresh && this.accessToken && this.accessTokenExpiresAt && now + bufferMs < this.accessTokenExpiresAt) {
-                return this.accessToken;
+        if (
+            !forceRefresh &&
+            this.accessToken &&
+            this.accessTokenExpiresAt &&
+            now + bufferMs < this.accessTokenExpiresAt
+        ) {
+            return this.accessToken;
         }
 
         const { token, expiresAt } = await this.fetchNewToken(cfg);
@@ -184,16 +192,12 @@ export class AvitoApiService {
         const tokenUrl = this.buildUrl(cfg.URL, '/token');
         const basic = Buffer.from(`${cfg.CLIENT_ID}:${cfg.CLIENT_SECRET}`).toString('base64');
 
-        const obs = this.http.post(
-            tokenUrl,
-            new URLSearchParams({ grant_type: 'client_credentials' }).toString(),
-            {
-                headers: {
-                    'Content-Type': 'application/x-www-form-urlencoded',
-                    Authorization: `Basic ${basic}`,
-                },
+        const obs = this.http.post(tokenUrl, new URLSearchParams({ grant_type: 'client_credentials' }).toString(), {
+            headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                Authorization: `Basic ${basic}`,
             },
-        );
+        });
 
         try {
             const res = await firstValueFrom(obs);
@@ -202,7 +206,7 @@ export class AvitoApiService {
             if (!accessToken) {
                 throw new Error('Avito token response missing access_token');
             }
-            const expiresAt = Date.now() + (expiresInSec * 1000);
+            const expiresAt = Date.now() + expiresInSec * 1000;
             return { token: accessToken, expiresAt };
         } catch (e: any) {
             const msg = e?.response?.data?.error_description || e?.message || 'Unknown token error';

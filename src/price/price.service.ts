@@ -145,7 +145,7 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
 
     async updateVat(offerIds: string[], vat: number): Promise<any> {
         const prices: UpdatePricesDto = {
-            prices: offerIds.map(offer_id => ({ offer_id, vat: this.numberToVat(vat), currency_code: 'RUB' }))
+            prices: offerIds.map((offer_id) => ({ offer_id, vat: this.numberToVat(vat), currency_code: 'RUB' })),
         };
         return this.update(prices);
     }
@@ -188,7 +188,9 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
             const counts = await this.product.infoList(skusBatch);
             for (const product of items) {
                 const productInfo = counts.find((info) => info.sku === product.offer_id);
-                allResults.push(new OzonProductCoeffsAdapter(product, percDirectFlow, productInfo, this.priceCalculationHelper));
+                allResults.push(
+                    new OzonProductCoeffsAdapter(product, percDirectFlow, productInfo, this.priceCalculationHelper),
+                );
             }
         });
 
@@ -266,7 +268,7 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
             const items = page?.items ?? [];
 
             for (const item of items) {
-                const currentVat = this.vatToNumber(item?.price?.vat ?? '0'); 
+                const currentVat = this.vatToNumber(item?.price?.vat ?? '0');
                 if (currentVat !== expectedVat) {
                     mismatches.push({ offer_id: item.offer_id, current_vat: currentVat, expected_vat: expectedVat });
                 }
@@ -305,8 +307,8 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
         if (!commissions) return null;
 
         // Возвращаем комиссию для диапазона 100-300 (index 1)
-        const fboRange = commissions.fbo.find(r => r.min === 100 && r.max === 300);
-        const fbsRange = commissions.fbs.find(r => r.min === 100 && r.max === 300);
+        const fboRange = commissions.fbo.find((r) => r.min === 100 && r.max === 300);
+        const fbsRange = commissions.fbs.find((r) => r.min === 100 && r.max === 300);
 
         return {
             fbo: fboRange?.rate ?? 0,

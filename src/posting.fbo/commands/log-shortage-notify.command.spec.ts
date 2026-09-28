@@ -7,20 +7,19 @@ describe('LogShortageNotifyCommand', () => {
     const emit = jest.fn();
     const command = new LogShortageNotifyCommand({ logShortage } as any, { emit } as any);
 
-    const ctx = (over: Partial<IFboCreateContext>): IFboCreateContext =>
-        ({
-            service: GoodServiceEnum.WB,
-            posting: { posting_number: '321', products: [] } as any,
-            prims: ['WBFBO'],
-            primLabel: 'WBFBO',
-            buyerId: 1,
-            useMigration: false,
-            setIgkNot1c: false,
-            pickupAfterCreate: true,
-            skipIfNoPodbor: true,
-            transaction: null,
-            ...over,
-        });
+    const ctx = (over: Partial<IFboCreateContext>): IFboCreateContext => ({
+        service: GoodServiceEnum.WB,
+        posting: { posting_number: '321', products: [] } as any,
+        prims: ['WBFBO'],
+        primLabel: 'WBFBO',
+        buyerId: 1,
+        useMigration: false,
+        setIgkNot1c: false,
+        pickupAfterCreate: true,
+        skipIfNoPodbor: true,
+        transaction: null,
+        ...over,
+    });
 
     beforeEach(() => {
         logShortage.mockReset();
@@ -36,7 +35,13 @@ describe('LogShortageNotifyCommand', () => {
 
     it('есть недобор → журнал по каждой позиции + одно письмо, счёт НЕ трогаем', async () => {
         const res = await command.execute(
-            ctx({ invoice: { id: 999 } as any, shortages: [{ goodscode: '444', quantity: 1 }, { goodscode: '555', quantity: 2 }] }),
+            ctx({
+                invoice: { id: 999 } as any,
+                shortages: [
+                    { goodscode: '444', quantity: 1 },
+                    { goodscode: '555', quantity: 2 },
+                ],
+            }),
         );
 
         expect(logShortage).toHaveBeenCalledTimes(2);

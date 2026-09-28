@@ -9,8 +9,8 @@ import {
     Post,
     Query,
     UploadedFile,
-    UseInterceptors
-} from "@nestjs/common";
+    UseInterceptors,
+} from '@nestjs/common';
 import { OrderService } from './order.service';
 import { ResultDto } from '../helpers/dto/result.dto';
 import { TransactionFilterDate, TransactionFilterDto } from '../posting/dto/transaction.filter.dto';
@@ -25,14 +25,14 @@ import {
     ApiParam,
     ApiProduces,
     ApiTags,
-    getSchemaPath
-} from "@nestjs/swagger";
+    getSchemaPath,
+} from '@nestjs/swagger';
 import { YandexOrderService } from '../yandex.order/yandex.order.service';
 import { WbOrderService } from '../wb.order/wb.order.service';
 import { PostingFboService } from '../posting.fbo/posting.fbo.service';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { GoodServiceEnum } from "../good/good.service.enum";
-import { PostingDto } from "../posting/dto/posting.dto";
+import { GoodServiceEnum } from '../good/good.service.enum';
+import { PostingDto } from '../posting/dto/posting.dto';
 
 @ApiTags('order')
 @Controller('order')
@@ -136,17 +136,12 @@ export class OrderController {
         description: 'Накладная найдена по стикеру WB',
         type: InvoiceDto,
         schema: {
-            oneOf: [
-                { $ref: getSchemaPath(InvoiceDto) },
-                { type: 'null' },
-            ],
+            oneOf: [{ $ref: getSchemaPath(InvoiceDto) }, { type: 'null' }],
         },
     })
     @ApiOperation({ summary: 'Найти накладную по стикеру Wildberries' })
     @Get('wb-invoice')
-    async getWbInvoiceBySticker(
-        @Query() query: WbInvoiceQueryDto,
-    ): Promise<InvoiceDto | null> {
+    async getWbInvoiceBySticker(@Query() query: WbInvoiceQueryDto): Promise<InvoiceDto | null> {
         return this.wbOrder.getInvoiceBySticker(query);
     }
 
@@ -154,17 +149,12 @@ export class OrderController {
         description: 'Накладная найдена по SRID WB',
         type: InvoiceDto,
         schema: {
-            oneOf: [
-                { $ref: getSchemaPath(InvoiceDto) },
-                { type: 'null' },
-            ],
+            oneOf: [{ $ref: getSchemaPath(InvoiceDto) }, { type: 'null' }],
         },
     })
     @ApiOperation({ summary: 'Найти накладную по SRID Wildberries' })
     @Get('wb-invoice-by-srid')
-    async getWbInvoiceBySrid(
-        @Query() query: WbInvoiceSridQueryDto,
-    ): Promise<InvoiceDto | null> {
+    async getWbInvoiceBySrid(@Query() query: WbInvoiceSridQueryDto): Promise<InvoiceDto | null> {
         return this.wbOrder.getInvoiceBySrid(query);
     }
 
@@ -174,7 +164,9 @@ export class OrderController {
         isArray: true, // указывает, что возвращается массив объектов
     })
     @Get('awaiting-packaging/:service')
-    async getAwaitingPackaging(@Param('service', new ParseEnumPipe(GoodServiceEnum)) service: GoodServiceEnum): Promise<PostingDto[]> {
+    async getAwaitingPackaging(
+        @Param('service', new ParseEnumPipe(GoodServiceEnum)) service: GoodServiceEnum,
+    ): Promise<PostingDto[]> {
         return this.orderService.getServiceByName(service).listAwaitingPackaging();
     }
 
@@ -190,15 +182,10 @@ export class OrderController {
         description: 'Накладная найдена',
         type: InvoiceDto,
         schema: {
-            oneOf: [
-                { $ref: getSchemaPath(InvoiceDto) },
-                { type: 'null' },
-            ],
+            oneOf: [{ $ref: getSchemaPath(InvoiceDto) }, { type: 'null' }],
         },
     })
-    async getInvoiceByWbClaimId(
-        @Param('claimId', ParseUUIDPipe) claimId: string,
-    ): Promise<InvoiceDto | null> {
+    async getInvoiceByWbClaimId(@Param('claimId', ParseUUIDPipe) claimId: string): Promise<InvoiceDto | null> {
         return this.orderService.getInvoiceByClaimId(claimId);
     }
 
@@ -225,7 +212,7 @@ export class OrderController {
     })
     async getByPostingNumber(
         @Param('buyerId', ParseIntPipe) buyerId: number,
-        @Param('postingNumber') postingNumber: string
+        @Param('postingNumber') postingNumber: string,
     ): Promise<PostingDto | null> {
         return this.orderService.getByPostingNumber(postingNumber, buyerId);
     }
@@ -246,9 +233,7 @@ export class OrderController {
             ],
         },
     })
-    async getByFboNumber(
-        @Param('fboNumber') fboNumber: string
-    ): Promise<PostingDto | null> {
+    async getByFboNumber(@Param('fboNumber') fboNumber: string): Promise<PostingDto | null> {
         return this.orderService.getByFboNumber(fboNumber);
     }
 }

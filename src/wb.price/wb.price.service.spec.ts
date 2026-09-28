@@ -182,27 +182,48 @@ describe('WbPriceService', () => {
         });
 
         it('заменяет НДС в существующей характеристике — через общий писатель с меткой vat', async () => {
-            cards['TEST-001'] = { vendorCode: 'TEST-001', nmID: 12345, characteristics: [{ id: 15001405, value: ['10'] }, { id: 999, value: ['other'] }] };
+            cards['TEST-001'] = {
+                vendorCode: 'TEST-001',
+                nmID: 12345,
+                characteristics: [
+                    { id: 15001405, value: ['10'] },
+                    { id: 999, value: ['other'] },
+                ],
+            };
 
             const result = await service.updateVat(['TEST-001'], 20);
 
             expect(write.mock.calls[0][0]).toBe('vat');
-            expect(edited['TEST-001'].characteristics).toEqual([{ id: 15001405, value: ['20'] }, { id: 999, value: ['other'] }]);
+            expect(edited['TEST-001'].characteristics).toEqual([
+                { id: 15001405, value: ['20'] },
+                { id: 999, value: ['other'] },
+            ]);
             expect(result).toEqual([{ offer: 'TEST-001' }]);
             expect(updateCards).not.toHaveBeenCalled(); // напрямую в ВБ больше не пишет
             expect(cards['TEST-001'].characteristics[0].value).toEqual(['10']); // кэш не правится на месте
         });
 
         it('добавляет характеристику НДС, если её нет', async () => {
-            cards['TEST-002'] = { vendorCode: 'TEST-002', nmID: 12346, characteristics: [{ id: 999, value: ['other'] }] };
+            cards['TEST-002'] = {
+                vendorCode: 'TEST-002',
+                nmID: 12346,
+                characteristics: [{ id: 999, value: ['other'] }],
+            };
 
             await service.updateVat(['TEST-002'], 20);
 
-            expect(edited['TEST-002'].characteristics).toEqual([{ id: 999, value: ['other'] }, { id: 15001405, value: ['20'] }]);
+            expect(edited['TEST-002'].characteristics).toEqual([
+                { id: 999, value: ['other'] },
+                { id: 15001405, value: ['20'] },
+            ]);
         });
 
         it('несколько карточек — одной записью', async () => {
-            cards['TEST-001'] = { vendorCode: 'TEST-001', nmID: 12345, characteristics: [{ id: 15001405, value: ['10'] }] };
+            cards['TEST-001'] = {
+                vendorCode: 'TEST-001',
+                nmID: 12345,
+                characteristics: [{ id: 15001405, value: ['10'] }],
+            };
             cards['TEST-002'] = { vendorCode: 'TEST-002', nmID: 12346, characteristics: [] };
 
             await service.updateVat(['TEST-001', 'TEST-002'], 20);
@@ -213,7 +234,11 @@ describe('WbPriceService', () => {
         });
 
         it('«Без НДС»', async () => {
-            cards['TEST-003'] = { vendorCode: 'TEST-003', nmID: 12347, characteristics: [{ id: 15001405, value: ['20'] }] };
+            cards['TEST-003'] = {
+                vendorCode: 'TEST-003',
+                nmID: 12347,
+                characteristics: [{ id: 15001405, value: ['20'] }],
+            };
 
             await service.updateVat(['TEST-003'], -1);
 
@@ -231,8 +256,7 @@ describe('WbPriceService', () => {
             });
 
         // Что реально ушло в upload/task.
-        const uploadPayload = () =>
-            method.mock.calls.find((c) => String(c[0]).includes('upload/task'))?.[2]?.data;
+        const uploadPayload = () => method.mock.calls.find((c) => String(c[0]).includes('upload/task'))?.[2]?.data;
 
         it('setMinPrices: floor — цена НЕ падает ниже min_price', async () => {
             getWbData.mockResolvedValueOnce([{ id: 'A', minPrice: 94.5, commission: 0, tariff: 0 }]);

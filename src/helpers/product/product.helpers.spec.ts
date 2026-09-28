@@ -1,4 +1,16 @@
-import { goodCode, goodQuantityCoeff, productQuantity, isSkuMatch, getPieces, StringToIOfferIdableAdapter, skusToGoodIds, chrtIdVendorCodePairs, groupByGoodCode, minPackOffer, barcodeKey } from './product.helpers';
+import {
+    goodCode,
+    goodQuantityCoeff,
+    productQuantity,
+    isSkuMatch,
+    getPieces,
+    StringToIOfferIdableAdapter,
+    skusToGoodIds,
+    chrtIdVendorCodePairs,
+    groupByGoodCode,
+    minPackOffer,
+    barcodeKey,
+} from './product.helpers';
 
 describe('Product helpers', () => {
     it('goodCode', () => {

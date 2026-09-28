@@ -1,5 +1,5 @@
 import { IsOptional, IsNotEmpty, IsDateString } from 'class-validator';
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiProperty } from '@nestjs/swagger';
 export class InvoiceUpdateDto {
     @ApiProperty({
         description: 'Номер заказа в Маркетплейсе(Примечание в Счете)',

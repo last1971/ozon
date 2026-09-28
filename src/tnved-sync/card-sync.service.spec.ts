@@ -70,9 +70,21 @@ describe('CardSyncService', () => {
     });
 
     beforeEach(async () => {
-        [query, commit, rollback, list, getProductAttributes, searchCategoryAttributeValues, updateAttributes, evictProductAttributes, infoList, addBarcodes, progressLoad, progressSave, progressClear].forEach(
-            (m) => m.mockReset(),
-        );
+        [
+            query,
+            commit,
+            rollback,
+            list,
+            getProductAttributes,
+            searchCategoryAttributeValues,
+            updateAttributes,
+            evictProductAttributes,
+            infoList,
+            addBarcodes,
+            progressLoad,
+            progressSave,
+            progressClear,
+        ].forEach((m) => m.mockReset());
         progressLoad.mockResolvedValue(new Set<string>());
         searchCategoryAttributeValues.mockResolvedValue(MARK_VALUES);
         const moduleRef: TestingModule = await Test.createTestingModule({
@@ -93,10 +105,16 @@ describe('CardSyncService', () => {
                 JobService,
                 { provide: WbTnvedService, useValue: {} },
                 { provide: WbGtinService, useValue: {} },
-                { provide: ProcessedCacheService, useValue: { load: progressLoad, save: progressSave, clear: progressClear } },
+                {
+                    provide: ProcessedCacheService,
+                    useValue: { load: progressLoad, save: progressSave, clear: progressClear },
+                },
                 { provide: FIREBIRD, useValue: pool },
                 { provide: ProductService, useValue: productService },
-                { provide: ConfigService, useValue: { get: (k: string, def: any) => (k === 'SERVICES' ? ['ozon'] : def) } },
+                {
+                    provide: ConfigService,
+                    useValue: { get: (k: string, def: any) => (k === 'SERVICES' ? ['ozon'] : def) },
+                },
             ],
         }).compile();
         service = moduleRef.get(CardSyncService);
@@ -161,7 +179,12 @@ describe('CardSyncService', () => {
 
             const rep = await service.sync({ market: GoodServiceEnum.OZON, apply: false });
 
-            expect(rep.toFix[0]).toMatchObject({ offer: '568651', current: '8504408500', base: '8504409100', dictValueId: MARK_ID });
+            expect(rep.toFix[0]).toMatchObject({
+                offer: '568651',
+                current: '8504408500',
+                base: '8504409100',
+                dictValueId: MARK_ID,
+            });
             expect(updateAttributes).not.toHaveBeenCalled();
         });
 
@@ -278,8 +301,13 @@ describe('CardSyncService', () => {
 
     describe('«где у нас пусто» (Озон)', () => {
         it('каталог минус товары с ТН ВЭД: без кода → noTnved, чужой → notInBase, названия из info/list', async () => {
-            list.mockResolvedValue({ result: { items: [{ offer_id: '100-10' }, { offer_id: '565831' }, { offer_id: 'ABC' }], last_id: '' } });
-            infoList.mockResolvedValue([{ sku: '100-10', remark: 'без кода' }, { sku: 'ABC', remark: 'чужой' }]);
+            list.mockResolvedValue({
+                result: { items: [{ offer_id: '100-10' }, { offer_id: '565831' }, { offer_id: 'ABC' }], last_id: '' },
+            });
+            infoList.mockResolvedValue([
+                { sku: '100-10', remark: 'без кода' },
+                { sku: 'ABC', remark: 'чужой' },
+            ]);
             query
                 .mockResolvedValueOnce([{ GOODSCODE: 100 }, { GOODSCODE: 565831 }])
                 .mockResolvedValueOnce([{ X: 1 }])
@@ -379,18 +407,27 @@ describe('CardSyncService', () => {
     });
 
     describe('режим GTIN (Озон) — та же цепочка, своя база и площадка', () => {
-        const gtinRows = (rows: [number, string][]) => query.mockResolvedValueOnce(rows.map(([GOODSCODE, GTIN]) => ({ GOODSCODE, GTIN })));
+        const gtinRows = (rows: [number, string][]) =>
+            query.mockResolvedValueOnce(rows.map(([GOODSCODE, GTIN]) => ({ GOODSCODE, GTIN })));
         // карточки Озона: артикул → [sku, баркоды]
         const ozonCards = (cards: Record<string, [number, string[]]>) => {
-            list.mockResolvedValue({ result: { items: Object.keys(cards).map((o) => ({ offer_id: o })), last_id: '' } });
+            list.mockResolvedValue({
+                result: { items: Object.keys(cards).map((o) => ({ offer_id: o })), last_id: '' },
+            });
             infoList.mockImplementation((offers: string[]) =>
-                Promise.resolve(offers.map((o) => ({ sku: o, marketSku: cards[o][0], barcodes: cards[o][1], remark: `PROD-${o}` }))),
+                Promise.resolve(
+                    offers.map((o) => ({ sku: o, marketSku: cards[o][0], barcodes: cards[o][1], remark: `PROD-${o}` })),
+                ),
             );
         };
         const gtin = (extra = {}) => ({ mode: CardSyncMode.GTIN, market: GoodServiceEnum.OZON, ...extra });
 
         it('dry-run: все GTIN — на минимальную фасовку; -N не трогаем; GTIN в другой длине записи = уже стоит', async () => {
-            gtinRows([[569593, '04600000000011'], [569593, '04600000000028'], [7, '0400001759547']]);
+            gtinRows([
+                [569593, '04600000000011'],
+                [569593, '04600000000028'],
+                [7, '0400001759547'],
+            ]);
             ozonCards({
                 '569593-10': [3, ['OZN3']],
                 '569593': [1, ['OZN1']],
@@ -404,13 +441,21 @@ describe('CardSyncService', () => {
             expect(rep.checkedOffers).toBe(2); // по одной карточке на товар
             expect(rep.alreadyOk).toBe(1);
             expect(rep.toFix).toHaveLength(1);
-            expect(rep.toFix[0]).toMatchObject({ offer: '569593', add: ['04600000000011', '04600000000028'], marketId: 1, current: 'OZN1' });
+            expect(rep.toFix[0]).toMatchObject({
+                offer: '569593',
+                add: ['04600000000011', '04600000000028'],
+                marketId: 1,
+                current: 'OZN1',
+            });
             expect(addBarcodes).not.toHaveBeenCalled();
             expect(updateAttributes).not.toHaveBeenCalled();
         });
 
         it('apply: /v1/barcode/add по SKU, отметка прогресса «товар:набор GTIN» в наборе gtin', async () => {
-            gtinRows([[569593, '04600000000011'], [569593, '04600000000028']]);
+            gtinRows([
+                [569593, '04600000000011'],
+                [569593, '04600000000028'],
+            ]);
             ozonCards({ '569593': [1, ['OZN1']], '569593-5': [2, ['OZN2']] });
             addBarcodes.mockResolvedValue({ errors: [] });
 
@@ -430,7 +475,16 @@ describe('CardSyncService', () => {
         it('apply: построчный отказ Озона → error у карточки, товар не помечается', async () => {
             gtinRows([[569593, '04600000000011']]);
             ozonCards({ '569593': [1, []] });
-            addBarcodes.mockResolvedValue({ errors: [{ code: 'BARCODE_ALREADY_EXISTS', error: 'уже у другого товара', barcode: '04600000000011', sku: 1 }] });
+            addBarcodes.mockResolvedValue({
+                errors: [
+                    {
+                        code: 'BARCODE_ALREADY_EXISTS',
+                        error: 'уже у другого товара',
+                        barcode: '04600000000011',
+                        sku: 1,
+                    },
+                ],
+            });
 
             const rep = await service.sync(gtin({ apply: true }));
 

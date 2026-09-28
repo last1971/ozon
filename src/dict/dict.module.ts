@@ -17,7 +17,15 @@ import { BuildTnvedMapCommand } from './commands/build-tnved-map.command';
 @Module({
     imports: [FirebirdModule, JobModule, TnvedSyncModule, WbPriceModule, OzonCategoryModule, ProductModule],
     controllers: [DictController],
-    providers: [DictService, TnvedMapService, WbDictService, OzonDictService, LoadCategoriesCommand, LoadTnvedCommand, BuildTnvedMapCommand],
+    providers: [
+        DictService,
+        TnvedMapService,
+        WbDictService,
+        OzonDictService,
+        LoadCategoriesCommand,
+        LoadTnvedCommand,
+        BuildTnvedMapCommand,
+    ],
     exports: [DictService],
 })
 export class DictModule {}

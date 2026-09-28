@@ -19,10 +19,7 @@ describe('AIProductService', () => {
         });
 
         const module: TestingModule = await Test.createTestingModule({
-            providers: [
-                AIProductService,
-                { provide: AIService, useValue: mockAIService },
-            ],
+            providers: [AIProductService, { provide: AIService, useValue: mockAIService }],
         }).compile();
 
         service = module.get<AIProductService>(AIProductService);
@@ -88,9 +85,7 @@ describe('AIProductService', () => {
             const result = await service.generateAttributes({
                 type_id: 12345,
                 product_data: { name: 'Телевизор Samsung', brand: 'Samsung' },
-                required_attributes: [
-                    { id: 123, name: 'Бренд', type: 'string' },
-                ],
+                required_attributes: [{ id: 123, name: 'Бренд', type: 'string' }],
             });
 
             expect(result.attributes).toHaveLength(1);
@@ -117,7 +112,8 @@ describe('AIProductService', () => {
 
         it('should extract JSON from text with surrounding content', async () => {
             mockAIService.chat.mockResolvedValue({
-                content: 'Here are the attributes:\n[{"id": 456, "complex_id": 0, "values": [{"value": "test"}]}]\nDone!',
+                content:
+                    'Here are the attributes:\n[{"id": 456, "complex_id": 0, "values": [{"value": "test"}]}]\nDone!',
                 model: 'claude-sonnet-4-20250514',
                 usage: { input_tokens: 500, output_tokens: 100 },
             });

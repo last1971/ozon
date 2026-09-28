@@ -52,9 +52,7 @@ export class YandexProvider implements AIProvider {
                 .pipe(map((res) => this.mapResponse(res.data)))
                 .pipe(
                     catchError(async (error: AxiosError) => {
-                        this.logger.error(
-                            `Yandex API Error: ${error.message} ${JSON.stringify(error.response?.data)}`,
-                        );
+                        this.logger.error(`Yandex API Error: ${error.message} ${JSON.stringify(error.response?.data)}`);
                         throw error;
                     }),
                 ),
@@ -135,7 +133,7 @@ export class YandexProvider implements AIProvider {
                 name: 'YandexGPT Lite',
                 provider: AIProviderName.YANDEX,
                 maxTokens: 8192,
-                inputCostPer1M: 120,  // руб
+                inputCostPer1M: 120, // руб
                 outputCostPer1M: 120,
             },
             {

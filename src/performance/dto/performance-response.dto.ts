@@ -9,7 +9,7 @@ export class PerformanceRowDto {
     clicks: string;
 
     @IsNumber()
-    @Transform(({ obj, key}) => {
+    @Transform(({ obj, key }) => {
         const value = obj[key];
         return parseFloat(value.replace(',', '.'));
     })
@@ -17,7 +17,7 @@ export class PerformanceRowDto {
     moneySpent: number;
 
     @IsNumber()
-    @Transform(({ obj, key}) => {
+    @Transform(({ obj, key }) => {
         const value = obj[key];
         return parseFloat(value.replace(',', '.'));
     })
@@ -31,4 +31,4 @@ export class PerformanceRowDto {
 export class PerformanceResponseDto {
     @Type(() => PerformanceRowDto)
     rows: PerformanceRowDto[];
-} 
+}

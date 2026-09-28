@@ -55,27 +55,29 @@ export class AnthropicProvider implements AIProvider {
                 ? [
                       {
                           type: 'text',
-                          text: typeof systemMessage.content === 'string'
-                              ? systemMessage.content
-                              : systemMessage.content[0]?.text,
+                          text:
+                              typeof systemMessage.content === 'string'
+                                  ? systemMessage.content
+                                  : systemMessage.content[0]?.text,
                           ...(systemMessage.cache_control && { cache_control: systemMessage.cache_control }),
                       },
                   ]
                 : options?.system,
             messages: chatMessages.map((m) => ({
                 role: m.role,
-                content: typeof m.content === 'string'
-                    ? m.content
-                    : m.content.map((part) => ({
-                          type: part.type,
-                          ...(part.text && { text: part.text }),
-                          ...(part.image_url && {
-                              source: {
-                                  type: 'url',
-                                  url: part.image_url.url
-                              }
-                          }),
-                      })),
+                content:
+                    typeof m.content === 'string'
+                        ? m.content
+                        : m.content.map((part) => ({
+                              type: part.type,
+                              ...(part.text && { text: part.text }),
+                              ...(part.image_url && {
+                                  source: {
+                                      type: 'url',
+                                      url: part.image_url.url,
+                                  },
+                              }),
+                          })),
                 ...(m.cache_control && { cache_control: m.cache_control }),
             })),
         };

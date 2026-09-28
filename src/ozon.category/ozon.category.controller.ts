@@ -63,10 +63,7 @@ export class OzonCategoryController {
     @ApiOperation({ summary: 'Поиск похожих категорий по тексту (HNSW)' })
     @ApiQuery({ name: 'text', type: String, description: 'Текст для поиска' })
     @ApiQuery({ name: 'limit', type: Number, required: false, description: 'Количество результатов (по умолчанию 10)' })
-    async searchSimilar(
-        @Query('text') text: string,
-        @Query('limit') limit?: number,
-    ): Promise<SearchResult[]> {
+    async searchSimilar(@Query('text') text: string, @Query('limit') limit?: number): Promise<SearchResult[]> {
         return this.ozonCategoryService.searchSimilar(text, limit || 10);
     }
 
@@ -103,7 +100,9 @@ export class OzonCategoryController {
     @Get('commissions')
     @ApiOperation({ summary: 'Получить комиссии по type_id' })
     @ApiQuery({ name: 'typeId', type: Number, description: 'ID типа товара' })
-    async getCommissions(@Query('typeId') typeId: number): Promise<{ fbo: CommissionRange[]; fbs: CommissionRange[] } | null> {
+    async getCommissions(
+        @Query('typeId') typeId: number,
+    ): Promise<{ fbo: CommissionRange[]; fbs: CommissionRange[] } | null> {
         return this.ozonCategoryService.getCommissions(Number(typeId));
     }
 
@@ -170,10 +169,7 @@ export class OzonCategoryController {
     @ApiOperation({ summary: 'Поиск WB категории по тексту (HNSW)' })
     @ApiQuery({ name: 'text', type: String, description: 'Текст для поиска' })
     @ApiQuery({ name: 'limit', type: Number, required: false, description: 'Количество результатов (по умолчанию 5)' })
-    async searchWbCategory(
-        @Query('text') text: string,
-        @Query('limit') limit?: number,
-    ) {
+    async searchWbCategory(@Query('text') text: string, @Query('limit') limit?: number) {
         return this.ozonCategoryService.searchWbCategory(text, limit || 5);
     }
 
@@ -199,10 +195,7 @@ export class OzonCategoryController {
     @ApiOperation({ summary: 'Поиск WB категории по вектору Ozon type_id' })
     @ApiQuery({ name: 'type_id', type: Number, description: 'Ozon type_id' })
     @ApiQuery({ name: 'limit', type: Number, required: false, description: 'Количество результатов (по умолчанию 5)' })
-    async searchWbByOzonType(
-        @Query('type_id') typeId: number,
-        @Query('limit') limit?: number,
-    ) {
+    async searchWbByOzonType(@Query('type_id') typeId: number, @Query('limit') limit?: number) {
         return this.ozonCategoryService.searchWbByOzonType(Number(typeId), limit ? Number(limit) : 5);
     }
 
@@ -210,17 +203,14 @@ export class OzonCategoryController {
     @ApiOperation({ summary: 'Сократить название товара до указанной длины через AI' })
     @ApiQuery({ name: 'title', type: String, description: 'Название товара' })
     @ApiQuery({ name: 'maxLength', type: Number, required: false, description: 'Макс. длина (по умолчанию 60)' })
-    async shortenTitle(
-        @Query('title') title: string,
-        @Query('maxLength') maxLength?: number,
-    ) {
+    async shortenTitle(@Query('title') title: string, @Query('maxLength') maxLength?: number) {
         return this.aiService.shortenTitle(title, maxLength ? Number(maxLength) : 60);
     }
 
     @Get('ai-providers')
     @ApiOperation({ summary: 'Список AI провайдеров и их моделей' })
     getAiProviders() {
-        return Object.values(AIProviderName).map(name => ({
+        return Object.values(AIProviderName).map((name) => ({
             name,
             models: this.aiService.getModels(name),
         }));

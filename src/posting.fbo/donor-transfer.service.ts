@@ -54,7 +54,12 @@ export class DonorTransferService {
         private readonly eventEmitter: EventEmitter2,
     ) {}
 
-    async transfer(donor: DonorLineRef, take: number, target: TransferTarget, t: FirebirdTransaction): Promise<TransferResult> {
+    async transfer(
+        donor: DonorLineRef,
+        take: number,
+        target: TransferTarget,
+        t: FirebirdTransaction,
+    ): Promise<TransferResult> {
         const { goodscode: gc, nominal } = target;
         const s_s = this.invoiceService.getStorageSS();
         let rest = take;
@@ -65,28 +70,53 @@ export class DonorTransferService {
         const codes = await this.invoiceService.findLiveMigratableCodes(donor.realpricecode, nominal, t);
         for (const code of codes.slice(0, Math.floor(take / nominal))) {
             try {
-                await this.invoiceService.migrateMarkCode(code.ki, donor.realpricecode, target.realpricecode, gc, s_s, t);
+                await this.invoiceService.migrateMarkCode(
+                    code.ki,
+                    donor.realpricecode,
+                    target.realpricecode,
+                    gc,
+                    s_s,
+                    t,
+                );
                 migrated.push(code.ki);
             } catch (e) {
                 // Код застрял (гонка, параллельная ручная операция, кривые данные): его штуки
                 // остаются на доноре вместе с ним, иначе код повисает без товара и партийный учёт задваивается.
                 rest -= nominal;
                 stuck++;
-                this.logger.warn(`FBO migration: КМ ${code.ki} не переехал (RPC ${donor.realpricecode} -> ${target.realpricecode}): ${e.message}`);
+                this.logger.warn(
+                    `FBO migration: КМ ${code.ki} не переехал (RPC ${donor.realpricecode} -> ${target.realpricecode}): ${e.message}`,
+                );
             }
         }
         if (rest <= 0) return { moved: 0, codes: migrated, stuck };
 
         // 2) Подборка: донор минус, приёмник плюс, атомарной SP.
         try {
-            await this.invoiceService.migratePodbpos(donor.podbposcode, target.scode, target.realpricecode, gc, rest, t);
+            await this.invoiceService.migratePodbpos(
+                donor.podbposcode,
+                target.scode,
+                target.realpricecode,
+                gc,
+                rest,
+                t,
+            );
         } catch (e) {
             // Перенос штук не прошёл (гонка/партийный учёт) — возвращаем уже переехавшие коды назад.
-            this.logger.warn(`FBO migration: перенос подборки не прошёл (PODBPOS ${donor.podbposcode}, take=${rest}): ${e.message}`);
+            this.logger.warn(
+                `FBO migration: перенос подборки не прошёл (PODBPOS ${donor.podbposcode}, take=${rest}): ${e.message}`,
+            );
             const orphaned: string[] = [];
             for (const ki of migrated) {
                 try {
-                    await this.invoiceService.migrateMarkCode(ki, target.realpricecode, donor.realpricecode, gc, s_s, t);
+                    await this.invoiceService.migrateMarkCode(
+                        ki,
+                        target.realpricecode,
+                        donor.realpricecode,
+                        gc,
+                        s_s,
+                        t,
+                    );
                 } catch (e2) {
                     orphaned.push(ki);
                     this.eventEmitter.emit(

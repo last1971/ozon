@@ -217,7 +217,9 @@ export class MpDecisionRunnerService {
             if (this.returnsEnabled()) {
                 for (const code of decision.layer2) {
                     if (code.actions.includes('unretire')) {
-                        await act(`возврат в оборот ${code.ki}`, () => this.invoiceService.markCodeFbsUnsold(code.ki, t));
+                        await act(`возврат в оборот ${code.ki}`, () =>
+                            this.invoiceService.markCodeFbsUnsold(code.ki, t),
+                        );
                     }
                 }
                 if (decision.layer1 === 'make-donor') {
@@ -229,7 +231,9 @@ export class MpDecisionRunnerService {
                 }
                 for (const code of decision.layer2) {
                     if (code.actions.includes('return-to-stock')) {
-                        await act(`снятие с отгрузки ${code.ki}`, () => this.invoiceService.markCodeReturnToStock(code.ki, ss, t));
+                        await act(`снятие с отгрузки ${code.ki}`, () =>
+                            this.invoiceService.markCodeReturnToStock(code.ki, ss, t),
+                        );
                     }
                 }
             }
@@ -274,7 +278,11 @@ export class MpDecisionRunnerService {
         );
         if (!loud.length && !skipped) return;
 
-        this.eventEmitter.emit('error.message', `Решающая таблица (${cycle}): ${loud.length}`, this.buildLetter(loud, skipped));
+        this.eventEmitter.emit(
+            'error.message',
+            `Решающая таблица (${cycle}): ${loud.length}`,
+            this.buildLetter(loud, skipped),
+        );
     }
 
     private countersToString(): string {
@@ -425,7 +433,8 @@ export class MpDecisionRunnerService {
         const { input } = decision;
         const lines = [`${input.postingNumber} — ${this.branchRu(decision.branch)}`];
         if (input.invoice) {
-            const status = MpDecisionRunnerService.S_STATUS_RU[input.invoice.status] ?? `STATUS=${input.invoice.status}`;
+            const status =
+                MpDecisionRunnerService.S_STATUS_RU[input.invoice.status] ?? `STATUS=${input.invoice.status}`;
             lines.push(
                 `  счёт №${input.invoice.number ?? input.invoice.id} — ${status}` +
                     `${input.invoice.mark ? `, пометка «${input.invoice.mark.trim()}»` : ''}`,

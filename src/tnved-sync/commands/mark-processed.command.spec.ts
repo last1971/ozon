@@ -7,7 +7,15 @@ describe('MarkProcessedCommand', () => {
     const save = jest.fn();
     const command = new MarkProcessedCommand({ save } as any);
     const good = (goodscode: string) => ({ goodscode, tnved: 'x', markRequired: false });
-    const item = (offer: string, extra = {}) => ({ offer, goodscode: offer, current: null, base: 'x', markRequired: false, ok: false, ...extra });
+    const item = (offer: string, extra = {}) => ({
+        offer,
+        goodscode: offer,
+        current: null,
+        base: 'x',
+        markRequired: false,
+        ok: false,
+        ...extra,
+    });
     // all: 10 ок, 11 записан, 12 спорный, 13 нет карточки, 14 записан с ошибкой, 20 не в этом прогоне
     const ctx = (apply: boolean): ITnvedProcessingContext => ({
         progress: emptyProgress(),
@@ -20,7 +28,14 @@ describe('MarkProcessedCommand', () => {
         items: [item('10', { ok: true }), item('11'), item('12', { ambiguousReason: 'спорно' }), item('14')],
         notFound: ['13'],
         report: {
-            apply, checkedGoods: 5, checkedOffers: 4, alreadyOk: 1, notFoundOnOzon: ['13'], ambiguous: [], skippedProcessed: 0, remaining: 0,
+            apply,
+            checkedGoods: 5,
+            checkedOffers: 4,
+            alreadyOk: 1,
+            notFoundOnOzon: ['13'],
+            ambiguous: [],
+            skippedProcessed: 0,
+            remaining: 0,
             toFix: [item('11', { taskId: 1 }), item('14', { error: 'отказ' })],
         },
     });

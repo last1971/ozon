@@ -3,9 +3,33 @@ import { GoodServiceEnum } from '../good/good.service.enum';
 
 describe('tnved-map', () => {
     const rows = [
-        { id: 4536, name: 'Реле напряжения', parentName: 'Электрика', commission: 35, tnved: [{ tnved: '8536411000', isKiz: false }, { tnved: '8504408300', isKiz: true }] },
-        { id: 7422, name: 'Радиодетали', parentName: 'Электрика', commission: 25, tnved: [{ tnved: '8504408300', isKiz: true }, { tnved: '8541210000', isKiz: false }] },
-        { id: 8648, name: 'Реле для мототехники', parentName: 'Мототовары', commission: null, tnved: [{ tnved: '8536490000', isKiz: false }] },
+        {
+            id: 4536,
+            name: 'Реле напряжения',
+            parentName: 'Электрика',
+            commission: 35,
+            tnved: [
+                { tnved: '8536411000', isKiz: false },
+                { tnved: '8504408300', isKiz: true },
+            ],
+        },
+        {
+            id: 7422,
+            name: 'Радиодетали',
+            parentName: 'Электрика',
+            commission: 25,
+            tnved: [
+                { tnved: '8504408300', isKiz: true },
+                { tnved: '8541210000', isKiz: false },
+            ],
+        },
+        {
+            id: 8648,
+            name: 'Реле для мототехники',
+            parentName: 'Мототовары',
+            commission: null,
+            tnved: [{ tnved: '8536490000', isKiz: false }],
+        },
     ];
     const codes = buildTnvedMap(rows);
 
@@ -30,7 +54,10 @@ describe('tnved-map', () => {
 
     it('у предмета видны коды справочника, по которым он попал: один при точном, все с таким началом при поиске по началу', () => {
         const exact = lookupTnved(codes, '8504408300');
-        expect(exact.subjects.map((s) => s.codes)).toEqual([[{ tnved: '8504408300', isKiz: true }], [{ tnved: '8504408300', isKiz: true }]]);
+        expect(exact.subjects.map((s) => s.codes)).toEqual([
+            [{ tnved: '8504408300', isKiz: true }],
+            [{ tnved: '8504408300', isKiz: true }],
+        ]);
 
         const four = lookupTnved(codes, '8536900000');
         expect(four.subjects.find((s) => s.id === 4536).codes).toEqual([{ tnved: '8536411000', isKiz: false }]);

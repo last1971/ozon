@@ -30,7 +30,9 @@ describe('JobService', () => {
     it('стартует сразу, running; после конца — done с результатом и цепочка прошла целиком', async () => {
         const g = gate();
         const state = jobs.run({
-            kind: 'k', params: { a: 1 }, clientId: 'c1',
+            kind: 'k',
+            params: { a: 1 },
+            clientId: 'c1',
             commands: [cmd('one', 'первая', () => g.opened), cmd('two', 'вторая')],
             context: ctx(),
             result: (c) => c.log.join(','),
@@ -51,8 +53,14 @@ describe('JobService', () => {
 
     it('исключение в команде → failed с текстом, процесс не падает, следующая команда не идёт', async () => {
         const state = jobs.run({
-            kind: 'k', params: {},
-            commands: [cmd('boom', 'x', async () => { throw new Error('сломалось'); }), cmd('never')],
+            kind: 'k',
+            params: {},
+            commands: [
+                cmd('boom', 'x', async () => {
+                    throw new Error('сломалось');
+                }),
+                cmd('never'),
+            ],
             context: ctx(),
             result: (c) => c.log,
         });
@@ -85,10 +93,17 @@ describe('JobService', () => {
 
     it('фаза сбрасывает done/total; команда без phase фазу не трогает; счётчики живые', async () => {
         const state = jobs.run({
-            kind: 'k', params: {},
+            kind: 'k',
+            params: {},
             commands: [
-                cmd('a', 'сверка', async (c) => { c.progress.total = 3; c.progress.done = 3; c.progress.counters.ok = 2; }),
-                cmd('b', undefined, async (c) => { c.progress.counters.ok += 1; }),
+                cmd('a', 'сверка', async (c) => {
+                    c.progress.total = 3;
+                    c.progress.done = 3;
+                    c.progress.counters.ok = 2;
+                }),
+                cmd('b', undefined, async (c) => {
+                    c.progress.counters.ok += 1;
+                }),
                 cmd('c', 'запись'),
             ],
             context: ctx(),
@@ -105,15 +120,26 @@ describe('JobService', () => {
         await Promise.all([jobs.whenDone(a.id), jobs.whenDone(b.id)]);
 
         expect(jobs.list('x').map((s) => s.id)).toEqual([a.id]);
-        expect(jobs.list().map((s) => s.kind).sort()).toEqual(['x', 'y']);
+        expect(
+            jobs
+                .list()
+                .map((s) => s.kind)
+                .sort(),
+        ).toEqual(['x', 'y']);
         expect(jobs.get(b.id)?.result).toBe(2);
         expect(jobs.get('nope')).toBeNull();
     });
 
     it('команда поставила stopChain → failed с фазой, следующая команда не идёт, result нет', async () => {
         const state = jobs.run({
-            kind: 'k', params: {},
-            commands: [cmd('stop', 'валидация', async (c) => { c.stopChain = true; }), cmd('never')],
+            kind: 'k',
+            params: {},
+            commands: [
+                cmd('stop', 'валидация', async (c) => {
+                    c.stopChain = true;
+                }),
+                cmd('never'),
+            ],
             context: ctx(),
             result: (c) => c.log,
         });
@@ -122,13 +148,20 @@ describe('JobService', () => {
         expect(done.status).toBe('failed');
         expect(done.error).toContain('валидация');
         expect(done.result).toBeUndefined();
-        expect((done.progress as any)).toEqual(expect.objectContaining({ phase: 'валидация' }));
+        expect(done.progress as any).toEqual(expect.objectContaining({ phase: 'валидация' }));
     });
 
     it('cancel: сразу failed «отменена», цепочке поставлен stopChain, вид свободен для нового запуска', async () => {
         const g = gate();
         const c = ctx();
-        const mk = () => jobs.run({ kind: 'k', params: { m: 1 }, commands: [cmd('w', 'ж', () => g.opened), cmd('never')], context: c, result: (x) => x.log });
+        const mk = () =>
+            jobs.run({
+                kind: 'k',
+                params: { m: 1 },
+                commands: [cmd('w', 'ж', () => g.opened), cmd('never')],
+                context: c,
+                result: (x) => x.log,
+            });
 
         const a = mk();
         const cancelled = jobs.cancel(a.id);
@@ -163,7 +196,15 @@ describe('JobService', () => {
     it('таймаут: зависшая задача уходит в failed, stopChain выставлен, та же задача запускается заново', async () => {
         const g = gate();
         const c = ctx();
-        const mk = () => jobs.run({ kind: 'k', params: { t: 1 }, timeoutMs: 20, commands: [cmd('hang', 'ж', () => g.opened)], context: c, result: () => 1 });
+        const mk = () =>
+            jobs.run({
+                kind: 'k',
+                params: { t: 1 },
+                timeoutMs: 20,
+                commands: [cmd('hang', 'ж', () => g.opened)],
+                context: c,
+                result: () => 1,
+            });
 
         const a = mk();
         const done = await jobs.whenDone(a.id);
@@ -176,8 +217,20 @@ describe('JobService', () => {
 
     it('идемпотентность не зависит от порядка ключей params', async () => {
         const g = gate();
-        const a = jobs.run({ kind: 'k', params: { market: 'wb', all: true }, commands: [cmd('w', 'ж', () => g.opened)], context: ctx(), result: () => 1 });
-        const same = jobs.run({ kind: 'k', params: { all: true, market: 'wb' }, commands: [cmd('w')], context: ctx(), result: () => 1 });
+        const a = jobs.run({
+            kind: 'k',
+            params: { market: 'wb', all: true },
+            commands: [cmd('w', 'ж', () => g.opened)],
+            context: ctx(),
+            result: () => 1,
+        });
+        const same = jobs.run({
+            kind: 'k',
+            params: { all: true, market: 'wb' },
+            commands: [cmd('w')],
+            context: ctx(),
+            result: () => 1,
+        });
         expect(same.id).toBe(a.id);
         g.release();
         await jobs.whenDone(a.id);

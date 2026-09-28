@@ -27,19 +27,13 @@ export class HttpWrapperService {
 
             switch (method) {
                 case 'get':
-                    response = await firstValueFrom(
-                        this.httpService.get(url, { params, headers })
-                    );
+                    response = await firstValueFrom(this.httpService.get(url, { params, headers }));
                     break;
                 case 'post':
-                    response = await firstValueFrom(
-                        this.httpService.post(url, data, { headers })
-                    );
+                    response = await firstValueFrom(this.httpService.post(url, data, { headers }));
                     break;
                 case 'put':
-                    response = await firstValueFrom(
-                        this.httpService.put(url, data, { headers })
-                    );
+                    response = await firstValueFrom(this.httpService.put(url, data, { headers }));
                     break;
             }
 
@@ -63,4 +57,4 @@ export class HttpWrapperService {
             };
         }
     }
-} 
+}

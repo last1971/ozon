@@ -61,4 +61,4 @@ export class TransferOutLineDTO {
 
     @Expose({ name: 'MODIFY_ATTR' })
     modifyAttr: string;
-} 
+}

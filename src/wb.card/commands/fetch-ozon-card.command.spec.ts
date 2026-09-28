@@ -35,7 +35,9 @@ describe('FetchOzonCardCommand', () => {
         getProductAttributes.mockResolvedValue(mockOzonCard);
 
         const ctx: IWbCreateCardContext = {
-            productName: '', description: '', subjectId: 0,
+            productName: '',
+            description: '',
+            subjectId: 0,
             offerId: '531557',
         };
         const result = await command.execute(ctx);
@@ -60,7 +62,9 @@ describe('FetchOzonCardCommand', () => {
         getProductAttributes.mockResolvedValue(null);
 
         const ctx: IWbCreateCardContext = {
-            productName: '', description: '', subjectId: 0,
+            productName: '',
+            description: '',
+            subjectId: 0,
             offerId: '999999',
         };
         const result = await command.execute(ctx);
@@ -76,7 +80,9 @@ describe('FetchOzonCardCommand', () => {
         });
 
         const ctx: IWbCreateCardContext = {
-            productName: '', description: '', subjectId: 0,
+            productName: '',
+            description: '',
+            subjectId: 0,
             offerId: '531557',
         };
         const result = await command.execute(ctx);

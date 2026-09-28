@@ -14,11 +14,11 @@ import { ResultDto } from '../helpers/dto/result.dto';
 import { first, min, chunk, find } from 'lodash';
 import { WbTransactionDto } from './dto/wb.transaction.dto';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Cron, Timeout } from "@nestjs/schedule";
+import { Cron, Timeout } from '@nestjs/schedule';
 import { WbFboOrder } from './dto/wb.fbo.order';
 import { ProductPostingDto } from '../product/dto/product.posting.dto';
 import Excel from 'exceljs';
-import { WbOrderStickersDto } from "./dto/wb.order.stickers.dto";
+import { WbOrderStickersDto } from './dto/wb.order.stickers.dto';
 import { CommandChainAsync } from '../helpers/command/command.chain.async';
 import { FetchSalesByStickerCommand } from './commands/fetch-sales-by-sticker.command';
 import { FetchOrdersByStickerCommand } from './commands/fetch-orders-by-sticker.command';
@@ -83,17 +83,14 @@ export class WbOrderService implements IOrderable, IMarkSubmittable, IReturnable
 
     @RateLimit(200)
     async list(dateFrom = 0, initialNext = 0, limit = 1000): Promise<WbOrderDto[]> {
-        const result = await this.api.method(
-            '/api/v3/orders', 'get',
-            { next: initialNext, limit, dateFrom }
-        );
+        const result = await this.api.method('/api/v3/orders', 'get', { next: initialNext, limit, dateFrom });
 
         // Handle 429 rate limit error
         if (result?.error?.status === 429) {
             const retryAfterMs = result.error.retryAfterMs || 60000;
             this.logger.warn(
                 `WB API rate limit hit (429). Blocking list() for ${retryAfterMs}ms. ` +
-                `Will retry on next cron iteration.`
+                    `Will retry on next cron iteration.`,
             );
             setRateLimitBlocked('WbOrderService', 'list', Date.now() + retryAfterMs);
             return []; // Return empty, next cron will retry
@@ -340,7 +337,9 @@ export class WbOrderService implements IOrderable, IMarkSubmittable, IReturnable
 
     /** Заказы окна наблюдения со статусами, нормализованные в события журнала. */
     private async fetchOrderEvents(): Promise<WbOrderEvent[]> {
-        const orders = await this.list(DateTime.now().minus({ days: WbOrderService.OBSERVE_WINDOW_DAYS }).toUnixInteger());
+        const orders = await this.list(
+            DateTime.now().minus({ days: WbOrderService.OBSERVE_WINDOW_DAYS }).toUnixInteger(),
+        );
         const statuses: WbOrderStatusDto[] = (
             await Promise.all(
                 chunk(orders, 1000).map((chunkOrders: WbOrderDto[]) =>
@@ -436,15 +435,11 @@ export class WbOrderService implements IOrderable, IMarkSubmittable, IReturnable
     @RateLimit(60000)
     async getTransactions(data: TransactionFilterDate, rrdid = 0): Promise<Array<WbTransactionDto>> {
         // WB на пустой период отдаёт 204 No Content → axios кладёт пустую строку
-        const res = await this.api.method(
-            '/api/v5/supplier/reportDetailByPeriod',
-            'statistics',
-            {
-                dateFrom: data.from,
-                dateTo: data.to,
-                rrdid,
-            },
-        );
+        const res = await this.api.method('/api/v5/supplier/reportDetailByPeriod', 'statistics', {
+            dateFrom: data.from,
+            dateTo: data.to,
+            rrdid,
+        });
         return Array.isArray(res) ? res : [];
     }
 
@@ -483,13 +478,13 @@ export class WbOrderService implements IOrderable, IMarkSubmittable, IReturnable
             if (commissions.get(key) <= 0) {
                 commissions.delete(key);
             }
-        } 
-        return commissions.size > 0 
-        ? this.invoiceService.updateByCommissions(commissions, null)
-        : {
-            isSuccess: false,
-            message: 'Нет комиссий для обновления',
-        };
+        }
+        return commissions.size > 0
+            ? this.invoiceService.updateByCommissions(commissions, null)
+            : {
+                  isSuccess: false,
+                  message: 'Нет комиссий для обновления',
+              };
     }
 
     @RateLimit(60000)
@@ -569,7 +564,8 @@ export class WbOrderService implements IOrderable, IMarkSubmittable, IReturnable
         const orderDts = claims
             .map(({ claim }) => DateTime.fromISO(claim.order_dt).minus({ day: 1 }))
             .filter((dt) => dt.isValid);
-        const from = min(orderDts.map((dt) => (dt < depthEdge ? depthEdge : dt).toUnixInteger())) ?? depthEdge.toUnixInteger();
+        const from =
+            min(orderDts.map((dt) => (dt < depthEdge ? depthEdge : dt).toUnixInteger())) ?? depthEdge.toUnixInteger();
         const orders = await this.list(from);
         const bySrid = new Map(orders.map((o) => [o.rid, o]));
 
@@ -632,11 +628,9 @@ export class WbOrderService implements IOrderable, IMarkSubmittable, IReturnable
 
     async getOrdersStickers(orders: number[]): Promise<WbOrderStickersDto> {
         try {
-            const res = await this.api.method(
-                '/api/v3/orders/stickers?type=svg&width=58&height=40',
-                'post',
-                { orders },
-            );
+            const res = await this.api.method('/api/v3/orders/stickers?type=svg&width=58&height=40', 'post', {
+                orders,
+            });
             const { stickers } = res;
             return {
                 stickers,
@@ -656,11 +650,11 @@ export class WbOrderService implements IOrderable, IMarkSubmittable, IReturnable
         const { dateFrom, stickerId } = query;
 
         const chain = new CommandChainAsync([
-            this.fetchSalesByStickerCommand,      // Ищем в sales
-            this.fetchOrdersByStickerCommand,     // Ищем в orders (только если не нашли в sales)
-            this.fetchTransactionsCommand,        // Получаем assembly_id по srid
-            this.selectBestIdCommand,             // Выбираем assembly_id или srid
-            this.fetchInvoiceByRemarkCommand,     // Ищем накладную
+            this.fetchSalesByStickerCommand, // Ищем в sales
+            this.fetchOrdersByStickerCommand, // Ищем в orders (только если не нашли в sales)
+            this.fetchTransactionsCommand, // Получаем assembly_id по srid
+            this.selectBestIdCommand, // Выбираем assembly_id или srid
+            this.fetchInvoiceByRemarkCommand, // Ищем накладную
         ]);
 
         const context = await chain.execute({
@@ -736,9 +730,9 @@ export class WbOrderService implements IOrderable, IMarkSubmittable, IReturnable
 
         // Цепочка без поиска в sales/orders, т.к. srid уже известен
         const chain = new CommandChainAsync([
-            this.fetchTransactionsCommand,        // Получаем assembly_id по srid
-            this.selectBestIdCommand,             // Выбираем assembly_id или srid
-            this.fetchInvoiceByRemarkCommand,     // Ищем накладную
+            this.fetchTransactionsCommand, // Получаем assembly_id по srid
+            this.selectBestIdCommand, // Выбираем assembly_id или srid
+            this.fetchInvoiceByRemarkCommand, // Ищем накладную
         ]);
 
         const context = await chain.execute({

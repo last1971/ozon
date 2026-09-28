@@ -36,7 +36,8 @@ function priceRow(p: any) {
 export function problematicPricesMessage(context: { products: any[]; thresholdPercent: number }): NotifyMessage {
     const products = (context?.products ?? []).map(priceRow);
     const lines = products.map(
-        (p) => `${p.mark} ${p.diffLabel}% ${p.offer_id} ${p.name ?? ''}: маркетинг ${p.marketing_seller_price}, мин ${p.min_price}`,
+        (p) =>
+            `${p.mark} ${p.diffLabel}% ${p.offer_id} ${p.name ?? ''}: маркетинг ${p.marketing_seller_price}, мин ${p.min_price}`,
     );
     return {
         subject: 'Поправить цены',

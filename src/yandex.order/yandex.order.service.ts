@@ -117,7 +117,10 @@ export class YandexOrderService implements IOrderable, IMarkSubmittable, OnModul
         return orders;
     }
 
-    async list(subStatus: YandexOrderSubStatus, status: YandexOrderStatus = YandexOrderStatus.PROCESSING): Promise<PostingDto[]> {
+    async list(
+        subStatus: YandexOrderSubStatus,
+        status: YandexOrderStatus = YandexOrderStatus.PROCESSING,
+    ): Promise<PostingDto[]> {
         const data: any = { status };
         if (subStatus) {
             data.substatus = subStatus;
@@ -251,7 +254,11 @@ export class YandexOrderService implements IOrderable, IMarkSubmittable, OnModul
         }
         const order = await this.getOrder(orderId);
         if (!order) {
-            return { ok: false, failed: [{ ki: '*', reason: `заказ ${orderId} у Яндекса не найден` }], failedStep: 'get' };
+            return {
+                ok: false,
+                failed: [{ ki: '*', reason: `заказ ${orderId} у Яндекса не найден` }],
+                failedStep: 'get',
+            };
         }
 
         const attached = await this.invoiceService.getAttachedMarkCodesByScode(invoice.id, null);
@@ -356,7 +363,9 @@ export class YandexOrderService implements IOrderable, IMarkSubmittable, OnModul
                 ok: false,
                 failedStep: 'status',
                 goToOzon: attached.length > 0,
-                failed: [{ ki: '*', reason: `Яндекс status READY_TO_SHIP: ${YandexOrderService.errorText(statusRes)}` }],
+                failed: [
+                    { ki: '*', reason: `Яндекс status READY_TO_SHIP: ${YandexOrderService.errorText(statusRes)}` },
+                ],
             };
         }
         return { ok: true, shipped: true };

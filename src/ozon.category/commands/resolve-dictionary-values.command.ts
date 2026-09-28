@@ -3,7 +3,10 @@ import { ICommandAsync } from '../../interfaces/i.command.acync';
 import { IProductCreateContext } from '../interfaces/product-create.context';
 import { ProductService } from '../../product/product.service';
 
-function findInDictionary(aiValue: string, values: { id: number; value: string }[]): { id: number; value: string } | undefined {
+function findInDictionary(
+    aiValue: string,
+    values: { id: number; value: string }[],
+): { id: number; value: string } | undefined {
     const lower = aiValue.toLowerCase();
     // Точное совпадение
     const exact = values.find((v) => v.value.toLowerCase() === lower);
@@ -46,13 +49,11 @@ export class ResolveDictionaryValuesCommand implements ICommandAsync<IProductCre
 
             // Если это атрибут с большим словарём (values_count > 0) — ищем в кэше
             if (attrMeta?.values_count && attrMeta.values_count > 0) {
-                context.logger?.log(`  Поиск "${aiAttr.value}" в словаре атрибута ${aiAttr.id} (${attrMeta.values_count} значений)`);
-
-                const allValues = await this.productService.getCategoryAttributeValues(
-                    aiAttr.id,
-                    descCatId,
-                    typeId,
+                context.logger?.log(
+                    `  Поиск "${aiAttr.value}" в словаре атрибута ${aiAttr.id} (${attrMeta.values_count} значений)`,
                 );
+
+                const allValues = await this.productService.getCategoryAttributeValues(aiAttr.id, descCatId, typeId);
 
                 const match = findInDictionary(aiAttr.value, allValues);
 
@@ -85,7 +86,9 @@ export class ResolveDictionaryValuesCommand implements ICommandAsync<IProductCre
                         values: [{ dictionary_value_id: match.id, value: match.value }],
                     });
                 } else {
-                    context.logger?.log(`  Не найдено совпадение для "${aiAttr.value}" в словаре ${aiAttr.id} — отправляем текстом`);
+                    context.logger?.log(
+                        `  Не найдено совпадение для "${aiAttr.value}" в словаре ${aiAttr.id} — отправляем текстом`,
+                    );
                     resolved.push({
                         id: aiAttr.id,
                         complex_id: 0,

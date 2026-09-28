@@ -32,9 +32,9 @@ export class OzonApiService {
                       //.pipe(map((res) => res.data))
                       .pipe(
                           map((res) => {
-                             // ЛОГИРУЕМ ОТВЕТ
-                             // this.logger.log(`[OZON API RESPONSE] ${res.data}`);
-                             return res.data;
+                              // ЛОГИРУЕМ ОТВЕТ
+                              // this.logger.log(`[OZON API RESPONSE] ${res.data}`);
+                              return res.data;
                           }),
                           catchError(async (error: AxiosError) => {
                               this.logger.error(error.message + ' ' + error?.response?.data['message']);
@@ -50,11 +50,13 @@ export class OzonApiService {
                       .post(ozon.URL + name, options, {
                           headers,
                       })
-                      .pipe(map((res) => {
-                        // ЛОГИРУЕМ ОТВЕТ
-                        // this.logger.log(`[OZON API RESPONSE] ${res.data}`);
-                         return res.data;
-                      }))
+                      .pipe(
+                          map((res) => {
+                              // ЛОГИРУЕМ ОТВЕТ
+                              // this.logger.log(`[OZON API RESPONSE] ${res.data}`);
+                              return res.data;
+                          }),
+                      )
                       .pipe(
                           catchError(async (error: AxiosError) => {
                               return this.handleApiError(error, ozon.URL + name, 'POST', options, headers);

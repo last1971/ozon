@@ -43,8 +43,7 @@ describe('MarkScanFbsService', () => {
                 {
                     provide: ConfigService,
                     useValue: {
-                        get: (key: string, def?: unknown) =>
-                            key === 'MARK_CODES_ENABLED' ? migrationEnabled : def,
+                        get: (key: string, def?: unknown) => (key === 'MARK_CODES_ENABLED' ? migrationEnabled : def),
                     },
                 },
             ],
@@ -226,9 +225,7 @@ describe('MarkScanFbsService', () => {
                 { realpricecode: 500, goodscode: '444', quantity: 5 },
             ]);
             invoiceService.getAttachedMarkCodesByScode.mockResolvedValue([]);
-            invoiceService.attachMarkCodeForFbs.mockRejectedValueOnce(
-                new Error('КМ уже привязан к строке счёта.'),
-            );
+            invoiceService.attachMarkCodeForFbs.mockRejectedValueOnce(new Error('КМ уже привязан к строке счёта.'));
             await expect(service.scan(invoice, KI)).rejects.toThrow(ConflictException);
             expect(tx.rollback).toHaveBeenCalled();
         });
@@ -267,7 +264,9 @@ describe('MarkScanFbsService', () => {
             invoiceService.countFreeMarkCodesForGood.mockResolvedValue(2);
             const p = await service.getProgress(invoice);
             expect(p.lines[0]).toMatchObject({
-                requiresScan: true, quantityScanned: 1, isComplete: false,
+                requiresScan: true,
+                quantityScanned: 1,
+                isComplete: false,
             });
             expect(p.isReadyToFinish).toBe(false);
             expect(p.attachedKis).toEqual(['A']);
@@ -282,8 +281,8 @@ describe('MarkScanFbsService', () => {
                 { ki: 'A', goodscode: '444', realpricecode: 500, quantity: 1 },
             ]);
             invoiceService.countFreeMarkCodesForGood
-                .mockResolvedValueOnce(2)   // 444 — есть свободные
-                .mockResolvedValueOnce(0);  // 555 — нет
+                .mockResolvedValueOnce(2) // 444 — есть свободные
+                .mockResolvedValueOnce(0); // 555 — нет
             const p = await service.getProgress(invoice);
             expect(p.lines[0]).toMatchObject({ requiresScan: true, isComplete: true });
             expect(p.lines[1]).toMatchObject({ requiresScan: false, isComplete: true });

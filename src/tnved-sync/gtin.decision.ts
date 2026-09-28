@@ -50,14 +50,24 @@ export function checkGtinOffers(
             continue;
         }
         const busy = item.add
-            .map((g) => ({ g, on: offers.find((o) => o !== target && o.barcodes.some((b) => barcodeKey(b) === barcodeKey(g))) }))
+            .map((g) => ({
+                g,
+                on: offers.find((o) => o !== target && o.barcodes.some((b) => barcodeKey(b) === barcodeKey(g))),
+            }))
             .filter((x) => x.on);
         if (busy.length) {
             const where = busy.map((x) => `${x.g} уже на ${x.on.offer}`).join('; ');
-            result.items.push({ ...item, ambiguousReason: `${where} — баркод не повесить на ${target.offer}, сначала снять там` });
+            result.items.push({
+                ...item,
+                ambiguousReason: `${where} — баркод не повесить на ${target.offer}, сначала снять там`,
+            });
             continue;
         }
-        result.items.push({ ...item, reason: `нет в баркодах: ${item.add.join(', ')}`, action: `добавить ${item.add.join(', ')}` });
+        result.items.push({
+            ...item,
+            reason: `нет в баркодах: ${item.add.join(', ')}`,
+            action: `добавить ${item.add.join(', ')}`,
+        });
     }
     return result;
 }

@@ -43,7 +43,14 @@ describe('Trade2006ChzService', () => {
         const sql = query.mock.calls[0][0];
         expect(sql).toContain('m.STATUS = 6 AND m.RETIRE_REASON = 1 AND m.TRANSFER_TYPE = 3 AND m.CHZ_SENT_AT IS NULL');
         expect(rows).toEqual([
-            { ki: 'KI-1', goodsCode: '539090', price: 1444, invoiceNumber: 15438, posting: '68999952-0299-1', since: null },
+            {
+                ki: 'KI-1',
+                goodsCode: '539090',
+                price: 1444,
+                invoiceNumber: 15438,
+                posting: '68999952-0299-1',
+                since: null,
+            },
         ]);
     });
 
@@ -60,7 +67,9 @@ describe('Trade2006ChzService', () => {
     it('pending(return): гвард возврата — код жив, а ЧЗ ещё считает его выведенным', async () => {
         query.mockResolvedValueOnce([]);
         await service.pending('return');
-        expect(query.mock.calls[0][0]).toContain('m.STATUS = 5 AND m.CHZ_SENT_AT IS NOT NULL AND m.CHZ_SKIP_TEXT IS NULL');
+        expect(query.mock.calls[0][0]).toContain(
+            'm.STATUS = 5 AND m.CHZ_SENT_AT IS NOT NULL AND m.CHZ_SKIP_TEXT IS NULL',
+        );
     });
 
     it('createBatch: пусто → null и откат, пачка не плодится', async () => {
@@ -129,7 +138,9 @@ describe('Trade2006ChzService', () => {
     });
 
     it('confirmBatch: повторное подтверждение — тихий no-op', async () => {
-        query.mockResolvedValueOnce([{ ID: 7, KIND: 'retire', CREATED_AT: new Date(), CONFIRMED_AT: new Date(), CNT: 2 }]);
+        query.mockResolvedValueOnce([
+            { ID: 7, KIND: 'retire', CREATED_AT: new Date(), CONFIRMED_AT: new Date(), CNT: 2 },
+        ]);
         expect(await service.confirmBatch(7)).toEqual({ confirmed: 0, skipped: 0, already: true });
         expect(execute).not.toHaveBeenCalled();
     });
@@ -161,9 +172,7 @@ describe('Trade2006ChzService', () => {
         const sql = query.mock.calls[0][0];
         expect(sql).toContain('GROUP BY sf.SFCODE');
         expect(sql).toContain('m.TRANSFER_TYPE = 1');
-        expect(docs).toEqual([
-            { sfcode: 97542, nsf: 6558, date: null, buyer: 'ООО Ромашка', cnt: 2, since: null },
-        ]);
+        expect(docs).toEqual([{ sfcode: 97542, nsf: 6558, date: null, buyer: 'ООО Ромашка', cnt: 2, since: null }]);
     });
 
     it('createDocBatch: снимок кодов ОДНОЙ УПД, в пачку пишется её SFCODE', async () => {
@@ -189,7 +198,16 @@ describe('Trade2006ChzService', () => {
     it('confirmBatch(retire_upd): ставит отметку передачи, как и обычный вывод', async () => {
         query
             .mockResolvedValueOnce([
-                { ID: 5, KIND: 'retire_upd', CREATED_AT: new Date(), CONFIRMED_AT: null, CNT: 1, SFCODE: 97542, NSF: 6558, DATA: null },
+                {
+                    ID: 5,
+                    KIND: 'retire_upd',
+                    CREATED_AT: new Date(),
+                    CONFIRMED_AT: null,
+                    CNT: 1,
+                    SFCODE: 97542,
+                    NSF: 6558,
+                    DATA: null,
+                },
             ])
             .mockResolvedValueOnce([{ KI: 'KI-1' }])
             .mockResolvedValueOnce([{ CNT: 1 }]);

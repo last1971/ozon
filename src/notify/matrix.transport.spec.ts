@@ -25,7 +25,9 @@ describe('MatrixTransport', () => {
         const t = new MatrixTransport(config({ MATRIX_HOMESERVER: 'https://hs/', MATRIX_ACCESS_TOKEN: 'tok' }));
         await expect(t.send('!abc:elcopro.ru', { subject: 'Тема', text: 'тело', notice: true })).resolves.toBe(true);
         const [url, content, opts] = mockedAxios.put.mock.calls[0] as [string, any, any];
-        expect(url).toMatch(/^https:\/\/hs\/_matrix\/client\/v3\/rooms\/!abc%3Aelcopro\.ru\/send\/m\.room\.message\/ozon-/);
+        expect(url).toMatch(
+            /^https:\/\/hs\/_matrix\/client\/v3\/rooms\/!abc%3Aelcopro\.ru\/send\/m\.room\.message\/ozon-/,
+        );
         expect(content).toMatchObject({ msgtype: 'm.notice', body: 'Тема\nтело', format: 'org.matrix.custom.html' });
         expect(content.formatted_body).toBe('<b>Тема</b><br>тело');
         expect(opts.headers.Authorization).toBe('Bearer tok');
@@ -38,7 +40,10 @@ describe('MatrixTransport', () => {
         expect(mockedAxios.put).toHaveBeenCalledTimes(2);
 
         mockedAxios.put.mockReset();
-        mockedAxios.put.mockRejectedValue({ response: { status: 403, data: { errcode: 'M_FORBIDDEN' } }, message: '403' });
+        mockedAxios.put.mockRejectedValue({
+            response: { status: 403, data: { errcode: 'M_FORBIDDEN' } },
+            message: '403',
+        });
         const result = await t.deliver('!r:s', { subject: 's', text: 't' });
         expect(result).toMatchObject({ ok: false, status: 403 });
         expect(result.error).toContain('M_FORBIDDEN');
@@ -56,6 +61,8 @@ describe('MatrixTransport', () => {
 
     it('HTML экранируется, свой html берётся как есть', () => {
         expect(MatrixTransport.content({ subject: 'a<b', text: 'c>d' }).formatted_body).toBe('<b>a&lt;b</b><br>c&gt;d');
-        expect(MatrixTransport.content({ subject: 's', text: 't', html: '<i>x</i>' }).formatted_body).toBe('<b>s</b><br><i>x</i>');
+        expect(MatrixTransport.content({ subject: 's', text: 't', html: '<i>x</i>' }).formatted_body).toBe(
+            '<b>s</b><br><i>x</i>',
+        );
     });
 });

@@ -16,4 +16,4 @@ export class TransferOutDTO {
 
     @Expose({ name: 'SCODE' })
     invoiceId: number;
-} 
+}

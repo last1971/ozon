@@ -1,4 +1,4 @@
-import { Logger, Module } from "@nestjs/common";
+import { Logger, Module } from '@nestjs/common';
 import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ConfigModule, ConfigService } from '@nestjs/config';
@@ -39,10 +39,10 @@ import { WbSupplyModule } from './wb.supply/wb.supply.module';
 import { SupplyModule } from './supply/supply.module';
 import { LabelModule } from './label/label.module';
 import { PromosModule } from './promos/promos.module';
-import { Trade2006IncomingModule } from "./trade2006.incoming/trade2006.incoming.module";
+import { Trade2006IncomingModule } from './trade2006.incoming/trade2006.incoming.module';
 import { HttpModule } from '@nestjs/axios';
-import { HelpersModule } from "./helpers/helpers.module";
-import { PerformanceModule } from "./performance/performance.module";
+import { HelpersModule } from './helpers/helpers.module';
+import { PerformanceModule } from './performance/performance.module';
 import { DiscountRequestsModule } from './discount-requests/discount-requests.module';
 import { AvitoApiModule } from './avito.api/avito.api.module';
 import { AvitoCardModule } from './avito.card/avito.card.module';
@@ -66,19 +66,19 @@ import JSONbig from 'json-bigint';
             isGlobal: true,
             imports: [ConfigModule],
             useFactory: async (configService: ConfigService) => {
-               const store = await redisStore({
-                 socket: {
-                   host: configService.get<string>('REDIS_HOST', 'localhost'),
-                   port: configService.get<number>('REDIS_PORT', 6379),
-                 },
-                 // Убираем TTL - кэш будет храниться навсегда
-               });
-              return {
-                store: store as unknown as CacheStore,
-              };
+                const store = await redisStore({
+                    socket: {
+                        host: configService.get<string>('REDIS_HOST', 'localhost'),
+                        port: configService.get<number>('REDIS_PORT', 6379),
+                    },
+                    // Убираем TTL - кэш будет храниться навсегда
+                });
+                return {
+                    store: store as unknown as CacheStore,
+                };
             },
             inject: [ConfigService],
-          }),
+        }),
         HttpModule.registerAsync({
             imports: [ConfigModule],
             useFactory: async (configService: ConfigService) => {
@@ -91,13 +91,15 @@ import JSONbig from 'json-bigint';
                 return {
                     timeout: defaultTimeout,
                     proxy: false,
-                    transformResponse: [(data) => {
-                        try {
-                          return JSONbig({ storeAsString: true }).parse(data);
-                        } catch {
-                          return data;
-                        }
-                      }],
+                    transformResponse: [
+                        (data) => {
+                            try {
+                                return JSONbig({ storeAsString: true }).parse(data);
+                            } catch {
+                                return data;
+                            }
+                        },
+                    ],
                 };
             },
             inject: [ConfigService],

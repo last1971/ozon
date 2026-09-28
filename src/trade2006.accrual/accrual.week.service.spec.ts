@@ -28,8 +28,19 @@ describe('AccrualWeekService', () => {
         // именно reset, а не clear: clearAllMocks не вычищает очередь mockResolvedValueOnce,
         // и недоеденное значение из прошлого теста утекает в следующий
         [
-            getAccrualsByDay, saveDay, getMissingDays, getUnsettled, settle, applyVerdicts,
-            getByPostingNumbers, getInvoiceStates, updateByCommissions, setVerdict, emit, commit, rollback,
+            getAccrualsByDay,
+            saveDay,
+            getMissingDays,
+            getUnsettled,
+            settle,
+            applyVerdicts,
+            getByPostingNumbers,
+            getInvoiceStates,
+            updateByCommissions,
+            setVerdict,
+            emit,
+            commit,
+            rollback,
             getAccrualTypes,
         ].forEach((m) => m.mockReset());
 
@@ -126,9 +137,7 @@ describe('AccrualWeekService', () => {
                 item('0186016594-0043-3', -17.49, 2),
                 item('0186016594-0043', -6.48, 3),
             ]);
-            getByPostingNumbers.mockResolvedValueOnce([
-                { id: 89631, remark: '0186016594-0043-3', status: 4 },
-            ]);
+            getByPostingNumbers.mockResolvedValueOnce([{ id: 89631, remark: '0186016594-0043-3', status: 4 }]);
 
             const report = await service.runWeek('2026-07-20', '2026-07-20');
 
@@ -223,9 +232,7 @@ describe('AccrualWeekService', () => {
 
         it('словарь недоступен — письмо всё равно уходит', async () => {
             getAccrualTypes.mockRejectedValueOnce(new Error('Ozon лёг'));
-            getUnsettled.mockResolvedValueOnce([
-                { ...item('', -2130.35, 1), non_item_fee: { type_id: 41 } } as any,
-            ]);
+            getUnsettled.mockResolvedValueOnce([{ ...item('', -2130.35, 1), non_item_fee: { type_id: 41 } } as any]);
 
             await service.runWeek('2026-07-13', '2026-07-19');
 

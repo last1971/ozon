@@ -5,7 +5,13 @@ import { emptyProgress } from '../../interfaces/i.job.context';
 
 describe('BuildSyncReportCommand', () => {
     const item = (offer: string, extra: Partial<ITnvedProcessingContext['items'][0]> = {}) => ({
-        offer, goodscode: offer, current: null, base: 'x', markRequired: false, ok: false, ...extra,
+        offer,
+        goodscode: offer,
+        current: null,
+        base: 'x',
+        markRequired: false,
+        ok: false,
+        ...extra,
     });
 
     it('делит решения на ок / на правку / спорно и переносит счётчики', async () => {
@@ -15,10 +21,17 @@ describe('BuildSyncReportCommand', () => {
             service: {} as any,
             opts: { market: GoodServiceEnum.WB, apply: true },
             progressCache: 'tnved',
-            base: [{ goodscode: '1', tnved: 'x', markRequired: false }, { goodscode: '2', tnved: 'x', markRequired: false }],
+            base: [
+                { goodscode: '1', tnved: 'x', markRequired: false },
+                { goodscode: '2', tnved: 'x', markRequired: false },
+            ],
             skippedProcessed: 5,
             notFound: ['9'],
-            items: [item('1', { ok: true }), item('2', { reason: 'ТНВЭД' }), item('3', { ambiguousReason: 'нет в справочнике' })],
+            items: [
+                item('1', { ok: true }),
+                item('2', { reason: 'ТНВЭД' }),
+                item('3', { ambiguousReason: 'нет в справочнике' }),
+            ],
         });
 
         expect(res.report).toMatchObject({

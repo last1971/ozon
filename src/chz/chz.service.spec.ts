@@ -26,7 +26,15 @@ describe('ChzService', () => {
                 ChzService,
                 {
                     provide: Trade2006ChzService,
-                    useValue: { pending, pendingDocs, createBatch, createDocBatch, getBatch, confirmBatch, listBatches },
+                    useValue: {
+                        pending,
+                        pendingDocs,
+                        createBatch,
+                        createDocBatch,
+                        getBatch,
+                        confirmBatch,
+                        listBatches,
+                    },
                 },
                 { provide: EventEmitter2, useValue: { emit } },
             ],
@@ -85,7 +93,6 @@ describe('ChzService', () => {
         expect(body).toContain('вкладка «ЧЗ»');
     });
 
-
     it('batchFile: пачка по УПД — в имени номер и дата документа', async () => {
         getBatch.mockResolvedValue({
             info: {
@@ -106,7 +113,16 @@ describe('ChzService', () => {
 
     it('batchFile: у пачки по УПД нет реквизитов → падаем на SFCODE, а не на пустое имя', async () => {
         getBatch.mockResolvedValue({
-            info: { id: 13, kind: 'retire_upd', createdAt: new Date(), confirmedAt: null, cnt: 1, sfcode: 97542, nsf: null, date: null },
+            info: {
+                id: 13,
+                kind: 'retire_upd',
+                createdAt: new Date(),
+                confirmedAt: null,
+                cnt: 1,
+                sfcode: 97542,
+                nsf: null,
+                date: null,
+            },
             codes: [{ ki: 'KI-1', price: null }],
         });
         expect((await service.batchFile(13)).filename).toBe('vyvod_UPD-97542.xlsx');

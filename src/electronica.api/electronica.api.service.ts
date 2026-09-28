@@ -7,7 +7,10 @@ import { VaultService } from 'vault-module/lib/vault.service';
 @Injectable()
 export class ElectronicaApiService {
     private logger = new Logger(ElectronicaApiService.name);
-    constructor(private httpService: HttpService, private vaultService: VaultService) {}
+    constructor(
+        private httpService: HttpService,
+        private vaultService: VaultService,
+    ) {}
     async method(name: string, options: any): Promise<any> {
         const electronica = await this.vaultService.get('electronica');
         return firstValueFrom(

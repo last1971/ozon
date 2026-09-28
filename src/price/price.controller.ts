@@ -65,7 +65,7 @@ export class PriceController {
         description: 'Обновить цены',
     })
     @Post()
-    async update(@Body() prices: UpdatePricesDto): Promise<{ service: GoodServiceEnum, result: any }[]> {
+    async update(@Body() prices: UpdatePricesDto): Promise<{ service: GoodServiceEnum; result: any }[]> {
         const skus: string[] = [];
         const pricesMap = new Map<string, UpdatePriceDto>();
         prices.prices.forEach((price) => {
@@ -87,9 +87,9 @@ export class PriceController {
         schema: {
             type: 'object',
             properties: {
-                updated: { type: 'number', description: 'Количество обновленных цен' }
-            }
-        }
+                updated: { type: 'number', description: 'Количество обновленных цен' },
+            },
+        },
     })
     async updatePrices(@Param('service') service: GoodServiceEnum): Promise<any> {
         const command = this.extraService.getService(service) || this.service;
@@ -132,7 +132,9 @@ export class PriceController {
             },
         },
     })
-    async calculate(@Body() body: { price: IPriceable; percents: ObtainCoeffsDto; typeId?: string }): Promise<UpdatePriceDto> {
+    async calculate(
+        @Body() body: { price: IPriceable; percents: ObtainCoeffsDto; typeId?: string },
+    ): Promise<UpdatePriceDto> {
         if (body.typeId) {
             return this.service.optimizeOzonPrice(body.price, body.percents, body.typeId);
         }
@@ -224,8 +226,16 @@ export class PriceController {
         schema: {
             type: 'object',
             properties: {
-                file: { type: 'string', format: 'binary', description: 'xlsx со столбцом «Артикул продавца»/«Артикул»' },
-                articles: { type: 'array', items: { type: 'string' }, description: 'Список артикулов (если без файла)' },
+                file: {
+                    type: 'string',
+                    format: 'binary',
+                    description: 'xlsx со столбцом «Артикул продавца»/«Артикул»',
+                },
+                articles: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Список артикулов (если без файла)',
+                },
             },
         },
     })
@@ -247,8 +257,16 @@ export class PriceController {
             type: 'object',
             required: ['percent'],
             properties: {
-                file: { type: 'string', format: 'binary', description: 'xlsx со столбцом «Артикул продавца»/«Артикул»' },
-                articles: { type: 'array', items: { type: 'string' }, description: 'Список артикулов (если без файла)' },
+                file: {
+                    type: 'string',
+                    format: 'binary',
+                    description: 'xlsx со столбцом «Артикул продавца»/«Артикул»',
+                },
+                articles: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Список артикулов (если без файла)',
+                },
                 percent: { type: 'integer', minimum: 0, maximum: 99, example: 40, description: 'Скидка, %' },
             },
         },
@@ -271,8 +289,16 @@ export class PriceController {
             type: 'object',
             required: ['percent'],
             properties: {
-                file: { type: 'string', format: 'binary', description: 'xlsx со столбцом «Артикул продавца»/«Артикул»' },
-                articles: { type: 'array', items: { type: 'string' }, description: 'Список артикулов (если без файла)' },
+                file: {
+                    type: 'string',
+                    format: 'binary',
+                    description: 'xlsx со столбцом «Артикул продавца»/«Артикул»',
+                },
+                articles: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Список артикулов (если без файла)',
+                },
                 percent: { type: 'integer', minimum: 0, maximum: 99, example: 40, description: 'Скидка, %' },
             },
         },
@@ -295,8 +321,16 @@ export class PriceController {
             type: 'object',
             required: ['percent'],
             properties: {
-                file: { type: 'string', format: 'binary', description: 'xlsx со столбцом «Артикул продавца»/«Артикул»' },
-                articles: { type: 'array', items: { type: 'string' }, description: 'Список артикулов (если без файла)' },
+                file: {
+                    type: 'string',
+                    format: 'binary',
+                    description: 'xlsx со столбцом «Артикул продавца»/«Артикул»',
+                },
+                articles: {
+                    type: 'array',
+                    items: { type: 'string' },
+                    description: 'Список артикулов (если без файла)',
+                },
                 percent: { type: 'integer', minimum: 0, maximum: 99, example: 30, description: 'Скидка, %' },
             },
         },
@@ -378,7 +412,11 @@ export class PriceController {
                 adv_perc: { type: 'number', description: 'Advertising percentage' },
                 packing_price: { type: 'number', description: 'Packing price' },
                 available_price: { type: 'number', description: 'Available/market price' },
-                generic: { type: 'boolean', description: 'If true, calculate without Ozon commissions (for products not on Ozon)', default: false },
+                generic: {
+                    type: 'boolean',
+                    description: 'If true, calculate without Ozon commissions (for products not on Ozon)',
+                    default: false,
+                },
             },
         },
     })
@@ -438,7 +476,8 @@ export class PriceController {
     @Post('update-all-percents-and-prices')
     @ApiOperation({
         summary: 'Массовое обновление процентов и цен для всех товаров Ozon',
-        description: 'Получает все SKU из системы, обновляет проценты на основе актуальных данных, затем обновляет цены. Процесс может занять продолжительное время.'
+        description:
+            'Получает все SKU из системы, обновляет проценты на основе актуальных данных, затем обновляет цены. Процесс может занять продолжительное время.',
     })
     @ApiResponse({
         status: 200,
@@ -477,19 +516,20 @@ export class PriceController {
                     type: 'string',
                     enum: ['ozon', 'wb', 'yandex'],
                     description: 'Маркетплейс',
-                    example: 'ozon'
+                    example: 'ozon',
                 },
                 vat: {
                     type: 'number',
                     enum: [0, 5, 7, 10, 20, 22],
-                    description: 'Ожидаемая ставка НДС в процентах: 0 - без НДС, 5 - 5%, 7 - 7%, 10 - 10%, 20 - 20%, 22 - 22%',
-                    example: 0
+                    description:
+                        'Ожидаемая ставка НДС в процентах: 0 - без НДС, 5 - 5%, 7 - 7%, 10 - 10%, 20 - 20%, 22 - 22%',
+                    example: 0,
                 },
                 limit: {
                     type: 'number',
                     description: 'Лимит записей за запрос при проверке (опционально, по умолчанию 1000)',
-                    example: 1000
-                }
+                    example: 1000,
+                },
             },
         },
     })
@@ -508,7 +548,7 @@ export class PriceController {
         },
     })
     async checkVat(
-        @Body() body: { service: GoodServiceEnum; vat: number; limit?: number }
+        @Body() body: { service: GoodServiceEnum; vat: number; limit?: number },
     ): Promise<Array<{ offer_id: string; current_vat: number; expected_vat: number }>> {
         const priceService = this.extraService.getService(body.service) as any;
         return priceService.checkVatForAll(body.vat, body.limit ?? 200);
@@ -525,19 +565,20 @@ export class PriceController {
                     type: 'string',
                     enum: ['ozon', 'wb', 'yandex'],
                     description: 'Маркетплейс',
-                    example: 'yandex'
+                    example: 'yandex',
                 },
                 offerIds: {
                     type: 'array',
                     items: { type: 'string' },
                     description: 'Массив offer_id товаров для обновления НДС',
-                    example: ['318888-10', '318888-5']
+                    example: ['318888-10', '318888-5'],
                 },
                 vat: {
                     type: 'number',
                     enum: [-1, 0, 5, 7, 10, 12, 13, 20, 22],
-                    description: 'Ставка НДС в процентах: -1 - без НДС, 0 - 0%, 5 - 5%, 7 - 7%, 10 - 10%, 12 - 12%, 13 - 13%, 20 - 20%, 22 - 22%',
-                    example: 0
+                    description:
+                        'Ставка НДС в процентах: -1 - без НДС, 0 - 0%, 5 - 5%, 7 - 7%, 10 - 10%, 12 - 12%, 13 - 13%, 20 - 20%, 22 - 22%',
+                    example: 0,
                 },
             },
         },
@@ -545,9 +586,7 @@ export class PriceController {
     @ApiOkResponse({
         description: 'Результат обновления НДС',
     })
-    async updateVat(
-        @Body() body: { service: GoodServiceEnum; offerIds: string[]; vat: number }
-    ): Promise<any> {
+    async updateVat(@Body() body: { service: GoodServiceEnum; offerIds: string[]; vat: number }): Promise<any> {
         const priceService = this.extraService.getService(body.service) as any;
         return priceService.updateVat(body.offerIds, body.vat);
     }
@@ -563,19 +602,20 @@ export class PriceController {
                     type: 'string',
                     enum: ['ozon', 'wb', 'yandex'],
                     description: 'Маркетплейс',
-                    example: 'ozon'
+                    example: 'ozon',
                 },
                 vat: {
                     type: 'number',
                     enum: [0, 5, 7, 10, 20, 22],
-                    description: 'Ожидаемая ставка НДС в процентах: 0 - без НДС, 5 - 5%, 7 - 7%, 10 - 10%, 20 - 20%, 22 - 22%',
-                    example: 0
+                    description:
+                        'Ожидаемая ставка НДС в процентах: 0 - без НДС, 5 - 5%, 7 - 7%, 10 - 10%, 20 - 20%, 22 - 22%',
+                    example: 0,
                 },
                 limit: {
                     type: 'number',
                     description: 'Лимит записей за запрос при проверке (опционально)',
-                    example: 1000
-                }
+                    example: 1000,
+                },
             },
         },
     })
@@ -600,7 +640,7 @@ export class PriceController {
         },
     })
     async updateVatAll(
-        @Body() body: { service: GoodServiceEnum; vat: number; limit?: number }
+        @Body() body: { service: GoodServiceEnum; vat: number; limit?: number },
     ): Promise<{ mismatches: any[]; updateResult: any }> {
         return this.extraService.updateVatForAllMismatches(body.service, body.vat, body.limit);
     }

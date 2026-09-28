@@ -5,7 +5,7 @@ import { WbApiService } from '../wb.api/wb.api.service';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DateTime } from 'luxon';
-import { WbOrderDto } from "./dto/wb.order.dto";
+import { WbOrderDto } from './dto/wb.order.dto';
 import { FetchSalesByStickerCommand } from './commands/fetch-sales-by-sticker.command';
 import { FetchOrdersByStickerCommand } from './commands/fetch-orders-by-sticker.command';
 import { FetchTransactionsCommand } from './commands/fetch-transactions.command';
@@ -376,7 +376,7 @@ describe('WbOrderService', () => {
                 additional_payment: 0,
                 penalty: 0,
                 rrd_id: 1,
-                assembly_id: null
+                assembly_id: null,
             },
             {
                 order_dt: date,
@@ -386,8 +386,8 @@ describe('WbOrderService', () => {
                 additional_payment: 0,
                 penalty: 0,
                 rrd_id: 2,
-                assembly_id: null
-            }
+                assembly_id: null,
+            },
         ]);
 
         await service.updateTransactions({ from: date, to: date }, null);
@@ -407,9 +407,9 @@ describe('WbOrderService', () => {
         expect(updateByCommissions.mock.calls[0]).toEqual([
             new Map([
                 ['123', 90], // 100 - 10
-                ['124', 200] // 200 - 0
+                ['124', 200], // 200 - 0
             ]),
-            null
+            null,
         ]);
     });
 
@@ -463,9 +463,7 @@ describe('WbOrderService', () => {
 
     it('addFboOrders: недостача/«левый» заказ (creator вернул null) → не помечаем обработанным', async () => {
         method
-            .mockResolvedValueOnce([
-                { srid: '3', totalPrice: 112, supplierArticle: '111', date: '2011-11-11' },
-            ])
+            .mockResolvedValueOnce([{ srid: '3', totalPrice: 112, supplierArticle: '111', date: '2011-11-11' }])
             .mockResolvedValueOnce({ orders: [] });
         isExists.mockResolvedValueOnce(false);
         fboCreate.mockResolvedValueOnce(null);
@@ -480,9 +478,7 @@ describe('WbOrderService', () => {
     it('addFboOrders: srid уже в кеше → creator не вызывается', async () => {
         processedCacheLoad.mockImplementationOnce(async () => new Set(['3']));
         method
-            .mockResolvedValueOnce([
-                { srid: '3', totalPrice: 112, supplierArticle: '111', date: '2011-11-11' },
-            ])
+            .mockResolvedValueOnce([{ srid: '3', totalPrice: 112, supplierArticle: '111', date: '2011-11-11' }])
             .mockResolvedValueOnce({ orders: [] });
         isExists.mockResolvedValue(false);
 
@@ -507,9 +503,7 @@ describe('WbOrderService', () => {
     it('addFboOrders: migration flag → useMigration=true в контексте', async () => {
         markCodesEnabled = true;
         method
-            .mockResolvedValueOnce([
-                { srid: '3', totalPrice: 100, supplierArticle: '111', date: '2026-01-01' },
-            ])
+            .mockResolvedValueOnce([{ srid: '3', totalPrice: 100, supplierArticle: '111', date: '2026-01-01' }])
             .mockResolvedValueOnce({ orders: [] });
         isExists.mockResolvedValueOnce(false);
         fboCreate.mockResolvedValueOnce({ id: 999 });
@@ -517,19 +511,15 @@ describe('WbOrderService', () => {
         await service.addFboOrders();
 
         expect(fboCreate.mock.calls[0][0].useMigration).toBe(true);
-        expect(emit).toHaveBeenCalledWith(
-            'wb.order.content',
-            'Добавлены WB FBO заказы',
-            [{ prim: '3', offer_id: '111' }],
-        );
+        expect(emit).toHaveBeenCalledWith('wb.order.content', 'Добавлены WB FBO заказы', [
+            { prim: '3', offer_id: '111' },
+        ]);
     });
 
     // Defensive regression: commit на happy path, rollback на любой ошибке creator.
     it('addFboOrders: creator упал → rollback, commit НЕ вызывается, return false', async () => {
         method
-            .mockResolvedValueOnce([
-                { srid: '3', totalPrice: 100, supplierArticle: '111', date: '2026-01-01' },
-            ])
+            .mockResolvedValueOnce([{ srid: '3', totalPrice: 100, supplierArticle: '111', date: '2026-01-01' }])
             .mockResolvedValueOnce({ orders: [] });
         isExists.mockResolvedValueOnce(false);
         fboCreate.mockRejectedValueOnce(new Error('DB lock'));
@@ -568,9 +558,7 @@ describe('WbOrderService', () => {
         expect(updatePrim.mock.calls).toHaveLength(1);
         expect(updatePrim.mock.calls[0]).toEqual(['1', '1 отмена WBFBO', null]);
         // обработанные prim сохранены в кеш
-        expect(processedCacheSave).toHaveBeenCalledWith(
-            'fbo-cancellations', 'WbOrderService', new Set(['1']),
-        );
+        expect(processedCacheSave).toHaveBeenCalledWith('fbo-cancellations', 'WbOrderService', new Set(['1']));
     });
 
     it('checkCanceledOrders: prim уже в кеше → updatePrim не вызывается', async () => {
@@ -583,9 +571,7 @@ describe('WbOrderService', () => {
 
         expect(isExists).not.toHaveBeenCalled();
         expect(updatePrim).not.toHaveBeenCalled();
-        expect(processedCacheSave).toHaveBeenCalledWith(
-            'fbo-cancellations', 'WbOrderService', new Set(['1']),
-        );
+        expect(processedCacheSave).toHaveBeenCalledWith('fbo-cancellations', 'WbOrderService', new Set(['1']));
     });
 
     it('transformToPostingDto', async () => {
@@ -609,66 +595,67 @@ describe('WbOrderService', () => {
             status: status,
             in_process_at: order.createdAt,
             service: GoodServiceEnum.WB,
-            products: [{
-                price: (order.convertedPrice / 100).toString(),
-                offer_id: order.article,
-                quantity: 1,
-            }],
+            products: [
+                {
+                    price: (order.convertedPrice / 100).toString(),
+                    offer_id: order.article,
+                    quantity: 1,
+                },
+            ],
         });
     });
 
-    it("should return stickers when API method succeeds", async () => {
+    it('should return stickers when API method succeeds', async () => {
         const mockOrders = [1, 2, 3];
-        const mockStickers = [{ id: 1, data: "<svg/>" }, { id: 2, data: "<svg/>" }];
+        const mockStickers = [
+            { id: 1, data: '<svg/>' },
+            { id: 2, data: '<svg/>' },
+        ];
         method.mockResolvedValueOnce({ stickers: mockStickers });
 
         const result = await service.getOrdersStickers(mockOrders);
 
-        expect(method).toHaveBeenCalledWith(
-            "/api/v3/orders/stickers?type=svg&width=58&height=40",
-            "post",
-            { orders: mockOrders },
-        );
+        expect(method).toHaveBeenCalledWith('/api/v3/orders/stickers?type=svg&width=58&height=40', 'post', {
+            orders: mockOrders,
+        });
         expect(result).toEqual({
             stickers: mockStickers,
             success: true,
-            error: null
+            error: null,
         });
     });
 
-    it("should return an error when API method fails", async () => {
+    it('should return an error when API method fails', async () => {
         const mockOrders = [1, 2, 3];
-        const mockError = new Error("Failed to fetch stickers");
+        const mockError = new Error('Failed to fetch stickers');
         method.mockRejectedValueOnce(mockError);
 
         const result = await service.getOrdersStickers(mockOrders);
 
-        expect(method).toHaveBeenCalledWith(
-            "/api/v3/orders/stickers?type=svg&width=58&height=40",
-            "post",
-            { orders: mockOrders },
-        );
+        expect(method).toHaveBeenCalledWith('/api/v3/orders/stickers?type=svg&width=58&height=40', 'post', {
+            orders: mockOrders,
+        });
         expect(result).toEqual({
             stickers: [],
             success: false,
-            error: "Failed to fetch stickers"
+            error: 'Failed to fetch stickers',
         });
     });
 
     it('getOrders', async () => {
         method.mockResolvedValueOnce([
             { id: 1, sticker: '123', srid: 'srid1' },
-            { id: 2, sticker: '456', srid: 'srid2' }
+            { id: 2, sticker: '456', srid: 'srid2' },
         ]);
         const result = await service.getOrders('2025-09-21', 0);
         expect(method.mock.calls[0]).toEqual([
             '/api/v1/supplier/orders',
             'statistics',
-            { dateFrom: '2025-09-21', flag: 0 }
+            { dateFrom: '2025-09-21', flag: 0 },
         ]);
         expect(result).toEqual([
             { id: 1, sticker: '123', srid: 'srid1' },
-            { id: 2, sticker: '456', srid: 'srid2' }
+            { id: 2, sticker: '456', srid: 'srid2' },
         ]);
     });
 
@@ -676,17 +663,13 @@ describe('WbOrderService', () => {
         const dateFrom = '2025-09-21';
         method.mockResolvedValueOnce([
             { srid: 'sale1', sticker: '111' },
-            { srid: 'sale2', sticker: '222' }
+            { srid: 'sale2', sticker: '222' },
         ]);
         const result = await service.getSales(dateFrom);
-        expect(method.mock.calls[0]).toEqual([
-            '/api/v1/supplier/sales',
-            'statistics',
-            { dateFrom }
-        ]);
+        expect(method.mock.calls[0]).toEqual(['/api/v1/supplier/sales', 'statistics', { dateFrom }]);
         expect(result).toEqual([
             { srid: 'sale1', sticker: '111' },
-            { srid: 'sale2', sticker: '222' }
+            { srid: 'sale2', sticker: '222' },
         ]);
     });
 
@@ -701,18 +684,12 @@ describe('WbOrderService', () => {
         };
 
         // Переопределяем моки команд для этого теста
-        fetchSalesByStickerExecute.mockImplementationOnce((ctx) =>
-            Promise.resolve({ ...ctx, srid: 'SRID123' })
-        );
-        fetchTransactionsExecute.mockImplementationOnce((ctx) =>
-            Promise.resolve({ ...ctx, transactions: [] })
-        );
+        fetchSalesByStickerExecute.mockImplementationOnce((ctx) => Promise.resolve({ ...ctx, srid: 'SRID123' }));
+        fetchTransactionsExecute.mockImplementationOnce((ctx) => Promise.resolve({ ...ctx, transactions: [] }));
         selectBestIdExecute.mockImplementationOnce((ctx) =>
-            Promise.resolve({ ...ctx, selectedId: '5001', selectedIdType: 'assembly_id' })
+            Promise.resolve({ ...ctx, selectedId: '5001', selectedIdType: 'assembly_id' }),
         );
-        fetchInvoiceByRemarkExecute.mockImplementationOnce((ctx) =>
-            Promise.resolve({ ...ctx, invoice: mockInvoice })
-        );
+        fetchInvoiceByRemarkExecute.mockImplementationOnce((ctx) => Promise.resolve({ ...ctx, invoice: mockInvoice }));
 
         const result = await service.getInvoiceBySticker({
             dateFrom: '2025-09-21',
@@ -726,14 +703,14 @@ describe('WbOrderService', () => {
 
     it('getInvoiceBySticker should return null if not found', async () => {
         // Переопределяем моки команд для этого теста - ничего не находим
-        fetchSalesByStickerExecute.mockImplementationOnce((ctx) =>
-            Promise.resolve({ ...ctx }) // srid не найден
+        fetchSalesByStickerExecute.mockImplementationOnce(
+            (ctx) => Promise.resolve({ ...ctx }), // srid не найден
         );
-        fetchOrdersByStickerExecute.mockImplementationOnce((ctx) =>
-            Promise.resolve({ ...ctx }) // srid не найден
+        fetchOrdersByStickerExecute.mockImplementationOnce(
+            (ctx) => Promise.resolve({ ...ctx }), // srid не найден
         );
-        fetchTransactionsExecute.mockImplementationOnce((ctx) =>
-            Promise.resolve({ ...ctx, stopChain: true }) // останавливаем цепочку
+        fetchTransactionsExecute.mockImplementationOnce(
+            (ctx) => Promise.resolve({ ...ctx, stopChain: true }), // останавливаем цепочку
         );
 
         const result = await service.getInvoiceBySticker({
@@ -758,14 +735,12 @@ describe('WbOrderService', () => {
 
         // Моки для команд (без sales/orders)
         fetchTransactionsExecute.mockImplementationOnce((ctx) =>
-            Promise.resolve({ ...ctx, transactions: [{ assembly_id: 6002 }] })
+            Promise.resolve({ ...ctx, transactions: [{ assembly_id: 6002 }] }),
         );
         selectBestIdExecute.mockImplementationOnce((ctx) =>
-            Promise.resolve({ ...ctx, selectedId: '6002', selectedIdType: 'assembly_id' })
+            Promise.resolve({ ...ctx, selectedId: '6002', selectedIdType: 'assembly_id' }),
         );
-        fetchInvoiceByRemarkExecute.mockImplementationOnce((ctx) =>
-            Promise.resolve({ ...ctx, invoice: mockInvoice })
-        );
+        fetchInvoiceByRemarkExecute.mockImplementationOnce((ctx) => Promise.resolve({ ...ctx, invoice: mockInvoice }));
 
         const result = await service.getInvoiceBySrid({
             dateFrom: '2025-09-21',
@@ -784,9 +759,7 @@ describe('WbOrderService', () => {
 
     it('getInvoiceBySrid should return null if not found', async () => {
         // Моки для команд - ничего не находим
-        fetchTransactionsExecute.mockImplementationOnce((ctx) =>
-            Promise.resolve({ ...ctx, stopChain: true })
-        );
+        fetchTransactionsExecute.mockImplementationOnce((ctx) => Promise.resolve({ ...ctx, stopChain: true }));
 
         const result = await service.getInvoiceBySrid({
             dateFrom: '2025-09-21',
@@ -809,9 +782,7 @@ describe('WbOrderService', () => {
         });
 
         it('некорректный orderId → skipRetry=true', async () => {
-            getAttachedMarkCodesByScode.mockResolvedValueOnce([
-                { ki: 'KI-1', goodscode: '531557', realpricecode: 1 },
-            ]);
+            getAttachedMarkCodesByScode.mockResolvedValueOnce([{ ki: 'KI-1', goodscode: '531557', realpricecode: 1 }]);
             const res = await service.submitFbsMarkCodes({ ...invoice, remark: 'NOT-A-NUMBER' });
             expect(res.ok).toBe(false);
             expect(res.skipRetry).toBe(true);
@@ -819,9 +790,7 @@ describe('WbOrderService', () => {
         });
 
         it('не делает GET /meta (его нет в API v3), сразу PUT sgtin', async () => {
-            getAttachedMarkCodesByScode.mockResolvedValueOnce([
-                { ki: 'KI-1', goodscode: '531557', realpricecode: 1 },
-            ]);
+            getAttachedMarkCodesByScode.mockResolvedValueOnce([{ ki: 'KI-1', goodscode: '531557', realpricecode: 1 }]);
             getKmFullByKi.mockResolvedValueOnce('01FULL-1');
             method.mockResolvedValueOnce({});
 
@@ -851,9 +820,7 @@ describe('WbOrderService', () => {
         });
 
         it('PUT вернул NotOk → ok=false без skipRetry (крон повторит)', async () => {
-            getAttachedMarkCodesByScode.mockResolvedValueOnce([
-                { ki: 'KI-1', goodscode: '531557', realpricecode: 1 },
-            ]);
+            getAttachedMarkCodesByScode.mockResolvedValueOnce([{ ki: 'KI-1', goodscode: '531557', realpricecode: 1 }]);
             getKmFullByKi.mockResolvedValueOnce('01FULL-1');
             method.mockResolvedValueOnce({
                 status: 'NotOk',
@@ -885,9 +852,7 @@ describe('WbOrderService', () => {
         });
 
         it('все KM_FULL пусты → ok=false, PUT не вызывается', async () => {
-            getAttachedMarkCodesByScode.mockResolvedValueOnce([
-                { ki: 'KI-1', goodscode: '531557', realpricecode: 1 },
-            ]);
+            getAttachedMarkCodesByScode.mockResolvedValueOnce([{ ki: 'KI-1', goodscode: '531557', realpricecode: 1 }]);
             getKmFullByKi.mockResolvedValueOnce(null);
 
             const res = await service.submitFbsMarkCodes(invoice);
@@ -1094,7 +1059,13 @@ describe('WbOrderService', () => {
         // за глубину заказов: одна и та же пара строк 288 раз в сутки.
         it('несматченная заявка предупреждает один раз: журнал знает — молчим', async () => {
             const warn = jest.spyOn((service as any).logger, 'warn').mockImplementation(() => undefined);
-            const claim = { id: 'uuid-9', status: 2, status_ex: 10, srid: 'sr-NEMATCH', order_dt: '2026-08-01T10:00:00' };
+            const claim = {
+                id: 'uuid-9',
+                status: 2,
+                status_ex: 10,
+                srid: 'sr-NEMATCH',
+                order_dt: '2026-08-01T10:00:00',
+            };
             const run = async () => {
                 getClaims
                     .mockResolvedValueOnce({ claims: [claim], total: 1 })

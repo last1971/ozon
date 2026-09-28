@@ -5,9 +5,9 @@ import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DateTime } from 'luxon';
 import { Cache } from '@nestjs/cache-manager';
-import { InvoiceUpdateDto } from "../invoice/dto/invoice.update.dto";
-import { InvoiceDto } from "../invoice/dto/invoice.dto";
-import { GoodServiceEnum } from "../good/good.service.enum";
+import { InvoiceUpdateDto } from '../invoice/dto/invoice.update.dto';
+import { InvoiceDto } from '../invoice/dto/invoice.dto';
+import { GoodServiceEnum } from '../good/good.service.enum';
 import { GtdResolver } from '../gtd/gtd.resolver';
 
 describe('Trade2006InvoiceService', () => {
@@ -37,11 +37,11 @@ describe('Trade2006InvoiceService', () => {
                 },
                 {
                     provide: ConfigService,
-                    useValue: { 
+                    useValue: {
                         get: (key: string, defaultValue?: any) => {
                             if (key === 'STORAGE_TYPE') return defaultValue || 'SHOPSKLAD';
                             return get(key, defaultValue);
-                        }
+                        },
                     },
                 },
                 {
@@ -137,7 +137,7 @@ describe('Trade2006InvoiceService', () => {
                 REALPRICEFCODE: 1,
                 SFCODE: 123,
                 GOODSCODE: 456,
-                PRICE: 100.50,
+                PRICE: 100.5,
                 QUAN: 5,
                 OPRIH: 1,
                 REALPRICECODE: 789,
@@ -147,19 +147,19 @@ describe('Trade2006InvoiceService', () => {
                 DIRECTSKLAD: 0,
                 GTD: 'GTD123',
                 STRANA: 'Russia',
-                SUMMAP: 502.50,
+                SUMMAP: 502.5,
                 SECONDINSERT: 0,
                 MARK1C: 0,
                 USERNAME: 'test_user',
                 SHOP_SALED_NAKL_D_ID: 0,
                 INSERT_ATTR: 'test_insert',
-                MODIFY_ATTR: 'test_modify'
+                MODIFY_ATTR: 'test_modify',
             },
             {
                 REALPRICEFCODE: 2,
                 SFCODE: 123,
                 GOODSCODE: 789,
-                PRICE: 200.00,
+                PRICE: 200.0,
                 QUAN: 2,
                 OPRIH: 1,
                 REALPRICECODE: 790,
@@ -169,14 +169,14 @@ describe('Trade2006InvoiceService', () => {
                 DIRECTSKLAD: 0,
                 GTD: 'GTD456',
                 STRANA: 'Germany',
-                SUMMAP: 400.00,
+                SUMMAP: 400.0,
                 SECONDINSERT: 0,
                 MARK1C: 0,
                 USERNAME: 'test_user',
                 SHOP_SALED_NAKL_D_ID: 0,
                 INSERT_ATTR: 'test_insert',
-                MODIFY_ATTR: 'test_modify'
-            }
+                MODIFY_ATTR: 'test_modify',
+            },
         ];
         query.mockResolvedValueOnce(mockRecords);
 
@@ -187,16 +187,13 @@ describe('Trade2006InvoiceService', () => {
         expect(result[0].id).toBe(1);
         expect(result[0].transferOutId).toBe(123);
         expect(result[0].goodId).toBe(456);
-        expect(result[0].price).toBe(100.50);
+        expect(result[0].price).toBe(100.5);
         expect(result[0].quantity).toBe(5);
-        expect(result[0].totalAmount).toBe(502.50);
+        expect(result[0].totalAmount).toBe(502.5);
         expect(result[1].id).toBe(2);
         expect(result[1].goodId).toBe(789);
-        expect(result[1].price).toBe(200.00);
-        expect(query).toHaveBeenCalledWith(
-            'SELECT * FROM REALPRICEF WHERE SFCODE = ?',
-            [123]
-        );
+        expect(result[1].price).toBe(200.0);
+        expect(query).toHaveBeenCalledWith('SELECT * FROM REALPRICEF WHERE SFCODE = ?', [123]);
     });
 
     it('getTransferOutLines - empty', async () => {
@@ -206,10 +203,7 @@ describe('Trade2006InvoiceService', () => {
 
         expect(result).toBeDefined();
         expect(result).toHaveLength(0);
-        expect(query).toHaveBeenCalledWith(
-            'SELECT * FROM REALPRICEF WHERE SFCODE = ?',
-            [999]
-        );
+        expect(query).toHaveBeenCalledWith('SELECT * FROM REALPRICEF WHERE SFCODE = ?', [999]);
     });
 
     it('updateTransferOutLinesAmounts - success', async () => {
@@ -218,9 +212,9 @@ describe('Trade2006InvoiceService', () => {
                 id: 1,
                 transferOutId: 123,
                 goodId: '456',
-                price: 100.00,
+                price: 100.0,
                 quantity: 2,
-                totalAmount: 250.00,
+                totalAmount: 250.0,
                 operationType: 1,
                 invoiceLineId: 10,
                 directWarehouseNeed: 0,
@@ -234,15 +228,15 @@ describe('Trade2006InvoiceService', () => {
                 username: '',
                 shopSaledNaklDId: 0,
                 insertAttr: '',
-                modifyAttr: ''
+                modifyAttr: '',
             },
             {
                 id: 2,
                 transferOutId: 123,
                 goodId: '789',
-                price: 150.00,
+                price: 150.0,
                 quantity: 1,
-                totalAmount: 150.00,
+                totalAmount: 150.0,
                 operationType: 1,
                 invoiceLineId: 11,
                 directWarehouseNeed: 0,
@@ -256,31 +250,19 @@ describe('Trade2006InvoiceService', () => {
                 username: '',
                 shopSaledNaklDId: 0,
                 insertAttr: '',
-                modifyAttr: ''
-            }
+                modifyAttr: '',
+            },
         ];
 
         await service.updateTransferOutLinesAmounts(mockLines);
 
         // Проверяем обновления строк УПД
-        expect(execute).toHaveBeenCalledWith(
-            'UPDATE REALPRICEF SET SUMMAP = ? WHERE REALPRICEFCODE = ?',
-            [250.00, 1]
-        );
-        expect(execute).toHaveBeenCalledWith(
-            'UPDATE REALPRICEF SET SUMMAP = ? WHERE REALPRICEFCODE = ?',
-            [150.00, 2]
-        );
+        expect(execute).toHaveBeenCalledWith('UPDATE REALPRICEF SET SUMMAP = ? WHERE REALPRICEFCODE = ?', [250.0, 1]);
+        expect(execute).toHaveBeenCalledWith('UPDATE REALPRICEF SET SUMMAP = ? WHERE REALPRICEFCODE = ?', [150.0, 2]);
 
         // Проверяем обновления строк счета
-        expect(execute).toHaveBeenCalledWith(
-            'UPDATE REALPRICE SET SUMMAP = ? WHERE REALPRICECODE = ?',
-            [250.00, 10]
-        );
-        expect(execute).toHaveBeenCalledWith(
-            'UPDATE REALPRICE SET SUMMAP = ? WHERE REALPRICECODE = ?',
-            [150.00, 11]
-        );
+        expect(execute).toHaveBeenCalledWith('UPDATE REALPRICE SET SUMMAP = ? WHERE REALPRICECODE = ?', [250.0, 10]);
+        expect(execute).toHaveBeenCalledWith('UPDATE REALPRICE SET SUMMAP = ? WHERE REALPRICECODE = ?', [150.0, 11]);
     });
 
     it('updateTransferOutLinesAmounts - without invoice lines', async () => {
@@ -289,9 +271,9 @@ describe('Trade2006InvoiceService', () => {
                 id: 1,
                 transferOutId: 123,
                 goodId: '456',
-                price: 100.00,
+                price: 100.0,
                 quantity: 2,
-                totalAmount: 250.00,
+                totalAmount: 250.0,
                 operationType: 1,
                 invoiceLineId: null,
                 directWarehouseNeed: 0,
@@ -305,17 +287,14 @@ describe('Trade2006InvoiceService', () => {
                 username: '',
                 shopSaledNaklDId: 0,
                 insertAttr: '',
-                modifyAttr: ''
-            }
+                modifyAttr: '',
+            },
         ];
 
         await service.updateTransferOutLinesAmounts(mockLines);
 
         // Проверяем обновление только строки УПД
-        expect(execute).toHaveBeenCalledWith(
-            'UPDATE REALPRICEF SET SUMMAP = ? WHERE REALPRICEFCODE = ?',
-            [250.00, 1]
-        );
+        expect(execute).toHaveBeenCalledWith('UPDATE REALPRICEF SET SUMMAP = ? WHERE REALPRICEFCODE = ?', [250.0, 1]);
 
         // Проверяем что строка счета не обновлялась
         expect(execute).toHaveBeenCalledTimes(1);
@@ -422,11 +401,7 @@ describe('Trade2006InvoiceService', () => {
 
     it('Test pickupInvoice', async () => {
         await service.pickupInvoice({ id: 1, date: new Date(), remark: '1', buyerId: 1, status: 3 });
-        expect(execute.mock.calls[0]).toEqual([
-            'UPDATE PODBPOS SET QUANSHOP= QUANSHOPNEED WHERE SCODE = ?',
-            [1],
-            true,
-        ]);
+        expect(execute.mock.calls[0]).toEqual(['UPDATE PODBPOS SET QUANSHOP= QUANSHOPNEED WHERE SCODE = ?', [1], true]);
     });
     it('test getByPostingNumbers', async () => {
         query.mockReturnValueOnce([]);
@@ -580,23 +555,51 @@ describe('Trade2006InvoiceService', () => {
         });
 
         it('findRealpriceCodes — все RPC по SCODE в порядке вставки', async () => {
-            query.mockResolvedValueOnce([
-                { REALPRICECODE: 301 },
-                { REALPRICECODE: 302 },
-                { REALPRICECODE: 303 },
-            ]);
+            query.mockResolvedValueOnce([{ REALPRICECODE: 301 }, { REALPRICECODE: 302 }, { REALPRICECODE: 303 }]);
             const res = await service.findRealpriceCodes(100, null);
             expect(res).toEqual([301, 302, 303]);
-            expect(query.mock.calls[0][0]).toBe('SELECT REALPRICECODE FROM REALPRICE WHERE SCODE = ? ORDER BY REALPRICECODE');
+            expect(query.mock.calls[0][0]).toBe(
+                'SELECT REALPRICECODE FROM REALPRICE WHERE SCODE = ? ORDER BY REALPRICECODE',
+            );
             expect(query.mock.calls[0][1]).toEqual([100]);
         });
 
         it('findFboPodbposCandidates — уровень склада из SQL (LVL), внутри уровня ярусы по кодам', async () => {
             // LVL считается в SQL (CONTAINING регистронезависим), ярусы — по счётчикам кодов
             query.mockResolvedValueOnce([
-                { PODBPOSCODE: 3003, SCODE: 300, REALPRICECODE: 300, QUANAVAIL: 1, PRIM: '777-1 отмена FBO', LVL: 2, CNT_NOM: 0, CNT_LIVE: 0, CNT_TT3: 0 },
-                { PODBPOSCODE: 1001, SCODE: 100, REALPRICECODE: 100, QUANAVAIL: 1, PRIM: 'ПУШКИНО_1_РФЦ 555', LVL: 0, CNT_NOM: 0, CNT_LIVE: 0, CNT_TT3: 0 },
-                { PODBPOSCODE: 2002, SCODE: 200, REALPRICECODE: 200, QUANAVAIL: 1, PRIM: 'Москва, МО и Дальние регионы 666', LVL: 1, CNT_NOM: 0, CNT_LIVE: 0, CNT_TT3: 0 },
+                {
+                    PODBPOSCODE: 3003,
+                    SCODE: 300,
+                    REALPRICECODE: 300,
+                    QUANAVAIL: 1,
+                    PRIM: '777-1 отмена FBO',
+                    LVL: 2,
+                    CNT_NOM: 0,
+                    CNT_LIVE: 0,
+                    CNT_TT3: 0,
+                },
+                {
+                    PODBPOSCODE: 1001,
+                    SCODE: 100,
+                    REALPRICECODE: 100,
+                    QUANAVAIL: 1,
+                    PRIM: 'ПУШКИНО_1_РФЦ 555',
+                    LVL: 0,
+                    CNT_NOM: 0,
+                    CNT_LIVE: 0,
+                    CNT_TT3: 0,
+                },
+                {
+                    PODBPOSCODE: 2002,
+                    SCODE: 200,
+                    REALPRICECODE: 200,
+                    QUANAVAIL: 1,
+                    PRIM: 'Москва, МО и Дальние регионы 666',
+                    LVL: 1,
+                    CNT_NOM: 0,
+                    CNT_LIVE: 0,
+                    CNT_TT3: 0,
+                },
             ]);
             const res = await service.findFboPodbposCandidates(
                 '444',
@@ -615,29 +618,97 @@ describe('Trade2006InvoiceService', () => {
             expect(sql).toContain('m.TRANSFER_TYPE = 3 AND m.STATUS = 6) AS CNT_DEAD');
             // параметры: nominal (CNT_NOM), nominal (CNT_TT3), prims для LVL, goodscode, prims для WHERE
             expect(query.mock.calls[0][1]).toEqual([
-                1, 1,
-                'ПУШКИНО_1_РФЦ', 'Москва, МО и Дальние регионы', 'отмена FBO',
+                1,
+                1,
+                'ПУШКИНО_1_РФЦ',
+                'Москва, МО и Дальние регионы',
+                'отмена FBO',
                 '444',
-                'ПУШКИНО_1_РФЦ', 'Москва, МО и Дальние регионы', 'отмена FBO',
+                'ПУШКИНО_1_РФЦ',
+                'Москва, МО и Дальние регионы',
+                'отмена FBO',
             ]);
         });
 
         it('findFboPodbposCandidates — ярусы: коды номинала → без кодов; TT=3 вперёд; чужой номинал — не донор', async () => {
             query.mockResolvedValueOnce([
-                { PODBPOSCODE: 1, SCODE: 10, REALPRICECODE: 10, QUANAVAIL: 5, PRIM: 'W', LVL: 0, CNT_NOM: 0, CNT_LIVE: 2, CNT_TT3: 0 }, // коды есть, номинал чужой → отсечён
-                { PODBPOSCODE: 2, SCODE: 20, REALPRICECODE: 20, QUANAVAIL: 5, PRIM: 'W', LVL: 0, CNT_NOM: 1, CNT_LIVE: 1, CNT_TT3: 0 }, // ярус (а)
-                { PODBPOSCODE: 3, SCODE: 30, REALPRICECODE: 30, QUANAVAIL: 5, PRIM: 'W', LVL: 0, CNT_NOM: 0, CNT_LIVE: 0, CNT_TT3: 0 }, // ярус (б): без кодов
-                { PODBPOSCODE: 4, SCODE: 40, REALPRICECODE: 40, QUANAVAIL: 5, PRIM: 'W', LVL: 0, CNT_NOM: 2, CNT_LIVE: 2, CNT_TT3: 1 }, // ярус (а) + TT=3
+                {
+                    PODBPOSCODE: 1,
+                    SCODE: 10,
+                    REALPRICECODE: 10,
+                    QUANAVAIL: 5,
+                    PRIM: 'W',
+                    LVL: 0,
+                    CNT_NOM: 0,
+                    CNT_LIVE: 2,
+                    CNT_TT3: 0,
+                }, // коды есть, номинал чужой → отсечён
+                {
+                    PODBPOSCODE: 2,
+                    SCODE: 20,
+                    REALPRICECODE: 20,
+                    QUANAVAIL: 5,
+                    PRIM: 'W',
+                    LVL: 0,
+                    CNT_NOM: 1,
+                    CNT_LIVE: 1,
+                    CNT_TT3: 0,
+                }, // ярус (а)
+                {
+                    PODBPOSCODE: 3,
+                    SCODE: 30,
+                    REALPRICECODE: 30,
+                    QUANAVAIL: 5,
+                    PRIM: 'W',
+                    LVL: 0,
+                    CNT_NOM: 0,
+                    CNT_LIVE: 0,
+                    CNT_TT3: 0,
+                }, // ярус (б): без кодов
+                {
+                    PODBPOSCODE: 4,
+                    SCODE: 40,
+                    REALPRICECODE: 40,
+                    QUANAVAIL: 5,
+                    PRIM: 'W',
+                    LVL: 0,
+                    CNT_NOM: 2,
+                    CNT_LIVE: 2,
+                    CNT_TT3: 1,
+                }, // ярус (а) + TT=3
             ]);
             const skipped: any[] = [];
             const res = await service.findFboPodbposCandidates('444', ['W'], 5, null, (c) => skipped.push(c));
             expect(res.map((c) => c.podbposcode)).toEqual([4, 2, 3]);
-            expect(skipped).toEqual([{ podbposcode: 1, scode: 10, realpricecode: 10, quanAvail: 5, prim: 'W', cntNom: 0, cntLive: 2, cntTt3: 0, cntDead: 0, lvl: 0 }]);
+            expect(skipped).toEqual([
+                {
+                    podbposcode: 1,
+                    scode: 10,
+                    realpricecode: 10,
+                    quanAvail: 5,
+                    prim: 'W',
+                    cntNom: 0,
+                    cntLive: 2,
+                    cntTt3: 0,
+                    cntDead: 0,
+                    lvl: 0,
+                },
+            ]);
         });
 
         it('findFboPodbposCandidates — без колбэка отсечённый донор просто не возвращается (hasAnyPodbor видит «доноров нет»)', async () => {
             query.mockResolvedValueOnce([
-                { PODBPOSCODE: 1, SCODE: 10, REALPRICECODE: 10, QUANAVAIL: 20, PRIM: 'W', LVL: 0, CNT_NOM: 0, CNT_LIVE: 1, CNT_TT3: 1 },
+                {
+                    PODBPOSCODE: 1,
+                    SCODE: 10,
+                    REALPRICECODE: 10,
+                    QUANAVAIL: 20,
+                    PRIM: 'W',
+                    LVL: 0,
+                    CNT_NOM: 0,
+                    CNT_LIVE: 1,
+                    CNT_TT3: 1,
+                },
             ]);
             const res = await service.findFboPodbposCandidates('444', ['W'], 1, null);
             expect(res).toEqual([]);
@@ -664,20 +735,27 @@ describe('Trade2006InvoiceService', () => {
         it('migrateMarkCode — EXECUTE PROCEDURE MARKCODE_MIGRATE', async () => {
             const t = { execute: jest.fn(), commit: jest.fn() };
             await service.migrateMarkCode('KI-1', 100, 900, '444', 1, t as any);
-            expect(t.execute).toHaveBeenCalledWith(
-                'EXECUTE PROCEDURE MARKCODE_MIGRATE (?, ?, ?, ?, ?)',
-                ['KI-1', 100, 900, '444', 1],
-            );
+            expect(t.execute).toHaveBeenCalledWith('EXECUTE PROCEDURE MARKCODE_MIGRATE (?, ?, ?, ?, ?)', [
+                'KI-1',
+                100,
+                900,
+                '444',
+                1,
+            ]);
             expect(t.commit).not.toHaveBeenCalled();
         });
 
         it('migratePodbpos — EXECUTE PROCEDURE PODBPOS_MIGRATE_QTY (s_s из конфига)', async () => {
             const t = { execute: jest.fn(), commit: jest.fn() };
             await service.migratePodbpos(1001, 999, 900, '444', 10, t as any);
-            expect(t.execute).toHaveBeenCalledWith(
-                'EXECUTE PROCEDURE PODBPOS_MIGRATE_QTY (?, ?, ?, ?, ?, ?)',
-                [1001, 999, 900, '444', 10, 1],
-            );
+            expect(t.execute).toHaveBeenCalledWith('EXECUTE PROCEDURE PODBPOS_MIGRATE_QTY (?, ?, ?, ?, ?, ?)', [
+                1001,
+                999,
+                900,
+                '444',
+                10,
+                1,
+            ]);
             expect(t.commit).not.toHaveBeenCalled();
         });
 
@@ -699,7 +777,6 @@ describe('Trade2006InvoiceService', () => {
                 true,
             ]);
         });
-
     });
 
     describe('isPickedUp — подобран = STATUS 4', () => {
@@ -718,20 +795,24 @@ describe('Trade2006InvoiceService', () => {
         it('attachMarkCodeForFbs — EXECUTE PROCEDURE MARKCODE_ATTACH_FOR_FBS с km_full', async () => {
             const t = { execute: jest.fn(), commit: jest.fn() };
             await service.attachMarkCodeForFbs('KI-1', 500, '444', 0, 'RAW-SCAN-FULL', t as any);
-            expect(t.execute).toHaveBeenCalledWith(
-                'EXECUTE PROCEDURE MARKCODE_ATTACH_FOR_FBS (?, ?, ?, ?, ?)',
-                ['KI-1', 500, '444', 0, 'RAW-SCAN-FULL'],
-            );
+            expect(t.execute).toHaveBeenCalledWith('EXECUTE PROCEDURE MARKCODE_ATTACH_FOR_FBS (?, ?, ?, ?, ?)', [
+                'KI-1',
+                500,
+                '444',
+                0,
+                'RAW-SCAN-FULL',
+            ]);
             expect(t.commit).not.toHaveBeenCalled();
         });
 
         it('detachMarkCodeForFbs — EXECUTE PROCEDURE MARKCODE_DETACH_FOR_FBS', async () => {
             const t = { execute: jest.fn(), commit: jest.fn() };
             await service.detachMarkCodeForFbs('KI-1', 500, 0, t as any);
-            expect(t.execute).toHaveBeenCalledWith(
-                'EXECUTE PROCEDURE MARKCODE_DETACH_FOR_FBS (?, ?, ?)',
-                ['KI-1', 500, 0],
-            );
+            expect(t.execute).toHaveBeenCalledWith('EXECUTE PROCEDURE MARKCODE_DETACH_FOR_FBS (?, ?, ?)', [
+                'KI-1',
+                500,
+                0,
+            ]);
             expect(t.commit).not.toHaveBeenCalled();
         });
 
@@ -772,11 +853,7 @@ describe('Trade2006InvoiceService', () => {
         it('getKmFullByKi — возвращает полный rawScan', async () => {
             query.mockResolvedValueOnce([{ KM_FULL: '01001234...91...92...' }]);
             expect(await service.getKmFullByKi('KI-1', null)).toBe('01001234...91...92...');
-            expect(query.mock.calls[0]).toEqual([
-                'SELECT KM_FULL FROM MARKCODES WHERE KI = ?',
-                ['KI-1'],
-                true,
-            ]);
+            expect(query.mock.calls[0]).toEqual(['SELECT KM_FULL FROM MARKCODES WHERE KI = ?', ['KI-1'], true]);
         });
 
         it('getKmFullByKi — KM_FULL=NULL или нет строки → null', async () => {
@@ -964,7 +1041,9 @@ describe('Trade2006InvoiceService', () => {
             expect(sql).toContain('m.TRANSFER_TYPE IN (2, 3)');
             expect(sql).toContain('m.REALPRICEFCODE IS NULL');
             // Счета «в сборке» исключены, но собранный дольше 30 дней — уже висяк.
-            expect(sql).toContain('m.STATUS = 5 AND (s.SCODE IS NULL OR s.STATUS NOT IN (3, 4) OR (s.STATUS = 4 AND s.DATA < ?))');
+            expect(sql).toContain(
+                'm.STATUS = 5 AND (s.SCODE IS NULL OR s.STATUS NOT IN (3, 4) OR (s.STATUS = 4 AND s.DATA < ?))',
+            );
             // Зеркальный висяк: выведенный нашей продажей код на счёте-доноре.
             expect(sql).toContain('m.STATUS = 6 AND m.RETIRE_REASON = 1 AND s.PRIM CONTAINING ?');
             expect(query.mock.calls[0][1][0]).toBeInstanceOf(Date);
@@ -1057,7 +1136,7 @@ describe('Trade2006InvoiceService', () => {
         query.mockResolvedValueOnce([]);
         await service.getPrimContaining('test');
         expect(query.mock.calls[0]).toEqual(['SELECT * FROM S WHERE PRIM CONTAINING ?', ['test'], true]);
-    })
+    });
 
     it('update', async () => {
         const dto: InvoiceUpdateDto = {
@@ -1089,17 +1168,17 @@ describe('Trade2006InvoiceService', () => {
             const supplyId = '123';
             const mockLines = [
                 { GOODSCODE: 111, QUAN: 10, WHERE_ORDERED: '2' },
-                { GOODSCODE: 222, QUAN: 5, WHERE_ORDERED: null }
+                { GOODSCODE: 222, QUAN: 5, WHERE_ORDERED: null },
             ];
-            
+
             const mockProducts = [
                 { sku: '111-2', barCode: 'BAR111', remark: 'Product 1' },
-                { sku: '222', barCode: 'BAR222', remark: 'Product 2' }
+                { sku: '222', barCode: 'BAR222', remark: 'Product 2' },
             ];
 
             // Мокаем запрос к БД
             query.mockResolvedValueOnce(mockLines);
-            
+
             // Мокаем ответ от productable
             mockProductable.infoList.mockResolvedValueOnce(mockProducts);
 
@@ -1112,13 +1191,13 @@ describe('Trade2006InvoiceService', () => {
                 supplyId,
                 barCode: 'BAR111',
                 remark: 'Product 1',
-                quantity: 5 // 10 / 2 (whereOrdered)
+                quantity: 5, // 10 / 2 (whereOrdered)
             });
             expect(result[1]).toEqual({
                 supplyId,
                 barCode: 'BAR222',
                 remark: 'Product 2',
-                quantity: 5 // 5 / 1 (whereOrdered = null)
+                quantity: 5, // 5 / 1 (whereOrdered = null)
             });
 
             // Проверяем вызовы
@@ -1129,34 +1208,30 @@ describe('Trade2006InvoiceService', () => {
         it('должен выбрасывать ошибку, если продукт не найден', async () => {
             // Подготовка данных
             const supplyId = '123';
-            const mockLines = [
-                { GOODSCODE: 111, QUAN: 10, WHERE_ORDERED: '2' }
-            ];
-            
-            const mockProducts = [
-                { sku: 'wrong-sku', barCode: 'BAR111', remark: 'Product 1' }
-            ];
+            const mockLines = [{ GOODSCODE: 111, QUAN: 10, WHERE_ORDERED: '2' }];
+
+            const mockProducts = [{ sku: 'wrong-sku', barCode: 'BAR111', remark: 'Product 1' }];
 
             // Мокаем запрос к БД
             query.mockResolvedValueOnce(mockLines);
-            
+
             // Мокаем ответ от productable
             mockProductable.infoList.mockResolvedValueOnce(mockProducts);
 
             // Проверяем, что метод выбрасывает ошибку
-            await expect(service.getSupplyPositions(supplyId, mockProductable))
-                .rejects
-                .toThrow('Product not found for SKU: 111-2');
+            await expect(service.getSupplyPositions(supplyId, mockProductable)).rejects.toThrow(
+                'Product not found for SKU: 111-2',
+            );
         });
 
         it('должен корректно обрабатывать пустой список позиций', async () => {
             // Подготовка данных
             const supplyId = '123';
             const mockLines = [];
-            
+
             // Мокаем запрос к БД
             query.mockResolvedValueOnce(mockLines);
-            
+
             // Мокаем пустой ответ от productable
             mockProductable.infoList.mockResolvedValueOnce([]);
 
@@ -1189,81 +1264,81 @@ describe('Trade2006InvoiceService', () => {
                 POKUPATCODE: 123,
                 SCODE: 456,
                 DATA: new Date(updDate),
-                NSF: updNumber
+                NSF: updNumber,
             };
 
             const mockTransferOutLines = [
-                { 
-                    REALPRICEFCODE: 1, 
-                    SFCODE: 1, 
-                    GOODSCODE: 'GOOD1', 
-                    PRICE: 100, 
-                    QUAN: 5, 
-                    OPRIH: 1, 
-                    REALPRICECODE: 10, 
-                    DIRECTSKLADNEED: 0, 
-                    DIRECTSHOPNEED: 0, 
-                    DIRECTSHOP: 0, 
-                    DIRECTSKLAD: 0, 
-                    GTD: '', 
-                    STRANA: '', 
-                    SUMMAP: 500, 
-                    SECONDINSERT: 0, 
-                    MARK1C: 0, 
-                    USERNAME: '', 
-                    SHOP_SALED_NAKL_D_ID: 0, 
-                    INSERT_ATTR: '', 
-                    MODIFY_ATTR: ''
+                {
+                    REALPRICEFCODE: 1,
+                    SFCODE: 1,
+                    GOODSCODE: 'GOOD1',
+                    PRICE: 100,
+                    QUAN: 5,
+                    OPRIH: 1,
+                    REALPRICECODE: 10,
+                    DIRECTSKLADNEED: 0,
+                    DIRECTSHOPNEED: 0,
+                    DIRECTSHOP: 0,
+                    DIRECTSKLAD: 0,
+                    GTD: '',
+                    STRANA: '',
+                    SUMMAP: 500,
+                    SECONDINSERT: 0,
+                    MARK1C: 0,
+                    USERNAME: '',
+                    SHOP_SALED_NAKL_D_ID: 0,
+                    INSERT_ATTR: '',
+                    MODIFY_ATTR: '',
                 },
-                { 
-                    REALPRICEFCODE: 2, 
-                    SFCODE: 1, 
-                    GOODSCODE: 'GOOD2', 
-                    PRICE: 60, 
-                    QUAN: 5, 
-                    OPRIH: 1, 
-                    REALPRICECODE: 11, 
-                    DIRECTSKLADNEED: 0, 
-                    DIRECTSHOPNEED: 0, 
-                    DIRECTSHOP: 0, 
-                    DIRECTSKLAD: 0, 
-                    GTD: '', 
-                    STRANA: '', 
-                    SUMMAP: 300, 
-                    SECONDINSERT: 0, 
-                    MARK1C: 0, 
-                    USERNAME: '', 
-                    SHOP_SALED_NAKL_D_ID: 0, 
-                    INSERT_ATTR: '', 
-                    MODIFY_ATTR: ''
+                {
+                    REALPRICEFCODE: 2,
+                    SFCODE: 1,
+                    GOODSCODE: 'GOOD2',
+                    PRICE: 60,
+                    QUAN: 5,
+                    OPRIH: 1,
+                    REALPRICECODE: 11,
+                    DIRECTSKLADNEED: 0,
+                    DIRECTSHOPNEED: 0,
+                    DIRECTSHOP: 0,
+                    DIRECTSKLAD: 0,
+                    GTD: '',
+                    STRANA: '',
+                    SUMMAP: 300,
+                    SECONDINSERT: 0,
+                    MARK1C: 0,
+                    USERNAME: '',
+                    SHOP_SALED_NAKL_D_ID: 0,
+                    INSERT_ATTR: '',
+                    MODIFY_ATTR: '',
                 },
-                { 
-                    REALPRICEFCODE: 3, 
-                    SFCODE: 1, 
-                    GOODSCODE: 'GOOD3', 
-                    PRICE: 40, 
-                    QUAN: 5, 
-                    OPRIH: 1, 
-                    REALPRICECODE: null, 
-                    DIRECTSKLADNEED: 0, 
-                    DIRECTSHOPNEED: 0, 
-                    DIRECTSHOP: 0, 
-                    DIRECTSKLAD: 0, 
-                    GTD: '', 
-                    STRANA: '', 
-                    SUMMAP: 200, 
-                    SECONDINSERT: 0, 
-                    MARK1C: 0, 
-                    USERNAME: '', 
-                    SHOP_SALED_NAKL_D_ID: 0, 
-                    INSERT_ATTR: '', 
-                    MODIFY_ATTR: ''
-                }
+                {
+                    REALPRICEFCODE: 3,
+                    SFCODE: 1,
+                    GOODSCODE: 'GOOD3',
+                    PRICE: 40,
+                    QUAN: 5,
+                    OPRIH: 1,
+                    REALPRICECODE: null,
+                    DIRECTSKLADNEED: 0,
+                    DIRECTSHOPNEED: 0,
+                    DIRECTSHOP: 0,
+                    DIRECTSKLAD: 0,
+                    GTD: '',
+                    STRANA: '',
+                    SUMMAP: 200,
+                    SECONDINSERT: 0,
+                    MARK1C: 0,
+                    USERNAME: '',
+                    SHOP_SALED_NAKL_D_ID: 0,
+                    INSERT_ATTR: '',
+                    MODIFY_ATTR: '',
+                },
             ];
 
             // Мокаем получение УПД
             query.mockResolvedValueOnce([mockTransferOut]);
-            
+
             // Мокаем получение строк УПД
             query.mockResolvedValueOnce(mockTransferOutLines);
 
@@ -1276,7 +1351,7 @@ describe('Trade2006InvoiceService', () => {
             // Проверяем результат
             expect(result).toEqual({
                 isSuccess: true,
-                message: 'Платеж успешно распределен'
+                message: 'Платеж успешно распределен',
             });
 
             // Проверяем что методы были вызваны
@@ -1300,7 +1375,7 @@ describe('Trade2006InvoiceService', () => {
             // Проверяем результат
             expect(result).toEqual({
                 isSuccess: false,
-                message: '404: УПД не найден'
+                message: '404: УПД не найден',
             });
 
             // При ошибках 404 транзакция не откатывается, так как ошибка обрабатывается в catch
@@ -1318,12 +1393,12 @@ describe('Trade2006InvoiceService', () => {
                 POKUPATCODE: 123,
                 SCODE: 456,
                 DATA: new Date(updDate),
-                NSF: updNumber
+                NSF: updNumber,
             };
 
             // Мокаем получение УПД
             query.mockResolvedValueOnce([mockTransferOut]);
-            
+
             // Мокаем пустой результат для строк УПД
             query.mockResolvedValueOnce([]);
 
@@ -1333,7 +1408,7 @@ describe('Trade2006InvoiceService', () => {
             // Проверяем результат
             expect(result).toEqual({
                 isSuccess: false,
-                message: '404: Строки УПД не найдены'
+                message: '404: Строки УПД не найдены',
             });
 
             // При ошибках 404 транзакция не откатывается, так как ошибка обрабатывается в catch
@@ -1351,38 +1426,38 @@ describe('Trade2006InvoiceService', () => {
                 POKUPATCODE: 123,
                 SCODE: 456,
                 DATA: new Date(updDate),
-                NSF: updNumber
+                NSF: updNumber,
             };
 
             const mockTransferOutLines = [
-                { 
-                    REALPRICEFCODE: 1, 
-                    SFCODE: 1, 
-                    GOODSCODE: 'GOOD1', 
-                    PRICE: 100, 
-                    QUAN: 5, 
-                    OPRIH: 1, 
-                    REALPRICECODE: 10, 
-                    DIRECTSKLADNEED: 0, 
-                    DIRECTSHOPNEED: 0, 
-                    DIRECTSHOP: 0, 
-                    DIRECTSKLAD: 0, 
-                    GTD: '', 
-                    STRANA: '', 
-                    SUMMAP: 500, 
-                    SECONDINSERT: 0, 
-                    MARK1C: 0, 
-                    USERNAME: '', 
-                    SHOP_SALED_NAKL_D_ID: 0, 
-                    INSERT_ATTR: '', 
-                    MODIFY_ATTR: ''
-                }
+                {
+                    REALPRICEFCODE: 1,
+                    SFCODE: 1,
+                    GOODSCODE: 'GOOD1',
+                    PRICE: 100,
+                    QUAN: 5,
+                    OPRIH: 1,
+                    REALPRICECODE: 10,
+                    DIRECTSKLADNEED: 0,
+                    DIRECTSHOPNEED: 0,
+                    DIRECTSHOP: 0,
+                    DIRECTSKLAD: 0,
+                    GTD: '',
+                    STRANA: '',
+                    SUMMAP: 500,
+                    SECONDINSERT: 0,
+                    MARK1C: 0,
+                    USERNAME: '',
+                    SHOP_SALED_NAKL_D_ID: 0,
+                    INSERT_ATTR: '',
+                    MODIFY_ATTR: '',
+                },
             ];
 
             // Мокаем успешные запросы
             query.mockResolvedValueOnce([mockTransferOut]);
             query.mockResolvedValueOnce(mockTransferOutLines);
-            
+
             // Мокаем ошибку БД в execute
             execute.mockRejectedValueOnce(new Error('Database connection failed'));
 
@@ -1392,7 +1467,7 @@ describe('Trade2006InvoiceService', () => {
             // Проверяем результат
             expect(result).toEqual({
                 isSuccess: false,
-                message: 'Ошибка при распределении платежа: Database connection failed'
+                message: 'Ошибка при распределении платежа: Database connection failed',
             });
 
             // Ошибка обрабатывается в catch блоке, rollback не вызывается
@@ -1410,77 +1485,77 @@ describe('Trade2006InvoiceService', () => {
                 POKUPATCODE: 123,
                 SCODE: 456,
                 DATA: new Date(updDate),
-                NSF: updNumber
+                NSF: updNumber,
             };
 
             // Мокаем данные из БД с правильными полями
             const mockTransferOutLines = [
-                { 
-                    REALPRICEFCODE: 1, 
-                    SFCODE: 1, 
-                    GOODSCODE: 'GOOD1', 
-                    PRICE: 100, 
-                    QUAN: 5, 
-                    OPRIH: 1, 
-                    REALPRICECODE: 10, 
-                    DIRECTSKLADNEED: 0, 
-                    DIRECTSHOPNEED: 0, 
-                    DIRECTSHOP: 0, 
-                    DIRECTSKLAD: 0, 
-                    GTD: '', 
-                    STRANA: '', 
-                    SUMMAP: 500, 
-                    SECONDINSERT: 0, 
-                    MARK1C: 0, 
-                    USERNAME: '', 
-                    SHOP_SALED_NAKL_D_ID: 0, 
-                    INSERT_ATTR: '', 
-                    MODIFY_ATTR: ''
+                {
+                    REALPRICEFCODE: 1,
+                    SFCODE: 1,
+                    GOODSCODE: 'GOOD1',
+                    PRICE: 100,
+                    QUAN: 5,
+                    OPRIH: 1,
+                    REALPRICECODE: 10,
+                    DIRECTSKLADNEED: 0,
+                    DIRECTSHOPNEED: 0,
+                    DIRECTSHOP: 0,
+                    DIRECTSKLAD: 0,
+                    GTD: '',
+                    STRANA: '',
+                    SUMMAP: 500,
+                    SECONDINSERT: 0,
+                    MARK1C: 0,
+                    USERNAME: '',
+                    SHOP_SALED_NAKL_D_ID: 0,
+                    INSERT_ATTR: '',
+                    MODIFY_ATTR: '',
                 },
-                { 
-                    REALPRICEFCODE: 2, 
-                    SFCODE: 1, 
-                    GOODSCODE: 'GOOD2', 
-                    PRICE: 60, 
-                    QUAN: 5, 
-                    OPRIH: 1, 
-                    REALPRICECODE: 11, 
-                    DIRECTSKLADNEED: 0, 
-                    DIRECTSHOPNEED: 0, 
-                    DIRECTSHOP: 0, 
-                    DIRECTSKLAD: 0, 
-                    GTD: '', 
-                    STRANA: '', 
-                    SUMMAP: 300, 
-                    SECONDINSERT: 0, 
-                    MARK1C: 0, 
-                    USERNAME: '', 
-                    SHOP_SALED_NAKL_D_ID: 0, 
-                    INSERT_ATTR: '', 
-                    MODIFY_ATTR: ''
+                {
+                    REALPRICEFCODE: 2,
+                    SFCODE: 1,
+                    GOODSCODE: 'GOOD2',
+                    PRICE: 60,
+                    QUAN: 5,
+                    OPRIH: 1,
+                    REALPRICECODE: 11,
+                    DIRECTSKLADNEED: 0,
+                    DIRECTSHOPNEED: 0,
+                    DIRECTSHOP: 0,
+                    DIRECTSKLAD: 0,
+                    GTD: '',
+                    STRANA: '',
+                    SUMMAP: 300,
+                    SECONDINSERT: 0,
+                    MARK1C: 0,
+                    USERNAME: '',
+                    SHOP_SALED_NAKL_D_ID: 0,
+                    INSERT_ATTR: '',
+                    MODIFY_ATTR: '',
                 },
-                { 
-                    REALPRICEFCODE: 3, 
-                    SFCODE: 1, 
-                    GOODSCODE: 'GOOD3', 
-                    PRICE: 40, 
-                    QUAN: 5, 
-                    OPRIH: 1, 
-                    REALPRICECODE: null, 
-                    DIRECTSKLADNEED: 0, 
-                    DIRECTSHOPNEED: 0, 
-                    DIRECTSHOP: 0, 
-                    DIRECTSKLAD: 0, 
-                    GTD: '', 
-                    STRANA: '', 
-                    SUMMAP: 200, 
-                    SECONDINSERT: 0, 
-                    MARK1C: 0, 
-                    USERNAME: '', 
-                    SHOP_SALED_NAKL_D_ID: 0, 
-                    INSERT_ATTR: '', 
-                    MODIFY_ATTR: ''
-                }
+                {
+                    REALPRICEFCODE: 3,
+                    SFCODE: 1,
+                    GOODSCODE: 'GOOD3',
+                    PRICE: 40,
+                    QUAN: 5,
+                    OPRIH: 1,
+                    REALPRICECODE: null,
+                    DIRECTSKLADNEED: 0,
+                    DIRECTSHOPNEED: 0,
+                    DIRECTSHOP: 0,
+                    DIRECTSKLAD: 0,
+                    GTD: '',
+                    STRANA: '',
+                    SUMMAP: 200,
+                    SECONDINSERT: 0,
+                    MARK1C: 0,
+                    USERNAME: '',
+                    SHOP_SALED_NAKL_D_ID: 0,
+                    INSERT_ATTR: '',
+                    MODIFY_ATTR: '',
+                },
             ];
 
             // Мокаем запросы
@@ -1496,18 +1571,9 @@ describe('Trade2006InvoiceService', () => {
 
             // Проверяем, что суммы были обновлены пропорционально
             // 500/1000 * 1000 = 500, 300/1000 * 1000 = 300, 200/1000 * 1000 = 200
-            expect(execute).toHaveBeenCalledWith(
-                'UPDATE REALPRICEF SET SUMMAP = ? WHERE REALPRICEFCODE = ?',
-                [500, 1]
-            );
-            expect(execute).toHaveBeenCalledWith(
-                'UPDATE REALPRICEF SET SUMMAP = ? WHERE REALPRICEFCODE = ?',
-                [300, 2]
-            );
-            expect(execute).toHaveBeenCalledWith(
-                'UPDATE REALPRICEF SET SUMMAP = ? WHERE REALPRICEFCODE = ?',
-                [200, 3]
-            );
+            expect(execute).toHaveBeenCalledWith('UPDATE REALPRICEF SET SUMMAP = ? WHERE REALPRICEFCODE = ?', [500, 1]);
+            expect(execute).toHaveBeenCalledWith('UPDATE REALPRICEF SET SUMMAP = ? WHERE REALPRICEFCODE = ?', [300, 2]);
+            expect(execute).toHaveBeenCalledWith('UPDATE REALPRICEF SET SUMMAP = ? WHERE REALPRICEFCODE = ?', [200, 3]);
         });
     });
 
@@ -1523,7 +1589,15 @@ describe('Trade2006InvoiceService', () => {
 
         it('logMigrationLink → INSERT в FBO_MIGRATION_LINK', async () => {
             await service.logMigrationLink(
-                { posting: '321', goodscode: '444', quantity: 2, donorScode: 10, donorRpc: 100, targetScode: 999, targetRpc: 300 },
+                {
+                    posting: '321',
+                    goodscode: '444',
+                    quantity: 2,
+                    donorScode: 10,
+                    donorRpc: 100,
+                    targetScode: 999,
+                    targetRpc: 300,
+                },
                 t,
             );
             expect(execute.mock.calls[0][0]).toContain('INSERT INTO FBO_MIGRATION_LINK');
@@ -1569,9 +1643,42 @@ describe('Trade2006InvoiceService', () => {
             query
                 // журнал × счета STATUS=3 × строки: два счёта, у второго строку уже добрали в Delphi
                 .mockResolvedValueOnce([
-                    { SERVICE: 'ozon', POSTING: '748-1', PRIM: 'Екб', SCODE: 100, NS: 16771, DATA: new Date('2026-09-25'), REALPRICECODE: 1, GOODSCODE: 562990, QUAN: 1, NAME: 'товар А' },
-                    { SERVICE: 'ozon', POSTING: '748-1', PRIM: 'Екб', SCODE: 100, NS: 16771, DATA: new Date('2026-09-25'), REALPRICECODE: 2, GOODSCODE: 111, QUAN: 4, NAME: 'товар Б' },
-                    { SERVICE: 'ozon', POSTING: '507-1', PRIM: 'Крд', SCODE: 200, NS: 16000, DATA: new Date('2026-08-01'), REALPRICECODE: 3, GOODSCODE: 222, QUAN: 5, NAME: 'товар В' },
+                    {
+                        SERVICE: 'ozon',
+                        POSTING: '748-1',
+                        PRIM: 'Екб',
+                        SCODE: 100,
+                        NS: 16771,
+                        DATA: new Date('2026-09-25'),
+                        REALPRICECODE: 1,
+                        GOODSCODE: 562990,
+                        QUAN: 1,
+                        NAME: 'товар А',
+                    },
+                    {
+                        SERVICE: 'ozon',
+                        POSTING: '748-1',
+                        PRIM: 'Екб',
+                        SCODE: 100,
+                        NS: 16771,
+                        DATA: new Date('2026-09-25'),
+                        REALPRICECODE: 2,
+                        GOODSCODE: 111,
+                        QUAN: 4,
+                        NAME: 'товар Б',
+                    },
+                    {
+                        SERVICE: 'ozon',
+                        POSTING: '507-1',
+                        PRIM: 'Крд',
+                        SCODE: 200,
+                        NS: 16000,
+                        DATA: new Date('2026-08-01'),
+                        REALPRICECODE: 3,
+                        GOODSCODE: 222,
+                        QUAN: 5,
+                        NAME: 'товар В',
+                    },
                 ])
                 // подобрано на счёте 100: по второй строке 3 из 4
                 .mockResolvedValueOnce([{ REALPRICECODE: 2, PICKED: 3 }])
@@ -1581,7 +1688,16 @@ describe('Trade2006InvoiceService', () => {
             const res = await service.listFboShortages();
 
             expect(res).toEqual([
-                expect.objectContaining({ posting: '748-1', invoiceNumber: 16771, realpricecode: 1, goodscode: '562990', quantity: 1, picked: 0, shortage: 1, prim: 'Екб' }),
+                expect.objectContaining({
+                    posting: '748-1',
+                    invoiceNumber: 16771,
+                    realpricecode: 1,
+                    goodscode: '562990',
+                    quantity: 1,
+                    picked: 0,
+                    shortage: 1,
+                    prim: 'Екб',
+                }),
                 expect.objectContaining({ posting: '748-1', realpricecode: 2, quantity: 4, picked: 3, shortage: 1 }),
             ]);
             // кандидаты — из журнала, открытость — по счёту в подборке и его строкам
@@ -1600,7 +1716,13 @@ describe('Trade2006InvoiceService', () => {
         it('отдаёт номер счёта и доноров того же покупателя по каждой строке', async () => {
             query
                 .mockResolvedValueOnce([
-                    { SCODE: 100, NS: 16771, DATA: new Date('2026-08-26'), PRIM: '555-1 отмена FBO', POKUPATCODE: 24231 },
+                    {
+                        SCODE: 100,
+                        NS: 16771,
+                        DATA: new Date('2026-08-26'),
+                        PRIM: '555-1 отмена FBO',
+                        POKUPATCODE: 24231,
+                    },
                 ])
                 .mockResolvedValueOnce([
                     { REALPRICECODE: 1, GOODSCODE: '111', QUAN: 2, PIECES: null, NAME: 'товар А' },
@@ -1611,7 +1733,16 @@ describe('Trade2006InvoiceService', () => {
                 // журнал недобора по отправлению: товар первой строки
                 .mockResolvedValueOnce([{ GOODSCODE: '111' }])
                 .mockResolvedValueOnce([
-                    { GOODSCODE: '111', PODBPOSCODE: 7, REALPRICECODE: 77, QUANAVAIL: 5, SCODE: 200, NS: 16000, DATA: new Date('2026-08-20'), PRIM: 'донор' },
+                    {
+                        GOODSCODE: '111',
+                        PODBPOSCODE: 7,
+                        REALPRICECODE: 77,
+                        QUANAVAIL: 5,
+                        SCODE: 200,
+                        NS: 16000,
+                        DATA: new Date('2026-08-20'),
+                        PRIM: 'донор',
+                    },
                 ])
                 // коды на строке донора: живых нет, выведенных нет
                 .mockResolvedValueOnce([])
@@ -1665,20 +1796,18 @@ describe('Trade2006InvoiceService', () => {
 
     describe('findDonorsByArticle', () => {
         it('фасовка в артикуле отбрасывается, доноры ищутся по всем покупателям', async () => {
-            query
-                .mockResolvedValueOnce([{ NAME: 'реле HF105F' }])
-                .mockResolvedValueOnce([
-                    {
-                        GOODSCODE: '552601',
-                        PODBPOSCODE: 7,
-                        QUANAVAIL: 5,
-                        SCODE: 200,
-                        NS: 16000,
-                        DATA: new Date('2026-08-20'),
-                        PRIM: 'донор',
-                        POKUPATCODE: 24231,
-                    },
-                ]);
+            query.mockResolvedValueOnce([{ NAME: 'реле HF105F' }]).mockResolvedValueOnce([
+                {
+                    GOODSCODE: '552601',
+                    PODBPOSCODE: 7,
+                    QUANAVAIL: 5,
+                    SCODE: 200,
+                    NS: 16000,
+                    DATA: new Date('2026-08-20'),
+                    PRIM: 'донор',
+                    POKUPATCODE: 24231,
+                },
+            ]);
 
             const res = await service.findDonorsByArticle('552601-3');
 

@@ -19,7 +19,9 @@ export class JobController {
     @Get(':id')
     @ApiOperation({ summary: 'Состояние одной задачи: фаза, прогресс, результат' })
     @ApiOkResponse({ type: JobStateDto })
-    @ApiNotFoundResponse({ description: 'задачи нет: не запускалась, подчищена через час после конца или процесс перезапущен' })
+    @ApiNotFoundResponse({
+        description: 'задачи нет: не запускалась, подчищена через час после конца или процесс перезапущен',
+    })
     get(@Param('id') id: string): JobStateDto {
         const state = this.jobs.get(id);
         if (!state) throw new NotFoundException(`задача ${id} не найдена — запусти заново`);

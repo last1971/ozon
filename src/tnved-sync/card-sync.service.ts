@@ -3,7 +3,13 @@ import { ConfigService } from '@nestjs/config';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { ITnvedUpdateable } from '../interfaces/i.tnved.updateable';
 import { TNVED_PROGRESS_CACHE } from '../interfaces/i.tnved.processing.context';
-import { CardSyncMode, CardSyncOptions, CardSyncReport, ICardSyncable, ICardSyncContext } from '../interfaces/i.card.sync';
+import {
+    CardSyncMode,
+    CardSyncOptions,
+    CardSyncReport,
+    ICardSyncable,
+    ICardSyncContext,
+} from '../interfaces/i.card.sync';
 import { GTIN_PROGRESS_CACHE } from '../interfaces/i.gtin.sync';
 import { OzonTnvedService } from './ozon.tnved.service';
 import { WbTnvedService } from './wb.tnved.service';
@@ -76,7 +82,8 @@ export class CardSyncService {
         diff: DiffMissingTnvedCommand,
     ) {
         const enabled = config.get<GoodServiceEnum[]>('SERVICES', []);
-        const pick = <S>(pairs: [GoodServiceEnum, S][]) => new Map(pairs.filter(([market]) => enabled.includes(market)));
+        const pick = <S>(pairs: [GoodServiceEnum, S][]) =>
+            new Map(pairs.filter(([market]) => enabled.includes(market)));
         const tail = [skipProcessed, check, buildReport, update, markProcessed];
 
         this.tnvedServices = pick<ITnvedUpdateable>([
@@ -103,7 +110,10 @@ export class CardSyncService {
         this.missingCommands = [loadOffers, loadGoods, diff];
     }
 
-    public getService(market: GoodServiceEnum, mode: CardSyncMode = CardSyncMode.TNVED): ICardSyncable<any, any> | null {
+    public getService(
+        market: GoodServiceEnum,
+        mode: CardSyncMode = CardSyncMode.TNVED,
+    ): ICardSyncable<any, any> | null {
         return this.modes.get(mode)?.services.get(market) || null;
     }
 
@@ -114,7 +124,8 @@ export class CardSyncService {
 
     private requireMode(mode: CardSyncMode): ModeSetup {
         const setup = this.modes.get(mode);
-        if (!setup) throw new BadRequestException(`режим «${mode}» неизвестен; доступны: ${[...this.modes.keys()].join(', ')}`);
+        if (!setup)
+            throw new BadRequestException(`режим «${mode}» неизвестен; доступны: ${[...this.modes.keys()].join(', ')}`);
         return setup;
     }
 
@@ -152,7 +163,13 @@ export class CardSyncService {
             params: { ...fullOpts },
             clientId,
             commands: setup.commands,
-            context: { service, opts: fullOpts, progressCache: setup.progressCache, progress: emptyProgress(), logger: this.logger },
+            context: {
+                service,
+                opts: fullOpts,
+                progressCache: setup.progressCache,
+                progress: emptyProgress(),
+                logger: this.logger,
+            },
             result: (ctx) => ctx.report,
         });
     }

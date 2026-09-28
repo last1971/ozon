@@ -96,16 +96,10 @@ describe('HttpWrapperService', () => {
                 status: 500,
             };
 
-            const axiosError = new AxiosError(
-                errorMessage,
-                'ERROR',
-                {} as any,
-                {},
-                {
-                    status: 500,
-                    data: errorResponse,
-                } as any,
-            );
+            const axiosError = new AxiosError(errorMessage, 'ERROR', {} as any, {}, {
+                status: 500,
+                data: errorResponse,
+            } as any);
 
             mockHttpService.get.mockReturnValue(throwError(() => axiosError));
 
@@ -134,16 +128,10 @@ describe('HttpWrapperService', () => {
                 status: 500,
             };
 
-            const axiosError = new AxiosError(
-                errorMessage,
-                'ERROR',
-                {} as any,
-                {},
-                {
-                    status: 500,
-                    data: errorResponse,
-                } as any,
-            );
+            const axiosError = new AxiosError(errorMessage, 'ERROR', {} as any, {}, {
+                status: 500,
+                data: errorResponse,
+            } as any);
 
             mockHttpService.post.mockReturnValue(throwError(() => axiosError));
 
@@ -165,4 +153,4 @@ describe('HttpWrapperService', () => {
             });
         });
     });
-}); 
+});

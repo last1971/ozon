@@ -44,10 +44,7 @@ describe('GtdResolver', () => {
     });
 
     it('внутри источника кривые кандидаты пропускаются, берётся первый годный', async () => {
-        const resolver = build(
-            source([]),
-            source(['10132160/26115/5241506', '------', '10013160/030324/3074100/1']),
-        );
+        const resolver = build(source([]), source(['10132160/26115/5241506', '------', '10013160/030324/3074100/1']));
         expect(await resolver.resolve(party, transaction)).toBe('10013160/030324/3074100');
     });
 

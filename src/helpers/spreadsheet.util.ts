@@ -51,5 +51,8 @@ export async function readColumnByHeader(buffer: Buffer, headerNames: string[]):
     if (col < 0) {
         throw new BadRequestException(`Не найдена колонка ${headerNames.map((n) => `«${n}»`).join('/')}`);
     }
-    return rows.slice(1).map((r) => r[col]).filter(Boolean);
+    return rows
+        .slice(1)
+        .map((r) => r[col])
+        .filter(Boolean);
 }

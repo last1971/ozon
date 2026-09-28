@@ -17,7 +17,10 @@ import { checkGtinOffers } from './gtin.decision';
 export class OzonGtinService implements ICardSyncable<GtinBaseItem, GtinCheckItem> {
     constructor(private readonly productService: ProductService) {}
 
-    async check(base: GtinBaseItem[], progress: JobProgress = emptyProgress()): Promise<SyncCheckResult<GtinCheckItem>> {
+    async check(
+        base: GtinBaseItem[],
+        progress: JobProgress = emptyProgress(),
+    ): Promise<SyncCheckResult<GtinCheckItem>> {
         Object.assign(progress, { phase: 'каталог', done: 0, total: undefined });
         const catalog = groupByGoodCode(
             await this.productService.listAllOfferIds((loaded) => (progress.done = loaded)),
@@ -40,7 +43,9 @@ export class OzonGtinService implements ICardSyncable<GtinBaseItem, GtinCheckIte
 
         const byGood = new Map<string, BarcodeOffer[]>();
         for (const b of base) {
-            const list = (catalog.get(b.goodscode) ?? []).map((offer) => this.toBarcodeOffer(offer, infos.get(offer), failed.get(offer)));
+            const list = (catalog.get(b.goodscode) ?? []).map((offer) =>
+                this.toBarcodeOffer(offer, infos.get(offer), failed.get(offer)),
+            );
             if (list.length) byGood.set(b.goodscode, list);
         }
         return checkGtinOffers(base, byGood, progress);
@@ -74,7 +79,10 @@ export class OzonGtinService implements ICardSyncable<GtinBaseItem, GtinCheckIte
             }
             for (const i of part) {
                 const errs = rejected.get(Number(i.marketId));
-                results.set(i.offer, errs ? { offer: i.offer, error: `Озон отказал: ${errs.join('; ')}` } : { offer: i.offer });
+                results.set(
+                    i.offer,
+                    errs ? { offer: i.offer, error: `Озон отказал: ${errs.join('; ')}` } : { offer: i.offer },
+                );
                 // в суточном кэше атрибутов карточки лежат и баркоды (их копирует создание карточки ВБ из Озона)
                 if (!errs) await this.productService.evictProductAttributes(i.offer);
             }
@@ -92,7 +100,9 @@ export class OzonGtinService implements ICardSyncable<GtinBaseItem, GtinCheckIte
             name: info.remark,
             barcodes: info.barcodes ?? [],
             marketId: info.marketSku,
-            ...(info.marketSku ? {} : { ambiguousReason: 'у карточки нет SKU Озона (не прошла модерацию?) — привязать штрихкод некуда' }),
+            ...(info.marketSku
+                ? {}
+                : { ambiguousReason: 'у карточки нет SKU Озона (не прошла модерацию?) — привязать штрихкод некуда' }),
         };
     }
 }

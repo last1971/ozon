@@ -123,10 +123,7 @@ describe('FetchTransactionsCommand', () => {
             to: dateTo,
         });
         expect(result.transactions).toHaveLength(2);
-        expect(result.transactions).toEqual([
-            mockTransactions[0],
-            mockTransactions[2],
-        ]);
+        expect(result.transactions).toEqual([mockTransactions[0], mockTransactions[2]]);
         expect(result.dateTo).toEqual(dateTo);
     });
 

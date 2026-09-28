@@ -59,7 +59,7 @@ export class CalculatePercentsWithLowCommissionCommand implements ICommandAsync<
 
     private getFbsLogistics(volumeWeight?: number): number {
         if (!volumeWeight) return this.FBS_LOGISTICS_TARIFFS[0].price;
-        const tariff = this.FBS_LOGISTICS_TARIFFS.find(t => volumeWeight <= t.maxVolume);
+        const tariff = this.FBS_LOGISTICS_TARIFFS.find((t) => volumeWeight <= t.maxVolume);
         return tariff?.price ?? this.FBS_LOGISTICS_TARIFFS[this.FBS_LOGISTICS_TARIFFS.length - 1].price;
     }
 

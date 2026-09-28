@@ -14,7 +14,13 @@ describe('WbCardWriter', () => {
     let backupDir: string;
     let writer: WbCardWriter;
     const WB_OK = { data: null, error: false, errorText: '', additionalErrors: null };
-    const card = (vendorCode: string, v = 'old') => ({ vendorCode, nmID: 1, title: v, sizes: [{ chrtID: 1, skus: [] }], photos: [] });
+    const card = (vendorCode: string, v = 'old') => ({
+        vendorCode,
+        nmID: 1,
+        title: v,
+        sizes: [{ chrtID: 1, skus: [] }],
+        photos: [],
+    });
     const retitle = (offer: string, title: string) => ({ offer, edit: (c: any) => ({ ...c, title }) });
 
     beforeEach(() => {
@@ -23,8 +29,16 @@ describe('WbCardWriter', () => {
         backupDir = mkdtempSync(join(tmpdir(), 'wb-writer-'));
         method.mockResolvedValue({ data: { items: [] } });
         fetchWbCard.mockImplementation((o: string) => Promise.resolve(card(o)));
-        const config = { get: (k: string, def: any) => (k === 'WB_CARD_BACKUP_DIR' ? backupDir : k === 'WB_CARD_ERRORS_DELAY_MS' ? 0 : def) };
-        writer = new WbCardWriter({ fetchWbCard, updateCards, rememberCard } as any, { method } as any, new WbContentGate(), config as unknown as ConfigService);
+        const config = {
+            get: (k: string, def: any) =>
+                k === 'WB_CARD_BACKUP_DIR' ? backupDir : k === 'WB_CARD_ERRORS_DELAY_MS' ? 0 : def,
+        };
+        writer = new WbCardWriter(
+            { fetchWbCard, updateCards, rememberCard } as any,
+            { method } as any,
+            new WbContentGate(),
+            config as unknown as ConfigService,
+        );
     });
 
     afterEach(() => rmSync(backupDir, { recursive: true, force: true }));
@@ -93,7 +107,12 @@ describe('WbCardWriter', () => {
         const res = await writer.write('gtin', [
             retitle('x', 'a'),
             retitle('y', 'b'),
-            { offer: 'z', edit: () => { throw new Error('два размера'); } },
+            {
+                offer: 'z',
+                edit: () => {
+                    throw new Error('два размера');
+                },
+            },
             retitle('ok', 'c'),
         ]);
 

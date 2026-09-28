@@ -83,8 +83,10 @@ export interface CardSyncReport<I extends SyncCheckItem = SyncCheckItem> {
  * Контекст сверки через паттерн команда. Команды заполняют его по очереди:
  * база → фильтр обработанных → сверка → отчёт → запись → отметки. Базу грузит своя команда режима.
  */
-export interface ICardSyncContext<B extends SyncBaseItem = SyncBaseItem, I extends SyncCheckItem = SyncCheckItem>
-    extends IJobContext {
+export interface ICardSyncContext<
+    B extends SyncBaseItem = SyncBaseItem,
+    I extends SyncCheckItem = SyncCheckItem,
+> extends IJobContext {
     /** Маркетплейс как реализация договора режима — резолвится сервисом до цепочки */
     service: ICardSyncable<B, I>;
     opts: CardSyncOptions;

@@ -34,16 +34,14 @@ export class AppController {
     @ApiResponse({
         status: 200,
         description: 'Статистика пула соединений',
-        type: PoolStatsDto
+        type: PoolStatsDto,
     })
     getPoolStats(): PoolStatsDto {
         const maxConnections = this.pool.getMaxConnections();
         const activeConnections = this.pool.getActiveConnectionsCount();
         const availableConnections = this.pool.getAvailableConnectionsCount();
         const activeTransactions = this.pool.getActiveTransactionsCount();
-        const utilizationPercent = maxConnections > 0
-            ? Math.round((activeConnections / maxConnections) * 100)
-            : 0;
+        const utilizationPercent = maxConnections > 0 ? Math.round((activeConnections / maxConnections) * 100) : 0;
 
         return {
             maxConnections,

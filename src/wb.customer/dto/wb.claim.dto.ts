@@ -6,19 +6,20 @@ export class WbClaimDto {
 
     @ApiProperty({
         description: 'Источник заявки: 1 — портал покупателей, 3 — чат',
-        example: 1
+        example: 1,
     })
     claim_type: number;
 
     @ApiProperty({
         description: 'Решение по возврату: 0 — на рассмотрении, 1 — отказ, 2 — одобрено',
-        example: 2
+        example: 2,
     })
     status: number;
 
     @ApiProperty({
-        description: 'Статус товара: 0 — на рассмотрении, 1 — у покупателя (отклонена), 2 — в утиль, 5 — у покупателя (одобрена), 8 — возврат в реализацию, 10 — возврат продавцу',
-        example: 8
+        description:
+            'Статус товара: 0 — на рассмотрении, 1 — у покупателя (отклонена), 2 — в утиль, 5 — у покупателя (одобрена), 8 — возврат в реализацию, 10 — возврат продавцу',
+        example: 8,
     })
     status_ex: number;
 
@@ -50,8 +51,9 @@ export class WbClaimDto {
     video_paths: string[];
 
     @ApiProperty({
-        description: 'Варианты ответа продавца на заявку (approve1, approve2, autorefund1, reject1, reject2, reject3, rejectcustom, approvecc1, confirmreturngoodcc1)',
-        type: [String]
+        description:
+            'Варианты ответа продавца на заявку (approve1, approve2, autorefund1, reject1, reject2, reject3, rejectcustom, approvecc1, confirmreturngoodcc1)',
+        type: [String],
     })
     actions: string[];
 

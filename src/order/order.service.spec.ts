@@ -37,7 +37,8 @@ describe('OrderService', () => {
     const runWeek = jest.fn();
     const updateByTransactions = jest.fn();
     const createInvoice = jest.fn().mockResolvedValue(1);
-    const getByPosting = jest.fn()
+    const getByPosting = jest
+        .fn()
         .mockResolvedValueOnce({
             posting_number: '111',
         })
@@ -215,8 +216,8 @@ describe('OrderService', () => {
                             if (key === 'FBO_RECONCILE_DRY') return reconcileDry;
                             if (key === 'FBO_RECONCILE_LIMIT') return reconcileLimit;
                             return defaultValue;
-                        }
-                    }
+                        },
+                    },
                 },
                 {
                     provide: CACHE_MANAGER,
@@ -796,14 +797,14 @@ describe('OrderService', () => {
             expect(mockInvoiceService.updatePrim).toHaveBeenCalledWith(
                 '123',
                 expect.stringContaining('123'),
-                mockTransaction
+                mockTransaction,
             );
             expect(mockInvoiceService.bulkSetStatus).toHaveBeenCalledWith([invoice], 0, mockTransaction);
             // Не должно быть ошибки "Cancel wrong status"
             expect(eventEmitterEmit).not.toHaveBeenCalledWith(
                 'error.message',
                 'Cancel wrong status',
-                expect.anything()
+                expect.anything(),
             );
         });
 
@@ -824,11 +825,7 @@ describe('OrderService', () => {
 
             await service.cancelOrder(order, mockTransaction);
 
-            expect(eventEmitterEmit).toHaveBeenCalledWith(
-                'error.message',
-                'Cancel wrong status',
-                '789: status=2'
-            );
+            expect(eventEmitterEmit).toHaveBeenCalledWith('error.message', 'Cancel wrong status', '789: status=2');
         });
     });
 
@@ -1203,11 +1200,13 @@ describe('OrderService', () => {
             const svc: any = makeService([
                 { id: 5, posting_number: '111', schema: 'Fbs', visual: { status: { sys_name: 'ReturnedToOzon' } } },
             ]);
-            svc.listReturnsByPosting = jest.fn().mockResolvedValue([
-                { visual: { status: { sys_name: 'ReturnedToOzon' } } },
-                { visual: { status: { sys_name: 'ReturnedToOzon' } } },
-                { visual: { status: { sys_name: 'Rejected' } } },
-            ]);
+            svc.listReturnsByPosting = jest
+                .fn()
+                .mockResolvedValue([
+                    { visual: { status: { sys_name: 'ReturnedToOzon' } } },
+                    { visual: { status: { sys_name: 'ReturnedToOzon' } } },
+                    { visual: { status: { sys_name: 'Rejected' } } },
+                ]);
             svc.getPostingUnits = jest.fn().mockResolvedValue(3);
 
             await service.processReturns(svc, []);
@@ -1248,7 +1247,12 @@ describe('OrderService', () => {
             invoiceService.update.mockClear();
             invoiceService.findByPosting = jest
                 .fn()
-                .mockResolvedValue({ invoice: { id: 9, status: 4, remark: '111' }, mark: '', cancelled: false, closed: false });
+                .mockResolvedValue({
+                    invoice: { id: 9, status: 4, remark: '111' },
+                    mark: '',
+                    cancelled: false,
+                    closed: false,
+                });
             const svc: any = makeService([
                 { id: 9, posting_number: '111', visual: { status: { sys_name: 'Rejected' } } },
             ]);
@@ -1266,7 +1270,12 @@ describe('OrderService', () => {
             const invoiceService = (service as any).invoiceService;
             invoiceService.findByPosting = jest
                 .fn()
-                .mockResolvedValue({ invoice: { id: 9, status: 4, remark: '111' }, mark: '', cancelled: false, closed: false });
+                .mockResolvedValue({
+                    invoice: { id: 9, status: 4, remark: '111' },
+                    mark: '',
+                    cancelled: false,
+                    closed: false,
+                });
             const svc: any = makeService([
                 { id: 9, posting_number: '111', visual: { status: { sys_name: 'ReturnedToOzon' } } },
             ]);

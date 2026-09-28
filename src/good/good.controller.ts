@@ -1,6 +1,19 @@
-import { Body, Controller, Delete, Get, Inject, Param, ParseEnumPipe, Post, Put, Query, UploadedFile, UseInterceptors } from "@nestjs/common";
-import { FileInterceptor } from "@nestjs/platform-express";
-import { ApiBody, ApiConsumes, ApiOperation, ApiParam, ApiProperty, ApiResponse, ApiTags } from "@nestjs/swagger";
+import {
+    Body,
+    Controller,
+    Delete,
+    Get,
+    Inject,
+    Param,
+    ParseEnumPipe,
+    Post,
+    Put,
+    Query,
+    UploadedFile,
+    UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
+import { ApiBody, ApiConsumes, ApiOperation, ApiParam, ApiProperty, ApiResponse, ApiTags } from '@nestjs/swagger';
 import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
 import { AVITO_GOOD_STORE, IAvitoGoodStore } from '../interfaces/i.avito.good.store';
 import { GoodPercentDto } from './dto/good.percent.dto';
@@ -13,7 +26,7 @@ import { IsSwitchedDto } from './dto/is.switched.dto';
 import { DisableGoodsDto } from './dto/disable.goods.dto';
 import { DisabledCodeDto, GoodsServiceStatusDto, ServiceStatusDto } from './dto/good.status.dto';
 import { IsEnum } from 'class-validator';
-import { ProductInfoDto } from "../product/dto/product.info.dto";
+import { ProductInfoDto } from '../product/dto/product.info.dto';
 
 class UpdateServiceParams {
     @IsEnum(GoodServiceEnum)
@@ -112,17 +125,18 @@ export class GoodController {
             required: ['service', 'level'],
             properties: {
                 service: { type: 'string', enum: Object.values(GoodServiceEnum) },
-                level: { type: 'string', enum: ['good', 'sku'], description: 'good → весь товар (GOODSCODE); sku → точная фасовка' },
+                level: {
+                    type: 'string',
+                    enum: ['good', 'sku'],
+                    description: 'good → весь товар (GOODSCODE); sku → точная фасовка',
+                },
                 skus: { type: 'array', items: { type: 'string' }, description: 'Список SKU (если без файла)' },
                 file: { type: 'string', format: 'binary', description: 'xlsx со столбцом «SKU»' },
             },
         },
     })
     @UseInterceptors(FileInterceptor('file'))
-    async disable(
-        @Body() dto: DisableGoodsDto,
-        @UploadedFile('file') file?: Express.Multer.File,
-    ): Promise<ResultDto> {
+    async disable(@Body() dto: DisableGoodsDto, @UploadedFile('file') file?: Express.Multer.File): Promise<ResultDto> {
         const skus = file ? await this.extraService.skusFromFile(file.buffer) : (dto.skus ?? []);
         return this.extraService.disable(dto.service, skus, dto.level);
     }
@@ -136,17 +150,18 @@ export class GoodController {
             required: ['service', 'level'],
             properties: {
                 service: { type: 'string', enum: Object.values(GoodServiceEnum) },
-                level: { type: 'string', enum: ['good', 'sku'], description: 'good → весь товар (GOODSCODE); sku → точная фасовка' },
+                level: {
+                    type: 'string',
+                    enum: ['good', 'sku'],
+                    description: 'good → весь товар (GOODSCODE); sku → точная фасовка',
+                },
                 skus: { type: 'array', items: { type: 'string' }, description: 'Список SKU (если без файла)' },
                 file: { type: 'string', format: 'binary', description: 'xlsx со столбцом «SKU»' },
             },
         },
     })
     @UseInterceptors(FileInterceptor('file'))
-    async enable(
-        @Body() dto: DisableGoodsDto,
-        @UploadedFile('file') file?: Express.Multer.File,
-    ): Promise<ResultDto> {
+    async enable(@Body() dto: DisableGoodsDto, @UploadedFile('file') file?: Express.Multer.File): Promise<ResultDto> {
         const skus = file ? await this.extraService.skusFromFile(file.buffer) : (dto.skus ?? []);
         return this.extraService.enable(dto.service, skus, dto.level);
     }
@@ -172,9 +187,7 @@ export class GoodController {
     @ApiOperation({ summary: 'Разморозить ВСЁ: снять все блокировки сервиса и вернуть склад' })
     @ApiParam({ name: 'service', enum: GoodServiceEnum })
     @ApiResponse({ status: 200, type: ResultDto })
-    enableAll(
-        @Param('service', new ParseEnumPipe(GoodServiceEnum)) service: GoodServiceEnum,
-    ): Promise<ResultDto> {
+    enableAll(@Param('service', new ParseEnumPipe(GoodServiceEnum)) service: GoodServiceEnum): Promise<ResultDto> {
         return this.extraService.enableAll(service);
     }
 
@@ -223,7 +236,7 @@ export class GoodController {
     })
     async getInfo(
         @Param('service', new ParseEnumPipe(GoodServiceEnum)) service: GoodServiceEnum,
-        @Body('skus') skus: string[]
+        @Body('skus') skus: string[],
     ): Promise<ProductInfoDto[]> {
         return this.extraService.getProductInfo(skus, service);
     }
@@ -261,7 +274,7 @@ export class GoodController {
         name: 'service',
         enum: GoodServiceEnum,
         description: 'Название сервиса (OZON, WB, YANDEX, EXPRESS, AVITO)',
-        example: GoodServiceEnum.OZON
+        example: GoodServiceEnum.OZON,
     })
     @ApiResponse({
         status: 200,
@@ -271,11 +284,11 @@ export class GoodController {
             items: {
                 type: 'string',
             },
-            example: ['SKU123', 'SKU456', 'SKU789']
-        }
+            example: ['SKU123', 'SKU456', 'SKU789'],
+        },
     })
     async getSkuList(
-        @Param('service', new ParseEnumPipe(GoodServiceEnum)) service: GoodServiceEnum
+        @Param('service', new ParseEnumPipe(GoodServiceEnum)) service: GoodServiceEnum,
     ): Promise<string[]> {
         return this.extraService.getSkuList(service);
     }
@@ -299,7 +312,10 @@ export class GoodController {
     }
 
     @Post('import-percent')
-    @ApiOperation({ summary: 'Импорт наценок из XLSX (столбцы: offer_id, min_perc, perc, old_perc, adv_perc, packing_price, available_price)' })
+    @ApiOperation({
+        summary:
+            'Импорт наценок из XLSX (столбцы: offer_id, min_perc, perc, old_perc, adv_perc, packing_price, available_price)',
+    })
     @ApiConsumes('multipart/form-data')
     @ApiBody({ schema: { type: 'object', properties: { file: { type: 'string', format: 'binary' } } } })
     @UseInterceptors(FileInterceptor('file'))

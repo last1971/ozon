@@ -13,7 +13,7 @@ describe('OzonProductCoeffsAdapter', () => {
             fbs_direct_flow_trans_min_amount: 50,
             fbo_direct_flow_trans_max_amount: 80,
             fbo_direct_flow_trans_min_amount: 40,
-        }
+        },
     } as ProductPriceDto;
 
     describe('without priceCalculationHelper', () => {
@@ -48,14 +48,24 @@ describe('OzonProductCoeffsAdapter', () => {
 
         it('should use helper for warehouse selection', () => {
             const productInfo = { fboCount: 80, fbsCount: 20 } as ProductInfoDto;
-            const adapter = new OzonProductCoeffsAdapter(mockProduct, 1, productInfo, mockHelper as PriceCalculationHelper);
+            const adapter = new OzonProductCoeffsAdapter(
+                mockProduct,
+                1,
+                productInfo,
+                mockHelper as PriceCalculationHelper,
+            );
 
             expect(mockHelper.selectWarehouse).toHaveBeenCalledWith(80, 20, 25, 33);
         });
 
         it('should use helper for getSalesPercent', () => {
             const productInfo = { fboCount: 80, fbsCount: 20 } as ProductInfoDto;
-            const adapter = new OzonProductCoeffsAdapter(mockProduct, 1, productInfo, mockHelper as PriceCalculationHelper);
+            const adapter = new OzonProductCoeffsAdapter(
+                mockProduct,
+                1,
+                productInfo,
+                mockHelper as PriceCalculationHelper,
+            );
 
             const result = adapter.getSalesPercent();
             expect(mockHelper.getCommission).toHaveBeenCalledWith(mockProduct.commissions, 'fbo');
@@ -64,7 +74,12 @@ describe('OzonProductCoeffsAdapter', () => {
 
         it('should use helper for getTransMaxAmount', () => {
             const productInfo = { fboCount: 80, fbsCount: 20 } as ProductInfoDto;
-            const adapter = new OzonProductCoeffsAdapter(mockProduct, 1.1, productInfo, mockHelper as PriceCalculationHelper);
+            const adapter = new OzonProductCoeffsAdapter(
+                mockProduct,
+                1.1,
+                productInfo,
+                mockHelper as PriceCalculationHelper,
+            );
 
             const result = adapter.getTransMaxAmount();
             expect(mockHelper.calculateDelivery).toHaveBeenCalledWith(mockProduct.commissions, 'fbo', 1.1);

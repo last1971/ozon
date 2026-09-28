@@ -50,14 +50,17 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
         private cardService: WbCardService,
         private cardWriter: WbCardWriter,
     ) {}
-    async checkVatForAll(expectedVat: number, limit?: number): Promise<Array<{ offer_id: string; current_vat: number; expected_vat: number; }>> {
+    async checkVatForAll(
+        expectedVat: number,
+        limit?: number,
+    ): Promise<Array<{ offer_id: string; current_vat: number; expected_vat: number }>> {
         const cards = await this.cardService.getAllWbCards();
         const mismatches: Array<{ offer_id: string; current_vat: number; expected_vat: number }> = [];
 
         for (const card of cards) {
             // Находим характеристику с НДС
             const vatCharacteristic = card.characteristics?.find(
-                (char) => char.id === WbPriceService.VAT_CHARACTERISTIC_ID
+                (char) => char.id === WbPriceService.VAT_CHARACTERISTIC_ID,
             );
 
             if (!vatCharacteristic) {
@@ -87,7 +90,7 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
 
         return mismatches;
     }
-    
+
     /**
      * Записать ставку НДС в характеристику карточек — через общий писатель карточек ВБ
      * (свежая карточка, бэкап «до», очередь). Итог по карточке: { offer } или { offer, error }.

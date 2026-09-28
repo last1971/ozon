@@ -23,4 +23,4 @@ export class AddRemoveProductToActionsParamsDto {
     @Min(1)
     @IsOptional()
     chunkLimit?: number = 100;
-} 
+}

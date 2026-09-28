@@ -79,28 +79,28 @@ export class DiscountRequestsService {
         let allTasks: DiscountTaskDto[] = [];
         let page = 1; // Ozon API требует page > 0
         let hasMore = true;
-        
+
         while (hasMore) {
             const params: DiscountTaskListParamsDto = {
                 status: DiscountTaskStatus.NEW,
                 page: page,
-                limit: 50 // Максимальное допустимое значение для Ozon API
+                limit: 50, // Максимальное допустимое значение для Ozon API
             };
-            
+
             const response = await this.getDiscountTasks(params);
-            
+
             // Проверяем, что response и response.result существуют
             if (!response || !response.result) {
                 break;
             }
-            
+
             allTasks = allTasks.concat(response.result);
-            
+
             // Если получили меньше 50 записей, значит это последняя страница
             hasMore = response.result.length === 50;
             page++;
         }
-        
+
         return allTasks;
     }
 
@@ -161,4 +161,4 @@ export class DiscountRequestsService {
 
         await chain.execute(context);
     }
-} 
+}

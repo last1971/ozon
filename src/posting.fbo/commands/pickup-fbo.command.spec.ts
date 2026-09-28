@@ -6,21 +6,20 @@ describe('PickupFboCommand', () => {
     const pickupFboUnlessShortage = jest.fn();
     const command = new PickupFboCommand({ pickupFboUnlessShortage } as any);
 
-    const ctx = (over: Partial<IFboCreateContext>): IFboCreateContext =>
-        ({
-            service: GoodServiceEnum.WB,
-            posting: { posting_number: 'srid-1', products: [] } as any,
-            prims: ['WBFBO'],
-            primLabel: 'WBFBO',
-            buyerId: 1,
-            useMigration: false,
-            setIgkNot1c: false,
-            pickupAfterCreate: true,
-            skipIfNoPodbor: true,
-            transaction: null,
-            invoice: { id: 999 } as any,
-            ...over,
-        });
+    const ctx = (over: Partial<IFboCreateContext>): IFboCreateContext => ({
+        service: GoodServiceEnum.WB,
+        posting: { posting_number: 'srid-1', products: [] } as any,
+        prims: ['WBFBO'],
+        primLabel: 'WBFBO',
+        buyerId: 1,
+        useMigration: false,
+        setIgkNot1c: false,
+        pickupAfterCreate: true,
+        skipIfNoPodbor: true,
+        transaction: null,
+        invoice: { id: 999 } as any,
+        ...over,
+    });
 
     beforeEach(() => pickupFboUnlessShortage.mockReset());
 

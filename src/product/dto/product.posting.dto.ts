@@ -1,5 +1,5 @@
 import { IOfferIdable } from '../../interfaces/IOfferIdable';
-import { ApiProperty } from "@nestjs/swagger";
+import { ApiProperty } from '@nestjs/swagger';
 
 export class ProductPostingDto implements IOfferIdable {
     @ApiProperty({ description: 'Цена продукта', example: '1000' })

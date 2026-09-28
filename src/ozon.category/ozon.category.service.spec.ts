@@ -98,21 +98,19 @@ describe('OzonCategoryService', () => {
         getCategoryAttributes.mockResolvedValue({
             result: [
                 { id: 85, name: 'Бренд', dictionary_id: 123 },
-                { id: 4180, name: 'Название', dictionary_id: 0 },  // skip
+                { id: 4180, name: 'Название', dictionary_id: 0 }, // skip
                 { id: 4191, name: 'Аннотация', dictionary_id: 0 },
-                { id: 8789, name: 'PDF файл', dictionary_id: 0 },  // skip
+                { id: 8789, name: 'PDF файл', dictionary_id: 0 }, // skip
             ],
         });
-        getCategoryAttributeValues.mockResolvedValue([
-            { id: 1, value: 'Nike', info: '', picture: '' },
-        ]);
+        getCategoryAttributeValues.mockResolvedValue([{ id: 1, value: 'Nike', info: '', picture: '' }]);
 
         const result = await service.getCategoryAttributes(53884411, 971025231);
 
         expect(result.description_category_id).toBe(53884411);
         expect(result.type_id).toBe(971025231);
         expect(result.attributes).toHaveLength(2);
-        expect(result.attributes.map(a => a.id)).toEqual([85, 4191]);
+        expect(result.attributes.map((a) => a.id)).toEqual([85, 4191]);
     });
 
     it('getCategoryAttributes loads dictionary values only for dictionary_id > 0', async () => {
@@ -122,9 +120,7 @@ describe('OzonCategoryService', () => {
                 { id: 4191, name: 'Аннотация', dictionary_id: 0 },
             ],
         });
-        getCategoryAttributeValues.mockResolvedValue([
-            { id: 1, value: 'TestBrand', info: '', picture: '' },
-        ]);
+        getCategoryAttributeValues.mockResolvedValue([{ id: 1, value: 'TestBrand', info: '', picture: '' }]);
 
         const result = await service.getCategoryAttributes(1, 2);
 
@@ -173,7 +169,10 @@ describe('OzonCategoryService', () => {
 
         // Inject mock index and maps
         (service as any).index = mockIndex;
-        (service as any).typeIdMap = new Map([[0, 100], [1, 200]]);
+        (service as any).typeIdMap = new Map([
+            [0, 100],
+            [1, 200],
+        ]);
         (service as any).typeDataMap = new Map([
             [100, { name: 'Тип1', path: 'Путь -> Тип1' }],
             [200, { name: 'Тип2', path: 'Путь -> Тип2' }],
@@ -253,7 +252,10 @@ describe('OzonCategoryService', () => {
         } as unknown as HierarchicalNSW;
 
         (service as any).wbIndex = mockIndex;
-        (service as any).wbIdMap = new Map([[0, 2009], [1, 3001]]);
+        (service as any).wbIdMap = new Map([
+            [0, 2009],
+            [1, 3001],
+        ]);
         (service as any).wbDataMap = new Map([
             [2009, { name: 'Блоки питания', parentName: 'Электрика' }],
             [3001, { name: 'Адаптеры', parentName: 'Электроника' }],
@@ -279,7 +281,11 @@ describe('OzonCategoryService', () => {
 
         cacheGet.mockImplementation(async (key: string) => {
             if (key === 'ozon:emb:99309') {
-                return JSON.stringify({ name: 'Электронный модуль', path: 'Электроника -> Электронный модуль', emb: embBase64 });
+                return JSON.stringify({
+                    name: 'Электронный модуль',
+                    path: 'Электроника -> Электронный модуль',
+                    emb: embBase64,
+                });
             }
             return null;
         });
@@ -294,9 +300,7 @@ describe('OzonCategoryService', () => {
 
         (service as any).wbIndex = mockIndex;
         (service as any).wbIdMap = new Map([[0, 2009]]);
-        (service as any).wbDataMap = new Map([
-            [2009, { name: 'Блоки питания', parentName: 'Электрика' }],
-        ]);
+        (service as any).wbDataMap = new Map([[2009, { name: 'Блоки питания', parentName: 'Электрика' }]]);
 
         const result = await service.searchWbByOzonType(99309, 1);
 
@@ -335,10 +339,12 @@ describe('OzonCategoryService', () => {
     // ========== buildSearchResult ==========
 
     it('buildSearchResult returns correct structure with commissions', async () => {
-        poolQuery.mockResolvedValue([{
-            FBO_COMMISSIONS: null,
-            FBS_COMMISSIONS: null,
-        }]);
+        poolQuery.mockResolvedValue([
+            {
+                FBO_COMMISSIONS: null,
+                FBS_COMMISSIONS: null,
+            },
+        ]);
 
         const data = { name: 'TestType', path: 'Cat -> TestType' };
         const result = await (service as any).buildSearchResult(123, data, 0.95);

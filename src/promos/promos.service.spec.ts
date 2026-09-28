@@ -318,7 +318,7 @@ describe('PromosService', () => {
         ] as ActionListProduct[];
 
         const productPrices = [
-            { id: 1, price: { min_price: 60 } },  // Должен быть удален (60 > 50)
+            { id: 1, price: { min_price: 60 } }, // Должен быть удален (60 > 50)
             { id: 2, price: { min_price: 100 } }, // Остается (100 = 100)
             { id: 3, price: { min_price: 160 } }, // Должен быть удален (160 > 150)
         ];
@@ -367,7 +367,7 @@ describe('PromosService', () => {
         ] as ActionListProduct[];
 
         const productPrices = [
-            { id: 1, price: { min_price: 60 } },  // Должен быть удален (60 > 50)
+            { id: 1, price: { min_price: 60 } }, // Должен быть удален (60 > 50)
             { id: 2, price: { min_price: 110 } }, // Должен быть удален (110 > 100)
         ];
 
@@ -396,8 +396,8 @@ describe('PromosService', () => {
         ] as ActionListProduct[];
 
         const productPrices = [
-            { id: 1, price: { min_price: 40 } },  // Остается (40 < 50)
-            { id: 2, price: { min_price: 90 } },  // Остается (90 < 100)
+            { id: 1, price: { min_price: 40 } }, // Остается (40 < 50)
+            { id: 2, price: { min_price: 90 } }, // Остается (90 < 100)
         ];
 
         // Act
@@ -425,7 +425,7 @@ describe('PromosService', () => {
         ] as ActionListProduct[];
 
         const productPrices = [
-            { id: 1, price: { min_price: 60 } },  // Должен быть удален (60 > 50)
+            { id: 1, price: { min_price: 60 } }, // Должен быть удален (60 > 50)
             { id: 2, price: { min_price: 110 } }, // Должен быть удален (110 > 100)
         ];
 
@@ -603,8 +603,7 @@ describe('PromosService', () => {
     describe('handleUpdatePromos', () => {
         it('should call addRemoveProductToActions with received SKUs', async () => {
             const skus = ['sku1', 'sku2'];
-            const addRemoveProductToActionsSpy = jest.spyOn(service, 'addRemoveProductToActions')
-                .mockResolvedValue([]);
+            const addRemoveProductToActionsSpy = jest.spyOn(service, 'addRemoveProductToActions').mockResolvedValue([]);
 
             await service.handleUpdatePromos(skus);
 
@@ -613,8 +612,7 @@ describe('PromosService', () => {
 
         it('should handle empty SKUs array', async () => {
             const skus: string[] = [];
-            const addRemoveProductToActionsSpy = jest.spyOn(service, 'addRemoveProductToActions')
-                .mockResolvedValue([]);
+            const addRemoveProductToActionsSpy = jest.spyOn(service, 'addRemoveProductToActions').mockResolvedValue([]);
 
             await service.handleUpdatePromos(skus);
 

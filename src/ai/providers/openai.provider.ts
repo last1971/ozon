@@ -50,13 +50,14 @@ export class OpenAIProvider implements AIProvider {
             temperature: options?.temperature ?? 0.7,
             messages: messages.map((m) => ({
                 role: m.role,
-                content: typeof m.content === 'string'
-                    ? m.content
-                    : m.content.map((part) => ({
-                          type: part.type === 'image' ? 'image_url' : 'text',
-                          ...(part.text && { text: part.text }),
-                          ...(part.image_url && { image_url: part.image_url }),
-                      })),
+                content:
+                    typeof m.content === 'string'
+                        ? m.content
+                        : m.content.map((part) => ({
+                              type: part.type === 'image' ? 'image_url' : 'text',
+                              ...(part.text && { text: part.text }),
+                              ...(part.image_url && { image_url: part.image_url }),
+                          })),
             })),
         };
 
@@ -80,9 +81,7 @@ export class OpenAIProvider implements AIProvider {
                 .pipe(map((res) => this.mapResponse(res.data)))
                 .pipe(
                     catchError(async (error: AxiosError) => {
-                        this.logger.error(
-                            `OpenAI API Error: ${error.message} ${JSON.stringify(error.response?.data)}`,
-                        );
+                        this.logger.error(`OpenAI API Error: ${error.message} ${JSON.stringify(error.response?.data)}`);
                         throw error;
                     }),
                 ),
@@ -308,8 +307,6 @@ export class OpenAIProvider implements AIProvider {
         );
 
         // Сортируем по index чтобы порядок соответствовал входным текстам
-        return response.data.data
-            .sort((a: any, b: any) => a.index - b.index)
-            .map((item: any) => item.embedding);
+        return response.data.data.sort((a: any, b: any) => a.index - b.index).map((item: any) => item.embedding);
     }
 }

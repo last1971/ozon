@@ -17,7 +17,10 @@ import { NotifyTopic } from '../notify/notify.types';
 
 const amountOf = (a: AccrualDto): number => parseFloat(a.total_amount?.amount ?? '0') || 0;
 const round2 = (v: number): number => Math.round(v * 100) / 100;
-const bucket = (list: AccrualDto[]) => ({ count: list.length, amount: round2(list.reduce((s, a) => s + amountOf(a), 0)) });
+const bucket = (list: AccrualDto[]) => ({
+    count: list.length,
+    amount: round2(list.reduce((s, a) => s + amountOf(a), 0)),
+});
 
 /** Статус счёта, при котором его можно закрывать оплатой (подобран). */
 const INVOICE_READY_STATUS = 4;
@@ -108,11 +111,7 @@ export class AccrualWeekService {
     /** Проход 1: выгружаем каждый день периода в журнал. Ничего не считаем. */
     private async loadPeriod(from: string, to: string): Promise<number> {
         let total = 0;
-        for (
-            let day = DateTime.fromISO(from);
-            day <= DateTime.fromISO(to);
-            day = day.plus({ days: 1 })
-        ) {
+        for (let day = DateTime.fromISO(from); day <= DateTime.fromISO(to); day = day.plus({ days: 1 })) {
             const date = day.toISODate();
             this.logger.log(`${date}: запрашиваю у Ozon…`);
             const accruals = await this.fetchDay(date);
@@ -130,7 +129,8 @@ export class AccrualWeekService {
         for (;;) {
             const page = await this.productService.getAccrualsByDay(date, lastId);
             out.push(...page.accruals);
-            if (page.accruals.length) this.logger.log(`  ${date}: страница +${page.accruals.length}, всего ${out.length}`);
+            if (page.accruals.length)
+                this.logger.log(`  ${date}: страница +${page.accruals.length}, всего ${out.length}`);
             if (!page.accruals.length || !page.last_id || page.last_id === lastId) break;
             lastId = page.last_id;
         }
@@ -260,7 +260,9 @@ export class AccrualWeekService {
                 ''.padEnd(64, '-'),
             );
             for (const [service, cell] of [...byService].sort((a, b) => a[1].amount - b[1].amount)) {
-                lines.push(`${service.padEnd(46).slice(0, 46)}${String(cell.count).padStart(4)} шт${money(cell.amount)}`);
+                lines.push(
+                    `${service.padEnd(46).slice(0, 46)}${String(cell.count).padStart(4)} шт${money(cell.amount)}`,
+                );
             }
         }
 
