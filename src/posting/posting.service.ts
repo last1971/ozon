@@ -537,25 +537,55 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
 
     // Ждём ПЕРЕД каждой попыткой package-label по 15 c → попытки на 15/30/45/60 c (Озон формирует этикетку не сразу).
     private readonly labelRetryDelaysMs = [15000, 15000, 15000, 15000];
+    // Опрос готовности задания на этикетку внутри одной попытки.
+    private readonly labelPollDelaysMs = [1000, 2000, 3000];
 
-    /** Этикетка отправления, стр.1 (ШК). Товарный ярлык (стр.2) Озон подкладывает всегда — режем. */
+    /**
+     * Этикетка заказа, стр.1 (ШК заказа). Товарный ярлык (стр.2) Озон подкладывает всегда — режем.
+     * Задание на генерацию (/v3 create) → ссылка на PDF (/v2 get); старые package-label Озон отключает 02.11.2026.
+     */
     async getShipmentLabel(invoice: InvoiceDto): Promise<Buffer> {
-        // После ship этикетка готовится не мгновенно — Озон отдаёт 400, пока не сгенерирована. Ретраим.
+        // После ship этикетка готовится не мгновенно — Озон отдаёт ошибку, пока не сгенерирована. Ретраим.
         const delaysMs = this.labelRetryDelaysMs;
         let lastErr: any;
         for (let i = 0; i < delaysMs.length; i++) {
             if (delaysMs[i]) await new Promise((r) => setTimeout(r, delaysMs[i]));
             try {
-                const pdf = await this.ozonApiService.methodBinary('/v2/posting/fbs/package-label', {
-                    posting_number: [invoice.remark],
-                });
-                return firstPageOnly(pdf);
+                const fileUrl = await this.createShipmentLabelFile(invoice.remark);
+                return firstPageOnly(await this.ozonApiService.download(fileUrl));
             } catch (e) {
                 lastErr = e;
             }
         }
         throw new BadRequestException(
             `Этикетка ещё не готова, повторите через несколько секунд: ${lastErr?.message ?? 'package-label недоступен'}`,
+        );
+    }
+
+    /** Задание на этикетку → ссылка на готовый PDF. Бросает, если задание не создано или файл не готов. */
+    private async createShipmentLabelFile(postingNumber: string): Promise<string> {
+        const errText = (e: any): string => (typeof e === 'string' ? e : e?.message || JSON.stringify(e));
+        const created = await this.ozonApiService.method('/v3/posting/fbs/package-label/create', {
+            posting_numbers: [postingNumber],
+        });
+        const taskId = created?.tasks?.[0]?.task_id;
+        if (!taskId) {
+            throw new Error(created?.error ? errText(created.error) : 'задание на этикетку не создано');
+        }
+        let last: any;
+        for (const delay of this.labelPollDelaysMs) {
+            if (delay) await new Promise((r) => setTimeout(r, delay));
+            last = await this.ozonApiService.method('/v2/posting/fbs/package-label/get', { task_id: taskId });
+            const unprinted = last?.status?.unprinted_postings ?? [];
+            if (last?.file_url && !unprinted.length) return last.file_url;
+            if (last?.error || unprinted.length) break;
+        }
+        throw new Error(
+            last?.error
+                ? errText(last.error)
+                : last?.status?.unprinted_postings?.length
+                  ? `Озон не напечатал: ${JSON.stringify(last.status.unprinted_postings)}`
+                  : `этикетка не готова (задание ${taskId}, статус ${last?.status?.code ?? '—'})`,
         );
     }
 

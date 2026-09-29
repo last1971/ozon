@@ -65,19 +65,11 @@ export class OzonApiService {
               );
     }
 
-    /** POST, возвращающий бинарь (PDF/PNG) как Buffer — для package-label и т.п. */
-    async methodBinary(name: string, options: any): Promise<Buffer> {
-        const ozon = await this.vaultService.get('ozon');
-        const headers = {
-            'Client-Id': ozon.CLIENT_ID as string,
-            'Api-Key': ozon.API_KEY as string,
-            'Content-Type': 'application/json',
-        };
+    /** GET файла по готовой ссылке Озона (PDF этикетки) как Buffer. Ссылка публичная — ключи API не шлём. */
+    async download(url: string): Promise<Buffer> {
         try {
             return await firstValueFrom(
-                this.httpService
-                    .post(ozon.URL + name, options, { headers, responseType: 'arraybuffer' })
-                    .pipe(map((res) => Buffer.from(res.data))),
+                this.httpService.get(url, { responseType: 'arraybuffer' }).pipe(map((res) => Buffer.from(res.data))),
             );
         } catch (error) {
             // Тело ошибки тоже arraybuffer — декодируем, чтобы отдать причину, а не 500.
@@ -89,7 +81,7 @@ export class OzonApiService {
                 body = String(data ?? '');
             }
             const status = (error as AxiosError)?.response?.status;
-            this.logger.error(`methodBinary ${name} failed: ${status ?? ''} ${body || (error as Error).message}`);
+            this.logger.error(`download ${url} failed: ${status ?? ''} ${body || (error as Error).message}`);
             const err = new Error(body || (error as AxiosError).message) as Error & { status?: number };
             err.status = status;
             throw err;

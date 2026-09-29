@@ -23,7 +23,7 @@ describe('PostingService', () => {
     const bulkSetStatus = jest.fn();
     const updatePrim = jest.fn();
     const ozonApiMethod = jest.fn();
-    const ozonApiMethodBinary = jest.fn();
+    const ozonApiDownload = jest.fn();
     const getAttachedMarkCodesByScode = jest.fn();
     const getKmFullByKi = jest.fn();
     const getGtdByKi = jest.fn();
@@ -120,7 +120,7 @@ describe('PostingService', () => {
                     provide: OzonApiService,
                     useValue: {
                         method: ozonApiMethod,
-                        methodBinary: ozonApiMethodBinary,
+                        download: ozonApiDownload,
                     },
                 },
                 {
@@ -158,7 +158,7 @@ describe('PostingService', () => {
         dryFlush.mockClear();
         mpRecord.mockReset().mockResolvedValue(true);
         ozonApiMethod.mockClear();
-        ozonApiMethodBinary.mockReset();
+        ozonApiDownload.mockReset();
         getByPosting.mockReset();
         getInvoiceLines.mockReset();
         getAttachedMarkCodesByScode.mockReset();
@@ -1278,21 +1278,58 @@ describe('PostingService', () => {
     });
 
     describe('getShipmentLabel', () => {
-        it('package-label → firstPageOnly (двухстраничный режется до одной)', async () => {
+        beforeEach(() => {
+            (service as any).labelRetryDelaysMs = [0, 0]; // без реальных пауз в тесте
+            (service as any).labelPollDelaysMs = [0, 0];
+        });
+
+        it('задание create → ссылка get → скачанный PDF режется до стр.1', async () => {
             const { PDFDocument } = await import('pdf-lib');
             const doc = await PDFDocument.create();
             doc.addPage([200, 200]);
             doc.addPage([200, 200]);
-            ozonApiMethodBinary.mockResolvedValueOnce(Buffer.from(await doc.save()));
-            (service as any).labelRetryDelaysMs = [0]; // без реальных пауз в тесте
+            ozonApiMethod
+                .mockResolvedValueOnce({ tasks: [{ task_id: 479160145, task_type: 'small_label' }] })
+                .mockResolvedValueOnce({ error: null, file_url: '', status: { code: 'in_progress' } })
+                .mockResolvedValueOnce({
+                    error: null,
+                    file_url: 'https://ir.ozone.ru/label.pdf',
+                    status: { code: 'completed', unprinted_postings: [] },
+                });
+            ozonApiDownload.mockResolvedValueOnce(Buffer.from(await doc.save()));
 
             const out = await service.getShipmentLabel({ remark: 'P-9' } as any);
 
-            expect(ozonApiMethodBinary).toHaveBeenCalledWith('/v2/posting/fbs/package-label', {
-                posting_number: ['P-9'],
+            expect(ozonApiMethod).toHaveBeenNthCalledWith(1, '/v3/posting/fbs/package-label/create', {
+                posting_numbers: ['P-9'],
             });
+            expect(ozonApiMethod).toHaveBeenNthCalledWith(2, '/v2/posting/fbs/package-label/get', {
+                task_id: 479160145,
+            });
+            expect(ozonApiDownload).toHaveBeenCalledWith('https://ir.ozone.ru/label.pdf');
             const parsed = await PDFDocument.load(out);
             expect(parsed.getPageCount()).toBe(1);
+        });
+
+        it('задание не создаётся ни в одной попытке → BadRequest с причиной Озона', async () => {
+            ozonApiMethod.mockResolvedValue({ result: null, error: { message: 'posting not ready' } });
+
+            await expect(service.getShipmentLabel({ remark: 'P-9' } as any)).rejects.toThrow(
+                'Этикетка ещё не готова, повторите через несколько секунд: posting not ready',
+            );
+            expect(ozonApiMethod).toHaveBeenCalledTimes(2);
+            expect(ozonApiDownload).not.toHaveBeenCalled();
+        });
+
+        it('Озон не напечатал посылку → ошибка, файл не качаем', async () => {
+            ozonApiMethod
+                .mockResolvedValueOnce({ tasks: [{ task_id: 1 }] })
+                .mockResolvedValueOnce({ error: null, file_url: '', status: { unprinted_postings: ['P-9'] } })
+                .mockResolvedValueOnce({ tasks: [{ task_id: 2 }] })
+                .mockResolvedValueOnce({ error: null, file_url: '', status: { unprinted_postings: ['P-9'] } });
+
+            await expect(service.getShipmentLabel({ remark: 'P-9' } as any)).rejects.toThrow('Озон не напечатал');
+            expect(ozonApiDownload).not.toHaveBeenCalled();
         });
     });
 
