@@ -54,8 +54,9 @@ export class OzonGtinService implements ICardSyncable<GtinBaseItem, GtinCheckIte
     async update(items: GtinCheckItem[], progress: JobProgress = emptyProgress()): Promise<SyncUpdateResult[]> {
         Object.assign(progress, { phase: 'запись', done: 0, total: items.length });
         const results = new Map<string, SyncUpdateResult>();
-        // до 100 карточек в запросе (лимит ручки); не чаще 20 запросов в минуту — @RateLimit на addBarcodes
-        for (const part of chunk(items, 100)) {
+        // не больше 100 штрихкодов в запросе (лимит ручки — по штрихкодам, не по карточкам);
+        // карточку между запросами не делим; не чаще 20 запросов в минуту — @RateLimit на addBarcodes
+        for (const part of this.packByBarcodes(items, 100)) {
             const entries = part.flatMap((i) => i.add.map((barcode) => ({ barcode, sku: i.marketId })));
             let res: any;
             try {
@@ -89,6 +90,24 @@ export class OzonGtinService implements ICardSyncable<GtinBaseItem, GtinCheckIte
             progress.done += part.length;
         }
         return items.map((i) => results.get(i.offer));
+    }
+
+    /** Пачки целых карточек, в каждой не больше limit штрихкодов. */
+    private packByBarcodes(items: GtinCheckItem[], limit: number): GtinCheckItem[][] {
+        const parts: GtinCheckItem[][] = [];
+        let part: GtinCheckItem[] = [];
+        let count = 0;
+        for (const item of items) {
+            if (part.length && count + item.add.length > limit) {
+                parts.push(part);
+                part = [];
+                count = 0;
+            }
+            part.push(item);
+            count += item.add.length;
+        }
+        if (part.length) parts.push(part);
+        return parts;
     }
 
     /** Карточка Озона глазами режима GTIN. Без SKU писать некуда: /v1/barcode/add адресует карточку только по нему. */
