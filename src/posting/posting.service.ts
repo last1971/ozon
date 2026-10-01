@@ -688,7 +688,11 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         const chain = new CommandChainAsync<IFbsSubmitContext>([
             this.createOrGetExemplarsCommand,
             this.buildExemplarsPayloadCommand,
-            this.validateExemplarsCommand,
+            // validate выключен (01.10.2026): /v5/.../exemplar/validate ложно отвечает
+            // GTD_MUST_BE_SPECIFIED_FOR_PRODUCT_COUNTRY на is_gtd_absent=true, а set с тем же
+            // payload проходит и посылка отгружается (проверено 07.08 и 01.10 на проде).
+            // Реальная проверка — poll exemplar/status после set. Команда оставлена в коде.
+            // this.validateExemplarsCommand,
             this.setAndConfirmExemplarsCommand,
             this.shipExemplarsCommand,
         ]);
