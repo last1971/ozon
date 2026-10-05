@@ -10,7 +10,8 @@ import { checkGtinOffers } from './gtin.decision';
 
 /**
  * ВБ как реализация режима GTIN. Баркоды карточки — sizes[].skus; у наших карточек один размер,
- * карточка с несколькими размерами — спорная (в какой писать, неясно). Решение — общее (checkGtinOffers).
+ * карточка с несколькими размерами — спорная (в какой писать, неясно). Поле «дополнительный GTIN» — gtin
+ * (одно значение на карточку, размеров не касается). Решение — общее (checkGtinOffers).
  * Запись — через общий WbCardWriter по одной карточке (отказ ВБ по пачке иначе лёг бы на всю пачку).
  * ВБ баркоды не удаляет и не меняет, только добавляет.
  */
@@ -42,7 +43,11 @@ export class WbGtinService implements ICardSyncable<GtinBaseItem, GtinCheckItem>
         Object.assign(progress, { phase: 'запись', done: 0, total: items.length });
         return this.writer.write(
             'gtin',
-            items.map((item) => ({ offer: item.offer, edit: (card: WbCardDto) => this.withGtins(card, item.add) })),
+            items.map((item) => ({
+                offer: item.offer,
+                edit: (card: WbCardDto) =>
+                    item.slot === 'extra' ? this.withExtraGtin(card, item.add[0]) : this.withGtins(card, item.add),
+            })),
             progress,
             1,
         );
@@ -54,6 +59,8 @@ export class WbGtinService implements ICardSyncable<GtinBaseItem, GtinCheckItem>
             offer: card.vendorCode,
             name: card.title,
             barcodes: sizes.flatMap((s) => s.skus ?? []),
+            extraSlot: true,
+            extraGtin: card.gtin ?? null,
             ...(sizes.length === 1
                 ? {}
                 : { ambiguousReason: `у карточки размеров: ${sizes.length} — в какой писать баркод, неясно` }),
@@ -72,6 +79,12 @@ export class WbGtinService implements ICardSyncable<GtinBaseItem, GtinCheckItem>
         const skus = size.skus ?? [];
         const present = new Set(skus.map(barcodeKey));
         size.skus = [...skus, ...add.filter((g) => !present.has(barcodeKey(g)))];
+        return card;
+    }
+
+    /** «Дополнительный GTIN» — одно поле карточки, пишем как в базе (с ведущим нулём, как на упаковке). */
+    private withExtraGtin(card: WbCardDto, gtin: string): WbCardDto {
+        card.gtin = gtin;
         return card;
     }
 }

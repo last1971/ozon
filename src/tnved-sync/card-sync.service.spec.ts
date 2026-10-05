@@ -502,15 +502,15 @@ describe('CardSyncService', () => {
             expect(rep.toFix[0].error).toContain('Озон отказал: Forbidden');
         });
 
-        it('GTIN уже висит на другой фасовке товара → спорно, не пишем', async () => {
+        it('GTIN уже висит на другой фасовке товара → она и держатель, всё ok, не пишем', async () => {
             gtinRows([[569593, '04600000000011']]);
             ozonCards({ '569593': [1, ['OZN1']], '569593-5': [2, ['4600000000011']] });
 
             const rep = await service.sync(gtin({ apply: true }));
 
             expect(rep.toFix).toHaveLength(0);
-            expect(rep.ambiguous[0].offer).toBe('569593');
-            expect(rep.ambiguous[0].reason).toContain('уже на 569593-5');
+            expect(rep.ambiguous).toHaveLength(0);
+            expect(rep.alreadyOk).toBe(1);
             expect(addBarcodes).not.toHaveBeenCalled();
         });
 

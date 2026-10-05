@@ -54,6 +54,8 @@ export class WbCardDto {
     dimensions?: WbCardDimensionsDto;
     characteristics?: WbCardCharacteristicDto[];
     sizes: WbCardSizeDto[];
+    /** «Дополнительный GTIN» (с 10.2025): тот же GTIN, что уже стоит в skus другой карточки товара. */
+    gtin?: string;
     tags?: WbCardTagDto[];
     createdAt?: string;
     updatedAt?: string;

@@ -20,9 +20,10 @@ describe('WbGtinService', () => {
     let backupDir: string;
     const WB_OK = { data: null, error: false, errorText: '', additionalErrors: null };
 
-    const card = (vendorCode: string, skus: string[] | string[][] = []) => ({
+    const card = (vendorCode: string, skus: string[] | string[][] = [], gtin?: string) => ({
         nmID: 1,
         vendorCode,
+        ...(gtin ? { gtin } : {}),
         title: `PROD-${vendorCode}`,
         characteristics: [{ id: 15000001, value: ['8504408300'] }],
         sizes: (Array.isArray(skus[0]) ? (skus as string[][]) : [skus as string[]]).map((s, i) => ({
@@ -64,10 +65,42 @@ describe('WbGtinService', () => {
 
         const res = await service.check([row('1', ['04600000000011']), row('2', ['04600000000028'])]);
 
-        expect(res.items.map((i) => [i.offer, i.ok, i.add, i.ambiguousReason ?? null])).toEqual([
-            ['1', false, ['04600000000011'], null],
-            ['2', false, ['04600000000028'], 'у карточки размеров: 2 — в какой писать баркод, неясно'],
+        expect(res.items.map((i) => [i.offer, i.slot, i.ok, i.add, i.ambiguousReason ?? null])).toEqual([
+            ['1', 'barcodes', false, ['04600000000011'], null],
+            ['1-10', 'extra', false, ['04600000000011'], null],
+            ['2', 'barcodes', false, ['04600000000028'], 'у карточки размеров: 2 — в какой писать баркод, неясно'],
         ]);
+    });
+
+    it('check: поле gtin карточки — «дополнительный GTIN»; стоит наш → ok', async () => {
+        getAllWbCards.mockResolvedValue([card('1', ['4600000000011']), card('1-10', ['201'], '04600000000011')]);
+
+        const res = await service.check([row('1', ['04600000000011'])]);
+
+        expect(res.items.map((i) => [i.offer, i.slot, i.ok])).toEqual([
+            ['1', 'barcodes', true],
+            ['1-10', 'extra', true],
+        ]);
+    });
+
+    it('update: slot=extra → поле gtin карточки, skus не трогаем', async () => {
+        fetchWbCard.mockImplementation((o: string) => Promise.resolve(card(o, ['201'])));
+        updateCards.mockResolvedValue([WB_OK]);
+
+        const res = await service.update([
+            {
+                offer: '1-10',
+                goodscode: '1',
+                current: null,
+                base: '',
+                ok: false,
+                add: ['04600000000011'],
+                slot: 'extra',
+            },
+        ]);
+
+        expect(res).toEqual([{ offer: '1-10' }]);
+        expect(updateCards.mock.calls[0][0][0]).toMatchObject({ gtin: '04600000000011', sizes: [{ skus: ['201'] }] });
     });
 
     it('update: GTIN — в конец skus свежей карточки, по одной карточке в cards/update, кэш обновляется', async () => {
@@ -81,6 +114,7 @@ describe('WbGtinService', () => {
             base: '',
             ok: false,
             add,
+            slot: 'barcodes' as const,
         });
 
         const res = await service.update(
@@ -100,7 +134,7 @@ describe('WbGtinService', () => {
         fetchWbCard.mockResolvedValue(card('1', [['1'], ['2']]));
 
         const res = await service.update([
-            { offer: '1', goodscode: '1', current: null, base: '', ok: false, add: ['111'] },
+            { offer: '1', goodscode: '1', current: null, base: '', ok: false, add: ['111'], slot: 'barcodes' },
         ]);
 
         expect(res[0].error).toContain('правка не применена');

@@ -56,11 +56,68 @@ describe('checkGtinOffers — общее решение режима GTIN', () =
         expect(res.items[0]).toMatchObject({ ok: false, ambiguousReason: 'нет SKU' });
     });
 
-    it('GTIN уже на другой фасовке товара → спорно с указанием, где висит', () => {
+    it('GTIN уже на другой фасовке → держатель она, ей и дописываем остальные GTIN; мин. фасовку не трогаем', () => {
         const res = checkGtinOffers([row('1', ['111', '222'])], map([['1', [offer('1'), offer('1-10', ['0111'])]]]));
 
-        expect(res.items[0].ambiguousReason).toContain('111 уже на 1-10');
+        expect(res.items).toEqual([
+            expect.objectContaining({ offer: '1-10', slot: 'barcodes', add: ['222'], reason: 'нет в баркодах: 222' }),
+        ]);
+    });
+
+    it('GTIN разъехались по двум карточкам → спорно с указанием, где висит', () => {
+        const res = checkGtinOffers(
+            [row('1', ['111', '222'])],
+            map([['1', [offer('1', ['0111']), offer('1-10', ['0222'])]]]),
+        );
+
+        expect(res.items[0]).toMatchObject({ offer: '1', slot: 'barcodes' });
+        expect(res.items[0].ambiguousReason).toContain('222 уже на 1-10');
         expect(res.items[0].ambiguousReason).toContain('сначала снять там');
+    });
+
+    it('площадка с полем «дополнительный GTIN» (extraSlot): остальным фасовкам — GTIN держателя в extra', () => {
+        const res = checkGtinOffers(
+            [row('1', ['111', '222'])],
+            map([
+                [
+                    '1',
+                    [
+                        offer('1', ['OZN1'], { extraSlot: true }),
+                        offer('1-5', ['OZN5'], { extraSlot: true, extraGtin: '0111' }),
+                        offer('1-10', ['OZN10'], { extraSlot: true, extraGtin: null }),
+                        offer('1-20', ['OZN20', '0222'], { extraSlot: true }),
+                    ],
+                ],
+            ]),
+        );
+
+        // держатель — 1-20 (уже держит 222): ему 111 в баркоды; 1-5 ok (extra = 111); 1 и 1-10 — extra 222
+        expect(res.items.map((i) => [i.offer, i.slot, i.ok, i.add, i.ambiguousReason ?? null])).toEqual([
+            ['1-20', 'barcodes', false, ['111'], null],
+            ['1', 'extra', false, ['222'], null],
+            ['1-5', 'extra', true, [], null],
+            ['1-10', 'extra', false, ['222'], null],
+        ]);
+        expect(res.items[1]).toMatchObject({ current: null, action: 'дополнительный GTIN 222' });
+    });
+
+    it('держатель без GTIN: остальным в extra уходит первый GTIN базы — тот же, что получит держатель', () => {
+        const res = checkGtinOffers(
+            [row('1', ['111', '222'])],
+            map([['1', [offer('1', ['OZN1'], { extraSlot: true }), offer('1-10', ['OZN10'], { extraSlot: true })]]]),
+        );
+
+        expect(res.items.map((i) => [i.offer, i.slot, i.add])).toEqual([
+            ['1', 'barcodes', ['111', '222']],
+            ['1-10', 'extra', ['111']],
+        ]);
+    });
+
+    it('площадка без поля extra (Озон): остальные фасовки не трогаем, как раньше', () => {
+        const res = checkGtinOffers([row('1', ['111'])], map([['1', [offer('1'), offer('1-10', ['OZN10'])]]]));
+
+        expect(res.items).toHaveLength(1);
+        expect(res.items[0]).toMatchObject({ offer: '1', slot: 'barcodes', add: ['111'] });
     });
 
     it('у товара нет карточек → notFound', () => {
