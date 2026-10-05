@@ -1619,4 +1619,58 @@ describe('OrderService', () => {
             expect(pickupFboUnlessShortage).toHaveBeenCalledTimes(1);
         });
     });
+
+    describe('listCancelledWithoutReturn — отменён у Ozon, возврата нет, счёт живой', () => {
+        it('берёт отмены FBO и FBS, выкидывает те, где есть запись возврата, и неживые счета', async () => {
+            const fbo = service['postingFboService'] as any;
+            const fbs = service['postingService'] as any;
+            fbo.listCanceled = jest.fn().mockResolvedValue([
+                {
+                    posting_number: 'A-1',
+                    isFbo: true,
+                    in_process_at: '2026-09-22',
+                    cancellation: { cancel_reason: 'Покупатель отменил заказ' },
+                },
+                { posting_number: 'B-1', isFbo: true, in_process_at: '2026-09-22' },
+                { posting_number: 'C-1', isFbo: true, in_process_at: '2026-09-22' },
+            ]);
+            fbs.listCanceled = jest.fn().mockResolvedValue([{ posting_number: 'D-1', in_process_at: '2026-09-23' }]);
+            fbs.listReturnsByPostings = jest.fn().mockResolvedValue([{ posting_number: 'B-1' }]);
+            findByPosting.mockImplementation((async (p: string): Promise<any> => {
+                if (p === 'A-1')
+                    return { invoice: { id: 1, number: 10, status: 4 }, mark: '', cancelled: false, closed: false };
+                if (p === 'C-1')
+                    return { invoice: { id: 3, status: 1 }, mark: ' отмена FBO', cancelled: true, closed: false };
+                if (p === 'D-1') return { invoice: { id: 4, status: 0 }, mark: '', cancelled: false, closed: false };
+                return null;
+            }) as any);
+
+            const rows = await service.listCancelledWithoutReturn();
+
+            expect(fbs.listReturnsByPostings).toHaveBeenCalledWith(['A-1', 'B-1', 'C-1', 'D-1']);
+            expect(rows).toEqual([
+                {
+                    posting_number: 'A-1',
+                    scheme: 'FBO',
+                    created_at: '2026-09-22',
+                    cancel_reason: 'Покупатель отменил заказ',
+                    invoice_id: 1,
+                    invoice_number: 10,
+                    invoice_status: 4,
+                    mark: '',
+                },
+            ]);
+        });
+
+        it('отмен нет — к Ozon за возвратами не ходим', async () => {
+            const fbo = service['postingFboService'] as any;
+            const fbs = service['postingService'] as any;
+            fbo.listCanceled = jest.fn().mockResolvedValue([]);
+            fbs.listCanceled = jest.fn().mockResolvedValue([]);
+            fbs.listReturnsByPostings = jest.fn();
+
+            expect(await service.listCancelledWithoutReturn()).toEqual([]);
+            expect(fbs.listReturnsByPostings).not.toHaveBeenCalled();
+        });
+    });
 });

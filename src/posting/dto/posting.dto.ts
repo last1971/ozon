@@ -32,6 +32,9 @@ export class PostingDto {
     @ApiProperty({ description: 'Подстатус отправления у Ozon', required: false })
     substatus?: string;
 
+    @ApiProperty({ description: 'Отмена у Ozon: причина и инициатор (как отдаёт API)', required: false })
+    cancellation?: { cancel_reason?: string; cancellation_type?: string; cancellation_initiator?: string };
+
     @ApiProperty({ description: 'Флаг FBO', required: false })
     isFbo?: boolean;
 

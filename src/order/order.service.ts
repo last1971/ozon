@@ -21,6 +21,7 @@ import { MP_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.cons
 import { isShippedToMarketplace } from '../helpers/posting.shipped';
 import { isReturnable } from '../interfaces/IReturnable';
 import { isFboReconcilable } from '../interfaces/IFboReconcilable';
+import { CancelledWithoutReturnDto } from './dto/cancelled-without-return.dto';
 import { MpService } from '../mp-event/mp-event.service';
 import { DateTime } from 'luxon';
 import { AccrualWeekService } from '../trade2006.accrual/accrual.week.service';
@@ -78,6 +79,43 @@ export class OrderService {
 
     getServiceByName(name: GoodServiceEnum): IOrderable | null {
         return find(this.orderServices, (service) => service.constructor.name === this.serviceNames[name]) || null;
+    }
+
+    /**
+     * Отменённые у Ozon заказы, по которым у Ozon нет ни одной записи возврата,
+     * а счёт у нас ещё живой: не закрыт, не погашен, не помечен отменой/донором.
+     *
+     * Только список, ничего не меняет. Окна — те же, что у боевых отмен
+     * (`listCanceled`: FBO 90 дней, FBS 45), записи возврата — точечно по номерам.
+     */
+    async listCancelledWithoutReturn(): Promise<CancelledWithoutReturnDto[]> {
+        const ozon = this.orderServices.filter((s) => this.mpService(s) === 'OZON');
+        const cancelled = (await Promise.all(ozon.map((s) => s.listCanceled()))).flat();
+        if (!cancelled.length) return [];
+
+        const withReturn = new Set(
+            (await this.postingService.listReturnsByPostings(cancelled.map((p) => p.posting_number))).map(
+                (r) => r.posting_number,
+            ),
+        );
+
+        const rows: CancelledWithoutReturnDto[] = [];
+        for (const posting of cancelled) {
+            if (withReturn.has(posting.posting_number)) continue;
+            const match = await this.invoiceService.findByPosting(posting.posting_number, null);
+            if (!match || match.closed || match.cancelled || match.invoice.status === 0) continue;
+            rows.push({
+                posting_number: posting.posting_number,
+                scheme: posting.isFbo ? 'FBO' : 'FBS',
+                created_at: posting.in_process_at,
+                cancel_reason: posting.cancellation?.cancel_reason,
+                invoice_id: match.invoice.id,
+                invoice_number: match.invoice.number,
+                invoice_status: match.invoice.status,
+                mark: match.mark ?? '',
+            });
+        }
+        return rows;
     }
 
     /** Маркетплейс сервиса для журнала MP_EVENT ('OZON' | 'WB' | 'YANDEX'). */

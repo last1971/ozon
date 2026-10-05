@@ -12,6 +12,7 @@ import {
     UseInterceptors,
 } from '@nestjs/common';
 import { OrderService } from './order.service';
+import { CancelledWithoutReturnDto } from './dto/cancelled-without-return.dto';
 import { ResultDto } from '../helpers/dto/result.dto';
 import { TransactionFilterDate, TransactionFilterDto } from '../posting/dto/transaction.filter.dto';
 import { WbInvoiceQueryDto } from './dto/wb-invoice-query.dto';
@@ -168,6 +169,18 @@ export class OrderController {
         @Param('service', new ParseEnumPipe(GoodServiceEnum)) service: GoodServiceEnum,
     ): Promise<PostingDto[]> {
         return this.orderService.getServiceByName(service).listAwaitingPackaging();
+    }
+
+    @Get('cancelled-without-return')
+    @ApiOperation({
+        summary: 'Ozon: отменён, записи возврата нет, счёт у нас живой',
+        description:
+            'Отменённые отправления Ozon (FBO и FBS, окна боевых отмен), по которым у Ozon нет ни одной записи ' +
+            'возврата, а счёт не закрыт, не погашен и не помечен отменой/донором. Только список, ничего не меняет.',
+    })
+    @ApiOkResponse({ type: CancelledWithoutReturnDto, isArray: true })
+    listCancelledWithoutReturn(): Promise<CancelledWithoutReturnDto[]> {
+        return this.orderService.listCancelledWithoutReturn();
     }
 
     @Get('wb-invoice-by-claim/:claimId')
