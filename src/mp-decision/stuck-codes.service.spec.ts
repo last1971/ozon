@@ -10,6 +10,7 @@ describe('StuckCodesService — еженедельный отчёт «подви
     let service: StuckCodesService;
     const findStuckMarkCodes = jest.fn();
     const findByPosting = jest.fn();
+    const updatePrim = jest.fn();
     const emit = jest.fn();
     const listUnhandled = jest.fn();
     const listStatesForPosting = jest.fn();
@@ -35,15 +36,15 @@ describe('StuckCodesService — еженедельный отчёт «подви
     beforeEach(async () => {
         markCodesEnabled = true;
         noReturnDays = undefined;
-        [findStuckMarkCodes, findByPosting, emit, listUnhandled, listStatesForPosting, markHandled].forEach((m) =>
-            m.mockReset(),
+        [findStuckMarkCodes, findByPosting, updatePrim, emit, listUnhandled, listStatesForPosting, markHandled].forEach(
+            (m) => m.mockReset(),
         );
         listUnhandled.mockResolvedValue([]);
         listStatesForPosting.mockResolvedValue([]);
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 StuckCodesService,
-                { provide: INVOICE_SERVICE, useValue: { findStuckMarkCodes, findByPosting } },
+                { provide: INVOICE_SERVICE, useValue: { findStuckMarkCodes, findByPosting, updatePrim } },
                 {
                     // Ключ и дефолт учитываем: прежний мок отдавал одно значение на всё подряд,
                     // из-за чего порог ожидания подменялся флагом маркировки.
@@ -128,7 +129,7 @@ describe('StuckCodesService — еженедельный отчёт «подви
             findByPosting.mockResolvedValue(match());
         });
 
-        it('заявки возврата нет дольше порога → письмо «проверить в кабинете»', async () => {
+        it('FBS: заявки возврата нет дольше порога → письмо «проверить в кабинете», счёт не трогаем', async () => {
             mockCancelWaits([wait()]);
             listStatesForPosting.mockResolvedValue([]);
 
@@ -137,6 +138,39 @@ describe('StuckCodesService — еженедельный отчёт «подви
             const call = emit.mock.calls.find((c) => String(c[1]).startsWith('Отменённые без возврата'));
             expect(call[1]).toBe('Отменённые без возврата: 1');
             expect(call[2]).toContain('заявки возврата НЕТ');
+            expect(updatePrim).not.toHaveBeenCalled();
+            expect(markHandled).not.toHaveBeenCalled();
+        });
+
+        // Решение владельца 05.10.2026: FBO, отменённый до отгрузки, Ozon гасит на своём
+        // складе — заявки возврата не будет никогда (24293493-0144-1, 0113032103-0864-2).
+        it('FBO: заявки возврата нет дольше порога → счёт в доноры « отмена FBO», ожидание закрыто', async () => {
+            mockCancelWaits([wait()]);
+            listStatesForPosting.mockImplementation((_svc: string, kind: string) =>
+                Promise.resolve(kind === 'POSTING_FBO' ? ['awaiting_packaging', 'cancelled'] : []),
+            );
+
+            await service.report();
+
+            expect(updatePrim).toHaveBeenCalledWith('72067989-0727-1', '72067989-0727-1 отмена FBO', null);
+            expect(markHandled).toHaveBeenCalledWith(
+                expect.objectContaining({ kind: 'CANCEL_WAIT', extId: '72067989-0727-1' }),
+            );
+            const call = emit.mock.calls.find((c) => String(c[1]).startsWith('Отменённые без возврата'));
+            expect(call[2]).toContain('переведён в доноры');
+            expect(call[2]).not.toContain('проверить в кабинете');
+        });
+
+        it('FBO: до порога ничего не делаем — заявка ещё может появиться', async () => {
+            mockCancelWaits([wait({ firstSeen: new Date(Date.now() - 5 * 24 * 3600 * 1000) })]);
+            listStatesForPosting.mockImplementation((_svc: string, kind: string) =>
+                Promise.resolve(kind === 'POSTING_FBO' ? ['cancelled'] : []),
+            );
+
+            await service.report();
+
+            expect(updatePrim).not.toHaveBeenCalled();
+            expect(emit).not.toHaveBeenCalled();
         });
 
         // Порог владельца от 19.08.2026: раньше десятого дня не зовём руками.
@@ -163,14 +197,18 @@ describe('StuckCodesService — еженедельный отчёт «подви
             expect(emit.mock.calls.some((c) => String(c[1]).startsWith('Отменённые без возврата'))).toBe(true);
         });
 
-        it('заявка отклонена (Rejected) — физики не будет: считаем как «заявки нет»', async () => {
+        it('заявка отклонена (Rejected) — физики не будет: считаем как «заявки нет», но в доноры НЕ уводим', async () => {
+            // Даже у FBO: отклонённая заявка значит «товар остался у покупателя» — руками.
             mockCancelWaits([wait()]);
-            listStatesForPosting.mockResolvedValue(['Rejected']);
+            listStatesForPosting.mockImplementation((_svc: string, kind: string) =>
+                Promise.resolve(kind === 'POSTING_FBO' ? ['cancelled'] : ['Rejected']),
+            );
 
             await service.report();
 
             const call = emit.mock.calls.find((c) => String(c[1]).startsWith('Отменённые без возврата'));
             expect(call[2]).toContain('заявки возврата НЕТ');
+            expect(updatePrim).not.toHaveBeenCalled();
         });
 
         it('товар не доедет (Utilized) → ожидание закрывается навсегда, письма нет', async () => {
