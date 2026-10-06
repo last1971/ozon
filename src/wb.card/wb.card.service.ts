@@ -167,9 +167,7 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
         cards.forEach((card) => {
             this.skuNmIDPair.set(card.vendorCode, card.nmID.toString());
         });
-        const quantities = await this.api.method('/api/v3/stocks/' + this.warehouseId, 'post', {
-            chrtIds: Array.from(chrtIdToVendor.keys()),
-        });
+        const quantities = await this.readStocks(Array.from(chrtIdToVendor.keys()));
         const goods = new Map<string, number>();
         if (quantities?.stocks) {
             quantities.stocks.forEach((stock) => {
@@ -196,6 +194,12 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
                           },
                       },
         };
+    }
+
+    /** Остатки по размерам — страницы каталога идут подряд, без паузы ВБ отвечал 429 на пятой (06.10.2026). */
+    @RateLimit(200)
+    private async readStocks(chrtIds: number[]): Promise<{ stocks?: { chrtId: number; amount: number }[] }> {
+        return this.api.method('/api/v3/stocks/' + this.warehouseId, 'post', { chrtIds });
     }
 
     async updateGoodCounts(goods: Map<string, number>): Promise<number> {
