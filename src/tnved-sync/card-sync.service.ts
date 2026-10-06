@@ -9,6 +9,7 @@ import {
     CardSyncReport,
     ICardSyncable,
     ICardSyncContext,
+    SyncCheckItem,
 } from '../interfaces/i.card.sync';
 import { GTIN_PROGRESS_CACHE } from '../interfaces/i.gtin.sync';
 import { OzonTnvedService } from './ozon.tnved.service';
@@ -154,13 +155,34 @@ export class CardSyncService {
 
     /** Запустить сверку режима в фоне. Та же задача с теми же параметрами уже идёт — вернётся она. */
     start(opts: CardSyncOptions, clientId?: string): JobStateDto {
+        return this.startJob(opts, clientId, (ctx) => ctx.report);
+    }
+
+    /**
+     * Решения режима, которые площадка через API исполнить не может (канал файла в кабинете), без записи.
+     * Та же цепочка команд; в параметрах задачи метка forFile, чтобы не склеиться с отчётной задачей.
+     */
+    async checkForFile<I extends SyncCheckItem = SyncCheckItem>(opts: CardSyncOptions): Promise<I[]> {
+        const state = await this.jobs.whenDone(
+            this.startJob({ ...opts, apply: false }, undefined, (ctx) => ctx.forFile ?? [], { forFile: true }).id,
+        );
+        if (state.status === 'failed') throw new Error(state.error);
+        return (state.result as I[]) ?? [];
+    }
+
+    private startJob<R>(
+        opts: CardSyncOptions,
+        clientId: string | undefined,
+        result: (ctx: ICardSyncContext<any, any>) => R,
+        extraParams: Record<string, unknown> = {},
+    ): JobStateDto {
         const mode = opts.mode ?? CardSyncMode.TNVED;
         const setup = this.requireMode(mode);
         const service = this.requireService(setup.services, opts.market, setup.title);
         const fullOpts: CardSyncOptions = { ...opts, mode };
-        return this.jobs.run<ICardSyncContext<any, any>, CardSyncReport>({
+        return this.jobs.run<ICardSyncContext<any, any>, R>({
             kind: setup.kind,
-            params: { ...fullOpts },
+            params: { ...fullOpts, ...extraParams },
             clientId,
             commands: setup.commands,
             context: {
@@ -170,7 +192,7 @@ export class CardSyncService {
                 progress: emptyProgress(),
                 logger: this.logger,
             },
-            result: (ctx) => ctx.report,
+            result,
         });
     }
 

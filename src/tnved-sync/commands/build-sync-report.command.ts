@@ -17,6 +17,7 @@ export class BuildSyncReportCommand implements IJobCommand<ICardSyncContext<any,
             ambiguous: [],
             skippedProcessed: context.skippedProcessed ?? 0,
             remaining: 0,
+            forFile: (context.forFile ?? []).length,
         };
         for (const item of items) {
             if (item.ambiguousReason)
@@ -30,6 +31,7 @@ export class BuildSyncReportCommand implements IJobCommand<ICardSyncContext<any,
             toFix: context.report.toFix.length,
             ambiguous: context.report.ambiguous.length,
             notFound: context.report.notFoundOnOzon.length,
+            ...(context.report.forFile ? { forFile: context.report.forFile } : {}),
         });
         return context;
     }

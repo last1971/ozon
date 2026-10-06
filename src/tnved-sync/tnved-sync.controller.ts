@@ -1,9 +1,12 @@
-import { Controller, Delete, Headers, Post, Query } from '@nestjs/common';
+import { Controller, Delete, Get, Headers, NotFoundException, Post, Query, Res } from '@nestjs/common';
+import { Response } from 'express';
 import { ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { CardSyncService } from './card-sync.service';
 import { JobStateDto } from '../job/job.state.dto';
 import { CardSyncMode } from '../interfaces/i.card.sync';
+import { GtinCheckItem } from '../interfaces/i.gtin.sync';
+import { OzonGtinFileService } from './ozon.gtin.file.service';
 
 /** Режим из query: пусто — ТН ВЭД (как было до режимов). */
 const parseMode = (mode?: string): CardSyncMode =>
@@ -12,7 +15,10 @@ const parseMode = (mode?: string): CardSyncMode =>
 @ApiTags('tnved-sync')
 @Controller('tnved-sync')
 export class TnvedSyncController {
-    constructor(private readonly service: CardSyncService) {}
+    constructor(
+        private readonly service: CardSyncService,
+        private readonly ozonGtinFile: OzonGtinFileService,
+    ) {}
 
     @Post()
     @ApiOperation({
@@ -78,6 +84,29 @@ export class TnvedSyncController {
     @ApiOkResponse({ type: JobStateDto })
     missing(@Query('market') market: GoodServiceEnum, @Headers('x-client-id') clientId?: string): JobStateDto {
         return this.service.startMissing(market, clientId || undefined);
+    }
+
+    @Get('gtin-file')
+    @ApiOperation({
+        summary: '«Файл для Озона»: xlsx по шаблону кабинета «Шаблон для загрузки GTIN» для фасовок',
+        description:
+            'Сверка GTIN по всей базе без записи; в файл идут карточки, которым GTIN через API не положить ' +
+            '(фасовки: баркод уникален в кабинете) — SKU и GTIN держателя. Файл грузится руками в кабинете Озона, ' +
+            'API для этого нет; поле через API не читается, поэтому файл каждый раз полный (повтор безвреден).',
+    })
+    @ApiQuery({ name: 'market', required: false, enum: GoodServiceEnum, description: 'по умолчанию ozon' })
+    async gtinFile(@Res() res: Response, @Query('market') market?: GoodServiceEnum): Promise<void> {
+        const items = await this.service.checkForFile<GtinCheckItem>({
+            mode: CardSyncMode.GTIN,
+            market: market || GoodServiceEnum.OZON,
+            onlyNew: false,
+        });
+        const file = await this.ozonGtinFile.build(items);
+        if (!file.rows) throw new NotFoundException('Фасовок без GTIN для файла нет');
+        res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
+        res.setHeader('Content-Disposition', `attachment; filename=${file.filename}`);
+        res.setHeader('X-Rows', String(file.rows));
+        res.send(file.content);
     }
 
     @Delete('progress')

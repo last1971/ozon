@@ -438,7 +438,8 @@ describe('CardSyncService', () => {
             const rep = await service.sync(gtin());
 
             expect(rep.checkedGoods).toBe(2);
-            expect(rep.checkedOffers).toBe(2); // по одной карточке на товар
+            expect(rep.checkedOffers).toBe(2); // по одной карточке на товар — фасовки ушли в канал файла
+            expect(rep.forFile).toBe(2); // 569593-10 и 569593-5
             expect(rep.alreadyOk).toBe(1);
             expect(rep.toFix).toHaveLength(1);
             expect(rep.toFix[0]).toMatchObject({

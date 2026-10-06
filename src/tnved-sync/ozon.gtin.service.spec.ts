@@ -48,3 +48,33 @@ describe('OzonGtinService.update', () => {
         expect(res[1].error).toBeUndefined();
     });
 });
+
+describe('OzonGtinService.check — фасовки Озона уходят в канал файла, не в API', () => {
+    it('держатель — в items (API), фасовка — в forFile с GTIN держателя и SKU', async () => {
+        const listAllOfferIds = jest.fn().mockResolvedValue(['548580', '548580-10']);
+        const infoList = jest.fn().mockResolvedValue([
+            { sku: '548580', marketSku: 1, barcodes: ['OZN1'], remark: 'Клеммы' },
+            { sku: '548580-10', marketSku: 2, barcodes: ['OZN2'], remark: 'Клеммы, 10 шт.' },
+        ]);
+        const service = new OzonGtinService({ listAllOfferIds, infoList } as any);
+
+        const res = await service.check([{ goodscode: '548580', gtins: ['00400001819968'] }]);
+
+        expect(res.items).toHaveLength(1);
+        expect(res.items[0]).toMatchObject({
+            offer: '548580',
+            slot: 'barcodes',
+            ok: false,
+            add: ['00400001819968'],
+            marketId: 1,
+        });
+        expect(res.forFile).toHaveLength(1);
+        expect(res.forFile[0]).toMatchObject({
+            offer: '548580-10',
+            slot: 'extra',
+            ok: false,
+            add: ['00400001819968'],
+            marketId: 2,
+        });
+    });
+});

@@ -7,6 +7,7 @@ import { OzonTnvedService } from './ozon.tnved.service';
 import { WbTnvedService } from './wb.tnved.service';
 import { OzonGtinService } from './ozon.gtin.service';
 import { WbGtinService } from './wb.gtin.service';
+import { OzonGtinFileService } from './ozon.gtin.file.service';
 import { WbCardModule } from '../wb.card/wb.card.module';
 import { WbApiModule } from '../wb.api/wb.api.module';
 import { ProcessedCacheModule } from '../processed-cache/processed-cache.module';
@@ -38,7 +39,15 @@ const SYNC_COMMANDS = [
 @Module({
     imports: [ProductModule, FirebirdModule, WbCardModule, WbApiModule, ProcessedCacheModule, JobModule],
     controllers: [TnvedSyncController],
-    providers: [CardSyncService, OzonTnvedService, WbTnvedService, OzonGtinService, WbGtinService, ...SYNC_COMMANDS],
+    providers: [
+        CardSyncService,
+        OzonTnvedService,
+        WbTnvedService,
+        OzonGtinService,
+        WbGtinService,
+        OzonGtinFileService,
+        ...SYNC_COMMANDS,
+    ],
     // WbTnvedService наружу — ради справочника ТН ВЭД предметов (WbDictModule) через общую калитку к ВБ
     exports: [WbTnvedService],
 })

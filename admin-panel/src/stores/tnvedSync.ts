@@ -34,6 +34,7 @@ export interface TnvedSyncReport {
     ambiguous: { offer: string; reason: string }[];
     skippedProcessed: number; // пропущено как уже обработанные (onlyNew)
     remaining: number; // товаров базы ещё не обработано
+    forFile?: number; // карточек для файла в кабинете (Озон: GTIN фасовок — кнопка «Файл для Озона»)
 }
 
 export const TNVED_SYNC_JOB = 'tnved-sync';
@@ -68,6 +69,7 @@ export const tnvedSyncStore = defineStore("tnvedSyncStore", {
             onlyNew: true, // пропускать уже обработанные: массово — «Проверить» → «Записать» порциями
         },
         isResetting: false,
+        isDownloading: false,
         errorMessage: '',
     }),
     actions: {
@@ -83,6 +85,31 @@ export const tnvedSyncStore = defineStore("tnvedSyncStore", {
         async startMissing(): Promise<JobState<MissingTnvedReport>> {
             const res = await axios.post<JobState<MissingTnvedReport>>("/api/tnved-sync/missing", null, { params: { market: this.form.market } });
             return res.data;
+        },
+        /**
+         * «Файл для Озона»: xlsx по шаблону кабинета «Шаблон для загрузки GTIN» — фасовки, которым GTIN через API
+         * не положить. Бэк сверяет всю базу, файл сразу скачивается; грузится руками в кабинете Озона.
+         */
+        async downloadOzonGtinFile() {
+            this.errorMessage = '';
+            this.isDownloading = true;
+            try {
+                const res = await axios.get("/api/tnved-sync/gtin-file", { params: { market: this.form.market }, responseType: 'blob' });
+                const name = /filename=([^;]+)/.exec(res.headers['content-disposition'] ?? '')?.[1] ?? 'ozon-gtin.xlsx';
+                const link = document.createElement('a');
+                link.href = URL.createObjectURL(res.data);
+                link.download = name;
+                link.click();
+                URL.revokeObjectURL(link.href);
+                return Number(res.headers['x-rows'] ?? 0);
+            } catch (e: any) {
+                const blob: Blob | undefined = e.response?.data instanceof Blob ? e.response.data : undefined;
+                const text = blob ? JSON.parse(await blob.text())?.message : e.response?.data?.message;
+                this.errorMessage = text || e.message;
+                return 0;
+            } finally {
+                this.isDownloading = false;
+            }
         },
         /** Сбросить прогресс раскатки режима по маркетплейсу — следующий прогон «только необработанные» пойдёт с нуля. */
         async resetProgress() {

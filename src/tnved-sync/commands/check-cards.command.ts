@@ -8,9 +8,10 @@ export class CheckCardsCommand implements IJobCommand<ICardSyncContext<any, any>
     readonly phase = 'сверка';
 
     async execute(context: ICardSyncContext<any, any>): Promise<ICardSyncContext<any, any>> {
-        const { items, notFound } = await context.service.check(context.base ?? [], context.progress);
+        const { items, notFound, forFile } = await context.service.check(context.base ?? [], context.progress);
         context.items = items;
         context.notFound = notFound;
+        context.forFile = forFile ?? [];
         return context;
     }
 }

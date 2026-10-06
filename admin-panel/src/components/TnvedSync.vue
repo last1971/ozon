@@ -4,6 +4,7 @@ import MarketplaceSelect from "@/components/MarketplaceSelect.vue";
 import { useJob } from "@/composable/useJob";
 import { clientId } from "@/axios.config";
 import { computed, onMounted, ref, watch } from "vue";
+import { GoodServiceEnum } from "@/stores/goods";
 
 const store = tnvedSyncStore();
 // у режимов свои фоновые задачи: отчёт GTIN не путается с отчётом ТН ВЭД, после F5 подхватывается свой
@@ -11,6 +12,9 @@ const jobs = { tnved: useJob<TnvedSyncReport>(TNVED_SYNC_JOB), gtin: useJob<Tnve
 const sync = computed(() => jobs[store.form.mode]);
 const box = computed(() => sync.value.box);
 const isGtin = computed(() => store.form.mode === 'gtin');
+// Файл Озона: только режим GTIN и только Озон — у ВБ есть поле «дополнительный GTIN», оно пишется через API
+const canOzonFile = computed(() => isGtin.value && store.form.market === GoodServiceEnum.OZON);
+const fileRows = ref<number | null>(null);
 const missing = useJob<MissingTnvedReport>(TNVED_MISSING_JOB);
 const confirmWrite = ref(false);
 const confirmReset = ref(false);
@@ -55,6 +59,9 @@ async function write() {
 async function findMissing() {
     await missing.start(() => store.startMissing());
 }
+async function ozonFile() {
+    fileRows.value = await store.downloadOzonGtinFile();
+}
 async function resetProgress() {
     confirmReset.value = false;
     await store.resetProgress();
@@ -68,6 +75,9 @@ async function resetProgress() {
         </v-alert>
         <v-alert v-if="box.error" type="error" closable class="mb-4" @click:close="box.error = ''">
             {{ box.error }}
+        </v-alert>
+        <v-alert v-if="fileRows" type="success" closable class="mb-4" @click:close="fileRows = null">
+            Файл для Озона скачан: строк {{ fileRows }}. Загрузи его в кабинете Озона (раздел маркировки → «Шаблон для загрузки GTIN»).
         </v-alert>
         <v-alert v-if="missing.box.error" type="error" closable class="mb-4" @click:close="missing.box.error = ''">
             {{ missing.box.error }}
@@ -112,6 +122,18 @@ async function resetProgress() {
                         @click="confirmWrite = true"
                     >
                         Записать
+                    </v-btn>
+                </v-col>
+                <v-col v-if="canOzonFile" cols="auto">
+                    <v-btn
+                        color="secondary"
+                        prepend-icon="mdi-file-excel"
+                        :loading="store.isDownloading"
+                        :disabled="running || store.isDownloading"
+                        title="xlsx по шаблону кабинета «Шаблон для загрузки GTIN»: фасовки, которым GTIN через API не положить. Загрузить руками в кабинете Озона."
+                        @click="ozonFile"
+                    >
+                        Файл для Озона
                     </v-btn>
                 </v-col>
                 <v-col v-if="!isGtin" cols="auto">
@@ -226,6 +248,11 @@ async function resetProgress() {
                 </v-col>
                 <v-col cols="auto">
                     <v-chip variant="tonal">Нет карточки: {{ report.notFoundOnOzon.length }}</v-chip>
+                </v-col>
+                <v-col v-if="report.forFile" cols="auto">
+                    <v-chip color="secondary" variant="tonal" title="GTIN фасовок через API не положить — кнопка «Файл для Озона»">
+                        В файл Озона: {{ report.forFile }}
+                    </v-chip>
                 </v-col>
                 <v-col cols="auto">
                     <v-chip variant="tonal">Пропущено обработанных: {{ report.skippedProcessed }}</v-chip>

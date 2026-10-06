@@ -32,10 +32,15 @@ export interface SyncCheckItem {
     action?: string; // что будет записано
 }
 
-/** Итог чтения: решения по карточкам + товары базы, у которых на маркетплейсе нет ни одной карточки. */
+/**
+ * Итог чтения: решения по карточкам + товары базы, у которых на маркетплейсе нет ни одной карточки.
+ * forFile — решения, которые площадка через API исполнить не может и отдаёт другому каналу (файл в кабинете):
+ * в отчёт «на правку/спорно» и в прогресс раскатки они не входят, их забирает выгрузка файла.
+ */
 export interface SyncCheckResult<I extends SyncCheckItem = SyncCheckItem> {
     items: I[];
     notFound: string[]; // goodscode
+    forFile?: I[];
 }
 
 /** Итог записи одной карточки. */
@@ -77,6 +82,7 @@ export interface CardSyncReport<I extends SyncCheckItem = SyncCheckItem> {
     ambiguous: { offer: string; reason: string }[];
     skippedProcessed: number; // товаров базы пропущено как уже обработанные (onlyNew)
     remaining: number; // товаров базы ещё не обработано после этого прогона
+    forFile?: number; // карточек, которые правятся не через API, а файлом в кабинете (Озон: GTIN фасовок)
 }
 
 /**
@@ -100,6 +106,7 @@ export interface ICardSyncContext<
 
     items?: I[];
     notFound?: string[];
+    forFile?: I[];
 
     report?: CardSyncReport<I>;
 }

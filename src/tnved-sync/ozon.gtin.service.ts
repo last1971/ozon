@@ -48,7 +48,15 @@ export class OzonGtinService implements ICardSyncable<GtinBaseItem, GtinCheckIte
             );
             if (list.length) byGood.set(b.goodscode, list);
         }
-        return checkGtinOffers(base, byGood, progress);
+        const result = checkGtinOffers(base, byGood, progress);
+        // Фасовки (слот extra): GTIN на них кладётся только файлом «Шаблон для загрузки GTIN» в кабинете —
+        // API это поле не отдаёт и не принимает (проверено 06.10.2026). Через API их не пишем и в отчёт
+        // «на правку» не тащим — отдаём каналу файла (OzonGtinFileService).
+        return {
+            items: result.items.filter((i) => i.slot !== 'extra'),
+            notFound: result.notFound,
+            forFile: result.items.filter((i) => i.slot === 'extra'),
+        };
     }
 
     async update(items: GtinCheckItem[], progress: JobProgress = emptyProgress()): Promise<SyncUpdateResult[]> {
@@ -119,6 +127,10 @@ export class OzonGtinService implements ICardSyncable<GtinBaseItem, GtinCheckIte
             name: info.remark,
             barcodes: info.barcodes ?? [],
             marketId: info.marketSku,
+            // Поле «GTIN для маркировки» у Озона есть (заполняется файлом), но API его не показывает —
+            // считаем пустым: файл идемпотентен, повторная загрузка того же GTIN безвредна.
+            extraSlot: true,
+            extraGtin: null,
             ...(info.marketSku
                 ? {}
                 : { ambiguousReason: 'у карточки нет SKU Озона (не прошла модерацию?) — привязать штрихкод некуда' }),
