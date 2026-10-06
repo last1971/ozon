@@ -127,6 +127,7 @@ export class OzonGtinService implements ICardSyncable<GtinBaseItem, GtinCheckIte
             name: info.remark,
             barcodes: info.barcodes ?? [],
             marketId: info.marketSku,
+            cabinetId: info.cabinetSku,
             // Поле «GTIN для маркировки» у Озона есть (заполняется файлом), но API его не показывает —
             // считаем пустым: файл идемпотентен, повторная загрузка того же GTIN безвредна.
             extraSlot: true,

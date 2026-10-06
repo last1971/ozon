@@ -90,19 +90,20 @@ export class TnvedSyncController {
     @ApiOperation({
         summary: '«Файл для Озона»: xlsx по шаблону кабинета «Шаблон для загрузки GTIN» для фасовок',
         description:
-            'Сверка GTIN по всей базе без записи; в файл идут карточки, которым GTIN через API не положить ' +
-            '(фасовки: баркод уникален в кабинете) — SKU и GTIN держателя. Файл грузится руками в кабинете Озона, ' +
-            'API для этого нет; поле через API не читается, поэтому файл каждый раз полный (повтор безвреден).',
+            'Сверка GTIN по всей базе без записи; в файл идут ВСЕ карточки товаров с GTIN — фасовки (через API ' +
+            'GTIN не положить: баркод уникален) и базовые (GTIN в баркодах проверка Озона засчитывает не всегда) — ' +
+            'SKU, как его показывает кабинет, и GTIN товара. Файл грузится руками в кабинете Озона, API для этого ' +
+            'нет; поле через API не читается, поэтому файл каждый раз полный (повтор безвреден).',
     })
     @ApiQuery({ name: 'market', required: false, enum: GoodServiceEnum, description: 'по умолчанию ozon' })
     async gtinFile(@Res() res: Response, @Query('market') market?: GoodServiceEnum): Promise<void> {
-        const items = await this.service.checkForFile<GtinCheckItem>({
+        const { items, forFile } = await this.service.checkDecisions<GtinCheckItem>({
             mode: CardSyncMode.GTIN,
             market: market || GoodServiceEnum.OZON,
             onlyNew: false,
         });
-        const file = await this.ozonGtinFile.build(items);
-        if (!file.rows) throw new NotFoundException('Фасовок без GTIN для файла нет');
+        const file = await this.ozonGtinFile.build([...items, ...forFile]);
+        if (!file.rows) throw new NotFoundException('Карточек с GTIN для файла нет');
         res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
         res.setHeader('Content-Disposition', `attachment; filename=${file.filename}`);
         res.setHeader('X-Rows', String(file.rows));

@@ -55,6 +55,7 @@ function base(row: GtinBaseItem, o: BarcodeOffer, slot: GtinCheckItem['slot'], c
         add: [],
         slot,
         marketId: o.marketId,
+        ...(o.cabinetId ? { cabinetId: o.cabinetId } : {}),
     };
 }
 

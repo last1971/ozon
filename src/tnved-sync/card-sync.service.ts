@@ -159,15 +159,23 @@ export class CardSyncService {
     }
 
     /**
-     * Решения режима, которые площадка через API исполнить не может (канал файла в кабинете), без записи.
-     * Та же цепочка команд; в параметрах задачи метка forFile, чтобы не склеиться с отчётной задачей.
+     * Решения режима без записи, оба канала: items — что правится через API, forFile — что отдаётся файлу
+     * в кабинете. Нужно выгрузкам, которым важны поля решений (SKU, что добавить), а не свёрнутый отчёт.
+     * Та же цепочка команд; в параметрах задачи метка decisions, чтобы не склеиться с отчётной задачей.
      */
-    async checkForFile<I extends SyncCheckItem = SyncCheckItem>(opts: CardSyncOptions): Promise<I[]> {
+    async checkDecisions<I extends SyncCheckItem = SyncCheckItem>(
+        opts: CardSyncOptions,
+    ): Promise<{ items: I[]; forFile: I[] }> {
         const state = await this.jobs.whenDone(
-            this.startJob({ ...opts, apply: false }, undefined, (ctx) => ctx.forFile ?? [], { forFile: true }).id,
+            this.startJob(
+                { ...opts, apply: false },
+                undefined,
+                (ctx) => ({ items: ctx.items ?? [], forFile: ctx.forFile ?? [] }),
+                { decisions: true },
+            ).id,
         );
         if (state.status === 'failed') throw new Error(state.error);
-        return (state.result as I[]) ?? [];
+        return (state.result as { items: I[]; forFile: I[] }) ?? { items: [], forFile: [] };
     }
 
     private startJob<R>(

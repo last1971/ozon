@@ -25,6 +25,8 @@ export interface GtinCheckItem extends SyncCheckItem {
     add: string[];
     slot: GtinSlot;
     marketId?: number;
+    /** Чем карточку называет кабинет/шаблон площадки, если это не marketId (Озон: fbo-SKU). */
+    cabinetId?: number;
 }
 
 /**
@@ -36,6 +38,7 @@ export interface BarcodeOffer {
     name?: string;
     barcodes: string[];
     marketId?: number;
+    cabinetId?: number;
     ambiguousReason?: string;
     extraSlot?: boolean;
     extraGtin?: string | null;

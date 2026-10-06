@@ -54,7 +54,7 @@ describe('OzonGtinService.check — фасовки Озона уходят в к
         const listAllOfferIds = jest.fn().mockResolvedValue(['548580', '548580-10']);
         const infoList = jest.fn().mockResolvedValue([
             { sku: '548580', marketSku: 1, barcodes: ['OZN1'], remark: 'Клеммы' },
-            { sku: '548580-10', marketSku: 2, barcodes: ['OZN2'], remark: 'Клеммы, 10 шт.' },
+            { sku: '548580-10', marketSku: 2, cabinetSku: 22, barcodes: ['OZN2'], remark: 'Клеммы, 10 шт.' },
         ]);
         const service = new OzonGtinService({ listAllOfferIds, infoList } as any);
 

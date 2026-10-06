@@ -45,4 +45,13 @@ export class ProductInfoDto {
         required: false,
     })
     marketSku?: number;
+
+    @ApiProperty({
+        description:
+            'SKU карточки в кабинете и отчётах Озона. У карточки с двумя источниками (sds+fbo) кабинет и шаблоны ' +
+            'показывают fbo-SKU, а поле sku в API — sds (розница, 06.10.2026: 355164-10 → sku 1011699111, кабинет 1011699113)',
+        example: 1011699113,
+        required: false,
+    })
+    cabinetSku?: number;
 }
