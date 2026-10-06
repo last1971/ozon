@@ -83,7 +83,8 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
                 barCode: item.barcodes[0],
                 barcodes: item.barcodes ?? [],
                 marketSku: item.sku || undefined,
-                cabinetSku: (item.sources ?? []).find((s: any) => s.source === 'fbo')?.sku || item.sku || undefined,
+                // кабинет показывает SKU «старого» источника (fbo или fbs), не sds; источника нет — sku
+                cabinetSku: (item.sources ?? []).find((s: any) => s.source !== 'sds')?.sku || item.sku || undefined,
                 remark: item.name,
                 primaryImage: item.primary_image,
                 id: item.id,

@@ -84,6 +84,38 @@ describe('ProductService', () => {
         expect(result[0].fboCount).toBe(4); // 5 - 1
     });
 
+    it('infoList: SKU кабинета — не-sds источник (fbo или fbs), иначе sku; marketSku — всегда sku API', async () => {
+        const card = (offer_id: string, sku: number, sources: [string, number][]) => ({
+            offer_id,
+            sku,
+            sources: sources.map(([source, s]) => ({ source, sku: s })),
+            barcodes: [],
+            name: offer_id,
+            stocks: { stocks: [] },
+        });
+        method.mockResolvedValue({
+            items: [
+                card('355164-10', 1011699111, [
+                    ['sds', 1011699111],
+                    ['fbo', 1011699113],
+                ]),
+                card('355164-50', 1011714775, [
+                    ['sds', 1011714775],
+                    ['fbs', 1011714774],
+                ]),
+                card('548580-10', 2789873858, [['sds', 2789873858]]),
+            ],
+        });
+
+        const result = await service.infoList(['355164-10', '355164-50', '548580-10']);
+
+        expect(result.map((r) => [r.marketSku, r.cabinetSku])).toEqual([
+            [1011699111, 1011699113],
+            [1011714775, 1011714774],
+            [2789873858, 2789873858],
+        ]);
+    });
+
     it('test infoList handles missing volumeWeight', async () => {
         method.mockResolvedValue({
             items: [
