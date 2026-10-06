@@ -160,6 +160,25 @@ describe('PostingFboService', () => {
         expect(res).toHaveLength(2);
     });
 
+    describe('listDeliveredFbo (IFboSales)', () => {
+        it('доставленные за 60 дней, номера отправлений, журнал НЕ пишет', async () => {
+            mpWindowStart.mockResolvedValue(new Date());
+            orderFboList.mockResolvedValueOnce({
+                postings: [{ posting_number: 'D-1' }, { posting_number: 'D-2' }],
+                has_next: false,
+                cursor: '',
+            });
+
+            expect(await service.listDeliveredFbo()).toEqual(['D-1', 'D-2']);
+
+            const req = orderFboList.mock.calls[0][0];
+            expect(req.filter.statuses).toEqual(['delivered']);
+            const sinceDays = (Date.now() - new Date(req.filter.since).getTime()) / 86_400_000;
+            expect(Math.floor(sinceDays)).toBe(60); // startOf(day): 60 дн плюс часы текущих суток
+            expect(mpRecord).not.toHaveBeenCalled();
+        });
+    });
+
     describe('createInvoice → делегирует в creator с контекстом Ozon', () => {
         const posting = {
             posting_number: '321',

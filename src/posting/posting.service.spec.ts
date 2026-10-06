@@ -43,6 +43,39 @@ describe('PostingService', () => {
     const mpExecute = jest.fn().mockResolvedValue({ done: [], failed: [] });
     // Зеркало реального runner.handleDelivered поверх моков: сценарии ретрая/пометки
     // остаются проверяемыми здесь, оркестровку в бою тестирует спек runner'а.
+    // Зеркало runner.ingestDelivered / drainDelivered поверх тех же моков.
+    const mpIngestDelivered = jest.fn(async (event: any) => {
+        let isNew = false;
+        try {
+            isNew = await mpRecord(event);
+        } catch (e) {
+            return false;
+        }
+        if (!isNew) return false;
+        if (!mpSalesEnabled()) {
+            await dryObservePosting(event.posting ?? event.extId, 'FBS', 'delivered', undefined, event.service);
+            return true;
+        }
+        await mpHandleDelivered(event);
+        return true;
+    });
+    const mpDrainDelivered = jest.fn(async (service: string, kind: string) => {
+        if (!mpSalesEnabled()) return;
+        try {
+            const tail = await mpListUnhandled(service, kind, 'delivered');
+            for (const row of tail) {
+                await mpHandleDelivered({
+                    service,
+                    kind,
+                    extId: row.extId,
+                    state: 'delivered',
+                    posting: row.posting ?? row.extId,
+                });
+            }
+        } catch (e) {
+            /* как в бою */
+        }
+    });
     const mpHandleDelivered = jest.fn(async (event: any) => {
         try {
             if (await mpIsHandled(event)) return;
@@ -138,6 +171,8 @@ describe('PostingService', () => {
                     useValue: {
                         observePosting: dryObservePosting,
                         handleDelivered: mpHandleDelivered,
+                        ingestDelivered: mpIngestDelivered,
+                        drainDelivered: mpDrainDelivered,
                         flush: dryFlush,
                         salesEnabled: mpSalesEnabled,
                         needsExecution: mpNeedsExecution,
@@ -315,7 +350,7 @@ describe('PostingService', () => {
             await service.observeWideWindow();
 
             expect(dryObservePosting).toHaveBeenCalledWith('123', 'FBS', 'cancel', false);
-            expect(dryObservePosting).toHaveBeenCalledWith('123', 'FBS', 'delivered');
+            expect(dryObservePosting).toHaveBeenCalledWith('123', 'FBS', 'delivered', undefined, 'OZON');
             // awaiting_deliver и delivering — только наблюдение, решений по ним нет:
             // 2 отправления × 2 статуса, а не × 4
             expect(dryObservePosting).toHaveBeenCalledTimes(4);
@@ -376,12 +411,18 @@ describe('PostingService', () => {
             dryObservePosting.mockResolvedValue(null);
         });
 
-        it('знакомое, но необработанное delivered-событие ретраится: решение исполняется и помечается', async () => {
+        it('знакомое, но необработанное delivered-событие ретраится добором из журнала: решение исполняется и помечается', async () => {
+            // Знакомое событие цикл не трогает (гейт isNew) — его подбирает добор из журнала
+            // той же общей цепочкой runner'а, что у ВБ и FBO.
             mpRecord.mockResolvedValue(false);
+            mpListUnhandled.mockResolvedValueOnce(
+                postings.map((p: any) => ({ extId: p.posting_number, posting: p.posting_number })),
+            );
 
             await service.observeWideWindow();
 
             // 2 отправления в delivered; отмены (isNew=false) остаются наблюдением и не считаются
+            expect(mpListUnhandled).toHaveBeenCalledWith('OZON', 'POSTING_FBS', 'delivered');
             expect(mpExecute).toHaveBeenCalledTimes(2);
             expect(mpExecute).toHaveBeenCalledWith(decision);
             expect(mpMarkHandled).toHaveBeenCalledWith(expect.objectContaining({ state: 'delivered' }));

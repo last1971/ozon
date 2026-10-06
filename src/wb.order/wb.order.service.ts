@@ -34,6 +34,7 @@ import { FboInvoiceCreatorService } from '../posting.fbo/fbo-invoice-creator.ser
 import { ProcessedCacheService } from '../processed-cache/processed-cache.service';
 import { isMarkCodesEnabled } from '../helpers';
 import { GoodServiceEnum } from '../good/good.service.enum';
+import { IFboSales } from '../interfaces/IFboSales';
 import { MP_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
 import { MpEventDto, MpEventService } from '../mp-event/mp-event.service';
 import { MpDecisionRunnerService } from '../mp-decision/mp-decision.runner.service';
@@ -55,7 +56,7 @@ interface WbOrderEvent {
 }
 
 @Injectable()
-export class WbOrderService implements IOrderable, IMarkSubmittable, IReturnable {
+export class WbOrderService implements IOrderable, IFboSales, IMarkSubmittable, IReturnable {
     private readonly logger = new Logger(WbOrderService.name);
     private postingDtos: Map<string, PostingDto>;
     constructor(
@@ -284,6 +285,11 @@ export class WbOrderService implements IOrderable, IMarkSubmittable, IReturnable
         try {
             const events = await this.fetchOrderEvents();
             for (const ev of events) {
+                // Доставка — общей цепочкой runner'а (журнал → продажа → добор ниже).
+                if (ev.state === 'delivered') {
+                    await this.mpRunner.ingestDelivered(ev.event, ev.shipped);
+                    continue;
+                }
                 let isNew = false;
                 try {
                     isNew = await this.mpEvent.record(ev.event);
@@ -291,17 +297,9 @@ export class WbOrderService implements IOrderable, IMarkSubmittable, IReturnable
                     this.logger.warn(`журнал: ${ev.event.extId}/${ev.state} не записан — ${e.message}`);
                     continue;
                 }
-                // Только НОВЫЕ события: sold у ВБ терминален и висит всё окно —
-                // без гейта каждый прогон гонял бы isHandled-SELECT по сотням
-                // заказов. Ретрай недоделанного делает добор из журнала ниже.
+                // Только НОВЫЕ события: статусы ВБ терминальны и висят всё окно.
                 if (!isNew) continue;
-                if (ev.state === 'delivered') {
-                    if (!this.mpRunner.salesEnabled()) {
-                        await this.mpRunner.observePosting(ev.event.extId, 'FBS', 'delivered', ev.shipped, 'WB');
-                        continue;
-                    }
-                    await this.mpRunner.handleDelivered(ev.event);
-                } else if (ev.state === 'cancelled') {
+                if (ev.state === 'cancelled') {
                     // Отмены исполняет конвейер cancelOrders — здесь наблюдение.
                     // Наблюдатель — ЕДИНСТВЕННЫЙ писатель WB-событий (listCanceled
                     // журнал только читает), поэтому isNew здесь надёжен.
@@ -312,28 +310,36 @@ export class WbOrderService implements IOrderable, IMarkSubmittable, IReturnable
             // хвостом отмен (разбор руками/отчётом) и живыми отменами (конвейер).
             // Ставится ПОСЛЕ полного посева окна; record идемпотентен.
             await this.mpEvent.record(WbOrderService.SEED_EVENT);
-            // Добор из журнала: sold, осевший необработанным (например, простой сервиса
-            // дольше окна заказов). Журнал — единственная память о таком событии.
-            if (this.mpRunner.salesEnabled()) {
-                try {
-                    const tail = await this.mpEvent.listUnhandled('WB', 'POSTING_FBS', 'delivered');
-                    for (const row of tail) {
-                        await this.mpRunner.handleDelivered({
-                            service: 'WB',
-                            kind: 'POSTING_FBS',
-                            extId: row.extId,
-                            state: 'delivered',
-                            posting: row.posting ?? row.extId,
-                        });
-                    }
-                } catch (e) {
-                    this.logger.warn(`ВБ: добор проданного из журнала не прошёл — ${e.message}`);
-                }
-            }
+            await this.mpRunner.drainDelivered('WB', 'POSTING_FBS');
         } finally {
             await this.mpRunner.flush('observeWbFbs');
         }
     }
+
+    /**
+     * IFboSales: продажи со склада ВБ за окно. Статистика продаж отдаёт и FBS, и FBO;
+     * FBS-продажи уже исполняет `observeWbFbs` по номеру заказа (их счета заведены
+     * по `order.id`, по srid они не найдутся), поэтому оставляем только FBO — тем же
+     * вычитанием FBS-заказов, что при заведении FBO-счетов (`getOnlyFboOrders`).
+     * Возвраты статистики (saleID на «R») — не продажи.
+     */
+    async listDeliveredFbo(): Promise<string[]> {
+        const date = DateTime.now().minus({ day: WbOrderService.FBO_SALES_WINDOW_DAYS });
+        const sales: { srid: string; saleID?: string }[] = (await this.getSales(date.toISODate())) ?? [];
+        const fbsRids = new Set((await this.list(date.toUnixInteger())).map((order) => order.rid));
+        return [
+            ...new Set(
+                sales
+                    .filter(
+                        (sale) => sale.srid && !fbsRids.has(sale.srid) && !String(sale.saleID ?? '').startsWith('R'),
+                    )
+                    .map((sale) => sale.srid),
+            ),
+        ];
+    }
+
+    /** Окно FBO-продаж: как у доставленных FBO Озона — холодный старт подбирает невыведенные коды. */
+    private static readonly FBO_SALES_WINDOW_DAYS = 60;
 
     /** Заказы окна наблюдения со статусами, нормализованные в события журнала. */
     private async fetchOrderEvents(): Promise<WbOrderEvent[]> {

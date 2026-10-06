@@ -25,6 +25,8 @@ describe('MpDecisionRunnerService', () => {
     const updatePrim = jest.fn();
     const evIsHandled = jest.fn();
     const evMarkHandled = jest.fn();
+    const evRecord = jest.fn();
+    const evListUnhandled = jest.fn();
 
     const match = (over: any = {}) => ({
         invoice: { id: 91694, number: 8144, status: 3, remark: '72067989-0727-1' },
@@ -76,7 +78,13 @@ describe('MpDecisionRunnerService', () => {
                 },
                 {
                     provide: MpEventService,
-                    useValue: { hasAnyState, isHandled: evIsHandled, markHandled: evMarkHandled },
+                    useValue: {
+                        hasAnyState,
+                        isHandled: evIsHandled,
+                        markHandled: evMarkHandled,
+                        record: evRecord,
+                        listUnhandled: evListUnhandled,
+                    },
                 },
                 { provide: EventEmitter2, useValue: { emit } },
                 { provide: ConfigService, useValue: { get: configGet } },
@@ -435,6 +443,93 @@ describe('MpDecisionRunnerService', () => {
             expect(markCodeFbsSold).toHaveBeenCalledWith('KI-1', outer);
             expect(outer.commit).not.toHaveBeenCalled();
             expect(tx.commit).not.toHaveBeenCalled();
+        });
+    });
+
+    describe('ingestDelivered / drainDelivered — общая цепочка «увидели доставку»', () => {
+        const ev = (kind: 'POSTING_FBS' | 'POSTING_FBO' = 'POSTING_FBO') => ({
+            service: 'OZON' as const,
+            kind,
+            extId: 'P-1',
+            state: 'delivered',
+            posting: 'P-1',
+        });
+
+        beforeEach(() => {
+            evRecord.mockReset();
+            evListUnhandled.mockReset().mockResolvedValue([]);
+            evIsHandled.mockReset().mockResolvedValue(false);
+            evMarkHandled.mockReset();
+            findByPosting.mockReset().mockResolvedValue(null);
+            delete flags['MP_SALE_ACTIONS_ENABLED'];
+        });
+
+        it('новое событие при включённых продажах → handleDelivered (решение + пометка)', async () => {
+            flags['MP_SALE_ACTIONS_ENABLED'] = true;
+            evRecord.mockResolvedValue(true);
+            const handle = jest.spyOn(service, 'handleDelivered');
+
+            expect(await service.ingestDelivered(ev())).toBe(true);
+
+            expect(evRecord).toHaveBeenCalledWith(ev());
+            expect(handle).toHaveBeenCalledWith(ev());
+            expect(evMarkHandled).toHaveBeenCalledWith(ev());
+        });
+
+        it('знакомое событие — ни решения, ни пометки (его подберёт добор)', async () => {
+            flags['MP_SALE_ACTIONS_ENABLED'] = true;
+            evRecord.mockResolvedValue(false);
+            const handle = jest.spyOn(service, 'handleDelivered');
+
+            expect(await service.ingestDelivered(ev())).toBe(false);
+
+            expect(handle).not.toHaveBeenCalled();
+            expect(evMarkHandled).not.toHaveBeenCalled();
+        });
+
+        it('продажи выключены → решение вхолостую, пометки нет; схема по виду события', async () => {
+            evRecord.mockResolvedValue(true);
+            const observe = jest.spyOn(service, 'observePosting');
+
+            expect(await service.ingestDelivered(ev('POSTING_FBO'), undefined)).toBe(true);
+
+            expect(observe).toHaveBeenCalledWith('P-1', 'FBO', 'delivered', undefined, 'OZON');
+            expect(evMarkHandled).not.toHaveBeenCalled();
+        });
+
+        it('сбой записи в журнал — предупреждение, решения нет', async () => {
+            flags['MP_SALE_ACTIONS_ENABLED'] = true;
+            evRecord.mockRejectedValue(new Error('db down'));
+            const handle = jest.spyOn(service, 'handleDelivered');
+
+            expect(await service.ingestDelivered(ev())).toBe(false);
+            expect(handle).not.toHaveBeenCalled();
+        });
+
+        it('drain: необработанное из журнала исполняется по виду события, при выключенных продажах в журнал не ходим', async () => {
+            await service.drainDelivered('WB', 'POSTING_FBO');
+            expect(evListUnhandled).not.toHaveBeenCalled();
+
+            flags['MP_SALE_ACTIONS_ENABLED'] = true;
+            evListUnhandled.mockResolvedValue([{ extId: 'S-1', posting: 'S-1' }]);
+            const handle = jest.spyOn(service, 'handleDelivered').mockResolvedValue(undefined);
+
+            await service.drainDelivered('WB', 'POSTING_FBO');
+
+            expect(evListUnhandled).toHaveBeenCalledWith('WB', 'POSTING_FBO', 'delivered');
+            expect(handle).toHaveBeenCalledWith({
+                service: 'WB',
+                kind: 'POSTING_FBO',
+                extId: 'S-1',
+                state: 'delivered',
+                posting: 'S-1',
+            });
+        });
+
+        it('drain: сбой журнала не роняет прогон', async () => {
+            flags['MP_SALE_ACTIONS_ENABLED'] = true;
+            evListUnhandled.mockRejectedValue(new Error('db down'));
+            await expect(service.drainDelivered('OZON', 'POSTING_FBO')).resolves.toBeUndefined();
         });
     });
 });

@@ -4,7 +4,7 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FirebirdTransaction } from 'ts-firebird';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { donorSuffixFor } from '../helpers/order.cancellation.constants';
-import { MpEventDto, MpEventService, MpService } from '../mp-event/mp-event.service';
+import { MpEventDto, MpEventService, MpKind, MpService } from '../mp-event/mp-event.service';
 import { MpDecisionService } from './mp-decision.service';
 import { Decision, DecisionInput, MpScheme } from './mp-decision.types';
 
@@ -112,12 +112,72 @@ export class MpDecisionRunnerService {
      * из журнала). Пометки нет ни при потолке прогона, ни при сбое — событие
      * останется в журнале необработанным, и его подберёт добор следующего прогона.
      */
+    /**
+     * Доставленное отправление с площадки → журнал → продажа.
+     *
+     * Единственная цепочка «увидели доставку» для всех наблюдателей (Ozon FBS и FBO,
+     * ВБ FBS и FBO): запись в журнал; событие не новое — выходим (терминальные статусы
+     * висят всё окно, без гейта каждый прогон гонял бы isHandled по сотням заказов,
+     * недоделанное добирает `drainDelivered`); продажи включены — исполняем, иначе
+     * только решение вхолостую. Сбой записи в журнал — предупреждение, не падение.
+     * @returns событие было новым (для построчного лога наблюдателей).
+     */
+    async ingestDelivered(event: MpEventDto, shipped?: boolean): Promise<boolean> {
+        let isNew = false;
+        try {
+            isNew = await this.mpEvent.record(event);
+        } catch (e) {
+            this.logger.warn(`журнал: ${event.extId}/${event.state} не записан — ${e.message}`);
+            return false;
+        }
+        if (!isNew) return false;
+        if (!this.salesEnabled()) {
+            await this.observePosting(
+                event.posting ?? event.extId,
+                MpDecisionRunnerService.schemeOf(event.kind),
+                'delivered',
+                shipped,
+                event.service,
+            );
+            return true;
+        }
+        await this.handleDelivered(event);
+        return true;
+    }
+
+    /**
+     * Добор из журнала: доставленное, осевшее необработанным (потолок прогона, сбой,
+     * простой сервиса дольше окна площадки, события до включения продаж). В штатном
+     * режиме выборка пуста. Журнал — единственная память о таком событии.
+     */
+    async drainDelivered(service: MpService, kind: MpKind): Promise<void> {
+        if (!this.salesEnabled()) return;
+        try {
+            const tail = await this.mpEvent.listUnhandled(service, kind, 'delivered');
+            for (const row of tail) {
+                await this.handleDelivered({
+                    service,
+                    kind,
+                    extId: row.extId,
+                    state: 'delivered',
+                    posting: row.posting ?? row.extId,
+                });
+            }
+        } catch (e) {
+            this.logger.warn(`${service}/${kind}: добор доставленного из журнала не прошёл — ${e.message}`);
+        }
+    }
+
+    private static schemeOf(kind: MpKind): MpScheme {
+        return kind === 'POSTING_FBO' ? 'FBO' : 'FBS';
+    }
+
     async handleDelivered(event: MpEventDto): Promise<void> {
         try {
             if (await this.mpEvent.isHandled(event)) return;
             const decision = await this.observePosting(
                 event.posting ?? event.extId,
-                'FBS',
+                MpDecisionRunnerService.schemeOf(event.kind),
                 'delivered',
                 undefined,
                 event.service,

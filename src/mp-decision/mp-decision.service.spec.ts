@@ -55,10 +55,18 @@ describe('MpDecisionService — решающая таблица', () => {
             expect(service.decide(input({ invoice: null }))).toMatchObject({ letter: false });
         });
 
-        it('доставлено → письмо: уехало то, чего мы не заводили', () => {
+        it('доставлено FBS → письмо: уехало то, чего мы не заводили', () => {
             expect(service.decide(input({ kind: 'delivered', invoice: null }))).toMatchObject({
                 branch: 'invoice-not-found',
                 letter: true,
+            });
+        });
+
+        it('доставлено FBO → без письма: счёт под FBO заводится только под подбор, кодов нет', () => {
+            expect(service.decide(input({ kind: 'delivered', scheme: 'FBO', invoice: null }))).toMatchObject({
+                branch: 'invoice-not-found',
+                letter: false,
+                layer2: [],
             });
         });
 

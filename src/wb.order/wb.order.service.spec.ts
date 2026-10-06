@@ -35,6 +35,39 @@ describe('WbOrderService', () => {
     const mpObservePosting = jest.fn().mockResolvedValue(null);
     const mpHandleDelivered = jest.fn().mockResolvedValue(undefined);
     const mpSalesEnabled = jest.fn().mockReturnValue(false);
+    // Зеркало runner.ingestDelivered / drainDelivered поверх тех же моков.
+    const mpIngestDelivered = jest.fn(async (event: any, shipped?: boolean) => {
+        let isNew = false;
+        try {
+            isNew = await mpRecord(event);
+        } catch (e) {
+            return false;
+        }
+        if (!isNew) return false;
+        if (!mpSalesEnabled()) {
+            await mpObservePosting(event.posting ?? event.extId, 'FBS', 'delivered', shipped, event.service);
+            return true;
+        }
+        await mpHandleDelivered(event);
+        return true;
+    });
+    const mpDrainDelivered = jest.fn(async (service: string, kind: string) => {
+        if (!mpSalesEnabled()) return;
+        try {
+            const tail = await mpListUnhandled(service, kind, 'delivered');
+            for (const row of tail) {
+                await mpHandleDelivered({
+                    service,
+                    kind,
+                    extId: row.extId,
+                    state: 'delivered',
+                    posting: row.posting ?? row.extId,
+                });
+            }
+        } catch (e) {
+            /* как в бою */
+        }
+    });
     const mpFlush = jest.fn().mockResolvedValue(undefined);
     const isExists = jest.fn();
     const pickupInvoice = jest.fn();
@@ -171,6 +204,8 @@ describe('WbOrderService', () => {
                     useValue: {
                         observePosting: mpObservePosting,
                         handleDelivered: mpHandleDelivered,
+                        ingestDelivered: mpIngestDelivered,
+                        drainDelivered: mpDrainDelivered,
                         salesEnabled: mpSalesEnabled,
                         flush: mpFlush,
                     },
@@ -1004,6 +1039,27 @@ describe('WbOrderService', () => {
             expect(mpRecord).toHaveBeenCalledWith(
                 expect.objectContaining({ extId: '__OBSERVE_SEED__', state: 'seeded' }),
             );
+        });
+    });
+
+    describe('listDeliveredFbo (IFboSales): продажи со склада ВБ', () => {
+        it('только FBO-продажи: без FBS-заказов окна, без возвратов статистики, без дублей', async () => {
+            method.mockClear();
+            method.mockImplementation(async (path: string) => {
+                if (path === '/api/v1/supplier/sales')
+                    return [
+                        { srid: 'fbo-1', saleID: 'S1' },
+                        { srid: 'fbo-1', saleID: 'S2' },
+                        { srid: 'fbs-1', saleID: 'S3' },
+                        { srid: 'fbo-2', saleID: 'R1' },
+                        { srid: 'fbo-3', saleID: 'S4' },
+                    ];
+                if (path === '/api/v3/orders') return { next: null, orders: [{ id: 1, rid: 'fbs-1' }] };
+                return undefined;
+            });
+
+            expect(await service.listDeliveredFbo()).toEqual(['fbo-1', 'fbo-3']);
+            expect(method).toHaveBeenCalledWith('/api/v1/supplier/sales', 'statistics', expect.any(Object));
         });
     });
 

@@ -177,6 +177,11 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
                     state: status,
                     posting: posting.posting_number,
                 };
+                // Доставка — общей цепочкой runner'а (журнал → продажа → добор ниже).
+                if (status === 'delivered') {
+                    if (await this.mpRunner.ingestDelivered(event)) fresh.add(`${status}/${posting.posting_number}`);
+                    continue;
+                }
                 let isNew = false;
                 try {
                     isNew = await this.mpEvent.record(event);
@@ -185,11 +190,7 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
                     continue;
                 }
                 if (isNew) fresh.add(`${status}/${posting.posting_number}`);
-                // Продажа исполняется (итерация 7): недоделанное delivered-событие
-                // ретраится каждым проходом, пока не помечено в журнале. Остальные
-                // статусы — только наблюдение по новым событиям, как в итерации 5.
-                const saleLive = status === 'delivered' && this.mpRunner.salesEnabled();
-                if (!isNew && !saleLive) continue;
+                if (!isNew) continue;
                 if (status === 'cancelled') {
                     // Схема FBS — по источнику события; отмены исполняет cancelOrder.
                     // Признак отгрузки — из самого отправления, как в бою: журнал про
@@ -200,37 +201,11 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
                         'cancel',
                         isShippedToMarketplace(posting),
                     );
-                    continue;
                 }
-                if (status !== 'delivered') continue;
-                if (!saleLive) {
-                    await this.mpRunner.observePosting(posting.posting_number, 'FBS', 'delivered');
-                    continue;
-                }
-                await this.mpRunner.handleDelivered(event);
             }
         }
 
-        // Добор из журнала: доставленное, осевшее необработанным. В выборку Ozon такое
-        // уже не вернётся (статус конечный, окно смены статуса — 2 дня): это хвост,
-        // накопленный до включения флага, и события, чьё исполнение падало дольше
-        // нахлёста. В штатном режиме выборка пуста.
-        if (this.mpRunner.salesEnabled()) {
-            try {
-                const tail = await this.mpEvent.listUnhandled('OZON', 'POSTING_FBS', 'delivered');
-                for (const row of tail) {
-                    await this.mpRunner.handleDelivered({
-                        service: 'OZON',
-                        kind: 'POSTING_FBS',
-                        extId: row.extId,
-                        state: 'delivered',
-                        posting: row.posting ?? row.extId,
-                    });
-                }
-            } catch (e) {
-                this.logger.warn(`добор доставленного из журнала не прошёл — ${e.message}`);
-            }
-        }
+        await this.mpRunner.drainDelivered('OZON', 'POSTING_FBS');
         await this.mpRunner.flush('observeFbsWideWindow');
 
         await this.logObservationTail(found, actionEdge, apiErrors, fresh);

@@ -175,6 +175,20 @@ export const cronConfig: Record<string, CronSetup> = {
      * Наблюдение за расширенным окном FBS (итерация 2): ничего не делает, только пишет в лог.
      * На dev выключено — кабинет и база там боевые, лишние запросы к Ozon не нужны.
      */
+    /**
+     * Наблюдатель FBO-продаж (Ozon и ВБ): доставленное со склада площадки → вывод кода
+     * из оборота той же цепочкой, что у FBS. Минута :01 — своя, см. класс.
+     * На dev выключен — кабинет и база боевые.
+     */
+    observeFboSales: {
+        production: {
+            enabled: true,
+            settings: {
+                time: '0 1-56/5 * * * *',
+            },
+        },
+        development: false,
+    },
     observeFbsWideWindow: {
         production: {
             enabled: true,

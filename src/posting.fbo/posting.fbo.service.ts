@@ -1,5 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { IOrderable } from '../interfaces/IOrderable';
+import { IFboSales } from '../interfaces/IFboSales';
 import { PostingDto } from '../posting/dto/posting.dto';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { ProductService } from '../product/product.service';
@@ -15,7 +16,7 @@ import { MpEventService } from '../mp-event/mp-event.service';
 import { IFboReconcilable } from '../interfaces/IFboReconcilable';
 
 @Injectable()
-export class PostingFboService implements IOrderable, IFboReconcilable {
+export class PostingFboService implements IOrderable, IFboSales, IFboReconcilable {
     private logger = new Logger(PostingFboService.name);
     constructor(
         private productService: ProductService,
@@ -54,6 +55,26 @@ export class PostingFboService implements IOrderable, IFboReconcilable {
     }
 
     async list(status: string, day = 2): Promise<PostingDto[]> {
+        const all = await this.fetch(status, day);
+        // Журнал: на нём стоит расширение окна при пропущенном прогоне.
+        for (const posting of all) {
+            try {
+                await this.mpEvent.record({
+                    service: 'OZON',
+                    kind: 'POSTING_FBO',
+                    extId: posting.posting_number,
+                    state: status,
+                    posting: posting.posting_number,
+                });
+            } catch (e) {
+                this.logger.warn(`журнал: ${posting.posting_number}/${status} не записан — ${e.message}`);
+            }
+        }
+        return all;
+    }
+
+    /** Отправления статуса за окно — без записи в журнал (её делает вызывающий). */
+    private async fetch(status: string, day: number): Promise<PostingDto[]> {
         // У FBO фильтр по дате смены статуса мёртвый (обмерено: окна 1 ч, 24 ч, 72 ч и
         // заведомо пустое дают одни и те же записи), поэтому инкрементально сузить выборку
         // нечем — окно по дате СОЗДАНИЯ читается целиком каждый раз. Журнал здесь нужен
@@ -92,24 +113,25 @@ export class PostingFboService implements IOrderable, IFboReconcilable {
             hasMore = Boolean(orders?.has_next) && nextCursor !== '' && nextCursor !== cursor;
             cursor = nextCursor;
         }
-
-        // Журнал: на нём стоит расширение окна при пропущенном прогоне.
-        for (const posting of all) {
-            try {
-                await this.mpEvent.record({
-                    service: 'OZON',
-                    kind: 'POSTING_FBO',
-                    extId: posting.posting_number,
-                    state: status,
-                    posting: posting.posting_number,
-                });
-            } catch (e) {
-                this.logger.warn(`журнал: ${posting.posting_number}/${status} не записан — ${e.message}`);
-            }
-        }
-
         return all;
     }
+
+    /**
+     * IFboSales: доставленные покупателю FBO-отправления за окно по дате создания.
+     * Журнал здесь не пишем — им владеет наблюдатель (`ingestDelivered`: по записи
+     * он отличает новое событие от уже виденного).
+     */
+    async listDeliveredFbo(): Promise<string[]> {
+        const postings = await this.fetch('delivered', PostingFboService.DELIVERED_WINDOW_DAYS);
+        return postings.map((p) => p.posting_number);
+    }
+
+    /**
+     * Окно доставленных FBO. Фильтр у FBO только по дате создания, окно читается целиком
+     * каждый прогон: 60 дней на опте — ~450 отправлений, 5 страниц (обмерено 05.10.2026).
+     * Холодный старт этим же окном подбирает продажи, по которым код не выведен.
+     */
+    private static readonly DELIVERED_WINDOW_DAYS = 60;
 
     /** Нахлёст окна при отсчёте от журнала. */
     private static readonly OVERLAP_DAYS = 1;

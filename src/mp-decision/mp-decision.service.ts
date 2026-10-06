@@ -65,6 +65,15 @@ export class MpDecisionService {
      * Заявочные статусы и возврат в пути сюда не входят — физики там нет.
      */
     private notFoundLetter(input: DecisionInput): { letter: boolean; reason: string } {
+        // FBO-продажа без счёта — норма, не физика без учёта: счёт по FBO заводится только
+        // под подбор (ВБ: skipIfNoPodbor), а продаётся со склада площадки всё подряд.
+        // Сухой прогон 06.10.2026 на опте: 346 таких продаж ВБ за 60 дней, ни одной с кодом.
+        if (input.kind === 'delivered' && input.scheme === 'FBO') {
+            return {
+                letter: false,
+                reason: 'FBO-продажа без счёта — счёт под неё не заводился, кодов нет; делать нечего',
+            };
+        }
         const state = input.returnState ?? '';
         const physicalReturn =
             input.kind === 'return' &&

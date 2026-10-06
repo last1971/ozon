@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { OrderService } from './order.service';
+import { FboSalesObserverService } from './fbo-sales-observer.service';
 import { CheckMarkCoverageCommand } from './commands/check-mark-coverage.command';
 import { PickupInvoiceCommand } from './commands/pickup-invoice.command';
 import { CancelledBoxReconcilerService } from './cancelled-box-reconciler.service';
@@ -30,7 +31,13 @@ import { MpDecisionModule } from '../mp-decision/mp-decision.module';
         MpDecisionModule,
         Trade2006AccrualModule,
     ],
-    providers: [OrderService, CancelledBoxReconcilerService, CheckMarkCoverageCommand, PickupInvoiceCommand],
+    providers: [
+        OrderService,
+        CancelledBoxReconcilerService,
+        FboSalesObserverService,
+        CheckMarkCoverageCommand,
+        PickupInvoiceCommand,
+    ],
     controllers: [OrderController],
     exports: [OrderService],
 })
