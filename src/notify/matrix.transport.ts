@@ -48,12 +48,18 @@ export class MatrixTransport implements INotifyTransport {
         return last;
     }
 
-    /** Тело события: plain body + HTML; длинное режется, хвост уходит письмом по той же теме. */
-    static content(message: NotifyMessage): Record<string, any> {
-        const { body, cut } = MatrixTransport.truncate(`${message.subject}\n${message.text}`.trim());
+    /**
+     * Тело события: plain body + HTML; длинное режется, хвост уходит письмом по той же теме.
+     * В первой строке — время события (Томск, время склада и серверов): в ленте Element
+     * из десятков одинаковых заголовков не видно, какой когда пришёл и что уже прочитано
+     * (жалоба владельца 06.10.2026).
+     */
+    static content(message: NotifyMessage, now: Date = new Date()): Record<string, any> {
+        const title = `${message.subject} · ${MatrixTransport.stamp(now)}`;
+        const { body, cut } = MatrixTransport.truncate(`${title}\n${message.text}`.trim());
         const html =
             message.html && !cut
-                ? `<b>${escape(message.subject)}</b><br>${message.html}`
+                ? `<b>${escape(title)}</b><br>${message.html}`
                 : escape(body)
                       .replace(/\n/g, '<br>')
                       .replace(/^([^<]+)/, '<b>$1</b>');
@@ -63,6 +69,19 @@ export class MatrixTransport implements INotifyTransport {
             format: 'org.matrix.custom.html',
             formatted_body: html,
         };
+    }
+
+    /** «06.10 14:38» по Томску — часовой пояс склада и обоих прод-узлов, не зависит от TZ процесса. */
+    static stamp(now: Date): string {
+        return now
+            .toLocaleString('ru-RU', {
+                timeZone: 'Asia/Tomsk',
+                day: '2-digit',
+                month: '2-digit',
+                hour: '2-digit',
+                minute: '2-digit',
+            })
+            .replace(',', '');
     }
 
     static truncate(text: string): { body: string; cut: boolean } {

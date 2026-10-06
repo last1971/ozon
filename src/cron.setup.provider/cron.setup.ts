@@ -313,11 +313,14 @@ export const cronConfig: Record<string, CronSetup> = {
         },
         development: false,
     },
+    // Пульс «сервис жив» — раз в сутки утром. Каждые 3 часа круглосуточно с двух узлов
+    // давало 16 сообщений в день в комнату DEV — 120 из ~200 сообщений бота за неделю
+    // (история комнаты 28.09–06.10.2026); живость в остальное время — `!ps` у ops-бота.
     checkHealth: {
         production: {
             enabled: true,
             settings: {
-                time: CronExpression.EVERY_3_HOURS,
+                time: CronExpression.EVERY_DAY_AT_9AM,
             },
         },
         development: {

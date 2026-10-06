@@ -28,9 +28,18 @@ describe('MatrixTransport', () => {
         expect(url).toMatch(
             /^https:\/\/hs\/_matrix\/client\/v3\/rooms\/!abc%3Aelcopro\.ru\/send\/m\.room\.message\/ozon-/,
         );
-        expect(content).toMatchObject({ msgtype: 'm.notice', body: 'Тема\nтело', format: 'org.matrix.custom.html' });
-        expect(content.formatted_body).toBe('<b>Тема</b><br>тело');
+        expect(content).toMatchObject({ msgtype: 'm.notice', format: 'org.matrix.custom.html' });
+        expect(content.body).toMatch(/^Тема · \d\d\.\d\d \d\d:\d\d\nтело$/);
+        expect(content.formatted_body).toMatch(/^<b>Тема · \d\d\.\d\d \d\d:\d\d<\/b><br>тело$/);
         expect(opts.headers.Authorization).toBe('Bearer tok');
+    });
+
+    it('время в заголовке — по Томску, «дд.мм чч:мм»', () => {
+        const at = new Date('2026-10-06T07:38:00Z'); // 14:38 в Томске (+07)
+        expect(MatrixTransport.stamp(at)).toBe('06.10 14:38');
+        expect(MatrixTransport.content({ subject: 'Разобрать руками: 2', text: 'x' }, at).body).toBe(
+            'Разобрать руками: 2 · 06.10 14:38\nx',
+        );
     });
 
     it('один ретрай на 5xx, потом false; на 4xx ретрая нет', async () => {
@@ -60,9 +69,12 @@ describe('MatrixTransport', () => {
     });
 
     it('HTML экранируется, свой html берётся как есть', () => {
-        expect(MatrixTransport.content({ subject: 'a<b', text: 'c>d' }).formatted_body).toBe('<b>a&lt;b</b><br>c&gt;d');
-        expect(MatrixTransport.content({ subject: 's', text: 't', html: '<i>x</i>' }).formatted_body).toBe(
-            '<b>s</b><br><i>x</i>',
+        const at = new Date('2026-10-06T07:38:00Z');
+        expect(MatrixTransport.content({ subject: 'a<b', text: 'c>d' }, at).formatted_body).toBe(
+            '<b>a&lt;b · 06.10 14:38</b><br>c&gt;d',
+        );
+        expect(MatrixTransport.content({ subject: 's', text: 't', html: '<i>x</i>' }, at).formatted_body).toBe(
+            '<b>s · 06.10 14:38</b><br><i>x</i>',
         );
     });
 });
