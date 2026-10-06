@@ -137,6 +137,11 @@ export const CLAIM_RETURN_STATES = [
     'MoneyReturned',
     'CrmRejected',
     'CancelledDisputeNotOpen',
+    // Ждёт решения продавца / спор: решается в кабинете площадки, который сам об этом
+    // напоминает; товар никуда не ехал, в Trade делать нечего (письмо было шумом, 04.10.2026).
+    'OnSellerApproval',
+    'DisputeOpened',
+    'DisputeYouOpened',
 ];
 
 /**

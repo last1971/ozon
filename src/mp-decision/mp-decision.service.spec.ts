@@ -188,12 +188,20 @@ describe('MpDecisionService — решающая таблица', () => {
         const ret = (state: string, over: Partial<DecisionInput> = {}) =>
             service.decide(input({ kind: 'return', returnState: state, ...over }));
 
-        it.each(['Cancelled', 'Rejected', 'Approved', 'MoneyReturned', 'CrmRejected', 'CancelledDisputeNotOpen'])(
-            'заявочный статус %s → ничего и без письма: физики нет',
-            (state) => {
-                expect(ret(state)).toMatchObject({ branch: 'return/claim-state', layer1: 'none', letter: false });
-            },
-        );
+        it.each([
+            'Cancelled',
+            'Rejected',
+            'Approved',
+            'MoneyReturned',
+            'CrmRejected',
+            'CancelledDisputeNotOpen',
+            // решается в кабинете площадки, Trade не касается (шум 04.10.2026)
+            'OnSellerApproval',
+            'DisputeOpened',
+            'DisputeYouOpened',
+        ])('заявочный статус %s → ничего и без письма: физики нет', (state) => {
+            expect(ret(state)).toMatchObject({ branch: 'return/claim-state', layer1: 'none', letter: false });
+        });
 
         it.each(['MovingToOzon', 'WaitingShipment', 'MovingToSeller'])('%s → только запись в журнал', (state) => {
             expect(ret(state)).toMatchObject({ branch: 'return/in-transit', layer1: 'none', letter: false });
