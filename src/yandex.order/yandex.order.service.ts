@@ -1,4 +1,5 @@
 import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
+import { pollUntil, PollDecision } from '../helpers/poll.util';
 import { Cron } from '@nestjs/schedule';
 import { IOrderable } from '../interfaces/IOrderable';
 import { PostingDto } from '../posting/dto/posting.dto';
@@ -354,22 +355,56 @@ export class YandexOrderService implements IOrderable, IMarkSubmittable, OnModul
             }
         }
 
-        const statusRes = await this.yandexApi.method(`campaigns/${this.campaignId}/orders/${orderId}/status`, 'put', {
-            order: { status: YandexOrderStatus.PROCESSING, substatus: YandexOrderSubStatus.READY_TO_SHIP },
-        });
-        if (YandexOrderService.isNotOk(statusRes)) {
+        // После boxes Яндекс проверяет коды в ЧЗ асинхронно и до конца проверки отвечает на
+        // READY_TO_SHIP «STATUS_NOT_ALLOWED … Cis validation is not finished» (живой кейс 06.10.2026,
+        // заказ с 563515). Это не отказ, а «ещё рано» — ждём, как Озон ждёт ship_available.
+        const poll = await pollUntil(
+            () =>
+                this.yandexApi.method(`campaigns/${this.campaignId}/orders/${orderId}/status`, 'put', {
+                    order: { status: YandexOrderStatus.PROCESSING, substatus: YandexOrderSubStatus.READY_TO_SHIP },
+                }),
+            (res): PollDecision => {
+                if (!YandexOrderService.isNotOk(res)) return 'done';
+                return YandexOrderService.isCisValidationPending(res) ? 'continue' : 'fail';
+            },
+            YandexOrderService.STATUS_POLL_DELAYS_MS,
+        );
+        if (poll.status === 'timeout') {
+            // Коды у Яндекса, проверка ЧЗ всё ещё идёт — повторное «Подобрано» через минуту
+            // пройдёт по ветке «раскладка закрыта → только статус».
+            return {
+                ok: false,
+                failedStep: 'status',
+                goToOzon: false,
+                failed: [
+                    {
+                        ki: '*',
+                        reason: 'Яндекс ещё проверяет коды в Честном знаке — нажмите «Подобрано» ещё раз через минуту',
+                    },
+                ],
+            };
+        }
+        if (poll.status === 'fail') {
             // Коды уже у Яндекса, статус не встал (напр., код не прошёл проверку ЧЗ) — разбор в ЛК.
             return {
                 ok: false,
                 failedStep: 'status',
                 goToOzon: attached.length > 0,
                 failed: [
-                    { ki: '*', reason: `Яндекс status READY_TO_SHIP: ${YandexOrderService.errorText(statusRes)}` },
+                    { ki: '*', reason: `Яндекс status READY_TO_SHIP: ${YandexOrderService.errorText(poll.value)}` },
                 ],
             };
         }
         return { ok: true, shipped: true };
     }
+
+    /** Ответ Яндекса «проверка КИЗ ещё не завершена» — ждать, а не разбирать в ЛК. */
+    private static isCisValidationPending(res: unknown): boolean {
+        return /cis validation is not finished/i.test(YandexOrderService.errorText(res));
+    }
+
+    /** Ожидание проверки кодов Яндексом: ~1 минута, как у Озона (poll ship_available). */
+    static STATUS_POLL_DELAYS_MS = [2000, 4000, 8000, 16000, 32000];
 
     /**
      * Наблюдатель продаж Яндекс-FBS: доставленные заказы → журнал MP_EVENT → retire

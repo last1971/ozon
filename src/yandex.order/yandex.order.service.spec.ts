@@ -329,6 +329,57 @@ describe('YandexOrderService', () => {
             expect(res.goToOzon).toBe(true);
             expect(res.failed[0].reason).toContain('cis invalid');
         });
+        it('Яндекс ещё проверяет коды в ЧЗ → ждём и повторяем статус, потом ok', async () => {
+            YandexOrderService.STATUS_POLL_DELAYS_MS = [0, 0];
+            const pending = {
+                status: 'NotOk',
+                error: {
+                    status: 400,
+                    message:
+                        'STATUS_NOT_ALLOWED: Transition PROCESSING -> PROCESSING is not allowed. ' +
+                        'Reason: Cis validation is not finished for items with cargo type 980, 985, 990.',
+                },
+            };
+            method
+                .mockResolvedValueOnce(startedOrder([{ id: 11, offerId: '552601', count: 1 }]))
+                .mockResolvedValueOnce({ status: 'OK' })
+                .mockResolvedValueOnce(pending)
+                .mockResolvedValueOnce(pending)
+                .mockResolvedValueOnce({ status: 'OK' });
+            getAttachedMarkCodesByScode.mockResolvedValueOnce([
+                { ki: 'k1', goodscode: '552601', realpricecode: 1, quantity: 1 },
+            ]);
+            getKmFullByKi.mockResolvedValue('k1-full');
+
+            const res = await service.submitFbsMarkCodes(invoice);
+
+            expect(res).toEqual({ ok: true, shipped: true });
+            expect(method.mock.calls.filter((c) => String(c[0]).endsWith('/status'))).toHaveLength(3);
+        });
+
+        it('проверка ЧЗ не закончилась за всё ожидание → «нажмите ещё раз», в ЛК не гоним', async () => {
+            YandexOrderService.STATUS_POLL_DELAYS_MS = [0];
+            const pending = {
+                status: 'NotOk',
+                error: { status: 400, message: 'STATUS_NOT_ALLOWED: Cis validation is not finished for items' },
+            };
+            method
+                .mockResolvedValueOnce(startedOrder([{ id: 11, offerId: '552601', count: 1 }]))
+                .mockResolvedValueOnce({ status: 'OK' })
+                .mockResolvedValue(pending);
+            getAttachedMarkCodesByScode.mockResolvedValueOnce([
+                { ki: 'k1', goodscode: '552601', realpricecode: 1, quantity: 1 },
+            ]);
+            getKmFullByKi.mockResolvedValue('k1-full');
+
+            const res = await service.submitFbsMarkCodes(invoice);
+
+            expect(res.ok).toBe(false);
+            expect(res.failedStep).toBe('status');
+            expect(res.goToOzon).toBe(false);
+            expect(res.failed[0].reason).toContain('ещё раз через минуту');
+        });
+
         it('заказ уже READY_TO_SHIP и коды у Яндекса есть → ok/skipped', async () => {
             method.mockResolvedValueOnce({
                 order: {
