@@ -97,12 +97,24 @@ export class MpDecisionService {
         // 0.71 % доставленных: заказ отменяли, счёт отдали в доноры, а отправление
         // всё-таки доставили — коды могли уехать миграцией на чужую продажу.
         if (invoice.cancelled) {
+            // Покупатель вернул, возврат уже обработан (ReturnedToOzon → донор), а «delivered»
+            // площадка показывает всё окно: при холодном старте оно приходит ПОСЛЕ возврата.
+            // Пометка верна, делать нечего (разбор 06.10.2026: 91 из 91 строк — этот случай).
+            if (input.physicalReturn) {
+                return this.build(
+                    input,
+                    'delivered/marked-invoice/returned',
+                    'none',
+                    false,
+                    `доставлен, затем возвращён — возврат уже обработан, пометка «${invoice.mark.trim()}» верна`,
+                );
+            }
             return this.build(
                 input,
                 'delivered/marked-invoice',
                 'none',
                 true,
-                `заказ доставлен, но счёт уже помечен «${invoice.mark.trim()}» и отдан в доноры — разобрать руками`,
+                'доставлен, а счёт уже в донорах и возврата по заказу нет — товар мог уйти дважды — разобрать руками',
             );
         }
         return this.build(input, 'delivered/normal', 'none', false, 'закрытие по комиссиям идёт своим путём');
@@ -335,7 +347,14 @@ export class MpDecisionService {
      * счета, лежащие у нас; отгруженные ждут возврата, поэтому после разбора
      * хвоста сюда будут попадать лишь настоящие повторы события.
      */
-    private static readonly ALREADY_HANDLED = ['cancel/already-marked'];
+    private static readonly ALREADY_HANDLED = [
+        'cancel/already-marked',
+        // Счёт уже донор: товар на складе площадки, код обязан остаться TT=3/STATUS=5 и уедет
+        // миграцией на следующую FBO-продажу — там его и выведут. `retire` здесь продал бы
+        // код по доставке, которую покупатель уже вернул.
+        'delivered/marked-invoice',
+        'delivered/marked-invoice/returned',
+    ];
 
     /** Слой 2 для событий отмены и доставки. */
     private decideCodes(input: DecisionInput, layer1: Layer1Action, branch: string): CodeDecision[] {

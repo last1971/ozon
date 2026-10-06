@@ -27,6 +27,7 @@ describe('MpDecisionRunnerService', () => {
     const evMarkHandled = jest.fn();
     const evRecord = jest.fn();
     const evListUnhandled = jest.fn();
+    const evListStates = jest.fn();
 
     const match = (over: any = {}) => ({
         invoice: { id: 91694, number: 8144, status: 3, remark: '72067989-0727-1' },
@@ -58,6 +59,7 @@ describe('MpDecisionRunnerService', () => {
         hasAnyState.mockResolvedValue(false);
         evIsHandled.mockReset().mockResolvedValue(false);
         evMarkHandled.mockReset().mockResolvedValue(undefined);
+        evListStates.mockReset().mockResolvedValue([]);
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 MpDecisionRunnerService,
@@ -84,6 +86,7 @@ describe('MpDecisionRunnerService', () => {
                         markHandled: evMarkHandled,
                         record: evRecord,
                         listUnhandled: evListUnhandled,
+                        listStatesForPosting: evListStates,
                     },
                 },
                 { provide: EventEmitter2, useValue: { emit } },
@@ -156,32 +159,65 @@ describe('MpDecisionRunnerService', () => {
         expect(service.getCounters()).toEqual({ 'delivered/normal': 2 });
     });
 
-    it('письмо-ветка: одна на прогон, по-русски, со счётчиком', async () => {
+    it('письмо: одно на прогон, тема «Разобрать руками: N», одна строка на заказ, без шапки и счётчиков', async () => {
         findByPosting.mockResolvedValue(null); // delivered без счёта — «разобрать руками»
         await service.observePosting('72067989-0727-1', 'FBS', 'delivered');
+        await service.observePosting('72067989-0727-2', 'FBS', 'delivered');
         await service.flush('observeFbsWideWindow');
 
         expect(emit).toHaveBeenCalledTimes(1);
         const [, subject, body] = emit.mock.calls[0];
-        expect(subject).toContain('Решающая таблица');
-        expect(body).toContain('ВХОЛОСТУЮ');
-        expect(body).toContain('счёта нет, а физика уже случилась');
-        expect(body).toContain('1 — счёт не найден');
-        // Возвраты выключены → шапка предупреждает: «ждём возврата» — план, а не бой.
-        expect(body).toContain('бой сейчас делает донора сразу старым кодом');
+        expect(subject).toBe('Разобрать руками: 2');
+        expect(body.split('\n')).toEqual([
+            '72067989-0727-1 — счёта нет, а физика уже случилась. Разобрать руками.',
+            '72067989-0727-2 — счёта нет, а физика уже случилась. Разобрать руками.',
+        ]);
+        // Служебное (флаги, потолок, счётчик веток) живёт в логе, не в письме.
+        expect(body).not.toMatch(/Флаги|ВХОЛОСТУЮ|Счётчик веток|потолок/);
     });
 
-    it('флаг возвратов включён → предупреждение о старом пути из шапки исчезает', async () => {
-        flags.MP_RETURN_ACTIONS_ENABLED = true;
-        findByPosting.mockResolvedValue(null);
-        await service.observePosting('72067989-0727-1', 'FBS', 'delivered');
-        await service.flush('observeFbsWideWindow');
+    it('доставлен по помеченному счёту: журнал возвратов спрашиваем, возврат есть → тихо', async () => {
+        findByPosting.mockResolvedValue(
+            match({
+                invoice: { id: 77437, number: 300300, status: 1, remark: '0113740615-0216-1 отмена FBO' },
+                mark: ' отмена FBO',
+                cancelled: true,
+            }),
+        );
+        evListStates.mockResolvedValue(['WaitingShipment', 'MovingToOzon', 'ReturnedToOzon']);
 
-        const [, , body] = emit.mock.calls[0];
-        expect(body).not.toContain('бой сейчас делает донора сразу');
-        // шапка честная: флаги включены, исполнять было нечего — не «ВХОЛОСТУЮ»
-        expect(body).toContain('исполнять было нечего');
-        expect(body).not.toContain('ВХОЛОСТУЮ');
+        const decision = await service.observePosting('0113740615-0216-1', 'FBO', 'delivered');
+        await service.flush('observeFboSales');
+
+        expect(evListStates).toHaveBeenCalledWith('OZON', 'RETURN', '0113740615-0216-1');
+        expect(decision.branch).toBe('delivered/marked-invoice/returned');
+        expect(emit).not.toHaveBeenCalled();
+    });
+
+    it('доставлен по помеченному счёту без возврата → строка письма по макету', async () => {
+        findByPosting.mockResolvedValue(
+            match({
+                invoice: { id: 77651, number: 300514, status: 1, remark: '0113740615-0300-1 отмена FBO' },
+                mark: ' отмена FBO',
+                cancelled: true,
+            }),
+        );
+        evListStates.mockResolvedValue(['WaitingShipment']);
+
+        await service.observePosting('0113740615-0300-1', 'FBO', 'delivered');
+        await service.flush('observeFboSales');
+
+        const [, subject, body] = emit.mock.calls[0];
+        expect(subject).toBe('Разобрать руками: 1');
+        expect(body).toBe(
+            '0113740615-0300-1 — доставлен, а счёт уже в донорах и возврата по заказу нет — товар мог уйти дважды' +
+                '; счёт №300514 (сформирован, не в работе, пометка «отмена FBO»). Разобрать руками.',
+        );
+    });
+
+    it('обычная доставка журнал возвратов не читает', async () => {
+        await service.observePosting('72067989-0727-1', 'FBS', 'delivered');
+        expect(evListStates).not.toHaveBeenCalled();
     });
 
     it('нечего показать → письма нет', async () => {
@@ -190,16 +226,14 @@ describe('MpDecisionRunnerService', () => {
         expect(emit).not.toHaveBeenCalled();
     });
 
-    it('потолок разбора за прогон: лишнее не считаем, но и не молчим', async () => {
+    it('потолок разбора за прогон: лишнее не считаем; потолок — в лог, письма без строк «руками» нет', async () => {
         for (let i = 0; i < 205; i++) await service.observePosting(`P-${i}`, 'FBS', 'delivered');
         expect(findByPosting).toHaveBeenCalledTimes(200);
 
         await service.flush('observeFbsWideWindow');
-        const [, , body] = emit.mock.calls[0];
-        expect(body).toContain('5 событий за этот прогон не разобрано');
+        expect(emit).not.toHaveBeenCalled();
 
         // потолок восстанавливается к следующему прогону
-        emit.mockClear();
         await service.observePosting('P-206', 'FBS', 'delivered');
         expect(findByPosting).toHaveBeenCalledTimes(201);
     });
@@ -387,7 +421,9 @@ describe('MpDecisionRunnerService', () => {
 
             await service.flush('processReturns');
             const [, , body] = emit.mock.calls[0];
-            expect(body).toContain('НЕ ПРОШЛО (разобрать): возврат в оборот KI-1 — exception 1, ANY_EXCEPTION');
+            expect(body).toContain('. НЕ ПРОШЛО: возврат в оборот KI-1 — exception 1, ANY_EXCEPTION');
+            expect(body).toContain('СДЕЛАНО: донор 72067989-0727-1');
+            expect(body).toMatch(/Разобрать руками\.$/);
         });
 
         it('настоящий сбой (без ANY_EXCEPTION) → откат, проброс наружу, в письме нет «СДЕЛАНО»', async () => {

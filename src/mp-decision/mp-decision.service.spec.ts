@@ -98,6 +98,38 @@ describe('MpDecisionService — решающая таблица', () => {
             );
             expect(decision).toMatchObject({ branch: 'delivered/marked-invoice', layer1: 'none', letter: true });
         });
+
+        it('счёт с пометкой, но в журнале уже есть физический возврат → тихо: пометка верна', () => {
+            // Разбор 06.10.2026: 80 строк магазина и 11 опта — доставлен, покупатель вернул,
+            // возврат обработан; холодный старт поднял «delivered» после донора.
+            const decision = service.decide(
+                input({
+                    kind: 'delivered',
+                    physicalReturn: true,
+                    invoice: invoice({ mark: ' отмена FBO', cancelled: true, status: 1 }),
+                }),
+            );
+            expect(decision).toMatchObject({
+                branch: 'delivered/marked-invoice/returned',
+                layer1: 'none',
+                letter: false,
+            });
+        });
+
+        it.each([true, false])(
+            'помеченный счёт (возврат=%s): коды на доноре не трогаем — уедут миграцией',
+            (returned) => {
+                const decision = service.decide(
+                    input({
+                        kind: 'delivered',
+                        physicalReturn: returned,
+                        invoice: invoice({ mark: ' отмена FBO', cancelled: true, status: 1 }),
+                        codes: [{ ki: 'KI-1', status: 5, transferType: 3, retireReason: null, kmFull: 'KM-1' }],
+                    }),
+                );
+                expect(decision.layer2).toEqual([expect.objectContaining({ ki: 'KI-1', actions: [], letter: false })]);
+            },
+        );
     });
 
     describe('слой 1 — отмена', () => {

@@ -6,7 +6,7 @@ import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { donorSuffixFor } from '../helpers/order.cancellation.constants';
 import { MpEventDto, MpEventService, MpKind, MpService } from '../mp-event/mp-event.service';
 import { MpDecisionService } from './mp-decision.service';
-import { Decision, DecisionInput, MpScheme } from './mp-decision.types';
+import { Decision, DecisionInput, MpScheme, PHYSICAL_RETURN_STATES } from './mp-decision.types';
 
 /** Что реально сделано по решению — уходит в письмо рядом с самим решением. */
 export interface ExecOutcome {
@@ -336,13 +336,9 @@ export class MpDecisionRunnerService {
                 `${skipped ? `, не разобрано по потолку ${skipped}` : ''}` +
                 `${acted ? `; ветки: ${this.countersToString()}` : ''}`,
         );
-        if (!loud.length && !skipped) return;
+        if (!loud.length) return;
 
-        this.eventEmitter.emit(
-            'error.message',
-            `Решающая таблица (${cycle}): ${loud.length}`,
-            this.buildLetter(loud, skipped),
-        );
+        this.eventEmitter.emit('error.message', `Разобрать руками: ${loud.length}`, this.buildLetter(loud));
     }
 
     private countersToString(): string {
@@ -378,8 +374,18 @@ export class MpDecisionRunnerService {
         const match = await this.invoiceService.findByPosting(event.postingNumber, null);
         if (!match) return { ...event, invoice: null, codes: [] };
         const codes = await this.invoiceService.getMarkCodesStateByScode(match.invoice.id, null);
+        // Доставка по помеченному счёту: журнал возвратов решает, норма это (покупатель вернул,
+        // возврат обработан) или товар реально ушёл дважды. Читаем только в этом случае —
+        // лишнее чтение на каждую из тысяч доставок окна ни к чему.
+        const physicalReturn =
+            event.kind === 'delivered' && match.cancelled
+                ? (
+                      await this.mpEvent.listStatesForPosting(event.service ?? 'OZON', 'RETURN', event.postingNumber)
+                  ).some((state) => (PHYSICAL_RETURN_STATES as readonly string[]).includes(state))
+                : undefined;
         return {
             ...event,
+            ...(physicalReturn === undefined ? {} : { physicalReturn }),
             invoice: {
                 id: match.invoice.id,
                 number: match.invoice.number ?? null,
@@ -403,45 +409,13 @@ export class MpDecisionRunnerService {
         return decision.letter || decision.layer2.some((code) => code.letter) || Boolean(outcome?.failed.length);
     }
 
-    private buildLetter(entries: { decision: Decision; outcome?: ExecOutcome }[], skipped: number): string {
-        const anyExecuted = entries.some((e) => e.outcome);
-        // «ВХОЛОСТУЮ» — только когда действия реально выключены флагами. При включённых
-        // флагах и пустом прогоне исполнителя писать «выключены» — враньё (живой случай
-        // с магазина 13.08: пять писем-веток, исполнять нечего, шапка соврала).
-        const anyFlagOn = this.salesEnabled() || this.returnsEnabled();
-        const head = [
-            anyExecuted
-                ? 'Решающая таблица: строки с пометкой «СДЕЛАНО» исполнены, остальное — наблюдение.'
-                : anyFlagOn
-                  ? 'Решающая таблица: действия включены, в этом прогоне исполнять было нечего — ниже наблюдение.'
-                  : 'Решающая таблица работает ВХОЛОСТУЮ (действия выключены): ниже — что было бы сделано.',
-            `Флаги: продажа=${this.salesEnabled() ? 'ВКЛ' : 'выкл'}, возвраты=${this.returnsEnabled() ? 'ВКЛ' : 'выкл'};` +
-                ' отмены FBS живут отдельным кодом и исполняются всегда.',
-            // Ветки ожидания возврата (cancel-fbs/transferred, cancel-fbo/picked) тихие
-            // и видны только счётчиками — без этой строки читатель решит, что бой ждёт,
-            // хотя до флага их разбирает старый код.
-            ...(this.returnsEnabled()
-                ? []
-                : [
-                      'Возвраты выкл: строки «ждём запись возврата» — план таблицы, ' +
-                          'а НЕ бой: бой сейчас делает донора сразу старым кодом.',
-                  ]),
-            ...(skipped
-                ? [
-                      `ВНИМАНИЕ: ${skipped} событий за этот прогон не разобрано — упёрлись в потолок ` +
-                          `${MpDecisionRunnerService.MAX_PER_RUN} решений на прогон. Ожидаемо на первом ` +
-                          'прогоне после выката (поднимается весь хвост окна), дальше должно быть 0.',
-                  ]
-                : []),
-            '',
-        ];
-        const body = entries.map((entry) => this.describe(entry));
-        const tail = [
-            '',
-            'Счётчик веток с момента старта сервиса:',
-            ...Object.entries(this.getCounters()).map(([branch, count]) => `  ${count} — ${this.branchRu(branch)}`),
-        ];
-        return [...head, ...body, ...tail].join('\n');
+    /**
+     * Письмо — только строки «разобрать руками», по одной на заказ (макет одобрен
+     * владельцем 06.10.2026). Шапка про флаги, потолок прогона и счётчик веток в письме
+     * не нужны: это служебное, оно уходит в лог (`flush`) и в `getCounters()`.
+     */
+    private buildLetter(entries: { decision: Decision; outcome?: ExecOutcome }[]): string {
+        return entries.map((entry) => this.describe(entry)).join('\n');
     }
 
     /**
@@ -453,6 +427,7 @@ export class MpDecisionRunnerService {
         'invoice-not-found': 'счёт не найден',
         'delivered/normal': 'доставлен покупателю',
         'delivered/marked-invoice': 'доставлен, но счёт был отдан в доноры',
+        'delivered/marked-invoice/returned': 'доставлен и возвращён — счёт в донорах по возврату, норма',
         'cancel/closed-invoice': 'отмена по закрытому счёту',
         'cancel/already-marked': 'повторная отмена — счёт уже помечен',
         'cancel-fbo/picked': 'отмена FBO собранного — ждём запись возврата',
@@ -488,27 +463,29 @@ export class MpDecisionRunnerService {
         return MpDecisionRunnerService.BRANCH_RU[branch] ?? branch;
     }
 
+    /**
+     * Одна строка на заказ:
+     * `<posting> — <что случилось>, счёт №N (<статус>, пометка «…»); <почему>. Разобрать руками.`
+     * Коды — только те, что сами просят рук (`code.letter`); сделанное — префиксом «СДЕЛАНО:»,
+     * упавшее — «НЕ ПРОШЛО:». Служебный текст и рутина в письмо не попадают.
+     */
     private describe(entry: { decision: Decision; outcome?: ExecOutcome }): string {
         const { decision, outcome } = entry;
         const { input } = decision;
-        const lines = [`${input.postingNumber} — ${this.branchRu(decision.branch)}`];
+        // Причина ветки уже написана словами; «разобрать руками» из неё уезжает в конец строки.
+        const reason = decision.reason.replace(/\s*[—-]\s*разобрать руками\.?$/i, '');
+        const parts = [`${input.postingNumber} — ${reason}`];
         if (input.invoice) {
             const status =
                 MpDecisionRunnerService.S_STATUS_RU[input.invoice.status] ?? `STATUS=${input.invoice.status}`;
-            lines.push(
-                `  счёт №${input.invoice.number ?? input.invoice.id} — ${status}` +
-                    `${input.invoice.mark ? `, пометка «${input.invoice.mark.trim()}»` : ''}`,
-            );
+            const mark = input.invoice.mark ? `, пометка «${input.invoice.mark.trim()}»` : '';
+            parts.push(`; счёт №${input.invoice.number ?? input.invoice.id} (${status}${mark})`);
         }
-        lines.push(`  ${decision.reason}`);
-        for (const code of decision.layer2) {
-            lines.push(`  код ${code.ki}: ${code.note}`);
+        for (const code of decision.layer2.filter((c) => c.letter)) {
+            parts.push(`; код ${code.ki}: ${code.note.replace(/\s*[—-]\s*разобрать руками\.?$/i, '')}`);
         }
-        if (outcome) {
-            if (outcome.done.length) lines.push(`  СДЕЛАНО: ${outcome.done.join('; ')}`);
-            if (outcome.failed.length) lines.push(`  НЕ ПРОШЛО (разобрать): ${outcome.failed.join('; ')}`);
-            if (!outcome.done.length && !outcome.failed.length) lines.push('  действий по флагам не было');
-        }
-        return lines.join('\n');
+        if (outcome?.done.length) parts.push(`. СДЕЛАНО: ${outcome.done.join('; ')}`);
+        if (outcome?.failed.length) parts.push(`. НЕ ПРОШЛО: ${outcome.failed.join('; ')}`);
+        return `${parts.join('').replace(/\.?$/, '')}. Разобрать руками.`;
     }
 }

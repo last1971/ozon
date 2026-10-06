@@ -55,6 +55,13 @@ export interface DecisionInput {
     transferred?: boolean;
     /** Возврат частичный: записей возврата меньше, чем единиц в счёте. */
     partial?: boolean;
+    /**
+     * По отправлению в журнале уже есть ФИЗИЧЕСКИЙ возврат (`PHYSICAL_RETURN_STATES`).
+     * Только для kind='delivered' по помеченному счёту: доставлен → покупатель вернул →
+     * возврат обработан (счёт в донорах) → холодный старт поднял старое «delivered».
+     * Разбор 06.10.2026: все 80 строк магазина и 11 опта были такими — письмо врало.
+     */
+    physicalReturn?: boolean;
     invoice: DecisionInvoice | null;
     codes: DecisionCode[];
 }
