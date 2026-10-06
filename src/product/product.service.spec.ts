@@ -6,7 +6,6 @@ import { StockType } from './stock.type';
 import { ConfigService } from '@nestjs/config';
 import { ProductFilterDto } from './dto/product.filter.dto';
 import { VaultService } from 'vault-module/lib/vault.service';
-import { ActionListProduct } from 'src/promos/dto/actionsCandidate.dto';
 
 describe('ProductService', () => {
     let service: ProductService;
@@ -304,7 +303,7 @@ describe('ProductService', () => {
             { id: 2, action_price: 100 },
             { id: 3, action_price: 150 },
             { id: 4, action_price: 100 },
-        ] as ActionListProduct[];
+        ] as { id: number; action_price?: number }[];
         const productPrices = [
             { product_id: 1, price: { min_price: 50 } },
             { product_id: 2, price: { min_price: 100 } },
@@ -332,7 +331,7 @@ describe('ProductService', () => {
         const actionProducts = Array.from({ length: 250 }, (_, i) => ({
             id: i + 1,
             action_price: 100,
-        })) as ActionListProduct[];
+        })) as { id: number; action_price?: number }[];
         const productPrices = actionProducts.map((product) => ({ product_id: product.id, price: { min_price: 100 } }));
 
         method

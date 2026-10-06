@@ -1,19 +1,13 @@
-import { Injectable } from '@nestjs/common';
-import { OzonApiService } from '../ozon.api/ozon.api.service';
-import { ActionsDto } from './dto/actions.dto';
-import { ActionListProduct, ActionsListDto } from './dto/actionsCandidate.dto';
-import { ActionsListParamsDto } from './dto/actionsCandidateParams.dto';
-import { ActivateActionProduct, ActivateActionProductsParamsDto } from './dto/activateActionProductsParams.dbo';
-import { ActivateOrDeactivateActionProductsDto, RejectedProduct } from './dto/activateOrDeactivateActionProducts.dbo';
-import { DeactivateActionProductsParamsDto } from './dto/deactivateActionProductsParams.dbo';
-import { ProductService } from '../product/product.service';
-import { PriceRequestDto } from '../price/dto/price.request.dto';
-import { ProductVisibility } from '../product/product.visibility';
-import { PriceService } from '../price/price.service';
-import { PriceResponseDto } from '../price/dto/price.response.dto';
-import { PriceDto } from 'src/price/dto/price.dto';
-import { chunk as chunkArray } from 'lodash';
+import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
+import { chunk as chunkArray } from 'lodash';
+import { PriceDto } from '../price/dto/price.dto';
+import { PriceRequestDto } from '../price/dto/price.request.dto';
+import { PriceService } from '../price/price.service';
+import { ProductService } from '../product/product.service';
+import { ProductVisibility } from '../product/product.visibility';
+import { OzonPromosApi } from './promos.api';
+import { Action, ActionProduct, ActionProductUpdate, RejectedProduct } from './promos.types';
 
 export enum FitProductsStrategy {
     MAX_ACTION_PRICE = 'maxActionPrice',
@@ -23,349 +17,118 @@ export enum FitProductsStrategy {
 
 export type AddRemoveProductToAction = {
     action_id: number;
-    added: {
-        success_ids: number[];
-        failed: RejectedProduct[];
-    };
-    removed: {
-        success_ids: number[];
-        failed: RejectedProduct[];
-    };
+    added: { success_ids: number[]; failed: RejectedProduct[] };
+    removed: { success_ids: number[]; failed: RejectedProduct[] };
 };
 
 /**
- * Сервис, отвечающий за обработку промо-акций.
- *
- * @class PromosService
+ * Бизнес-правила участия товаров в акциях Ozon: что добавить, что снять и по какой цене.
+ * С API разговаривает только через `OzonPromosApi`; цены и остатки берёт у ProductService
+ * и PriceService. Ничего не знает ни об URL-ах, ни о формате Money.
  */
 @Injectable()
-/**
- * Сервис для работы с промо-акциями.
- */
 export class PromosService {
-    /**
-     * Создаёт экземпляр PromosService.
-     *
-     * @param {OzonApiService} ozonApiService - Сервис Ozon API.
-     * @param productService - Сервис работы с товарами.
-     */
+    private readonly logger = new Logger(PromosService.name);
+
     constructor(
-        private ozonApiService: OzonApiService,
-        private productService: ProductService,
-        private priceService: PriceService,
+        private readonly api: OzonPromosApi,
+        private readonly productService: ProductService,
+        private readonly priceService: PriceService,
     ) {}
 
-    /**
-     * Получает список акций.
-     *
-     * @returns {Promise<ActionsDto>} Промис, который возвращает список акций.
-     */
-    async getActions(): Promise<ActionsDto[]> {
-        const res = await this.ozonApiService.method('/v1/actions', {}, 'get');
-        return res.result;
+    getActions(): Promise<Action[]> {
+        return this.api.listActions();
     }
 
     /**
-     * Получает список кандидатов на участие в акции на основе предоставленных параметров.
-     *
-     * @param {ActionsListParamsDto} params - Параметры для получения кандидатов на акцию.
-     * @returns {Promise<ActionsListDto>} Промис, который возвращает список кандидатов на акцию.
-     */
-    async getActionsCandidates(params: ActionsListParamsDto): Promise<ActionsListDto> {
-        const res = await this.ozonApiService.method('/v1/actions/candidates', params);
-        return res.result;
-    }
-
-    /**
-     * Получает список товаров, участвующих в акции, на основе предоставленных параметров.
-     *
-     * @param {ActionsListParamsDto} params - Параметры для получения товаров акции.
-     * @returns {Promise<ActionsListDto>} Промис, который возвращает список товаров акции.
-     */
-    async getActionsProducts(params: ActionsListParamsDto): Promise<ActionsListDto> {
-        const res = await this.ozonApiService.method('/v1/actions/products', params);
-        return res.result;
-    }
-
-    /**
-     * Активирует товары акции на основе предоставленных параметров.
-     *
-     * @param {ActivateActionProductsParamsDto} params - Параметры для активации товаров акции.
-     * @returns {Promise<ActivateOrDeactivateActionProductsDto>} Промис, который возвращает результат активации.
-     */
-    async activateActionProducts(
-        params: ActivateActionProductsParamsDto,
-    ): Promise<ActivateOrDeactivateActionProductsDto> {
-        const res = await this.ozonApiService.method('/v1/actions/products/activate', params);
-        return res.result;
-    }
-
-    /**
-     * Деактивирует товары акции на основе предоставленных параметров.
-     *
-     * @param {DeactivateActionProductsParamsDto} params - Параметры для деактивации товаров акции.
-     * @returns {Promise<ActivateOrDeactivateActionProductsDto>} Промис, который возвращает результат деактивации.
-     */
-    async deactivateActionProducts(
-        params: DeactivateActionProductsParamsDto,
-    ): Promise<ActivateOrDeactivateActionProductsDto> {
-        const res = await this.ozonApiService.method('/v1/actions/products/deactivate', params);
-        return res.result;
-    }
-
-    /**
-     * Удаляет неподходящие товары из акции на основе их цен.
-     *
-     * Этот метод получает все товары, связанные с указанной акцией, проверяет их цены
-     * и деактивирует те, которые не соответствуют необходимым ценовым критериям.
-     *
-     * @param {number} actionId - Идентификатор акции, из которой нужно удалить неподходящие товары.
-     * @returns {Promise<number>} - Промис, который возвращает количество деактивированных товаров.
-     *
-     * @throws {Error} - Генерирует ошибку в случае проблем с получением товаров, цен или деактивацией товаров.
+     * Снять неподходящее: цена по акции ниже нашей минимальной или товара нет в наличии.
+     * @returns сколько товаров снято
      */
     async unfitProductsRemoval(actionId: number): Promise<number> {
-        const actionProducts = await this.getAllActionsProductsOrCandidates(actionId, 'products');
-        const productsPrice = await this.productService.getProductsPrices(actionProducts);
-        const productsCount = await this.productService.getFreeProductCount(actionProducts.map((p) => p.id));
-        const unfitProductIds = actionProducts
-            .filter((actionProduct) => {
-                const productPrice = productsPrice.find((p) => p.id === actionProduct.id);
-                const productCount = productsCount.find((p) => p.id === actionProduct.id);
-                return (
-                    productPrice &&
-                    (actionProduct.action_price < Number(productPrice.price.min_price) || productCount.count === 0)
-                );
-            })
-            .map((p) => p.id);
-        await this.deactivateActionProducts({ action_id: actionId, product_ids: unfitProductIds });
-        return unfitProductIds.length;
+        const action = await this.findAction(actionId);
+        const inAction = await this.api.listAll('products', actionId);
+        const prices = await this.productService.getProductsPrices(inAction);
+        const counts = await this.productService.getFreeProductCount(inAction.map((p) => p.id));
+        const unfit = inAction.filter((p) => {
+            const minPrice = Number(prices.find((x) => x.id === p.id)?.price.min_price);
+            const count = counts.find((x) => x.id === p.id)?.count ?? 0;
+            return minPrice && (p.actionPrice < minPrice || count === 0);
+        });
+        const removed = await this.remove(
+            action,
+            unfit.map((p) => ({ productId: p.id, actionPrice: this.minPriceOf(p.id, prices), stock: p.stock })),
+        );
+        return removed.success_ids.length;
     }
 
     /**
-     * Добавляет подходящие товары в акцию на основе выбранной стратегии.
-     *
-     * Этот метод получает всех кандидатов на участие в акции, проверяет их цены
-     * и активирует те товары, которые соответствуют ценовым критериям согласно выбранной стратегии.
-     *
-     * @param {number} actionId - Идентификатор акции, в которую нужно добавить товары.
-     * @param {FitProductsStrategy} strategy - Стратегия, используемая для добавления товаров.
-     * @returns {Promise<number>} - Промис, который возвращает количество товаров, добавленных в акцию.
-     *
-     * @throws {Error} - Генерирует ошибку в случае проблем с получением товаров, цен или активацией товаров.
+     * Добавить подходящих кандидатов: наша минимальная цена укладывается в предельную
+     * цену акции и товар есть в наличии. Цена участия — по стратегии.
+     * @returns сколько товаров отправлено на добавление
      */
     async fitProductsAddition(actionId: number, strategy: FitProductsStrategy): Promise<number> {
-        const actionCandidates = await this.getAllActionsProductsOrCandidates(actionId, 'candidates');
-        const candidatesPrice = await this.productService.getProductsPrices(actionCandidates);
-        const candidatesCount = await this.productService.getFreeProductCount(actionCandidates.map((p) => p.id));
-        const fitProductIds = actionCandidates
-            .filter((actionProduct) => {
-                const minPrice = Number(
-                    candidatesPrice.find((product) => product.id === actionProduct.id)?.price.min_price,
-                );
-                const count = candidatesCount.find((product) => product.id === actionProduct.id)?.count;
-                return (
-                    minPrice &&
-                    actionProduct.max_action_price &&
-                    actionProduct.max_action_price >= minPrice &&
-                    count > 0
-                );
+        const candidates = await this.api.listAll('candidates', actionId);
+        const prices = await this.productService.getProductsPrices(candidates);
+        const counts = await this.productService.getFreeProductCount(candidates.map((p) => p.id));
+        const updates = candidates
+            .filter((c) => {
+                const minPrice = this.minPriceOf(c.id, prices);
+                const count = counts.find((x) => x.id === c.id)?.count ?? 0;
+                return minPrice > 0 && c.maxActionPrice > 0 && c.maxActionPrice >= minPrice && count > 0;
             })
-            .map((p) => p.id);
-        const products: ActivateActionProduct[] = fitProductIds
-            .map((id) => ({
-                product_id: id,
-                action_price:
-                    strategy === FitProductsStrategy.MAX_ACTION_PRICE
-                        ? actionCandidates.find((p) => p.id === id).max_action_price
-                        : strategy === FitProductsStrategy.MAX_FROM_ACTION_PRICE_AND_MIN_PRICE
-                          ? Math.max(
-                                actionCandidates.find((p) => p.id === id)?.action_price ?? 0,
-                                Number(candidatesPrice.find((p) => p.id === id)?.price.min_price ?? 0),
-                            )
-                          : Number(candidatesPrice.find((p) => p.id === id)?.price.min_price ?? 0),
-                stock: actionCandidates.find((p) => p.id === id)?.stock ?? 0, //TODO: additional rules
+            .map((c) => ({
+                productId: c.id,
+                actionPrice: this.priceByStrategy(c, this.minPriceOf(c.id, prices), strategy),
+                stock: c.stock,
             }))
-            .filter((p) => p.action_price > 0);
-        await this.activateActionProducts({ action_id: actionId, products });
-        return fitProductIds.length;
+            .filter((u) => u.actionPrice > 0);
+        await this.api.update(actionId, updates);
+        return updates.length;
     }
 
     /**
-     * Получает все товары, связанные с указанной акцией, с поддержкой постраничной выборки.
-     *
-     * @param {number} actionId - Идентификатор акции, для которой требуется получить товары.
-     * @param {'products' | 'candidates'} type - Тип товаров для получения: участвующие в акции или кандидаты.
-     * @param {number} [limit=100] - Максимальное количество товаров, обрабатываемых за один запрос.
-     * @returns {Promise<ActionListProduct[]>} Промис, который возвращает массив товаров акции.
-     */
-    async getAllActionsProductsOrCandidates(
-        actionId: number,
-        type: 'products' | 'candidates',
-        limit: number = 100,
-    ): Promise<ActionListProduct[]> {
-        let offset = 0;
-        let actionProducts: ActionListProduct[] = [];
-        let isMoreDataAvailable = true;
-
-        // Helper function to fetch data based on type
-        const fetchProducts = async () =>
-            type === 'candidates'
-                ? this.getActionsCandidates({ action_id: actionId, limit, offset })
-                : this.getActionsProducts({ action_id: actionId, limit, offset });
-
-        while (isMoreDataAvailable) {
-            const { products } = await fetchProducts();
-            actionProducts = actionProducts.concat(products);
-            offset += limit;
-
-            // Если количество возвращённых продуктов меньше лимита, больше данных нет
-            isMoreDataAvailable = products.length === limit;
-        }
-
-        return actionProducts;
-    }
-
-    /**
-     * Получает все товары, связанные с указанной акцией, с поддержкой постраничной выборки.
-     *
-     * @param {number} actionId - Идентификатор акции, для которой требуется получить товары.
-     * @param {'products' | 'candidates'} type - Тип товаров для получения: участвующие в акции или кандидаты.
-     * @param {number} [limit=100] - Максимальное количество товаров, обрабатываемых за один запрос.
-     * @returns {Promise<ActionListProduct[]>} Промис, который возвращает массив товаров акции.
-     */
-    async getActionListProduct(
-        method: (params: ActionsListParamsDto) => Promise<ActionsListDto>,
-        actionId: number,
-        limit: number = 100,
-    ): Promise<ActionListProduct[]> {
-        let offset = 0;
-        let actionProducts: ActionListProduct[] = [];
-        let isMoreDataAvailable = true;
-
-        while (isMoreDataAvailable) {
-            const { products } = await method.call(this, { action_id: actionId, limit, offset });
-            actionProducts = actionProducts.concat(products);
-            offset += limit;
-
-            // Если количество возвращённых продуктов меньше лимита, больше данных нет
-            isMoreDataAvailable = products.length === limit;
-        }
-
-        return actionProducts;
-    }
-
-    /**
-     * Добавляет или удаляет товары из промо-акций на основе их текущих цен и условий участия.
-     *
-     * Этот метод обрабатывает список идентификаторов товаров, проверяет их цены и определяет для каждой акции:
-     * - Какие товары следует удалить из акции (если их цена больше не соответствует условиям).
-     * - Какие товары можно добавить в акцию (если их цена соответствует критериям).
-     *
-     * Обработка выполняется чанками, чтобы избежать перегрузки системы большими запросами.
-     *
-     * @param ids - Массив идентификаторов товаров для обработки.
-     * @param chunkLimit - Максимальное количество идентификаторов товаров в одном чанке (по умолчанию 100).
-     * @returns Промис, который возвращает массив результатов, каждый из которых описывает результат операций добавления/удаления для каждой акции.
-     *
-     * @remarks
-     * - Товары удаляются из акции, если их текущая цена больше либо равна цене акции.
-     * - Товары добавляются в акцию, если их минимальная цена меньше либо равна максимальной цене кандидата на акцию.
-     * - Метод собирает и возвращает успешные и неуспешные идентификаторы для операций добавления и удаления по каждой акции.
+     * Пересмотр участия по списку наших артикулов после пересчёта цен (событие `update.promos`):
+     * по каждой акции участник с ценой акции не выше нашей минимальной снимается,
+     * кандидат с предельной ценой не ниже нашей минимальной добавляется по предельной цене.
      */
     async addRemoveProductToActions(ids: string[], chunkLimit: number = 100): Promise<AddRemoveProductToAction[]> {
-        // возвращаемое значение
         const result: AddRemoveProductToAction[] = [];
-        // получаем список акций
-        const actions = await this.getActions();
-        // чанкаем реквесты на получение цен
-        const chunkedIds = chunkArray(ids, chunkLimit);
-        const requests = chunkedIds.map(
-            (chunk) => <PriceRequestDto>{ offer_id: chunk, visibility: ProductVisibility.ALL, limit: chunkLimit },
-        );
-        // собираем массив PriceResponseDto
-        const priceResponses: PriceResponseDto[] = await Promise.all(
-            requests.map((chunk) => this.priceService.index(chunk)),
-        );
-        // мапим из него массив цен
-        const prices: PriceDto[] = priceResponses.map((p) => p.data).flat();
-        // для каждой акции
+        const actions = await this.api.listActions();
+        const prices = await this.pricesFor(ids, chunkLimit);
+
         for (const action of actions) {
-            // получаем товары, которые участвуют (getActionsProducts)
-            const productsInAction: ActionListProduct[] = await this.getActionListProduct(
-                this.getActionsProducts,
-                action.id,
-                chunkLimit,
-            );
-            // получаем товары, которые можно добавить (getActionsCandidates)
-            const productsCanPromoted: ActionListProduct[] = await this.getActionListProduct(
-                this.getActionsCandidates,
-                action.id,
-                chunkLimit,
-            );
-            const removeList: PriceDto[] = [];
-            const addList: PriceDto[] = [];
+            const inAction = await this.api.listAll('products', action.id);
+            const candidates = await this.api.listAll('candidates', action.id);
+            const toRemove: ActionProductUpdate[] = [];
+            const toAdd: ActionProductUpdate[] = [];
 
-            // используем для кэширования productCanPromoted.max_action_price
-            const maxPrices: Record<number, number> = {};
-
-            // для каждого товара из списка прайсов
             for (const price of prices) {
-                // если product_id в акции и actionRec.action_price <=❗️ price.min_price
-                // то вносим в список на исключение
-                const productInAction = productsInAction.find((p) => p.id === price.product_id);
-                if (productInAction && productInAction.action_price <= price.min_price) {
-                    removeList.push(price);
+                const participant = inAction.find((p) => p.id === price.product_id);
+                if (participant && participant.actionPrice <= price.min_price) {
+                    toRemove.push({
+                        productId: price.product_id,
+                        actionPrice: price.min_price,
+                        stock: participant.stock,
+                    });
                     continue;
                 }
-                // если product_id может быть добавлен и price.min_price <=❗️ список_кандидатов.max_action_price
-                // то вносим в список на добавление
-                const productCanPromoted = productsCanPromoted.find((p) => p.id === price.product_id);
-                if (productCanPromoted && productCanPromoted.max_action_price >= price.min_price) {
-                    maxPrices[price.product_id] = productCanPromoted.max_action_price;
-                    addList.push(price);
+                const candidate = candidates.find((p) => p.id === price.product_id);
+                if (candidate && candidate.maxActionPrice >= price.min_price) {
+                    toAdd.push({
+                        productId: price.product_id,
+                        actionPrice: candidate.maxActionPrice,
+                        stock: price.fboCount + price.fbsCount,
+                    });
                 }
             }
-            const resultItem: AddRemoveProductToAction = {
-                action_id: action.id,
-                removed: {
-                    success_ids: [],
-                    failed: [],
-                },
-                added: {
-                    success_ids: [],
-                    failed: [],
-                },
-            };
 
-            // удаляем если есть что
-            if (removeList.length) {
-                const params: DeactivateActionProductsParamsDto = {
-                    action_id: action.id,
-                    product_ids: removeList.map((p) => p.product_id),
-                };
-                const removed = await this.deactivateActionProducts(params);
-                resultItem.removed.success_ids = removed.product_ids;
-                resultItem.removed.failed = removed.rejected;
-            }
-            // добавляем если есть что
-            if (addList.length) {
-                const params: ActivateActionProductsParamsDto = {
-                    action_id: action.id,
-                    products: addList.map(
-                        (p) =>
-                            <ActivateActionProduct>{
-                                product_id: p.product_id,
-                                action_price: maxPrices[p.product_id],
-                                stock: p.fboCount + p.fbsCount,
-                            },
-                    ),
-                };
-                const added = await this.activateActionProducts(params);
-                resultItem.added.success_ids = added.product_ids; // Исправлено: было resultItem.removed
-                resultItem.added.failed = added.rejected;
-            }
-            result.push(resultItem);
+            const removed = await this.remove(action, toRemove);
+            const added = await this.api.update(action.id, toAdd);
+            result.push({
+                action_id: action.id,
+                removed,
+                added: { success_ids: added.added, failed: added.rejected },
+            });
         }
         return result;
     }
@@ -373,5 +136,62 @@ export class PromosService {
     @OnEvent('update.promos')
     async handleUpdatePromos(skus: string[]): Promise<void> {
         await this.addRemoveProductToActions(skus);
+    }
+
+    /**
+     * ЕДИНСТВЕННОЕ правило снятия с акции. Промокодная акция — принудительно (deactivate),
+     * остальные («Эластичный бустинг», «Скидка на сток») — через update нашей минимальной
+     * ценой: выше лимита акции — Ozon исключает товар, в пределах лимита — оставляет
+     * с этой ценой, что для нас тоже приемлемо (продавать по минимальной можно).
+     */
+    private async remove(
+        action: Action,
+        items: ActionProductUpdate[],
+    ): Promise<{ success_ids: number[]; failed: RejectedProduct[] }> {
+        if (!items.length) return { success_ids: [], failed: [] };
+        if (action.is_voucher_action) {
+            const ids = items.map((i) => i.productId);
+            const done = await this.api.deactivate(action.id, ids);
+            return {
+                success_ids: done,
+                failed: ids.filter((id) => !done.includes(id)).map((id) => ({ productId: id, reason: 'не снят' })),
+            };
+        }
+        const res = await this.api.update(action.id, items);
+        if (res.added.length) {
+            this.logger.log(
+                `акция ${action.id}: ${res.added.length} товаров остались в акции по минимальной цене (в пределах лимита)`,
+            );
+        }
+        return { success_ids: res.removed, failed: res.rejected };
+    }
+
+    private async findAction(actionId: number): Promise<Action> {
+        const action = (await this.api.listActions()).find((a) => Number(a.id) === Number(actionId));
+        if (!action) throw new Error(`акция ${actionId} не найдена в списке доступных`);
+        return action;
+    }
+
+    private async pricesFor(ids: string[], chunkLimit: number): Promise<PriceDto[]> {
+        const requests = chunkArray(ids, chunkLimit).map(
+            (chunk) => <PriceRequestDto>{ offer_id: chunk, visibility: ProductVisibility.ALL, limit: chunkLimit },
+        );
+        const responses = await Promise.all(requests.map((r) => this.priceService.index(r)));
+        return responses.flatMap((r) => r.data);
+    }
+
+    private minPriceOf(id: number, prices: { id: number; price: { min_price?: number | string } }[]): number {
+        return Number(prices.find((p) => p.id === id)?.price.min_price ?? 0) || 0;
+    }
+
+    private priceByStrategy(c: ActionProduct, minPrice: number, strategy: FitProductsStrategy): number {
+        switch (strategy) {
+            case FitProductsStrategy.MAX_ACTION_PRICE:
+                return c.maxActionPrice;
+            case FitProductsStrategy.MAX_FROM_ACTION_PRICE_AND_MIN_PRICE:
+                return Math.max(c.actionPrice, minPrice);
+            default:
+                return minPrice;
+        }
     }
 }

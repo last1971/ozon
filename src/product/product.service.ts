@@ -19,7 +19,7 @@ import { GoodServiceEnum } from '../good/good.service.enum';
 import { VaultService } from 'vault-module/lib/vault.service';
 import { ProductListDto } from './dto/product.list.dto';
 import { IProductable } from 'src/interfaces/i.productable';
-import { ActionListProduct } from 'src/promos/dto/actionsCandidate.dto';
+
 import { ProductPriceDto } from 'src/price/dto/product.price.dto';
 import { UpdateAttributesBodyDto, UpdateAttributesResponseDto } from './dto/update.attributes.dto';
 import { AccrualTypeDto, AccrualByDayResultDto, PayoutPeriodDto } from '../posting/dto/accrual.dto';
@@ -307,12 +307,12 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
     /**
      * Получает цены для списка товаров акции с поддержкой постраничной выборки.
      *
-     * @param {ActionListProduct[]} actionProducts - Список товаров акции, для которых требуется получить цены.
+     * @param actionProducts - Список товаров акции, для которых требуется получить цены.
      * @param {number} [limit=100] - Максимальное количество товаров, обрабатываемых за один запрос.
      * @returns {Promise<{ id: number; price: ProductPriceDto['price'] }[]>} Промис, который возвращает массив объектов с идентификаторами товаров и их ценами.
      */
     async getProductsPrices(
-        actionProducts: ActionListProduct[],
+        actionProducts: { id: number }[],
         limit: number = 100,
     ): Promise<{ id: number; price: ProductPriceDto['price'] }[]> {
         const productPrices: { id: number; price: ProductPriceDto['price'] }[] = [];
