@@ -8,7 +8,7 @@ import { ConfigService } from '@nestjs/config';
 import { PostingDto } from '../posting/dto/posting.dto';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { DonorDto, FboShortageRowDto, GoodDonorsDto, InvoiceDonorsDto } from '../invoice/dto/invoice-donors.dto';
-import { isWrongNominalDonor } from '../helpers/donor.rules';
+import { isWrongNominalDonor, needsSplitInChz } from '../helpers/donor.rules';
 import { TransactionDto } from '../posting/dto/transaction.dto';
 import { ResultDto } from '../helpers/dto/result.dto';
 import { goodCode, goodQuantityCoeff, isMarkCodesEnabled } from '../helpers';
@@ -1016,7 +1016,8 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
      * берёт строго номинал), а дробить КМ без новой этикетки ЧЗ нельзя. Отщипывать
      * штуки от такой строки — оставить код сиротой и увезти товар без маркировки
      * (18.09.2026: из строки на 20 шт под одним кодом утекло 11 штук по одной).
-     * `onWrongNominal` зовётся на каждую такую строку — для письма тому, кто заводит счёт.
+     * `onWrongNominal` зовётся на такую строку, только если делением в ЧЗ её можно починить (есть код крупнее
+     * упаковки, `needsSplitInChz`) — для письма тому, кто заводит счёт. Остальные отброшенные — строкой в лог.
      */
     async findFboPodbposCandidates(
         goodscode: string,
@@ -1049,6 +1050,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             `SELECT pp.PODBPOSCODE, pp.SCODE, rp.REALPRICECODE, pp.QUAN${attribute} AS QUANAVAIL, s.PRIM, ` +
             `(SELECT COUNT(*) FROM MARKCODES m WHERE m.REALPRICECODE = rp.REALPRICECODE AND ${live} AND COALESCE(m.QUANTITY, 1) = ?) AS CNT_NOM, ` +
             `(SELECT COUNT(*) FROM MARKCODES m WHERE m.REALPRICECODE = rp.REALPRICECODE AND ${live}) AS CNT_LIVE, ` +
+            `(SELECT COUNT(*) FROM MARKCODES m WHERE m.REALPRICECODE = rp.REALPRICECODE AND ${live} AND COALESCE(m.QUANTITY, 1) > ?) AS CNT_BIG, ` +
             `(SELECT COUNT(*) FROM MARKCODES m WHERE m.REALPRICECODE = rp.REALPRICECODE AND ${live} AND m.TRANSFER_TYPE = 3 AND COALESCE(m.QUANTITY, 1) = ?) AS CNT_TT3, ` +
             // Выведенный FBS-код на строке (TT=3, STATUS=6): в миграцию не идёт (гард),
             // но его присутствие на доноре — сигнал «возврат проданного, код не оживлён».
@@ -1059,7 +1061,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             Trade2006InvoiceService.PODBPOS_SOURCE +
             'JOIN REALPRICE rp ON rp.REALPRICECODE = pp.REALPRICECODE ' +
             `WHERE pp.GOODSCODE = ? AND pp.SKLAD_ID IS NULL AND ${this.donorAliveWhere()} AND (${containingClauses})`;
-        const rows = await t.query(sql, [nominal, nominal, ...prims, goodscode, ...prims], !transaction);
+        const rows = await t.query(sql, [nominal, nominal, nominal, ...prims, goodscode, ...prims], !transaction);
         const all = rows.map((r) => ({
             podbposcode: r.PODBPOSCODE,
             scode: r.SCODE,
@@ -1068,6 +1070,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             prim: r.PRIM,
             cntNom: Number(r.CNT_NOM) || 0,
             cntLive: Number(r.CNT_LIVE) || 0,
+            cntBig: Number(r.CNT_BIG) || 0,
             cntTt3: Number(r.CNT_TT3) || 0,
             cntDead: Number(r.CNT_DEAD) || 0,
             lvl: Number(r.LVL),
@@ -1075,7 +1078,13 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         const wrongNominal = (c: { cntNom: number; cntLive: number }): boolean =>
             isWrongNominalDonor(c.cntLive, c.cntNom);
         const candidates = all.filter((c) => !wrongNominal(c));
-        if (onWrongNominal) all.filter(wrongNominal).forEach(onWrongNominal);
+        for (const c of all.filter(wrongNominal)) {
+            if (onWrongNominal && needsSplitInChz(c.cntBig)) onWrongNominal(c);
+            else
+                this.logger.log(
+                    `донор ${c.scode}/RPC ${c.realpricecode} товара ${goodscode} пропущен: коды мельче упаковки ${nominal}`,
+                );
+        }
         // Ярусы: (а) есть живые коды нужного номинала (вперёд — с TT=3), (б) кодов нет.
         const tierOf = (c: { cntNom: number }): number => (c.cntNom > 0 ? 0 : 1);
         candidates.sort((a, b) => a.lvl - b.lvl || tierOf(a) - tierOf(b) || b.cntTt3 - a.cntTt3);

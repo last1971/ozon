@@ -616,8 +616,10 @@ describe('Trade2006InvoiceService', () => {
             expect(sql).toContain('QUANSHOP');
             // Счётчик выведенных кодов на строке — сигнал «возврат проданного» для письма миграции.
             expect(sql).toContain('m.TRANSFER_TYPE = 3 AND m.STATUS = 6) AS CNT_DEAD');
-            // параметры: nominal (CNT_NOM), nominal (CNT_TT3), prims для LVL, goodscode, prims для WHERE
+            // параметры: nominal (CNT_NOM), nominal (CNT_BIG), nominal (CNT_TT3), prims для LVL, goodscode, prims для WHERE
+            expect(sql).toContain('COALESCE(m.QUANTITY, 1) > ?) AS CNT_BIG');
             expect(query.mock.calls[0][1]).toEqual([
+                1,
                 1,
                 1,
                 'ПУШКИНО_1_РФЦ',
@@ -641,8 +643,21 @@ describe('Trade2006InvoiceService', () => {
                     LVL: 0,
                     CNT_NOM: 0,
                     CNT_LIVE: 2,
+                    CNT_BIG: 1,
                     CNT_TT3: 0,
-                }, // коды есть, номинал чужой → отсечён
+                }, // коды есть, номинал чужой, есть код крупнее → отсечён и в письмо (поделить в ЧЗ)
+                {
+                    PODBPOSCODE: 5,
+                    SCODE: 50,
+                    REALPRICECODE: 50,
+                    QUANAVAIL: 1,
+                    PRIM: 'W',
+                    LVL: 0,
+                    CNT_NOM: 0,
+                    CNT_LIVE: 1,
+                    CNT_BIG: 0,
+                    CNT_TT3: 0,
+                }, // код мельче упаковки → отсечён молча: делить нечего (533987, 07.10.2026)
                 {
                     PODBPOSCODE: 2,
                     SCODE: 20,
@@ -689,6 +704,7 @@ describe('Trade2006InvoiceService', () => {
                     prim: 'W',
                     cntNom: 0,
                     cntLive: 2,
+                    cntBig: 1,
                     cntTt3: 0,
                     cntDead: 0,
                     lvl: 0,
