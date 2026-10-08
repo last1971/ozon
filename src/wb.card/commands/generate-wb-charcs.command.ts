@@ -31,7 +31,7 @@ export class GenerateWbCharcsCommand implements ICommandAsync<IWbCreateCardConte
                 { role: 'user', content: userPrompt },
             ],
             {
-                model: 'claude-sonnet-4-6',
+                model: 'claude-sonnet-5-5',
                 max_tokens: 2048,
                 temperature: 0.3,
                 web_search: context.webSearch,
@@ -57,7 +57,7 @@ export class GenerateWbCharcsCommand implements ICommandAsync<IWbCreateCardConte
         const outputTokens = response.usage?.output_tokens || 0;
         context.aiCost = {
             tokens: inputTokens + outputTokens,
-            cost: this.aiService.estimateCost(AIProviderName.ANTHROPIC, inputTokens, outputTokens, 'claude-sonnet-4-6'),
+            cost: this.aiService.estimateCost(AIProviderName.ANTHROPIC, inputTokens, outputTokens, 'claude-sonnet-5-5'),
         };
 
         this.logger.log(

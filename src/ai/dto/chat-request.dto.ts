@@ -5,7 +5,7 @@ export class ChatRequestDto {
     @ApiProperty({ type: [Object], description: 'Массив сообщений' })
     messages: AIChatMessage[];
 
-    @ApiPropertyOptional({ description: 'Модель для использования', example: 'claude-sonnet-4-5-20250929' })
+    @ApiPropertyOptional({ description: 'Модель для использования', example: 'claude-sonnet-5-5' })
     model?: string;
 
     @ApiPropertyOptional({ description: 'Максимальное количество токенов' })

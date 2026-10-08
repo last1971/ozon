@@ -15,6 +15,13 @@ import {
     AIModelInfo,
 } from '../interfaces';
 
+// Модели поколения 5.5: temperature удалён (400), мышление по умолчанию включено —
+// выключаем, чтобы поведение и стоимость остались как на Sonnet 4.6.
+const MODERN_MODELS: Record<string, { thinkingOff?: string }> = {
+    'claude-sonnet-5-5': { thinkingOff: 'between_tools' },
+    'claude-opus-5-5': {},
+};
+
 @Injectable()
 export class AnthropicProvider implements AIProvider {
     readonly name = AIProviderName.ANTHROPIC;
@@ -47,10 +54,13 @@ export class AnthropicProvider implements AIProvider {
         const systemMessage = messages.find((m) => m.role === 'system');
         const chatMessages = messages.filter((m) => m.role !== 'system');
 
+        const model = options?.model || 'claude-haiku-4-5-20251001';
+        const modern = MODERN_MODELS[model];
+
         const body: Record<string, any> = {
-            model: options?.model || 'claude-haiku-4-5-20251001',
+            model,
             max_tokens: options?.max_tokens || 4096,
-            temperature: options?.temperature ?? 0.7,
+            ...this.samplingParams(model, options),
             system: systemMessage
                 ? [
                       {
@@ -84,11 +94,11 @@ export class AnthropicProvider implements AIProvider {
 
         // Добавляем web search если включен
         if (options?.web_search) {
-            body.tools = [{ type: 'web_search_20250305', name: 'web_search' }];
+            body.tools = [{ type: modern ? 'web_search_20260209' : 'web_search_20250305', name: 'web_search' }];
         }
 
         const betaFeatures = ['prompt-caching-2024-07-31'];
-        if (options?.web_search) {
+        if (options?.web_search && !modern) {
             betaFeatures.push('web-search-2025-03-05');
         }
 
@@ -125,10 +135,12 @@ export class AnthropicProvider implements AIProvider {
         const systemMessage = messages.find((m) => m.role === 'system');
         const chatMessages = messages.filter((m) => m.role !== 'system');
 
+        const model = options?.model || 'claude-haiku-4-5-20251001';
+
         const body = {
-            model: options?.model || 'claude-haiku-4-5-20251001',
+            model,
             max_tokens: options?.max_tokens || 4096,
-            temperature: options?.temperature ?? 0.7,
+            ...this.samplingParams(model, options),
             stream: true,
             system: systemMessage
                 ? typeof systemMessage.content === 'string'
@@ -209,22 +221,21 @@ export class AnthropicProvider implements AIProvider {
                 outputCostPer1M: 5,
             },
             {
-                id: 'claude-sonnet-4-5-20250929',
-                name: 'Claude 4.5 Sonnet',
+                id: 'claude-sonnet-5-5',
+                name: 'Claude Sonnet 5.5',
                 provider: AIProviderName.ANTHROPIC,
-                maxTokens: 64000,
-                inputCostPer1M: 3,
-                outputCostPer1M: 15,
-            },
-            {
-                id: 'claude-sonnet-4-6',
-                name: 'Claude 4.6 Sonnet',
-                provider: AIProviderName.ANTHROPIC,
-                maxTokens: 64000,
-                inputCostPer1M: 3,
-                outputCostPer1M: 15,
+                maxTokens: 128000,
+                inputCostPer1M: 2,
+                outputCostPer1M: 10,
             },
         ];
+    }
+
+    /** temperature — только старым моделям; новым вместо него выключение мышления. */
+    private samplingParams(model: string, options?: AIChatOptions): Record<string, any> {
+        const modern = MODERN_MODELS[model];
+        if (!modern) return { temperature: options?.temperature ?? 0.7 };
+        return modern.thinkingOff ? { thinking: { type: modern.thinkingOff } } : {};
     }
 
     supportsFeature(feature: AIFeature): boolean {
@@ -235,8 +246,7 @@ export class AnthropicProvider implements AIProvider {
     estimateCost(inputTokens: number, outputTokens: number, model = 'claude-haiku-4-5-20251001'): number {
         const prices: Record<string, { input: number; output: number }> = {
             'claude-haiku-4-5-20251001': { input: 1, output: 5 },
-            'claude-sonnet-4-5-20250929': { input: 3, output: 15 },
-            'claude-sonnet-4-6': { input: 3, output: 15 },
+            'claude-sonnet-5-5': { input: 2, output: 10 },
         };
         const p = prices[model] || prices['claude-haiku-4-5-20251001'];
         return (inputTokens * p.input + outputTokens * p.output) / 1_000_000;

@@ -90,6 +90,16 @@ describe('AnthropicProvider', () => {
             expect(result.usage.output_tokens).toBe(50);
         });
 
+        it('should drop temperature and disable thinking for sonnet 5.5', async () => {
+            const messages = [{ role: 'user' as const, content: 'Hello' }];
+            await provider.chat(messages, { model: 'claude-sonnet-5-5', temperature: 0.3, web_search: true });
+
+            const body = mockHttpService.post.mock.calls[0][1];
+            expect(body.temperature).toBeUndefined();
+            expect(body.thinking).toEqual({ type: 'between_tools' });
+            expect(body.tools).toEqual([{ type: 'web_search_20260209', name: 'web_search' }]);
+        });
+
         it('should handle system message with cache_control', async () => {
             const messages = [
                 {
@@ -177,10 +187,9 @@ describe('AnthropicProvider', () => {
         it('should return available models', () => {
             const models = provider.getModels();
 
-            expect(models).toHaveLength(3);
+            expect(models).toHaveLength(2);
             expect(models[0].id).toBe('claude-haiku-4-5-20251001');
-            expect(models[1].id).toBe('claude-sonnet-4-5-20250929');
-            expect(models[2].id).toBe('claude-sonnet-4-6');
+            expect(models[1].id).toBe('claude-sonnet-5-5');
             expect(models.every((m) => m.provider === AIProviderName.ANTHROPIC)).toBe(true);
         });
     });
@@ -205,9 +214,9 @@ describe('AnthropicProvider', () => {
         });
 
         it('should estimate cost for sonnet model', () => {
-            const cost = provider.estimateCost(1000, 500, 'claude-sonnet-4-5-20250929');
-            // (1000 * 3 + 500 * 15) / 1_000_000 = 0.0105
-            expect(cost).toBe(0.0105);
+            const cost = provider.estimateCost(1000, 500, 'claude-sonnet-5-5');
+            // (1000 * 2 + 500 * 10) / 1_000_000 = 0.007
+            expect(cost).toBe(0.007);
         });
 
         it('should use haiku pricing for unknown models', () => {
