@@ -43,8 +43,11 @@ export class YandexOrderService implements IOrderable, IMarkSubmittable, OnModul
     private campaignId: number;
     /** Страница списка заказов у Яндекса — максимум 50. */
     private static readonly PAGE_LIMIT = 50;
-    /** Окно наблюдения продаж по дате обновления заказа: Яндекс отдаёт не больше 30 дней за запрос. */
-    private static readonly OBSERVE_WINDOW_DAYS = 30;
+    /**
+     * Окно наблюдения продаж по дате обновления заказа. Яндекс отбивает интервал больше 30 дней
+     * (400 «interval … is more than 30 days»), ровно 30 с миллисекундами сверху уже не проходит — берём 29.
+     */
+    private static readonly OBSERVE_WINDOW_DAYS = 29;
 
     constructor(
         private yandexApi: YandexApiService,
@@ -77,7 +80,7 @@ export class YandexOrderService implements IOrderable, IMarkSubmittable, OnModul
 
     private static errorText(res: any): string {
         const err = res?.error ?? {};
-        return `${err.status ?? ''} ${err.message ?? err.service_message ?? 'нет ответа'}`.trim();
+        return `${err.status ?? ''} ${err.message || err.service_message || 'нет ответа'}`.trim();
     }
 
     private toPosting(order: YandexOrderDto): PostingDto {
@@ -418,10 +421,11 @@ export class YandexOrderService implements IOrderable, IMarkSubmittable, OnModul
     async observeYandexFbs(): Promise<void> {
         if (!this.isEnabled()) return;
         try {
+            const now = DateTime.now();
             const orders = await this.listOrders({
                 status: YandexOrderStatus.DELIVERED,
-                updatedAtFrom: DateTime.now().minus({ days: YandexOrderService.OBSERVE_WINDOW_DAYS }).toISO(),
-                updatedAtTo: DateTime.now().toISO(),
+                updatedAtFrom: now.minus({ days: YandexOrderService.OBSERVE_WINDOW_DAYS }).toISO(),
+                updatedAtTo: now.toISO(),
             });
             for (const order of orders) {
                 const event: MpEventDto = {
