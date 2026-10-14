@@ -250,13 +250,38 @@ export class ExtraGoodService implements OnApplicationBootstrap {
         };
     }
 
-    async onApplicationBootstrap(): Promise<void> {
+    /**
+     * Фоновая загрузка SKU всех площадок. Хук её только запускает и НЕ ждёт:
+     * иначе порт открывается после выкачки всех каталогов (на магазине 1–2 мин и растёт),
+     * а watchdog за 3 минуты без ответа уводит сервис в цикл рестартов.
+     * Кто зависит от skuList (события остатков, крон сверки) — ждёт whenSkuListsReady().
+     */
+    private skuListsReady: Promise<void> = Promise.resolve();
+
+    onApplicationBootstrap(): void {
         if (this.configService.get<Environment>('NODE_ENV') !== 'production') {
             return;
         }
-        // Загружаем все сервисы параллельно — они независимы (свой маркетплейс, свой skuList, свой ключ Map).
-        // loadSkuList сам ловит падение и наружу не бросает; allSettled — подстраховка от неожиданного throw.
-        await Promise.allSettled(Array.from(this.services.keys()).map((serviceEnum) => this.loadSkuList(serviceEnum)));
+        this.skuListsReady = this.loadAllSkuLists();
+    }
+
+    /** Ждёт окончания фоновой загрузки SKU (мгновенно, если она уже прошла или не запускалась). */
+    whenSkuListsReady(): Promise<void> {
+        return this.skuListsReady;
+    }
+
+    /**
+     * Все площадки параллельно — они независимы (свой маркетплейс, свой skuList, свой ключ Map).
+     * loadSkuList сам ловит падение, пишет лог и шлёт уведомление; allSettled — подстраховка от неожиданного throw.
+     */
+    private async loadAllSkuLists(): Promise<void> {
+        const started = Date.now();
+        const keys = Array.from(this.services.keys());
+        const results = await Promise.allSettled(keys.map((serviceEnum) => this.loadSkuList(serviceEnum)));
+        const failed = keys.filter((_, i) => results[i].status === 'rejected' || !results[i].value.isSuccess);
+        const seconds = Math.round((Date.now() - started) / 1000);
+        const tail = failed.length ? `; не загружены: ${failed.join(', ')}` : '';
+        this.logger.log(`Загрузка SKU всех площадок завершена за ${seconds} с${tail}`);
     }
 
     async loadSkuList(serviceEnum: GoodServiceEnum): Promise<ResultDto> {
@@ -268,8 +293,12 @@ export class ExtraGoodService implements OnApplicationBootstrap {
             };
         }
         if (service.isSwitchedOn) {
+            const started = Date.now();
             try {
                 await service.service.loadSkuList();
+                this.logger.log(
+                    `Service ${serviceEnum}: ${service.service.skuList.length} SKU за ${Math.round((Date.now() - started) / 1000)} с`,
+                );
             } catch (error) {
                 service.isSwitchedOn = false;
                 const subject = `Сервис ${serviceEnum} отключён: ошибка загрузки SKU`;
@@ -294,6 +323,7 @@ export class ExtraGoodService implements OnApplicationBootstrap {
 
     @Cron('0 0 9-19 * * 1-6', { name: 'controlCheckGoodCount' })
     async checkGoodCount(): Promise<void> {
+        await this.skuListsReady;
         for (const service of this.services.keys()) {
             this.logger.log(
                 `Update quantity for ${await this.goodsCountProcessor.processGoodsCountForService(
@@ -307,6 +337,7 @@ export class ExtraGoodService implements OnApplicationBootstrap {
 
     @OnEvent('counts.changed', { async: true })
     async countsChanged(goods: GoodDto[]): Promise<void> {
+        await this.skuListsReady;
         this.logger.log(`SKUs changed: ${goods.map((good) => good.code).join(', ')}`);
 
         await this.goodsCountProcessor.processGoodsCountChanges(this.services, goods);

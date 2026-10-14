@@ -156,6 +156,56 @@ describe('ExtraGoodService', () => {
         expect(res2.message).toContain('is switched off');
     });
 
+    describe('onApplicationBootstrap', () => {
+        const production = (key: string) => (key === 'NODE_ENV' ? 'production' : Object.values(GoodServiceEnum));
+
+        it('не ждёт загрузку SKU: хук возвращается сразу, загрузка идёт в фоне', async () => {
+            jest.spyOn(service['configService'], 'get').mockImplementation(production);
+            let release: () => void;
+            loadSkuList.mockReturnValue(new Promise<void>((resolve) => (release = resolve)));
+
+            service.onApplicationBootstrap();
+            // хук синхронный — к этому моменту порт уже может открываться, а загрузка ещё висит
+            expect(loadSkuList).toHaveBeenCalled();
+
+            let ready = false;
+            const waiting = service.whenSkuListsReady().then(() => (ready = true));
+            await Promise.resolve();
+            expect(ready).toBe(false);
+
+            release();
+            await waiting;
+            expect(ready).toBe(true);
+        });
+
+        it('countsChanged ждёт окончания фоновой загрузки', async () => {
+            jest.spyOn(service['configService'], 'get').mockImplementation(production);
+            let release: () => void;
+            loadSkuList.mockReturnValue(new Promise<void>((resolve) => (release = resolve)));
+            service.onApplicationBootstrap();
+            const process = jest.spyOn(service['goodsCountProcessor'], 'processGoodsCountChanges').mockResolvedValue();
+
+            let done = false;
+            const changed = service
+                .countsChanged([{ code: '1', quantity: 1, reserve: 0 } as any])
+                .then(() => (done = true));
+            await Promise.resolve();
+            expect(done).toBe(false);
+            expect(process).not.toHaveBeenCalled();
+
+            release();
+            await changed;
+            expect(done).toBe(true);
+            expect(process).toHaveBeenCalledTimes(1);
+        });
+
+        it('вне production загрузку не запускает, whenSkuListsReady сразу готов', async () => {
+            service.onApplicationBootstrap();
+            expect(loadSkuList).not.toHaveBeenCalled();
+            await expect(service.whenSkuListsReady()).resolves.toBeUndefined();
+        });
+    });
+
     it('countsChanged', async () => {
         const mockProcessGoodsCountChanges = jest
             .spyOn(GoodsCountProcessor.prototype, 'processGoodsCountChanges')
