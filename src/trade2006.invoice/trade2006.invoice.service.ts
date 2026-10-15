@@ -11,7 +11,7 @@ import { DonorDto, FboShortageRowDto, GoodDonorsDto, InvoiceDonorsDto } from '..
 import { isWrongNominalDonor, needsSplitInChz } from '../helpers/donor.rules';
 import { TransactionDto } from '../posting/dto/transaction.dto';
 import { ResultDto } from '../helpers/dto/result.dto';
-import { goodCode, goodQuantityCoeff, isMarkCodesEnabled } from '../helpers';
+import { goodCode, goodQuantityCoeff, isMarkCodesEnabled, storageSS } from '../helpers';
 import { chunk, flatten, toNumber } from 'lodash';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Cache } from '@nestjs/cache-manager';
@@ -867,7 +867,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
     }
 
     getStorageSS(): 0 | 1 {
-        return this.configService.get<string>('STORAGE_TYPE', 'SHOPSKLAD').toUpperCase() === 'SHOPSKLAD' ? 1 : 0;
+        return storageSS(this.configService);
     }
 
     /**

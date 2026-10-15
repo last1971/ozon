@@ -12,6 +12,7 @@ import { FirebirdModule } from './firebird/firebird.module';
 import { VaultModule } from 'vault-module/lib/vault.module';
 import { PostingModule } from './posting/posting.module';
 import { InvoiceModule } from './invoice/invoice.module';
+import { MpReturnModule } from './mp-return/mp-return.module';
 import { PriceModule } from './price/price.module';
 import { JobModule } from './job/job.module';
 import { GoodModule } from './good/good.module';
@@ -133,6 +134,7 @@ import JSONbig from 'json-bigint';
         }),
         PostingModule,
         InvoiceModule,
+        MpReturnModule,
         PriceModule,
         GoodModule,
         OrderModule,

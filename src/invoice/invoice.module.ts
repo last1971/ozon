@@ -11,12 +11,15 @@ import { IsRemarkValid } from '../validators/is.remark.valid';
 import { MarkScanFbsService } from './mark-scan-fbs.service';
 import { GtdModule } from '../gtd/gtd.module';
 import { GtdResolver } from '../gtd/gtd.resolver';
+import { RETURN_STOCK } from '../interfaces/i.return.stock';
+import { Trade2006ReturnStockService } from '../trade2006.invoice/trade2006.return-stock.service';
 
 @Module({
     imports: [FirebirdModule, GtdModule],
     providers: [
         IsRemarkValid,
         MarkScanFbsService,
+        { provide: RETURN_STOCK, useClass: Trade2006ReturnStockService },
         {
             provide: INVOICE_SERVICE,
             useFactory: (
@@ -29,7 +32,7 @@ import { GtdResolver } from '../gtd/gtd.resolver';
             inject: [ConfigService, FIREBIRD, EventEmitter2, CACHE_MANAGER, GtdResolver],
         },
     ],
-    exports: [INVOICE_SERVICE, MarkScanFbsService, IsRemarkValid],
+    exports: [INVOICE_SERVICE, RETURN_STOCK, MarkScanFbsService, IsRemarkValid],
     controllers: [InvoiceController],
 })
 export class InvoiceModule {}

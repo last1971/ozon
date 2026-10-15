@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import { FirebirdPool, FirebirdTransaction } from 'ts-firebird';
 import { FIREBIRD } from '../firebird/firebird.module';
+import { readBlob } from '../firebird/read-blob';
 
 /** Маркетплейс — часть ключа дедупа и единицы отсчёта окна. */
 export type MpService = 'OZON' | 'WB' | 'YANDEX';
@@ -12,6 +13,15 @@ export type MpService = 'OZON' | 'WB' | 'YANDEX';
  * возврат которых так и не появился.
  */
 export type MpKind = 'POSTING_FBS' | 'POSTING_FBO' | 'RETURN' | 'CANCEL_WAIT';
+
+/** Строка журнала с разобранным PAYLOAD — для экранов, которым нужны данные события, а не только факт. */
+export interface MpEventRowDto {
+    extId: string;
+    state: string;
+    posting: string | null;
+    firstSeen: Date;
+    payload: unknown;
+}
 
 export interface MpEventDto {
     service: MpService;
@@ -243,5 +253,81 @@ export class MpEventService {
             // стоял дольше окна, и брать «сейчас минус N» нельзя — простой съест события.
             return DateTime.fromJSDate(new Date(lastSeen)).minus({ day: overlapDays }).toJSDate();
         });
+    }
+
+    /**
+     * Записи потока в одном состоянии, впервые увиденные в окне [from, to), вместе с PAYLOAD.
+     *
+     * Кормит экран приёма возвратов: «что Озон отметил полученным нами за период». Окно — по
+     * FIRST_SEEN: это момент, когда крон увидел вход в состояние (раз в 5 минут), а сам момент
+     * смены у маркетплейса лежит в PAYLOAD и показывается как есть. PAYLOAD — BLOB, читается
+     * в той же транзакции, поэтому тут всегда своя или переданная транзакция.
+     */
+    async listInState(
+        service: MpService,
+        kind: MpKind,
+        state: string,
+        from: Date,
+        to: Date,
+        t: FirebirdTransaction = null,
+    ): Promise<MpEventRowDto[]> {
+        return this.withTransaction(t, async (transaction) => {
+            const rows = await transaction.query(
+                'SELECT EXT_ID, STATE, POSTING, FIRST_SEEN, PAYLOAD FROM MP_EVENT' +
+                    ' WHERE SERVICE = ? AND KIND = ? AND STATE = ? AND FIRST_SEEN >= ? AND FIRST_SEEN < ?' +
+                    ' ORDER BY FIRST_SEEN DESC',
+                [service, kind, state, from, to],
+                false,
+            );
+            return this.toRows(rows, transaction);
+        });
+    }
+
+    /**
+     * Все записи потока по одному признаку: номеру отправления, id у маркетплейса или подстроке
+     * PAYLOAD (штрихкод этикетки возврата лежит только там). Самые свежие — первыми.
+     */
+    async findRows(
+        service: MpService,
+        kind: MpKind,
+        by: { posting?: string; extId?: string; payloadContains?: string },
+        t: FirebirdTransaction = null,
+    ): Promise<MpEventRowDto[]> {
+        const [where, value] = by.posting
+            ? ['POSTING = ?', by.posting]
+            : by.extId
+              ? ['EXT_ID = ?', by.extId]
+              : ['PAYLOAD CONTAINING ?', by.payloadContains];
+        if (!value) return [];
+        return this.withTransaction(t, async (transaction) => {
+            const rows = await transaction.query(
+                'SELECT EXT_ID, STATE, POSTING, FIRST_SEEN, PAYLOAD FROM MP_EVENT' +
+                    ` WHERE SERVICE = ? AND KIND = ? AND ${where} ORDER BY FIRST_SEEN DESC`,
+                [service, kind, value],
+                false,
+            );
+            return this.toRows(rows, transaction);
+        });
+    }
+
+    private async toRows(rows: any[], transaction: FirebirdTransaction): Promise<MpEventRowDto[]> {
+        const result: MpEventRowDto[] = [];
+        for (const r of rows) {
+            const text = await readBlob(r.PAYLOAD, (transaction as any).transaction);
+            let payload: unknown = null;
+            try {
+                payload = text ? JSON.parse(text) : null;
+            } catch {
+                payload = null;
+            }
+            result.push({
+                extId: String(r.EXT_ID),
+                state: String(r.STATE),
+                posting: r.POSTING ? String(r.POSTING) : null,
+                firstSeen: new Date(r.FIRST_SEEN),
+                payload,
+            });
+        }
+        return result;
     }
 }

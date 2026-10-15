@@ -71,3 +71,17 @@ export function donorSuffixFor(service: MpService | undefined): string {
 
 /** Пометка оплаченного и закрытого счёта: updateByCommissions дописывает её к PRIM. */
 export const OZON_INVOICE_CLOSED_SUFFIX = ' закрыт';
+
+/**
+ * Счёт — донор: в пометке донорский суффикс (FBO Озона, WBFBO и легаси « возврат WBFBO»).
+ * Донорский поиск идёт по подстроке FBO в PRIM — здесь то же правило, одной функцией.
+ */
+export function isDonorMark(mark: string | null | undefined): boolean {
+    const donor = [
+        MP_ORDER_CANCELLATION_SUFFIX.FBO,
+        MP_ORDER_CANCELLATION_SUFFIX.WBFBO,
+        ...LEGACY_CANCELLATION_SUFFIXES,
+    ];
+    const { mark: parsed } = splitInvoicePrim(`X${mark ?? ''}`);
+    return donor.some((suffix) => parsed.includes(suffix));
+}
