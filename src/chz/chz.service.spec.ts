@@ -1,4 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
+import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Workbook } from 'exceljs';
 import { Trade2006ChzService } from '../trade2006.chz/trade2006.chz.service';
@@ -37,6 +38,7 @@ describe('ChzService', () => {
                     },
                 },
                 { provide: EventEmitter2, useValue: { emit } },
+                { provide: ConfigService, useValue: { get: () => 'true' } },
             ],
         }).compile();
         service = module.get(ChzService);
@@ -80,17 +82,34 @@ describe('ChzService', () => {
         expect(emit).not.toHaveBeenCalled();
     });
 
-    it('напоминалка: счётчики обоих видов и отсылка к вкладке «ЧЗ»', async () => {
+    it('напоминалка: одно письмо — сколько КИ и по скольким счетам ждут вывода и возврата', async () => {
         pending.mockImplementation((kind: string) =>
-            Promise.resolve(kind === 'retire' ? [{ ki: 'KI-1' }, { ki: 'KI-2' }] : [{ ki: 'KI-3' }]),
+            Promise.resolve(
+                kind === 'retire'
+                    ? [
+                          { ki: 'KI-1', invoiceNumber: 15023 },
+                          { ki: 'KI-2', invoiceNumber: 15023 },
+                          { ki: 'KI-4', invoiceNumber: 15024 },
+                      ]
+                    : [
+                          { ki: 'KI-3', invoiceNumber: 19428 },
+                          { ki: 'KI-5', invoiceNumber: null },
+                      ],
+            ),
         );
         await service.reminder();
         expect(emit).toHaveBeenCalledTimes(1);
         const [, subject, body] = emit.mock.calls[0];
-        expect(subject).toContain('ЧЗ: ждёт передачи 3 КИ');
-        expect(body).toContain('Вывести из оборота: 2 КИ');
-        expect(body).toContain('Вернуть в оборот: 1 КИ');
-        expect(body).toContain('вкладка «ЧЗ»');
+        expect(subject).toBe('ЧЗ: ждут вывода 3 КИ, возврата 2 КИ');
+        expect(body).toContain('Вывести из оборота: 3 КИ, счетов 2.');
+        expect(body).toContain('Вернуть в оборот: 2 КИ, счетов 1, без счёта 1.');
+        expect(body).toContain('страница «Отправка в Честный знак»');
+    });
+
+    it('напоминалка: выгрузка руками — подсказка про вкладку «ЧЗ»', () => {
+        const letter = ChzService.reminderLetter([{ ki: 'KI-1', invoiceNumber: 1 } as any], [], [], false);
+        expect(letter.subject).toBe('ЧЗ: ждут вывода 1 КИ');
+        expect(letter.body).toContain('вкладка «ЧЗ»');
     });
 
     it('batchFile: пачка по УПД — в имени номер и дата документа', async () => {
@@ -140,8 +159,8 @@ describe('ChzService', () => {
         ]);
         await service.reminder();
         const [, subject, body] = emit.mock.calls[0];
-        expect(subject).toContain('ЧЗ: ждёт передачи 5 КИ');
-        expect(body).toContain('по УПД: 5 КИ в 2 документах');
+        expect(subject).toBe('ЧЗ: ждут вывода 5 КИ');
+        expect(body).toContain('Вывести по УПД: 5 КИ, документов 2.');
     });
 
     it('createBatch: пусто → null (кнопке нечего скачивать)', async () => {

@@ -1,8 +1,10 @@
 import { Injectable, Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import { writeRows } from '../helpers/spreadsheet.util';
 import { NotifyTopic } from '../notify/notify.types';
+import { isChzAutoRetire } from '../helpers/mark-codes.helper';
 import {
     ChzBatchInfo,
     ChzBatchKind,
@@ -30,6 +32,7 @@ export class ChzService {
     constructor(
         private chzDb: Trade2006ChzService,
         private eventEmitter: EventEmitter2,
+        private configService: ConfigService,
     ) {}
 
     async pending(): Promise<{ retire: ChzPendingCode[]; giveBack: ChzPendingCode[]; upd: ChzPendingDoc[] }> {
@@ -97,29 +100,48 @@ export class ChzService {
     }
 
     /**
-     * Утренняя напоминалка: сколько кодов ждёт передачи в ЧЗ. Пусто — молчим.
-     * Файлов в письме нет: свежая пачка скачивается из админки, только там
-     * работает подтверждение. Время боевое задаёт cron.setup.ts (chzReminder).
+     * Утренняя напоминалка: сколько кодов ждёт вывода и возврата и по скольким
+     * счетам. Одно письмо на базу, пусто — молчим. Отправляет очередь Trade —
+     * письмо только сообщает, сколько осталось; при ручной выгрузке подсказывает,
+     * что делать. Время боевое задаёт cron.setup.ts (chzReminder).
      */
     @Cron('0 30 7 * * *', { name: 'chzReminder' })
     async reminder(): Promise<void> {
         const { retire, giveBack, upd } = await this.pending();
+        const letter = ChzService.reminderLetter(retire, giveBack, upd, isChzAutoRetire(this.configService));
+        if (letter) this.eventEmitter.emit('error.message', letter.subject, letter.body, NotifyTopic.MARKING);
+    }
+
+    /** Текст напоминалки. Чистая функция ради теста; null — писать нечего. */
+    static reminderLetter(
+        retire: ChzPendingCode[],
+        giveBack: ChzPendingCode[],
+        upd: ChzPendingDoc[],
+        autoRetire: boolean,
+    ): { subject: string; body: string } | null {
         const updCodes = upd.reduce((sum, doc) => sum + doc.cnt, 0);
-        if (!retire.length && !giveBack.length && !updCodes) return;
+        if (!retire.length && !giveBack.length && !updCodes) return null;
+
+        const subject = [
+            ...(retire.length || updCodes ? [`ждут вывода ${retire.length + updCodes} КИ`] : []),
+            ...(giveBack.length ? [`возврата ${giveBack.length} КИ`] : []),
+        ].join(', ');
         const lines = [
-            'Коды ЧЗ ждут передачи — админка, вкладка «ЧЗ»: скачать файл, выгрузить в ГИС МТ, нажать «Подтвердить».',
+            ...(retire.length ? [`Вывести из оборота: ${retire.length} КИ, ${ChzService.invoices(retire)}.`] : []),
+            ...(updCodes ? [`Вывести по УПД: ${updCodes} КИ, документов ${upd.length}.`] : []),
+            ...(giveBack.length ? [`Вернуть в оборот: ${giveBack.length} КИ, ${ChzService.invoices(giveBack)}.`] : []),
             '',
-            ...(retire.length ? [`Вывести из оборота: ${retire.length} КИ (продажи).`] : []),
-            ...(updCodes
-                ? [`Вывести из оборота по УПД: ${updCodes} КИ в ${upd.length} документах (файл на каждый).`]
-                : []),
-            ...(giveBack.length ? [`Вернуть в оборот: ${giveBack.length} КИ (возвраты).`] : []),
+            autoRetire
+                ? 'Отправляет очередь Trade — страница «Отправка в Честный знак».'
+                : 'Админка, вкладка «ЧЗ»: скачать файл, выгрузить в ГИС МТ, нажать «Подтвердить».',
         ];
-        this.eventEmitter.emit(
-            'error.message',
-            `ЧЗ: ждёт передачи ${retire.length + giveBack.length + updCodes} КИ`,
-            lines.join('\n'),
-            NotifyTopic.MARKING,
-        );
+        return { subject: `ЧЗ: ${subject}`, body: lines.join('\n') };
+    }
+
+    /** «счетов N» и, если есть коды без счёта, «без счёта M». */
+    private static invoices(codes: ChzPendingCode[]): string {
+        const numbers = new Set(codes.filter((c) => c.invoiceNumber !== null).map((c) => c.invoiceNumber));
+        const loose = codes.filter((c) => c.invoiceNumber === null).length;
+        return `счетов ${numbers.size}` + (loose ? `, без счёта ${loose}` : '');
     }
 }
