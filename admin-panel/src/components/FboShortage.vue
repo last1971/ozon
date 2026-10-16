@@ -68,6 +68,9 @@ const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString() : ''
             <v-card-title class="text-subtitle-1 d-flex align-center">
                 Открытые недоборы: {{ store.shortages.length }}
                 <v-btn variant="text" size="small" icon="mdi-refresh" class="ms-2" @click="store.loadShortages()" />
+                <v-spacer />
+                <v-btn variant="tonal" size="small" prepend-icon="mdi-package-variant-closed" :loading="store.isDonorPieces"
+                       @click="store.runDonorPieces()">Проставить фасовку донорам</v-btn>
             </v-card-title>
             <v-table v-if="store.shortages.length" density="compact" hover>
                 <thead>
@@ -88,6 +91,40 @@ const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString() : ''
                 </tbody>
             </v-table>
             <v-card-text v-else class="text-medium-emphasis">Недоборов нет.</v-card-text>
+        </v-card>
+
+        <!-- Сводка «Проставить фасовку донорам» -->
+        <v-card v-if="store.donorPieces" variant="outlined" class="mb-4">
+            <v-card-title class="text-subtitle-1 d-flex align-center">
+                Фасовка доноров
+                <v-spacer />
+                <v-btn variant="text" size="small" icon="mdi-close" @click="store.donorPieces = null" />
+            </v-card-title>
+            <v-card-text class="text-body-2">
+                <div v-if="!store.donorPieces.checked">Счетов-доноров с пустой фасовкой нет.</div>
+                <template v-else>
+                    <div>Проверено счетов: {{ store.donorPieces.checked }}, поставок найдено: {{ store.donorPieces.suppliesFound }}</div>
+                    <div>Заполнено строк: {{ store.donorPieces.lines }}</div>
+                </template>
+                <template v-if="store.donorPieces.disputes.length">
+                    <div class="mt-3 text-warning">Спорные — разберите руками: {{ store.donorPieces.disputes.length }}</div>
+                    <div v-for="d in store.donorPieces.disputes" :key="`${d.scode}:${d.goodscode}:${d.realpricecode}`">
+                        №{{ d.invoiceNumber }} {{ d.prim }} · {{ d.goodscode }} · {{ d.reason }}
+                    </div>
+                </template>
+                <template v-if="store.donorPieces.noNumber.length">
+                    <div class="mt-3 text-warning">Без номера поставки в примечании — допишите номер: {{ store.donorPieces.noNumber.length }}</div>
+                    <div v-for="r in store.donorPieces.noNumber" :key="r.scode">№{{ r.invoiceNumber }} · «{{ r.prim }}»</div>
+                </template>
+                <template v-if="store.donorPieces.notFound.length">
+                    <div class="mt-3 text-warning">Не найдены в Озоне: {{ store.donorPieces.notFound.length }}</div>
+                    <div v-for="r in store.donorPieces.notFound" :key="r.scode">№{{ r.invoiceNumber }} · поставка {{ r.supplyNumber }} · {{ r.prim }}</div>
+                </template>
+                <template v-if="store.donorPieces.ozonErrors.length">
+                    <div class="mt-3 text-error">Озон не ответил — нажмите ещё раз позже: {{ store.donorPieces.ozonErrors.length }}</div>
+                    <div v-for="r in store.donorPieces.ozonErrors" :key="r.scode">№{{ r.invoiceNumber }} · поставка {{ r.supplyNumber }} · {{ r.message }}</div>
+                </template>
+            </v-card-text>
         </v-card>
 
         <!-- Отправление -->

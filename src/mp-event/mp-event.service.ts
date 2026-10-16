@@ -11,8 +11,10 @@ export type MpService = 'OZON' | 'WB' | 'YANDEX';
  * CANCEL_WAIT — не поток с маркетплейса, а наша отметка «отменён после отгрузки,
  * ждём запись возврата»: по ней недельный отчёт напоминает о заказах,
  * возврат которых так и не появился.
+ * DONOR_PIECES — итог проставления фасовки счёту-донору FORFBO по составу поставки
+ * (ключ — номер поставки): повторный итог не новый, письма по нему нет.
  */
-export type MpKind = 'POSTING_FBS' | 'POSTING_FBO' | 'RETURN' | 'CANCEL_WAIT';
+export type MpKind = 'POSTING_FBS' | 'POSTING_FBO' | 'RETURN' | 'CANCEL_WAIT' | 'DONOR_PIECES';
 
 /** Строка журнала с разобранным PAYLOAD — для экранов, которым нужны данные события, а не только факт. */
 export interface MpEventRowDto {

@@ -241,6 +241,20 @@ export const cronConfig: Record<string, CronSetup> = {
         },
         development: false,
     },
+    /**
+     * Фасовка счетов-доноров FORFBO по составу поставки Озона (DonorPiecesService): пишет только
+     * в пустую фасовку, письмо — только про новые спорные итоги (журнал MP_EVENT, вид DONOR_PIECES).
+     * 21:47 — после рабочего дня, мимо пятиминуток. На dev выключен — кабинет боевой.
+     */
+    fillDonorPieces: {
+        production: {
+            enabled: true,
+            settings: {
+                time: '0 47 21 * * *',
+            },
+        },
+        development: false,
+    },
     updateTransactions: {
         production: false,
         development: {

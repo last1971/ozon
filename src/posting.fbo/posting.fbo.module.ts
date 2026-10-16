@@ -20,9 +20,18 @@ import { PickupLineCommand } from './peresort/pickup-line.command';
 import { CloseShortageCommand } from './peresort/close-shortage.command';
 
 import { MpEventModule } from '../mp-event/mp-event.module';
+import { OzonApiModule } from '../ozon.api/ozon.api.module';
+import { DonorPiecesService } from './donor-pieces/donor-pieces.service';
+import { DonorPiecesStore } from './donor-pieces/donor-pieces.store';
+import { OzonSupplyClient } from './donor-pieces/ozon-supply.client';
+import { LoadDonorsCommand } from './donor-pieces/commands/load-donors.command';
+import { FetchSuppliesCommand } from './donor-pieces/commands/fetch-supplies.command';
+import { MatchSuppliesCommand } from './donor-pieces/commands/match-supplies.command';
+import { WritePiecesCommand } from './donor-pieces/commands/write-pieces.command';
+import { JournalOutcomesCommand } from './donor-pieces/commands/journal-outcomes.command';
 
 @Module({
-    imports: [ProductModule, InvoiceModule, MpEventModule, SpisModule],
+    imports: [ProductModule, InvoiceModule, MpEventModule, SpisModule, OzonApiModule],
     controllers: [FboShortageController],
     providers: [
         PostingFboService,
@@ -40,6 +49,14 @@ import { MpEventModule } from '../mp-event/mp-event.module';
         BuildPeresortDocCommand,
         PickupLineCommand,
         CloseShortageCommand,
+        DonorPiecesService,
+        DonorPiecesStore,
+        OzonSupplyClient,
+        LoadDonorsCommand,
+        FetchSuppliesCommand,
+        MatchSuppliesCommand,
+        WritePiecesCommand,
+        JournalOutcomesCommand,
     ],
     exports: [PostingFboService, FboMarkMigrationService, DonorTransferService, FboInvoiceCreatorService],
 })

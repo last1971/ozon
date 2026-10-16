@@ -6,6 +6,8 @@ import { DonorApplyService } from './donor-apply.service';
 import { FboShortageApplyDto, FboShortageApplyResultDto } from './dto/fbo-shortage-apply.dto';
 import { FboShortagePeresortDto, FboShortagePeresortResultDto } from './dto/fbo-shortage-peresort.dto';
 import { PeresortService } from './peresort.service';
+import { DonorPiecesService } from './donor-pieces/donor-pieces.service';
+import { DonorPiecesRunDto, DonorPiecesSummaryDto } from './dto/donor-pieces.dto';
 
 @ApiTags('fbo-shortage')
 @Controller('fbo-shortage')
@@ -14,6 +16,7 @@ export class FboShortageController {
         @Inject(INVOICE_SERVICE) private readonly invoiceService: IInvoice,
         private readonly applyService: DonorApplyService,
         private readonly peresortService: PeresortService,
+        private readonly donorPiecesService: DonorPiecesService,
     ) {}
 
     @Get()
@@ -26,6 +29,20 @@ export class FboShortageController {
     @ApiOkResponse({ type: [FboShortageRowDto] })
     list(): Promise<FboShortageRowDto[]> {
         return this.invoiceService.listFboShortages();
+    }
+
+    @Post('donor-pieces')
+    @ApiOperation({
+        summary: 'Проставить фасовку счетам-донорам FORFBO по составу поставки Озона',
+        description:
+            'Номер поставки берётся из примечания счёта, состав — из Озона (артикул с суффиксом = фасовка). ' +
+            'Пишется только в пустую фасовку; товар, ехавший несколькими фасовками или не сошедшийся по штукам, ' +
+            'уходит в спорные. С dry=true — проверка без записи. Тот же проход каждый вечер делает крон.',
+    })
+    @ApiBody({ type: DonorPiecesRunDto })
+    @ApiOkResponse({ type: DonorPiecesSummaryDto })
+    donorPieces(@Body() body: DonorPiecesRunDto): Promise<DonorPiecesSummaryDto> {
+        return this.donorPiecesService.run(body?.dry === true);
     }
 
     @Post(':posting/apply')

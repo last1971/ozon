@@ -77,6 +77,25 @@ export interface PeresortResult {
     pickedUp: boolean;
 }
 
+/** Зеркало src/posting.fbo/dto/donor-pieces.dto.ts на бэке. */
+export interface DonorPiecesRef {
+    invoiceNumber: number;
+    scode: number;
+    prim: string;
+    supplyNumber: string | null;
+}
+export interface DonorPiecesSummary {
+    dry: boolean;
+    checked: number;
+    suppliesFound: number;
+    lines: number;
+    done: number;
+    disputes: (DonorPiecesRef & { goodscode: string; realpricecode: number | null; reason: string })[];
+    noNumber: DonorPiecesRef[];
+    notFound: DonorPiecesRef[];
+    ozonErrors: (DonorPiecesRef & { message: string })[];
+}
+
 /** Ключ выбора: строка приёмника + подборка донора. */
 export const pickKey = (realpricecode: number, podbposcode: number) => `${realpricecode}:${podbposcode}`;
 
@@ -95,6 +114,9 @@ export const fboShortageStore = defineStore("fboShortageStore", {
         nominals: {} as Record<string, number>, // realpricecode → номинал для строк без фасовки
         result: null as ApplyResult | null,
         peresortResult: null as PeresortResult | null,
+        /** Сводка кнопки «Проставить фасовку донорам»; держится до закрытия. */
+        donorPieces: null as DonorPiecesSummary | null,
+        isDonorPieces: false,
         username: readUser(),
         isLoading: false,
         isApplying: false,
@@ -136,6 +158,19 @@ export const fboShortageStore = defineStore("fboShortageStore", {
         },
     },
     actions: {
+        /** Фасовка счетам-донорам FORFBO по составу поставки Озона; тот же проход вечером делает крон. */
+        async runDonorPieces() {
+            this.errorMessage = '';
+            this.isDonorPieces = true;
+            try {
+                const res = await axios.post<DonorPiecesSummary>("/api/fbo-shortage/donor-pieces", { dry: false });
+                this.donorPieces = res.data;
+            } catch (e: any) {
+                this.errorMessage = e.response?.data?.message || e.message;
+            } finally {
+                this.isDonorPieces = false;
+            }
+        },
         async loadShortages() {
             try {
                 const res = await axios.get<ShortageRow[]>("/api/fbo-shortage");

@@ -613,8 +613,9 @@ describe('Trade2006InvoiceService', () => {
             expect(sql).toContain('CASE WHEN s.PRIM CONTAINING ? THEN 0');
             expect(sql).toContain('rp.REALPRICECODE = pp.REALPRICECODE');
             expect(sql).toContain('pp.SKLAD_ID IS NULL');
-            // Фасовка донора = фасовка заказа; пустая фасовка = поштучно (решение владельца 16.10.2026).
-            expect(sql).toContain('COALESCE(rp.PIECES, 1) = ?');
+            // Фасовка донора = фасовка заказа; пустая фасовка — неизвестна, донор годится (счёт 84661, 16.10.2026).
+            expect(sql).toContain('(rp.PIECES IS NULL OR rp.PIECES = ?)');
+            expect(sql).not.toContain('COALESCE(rp.PIECES, 1)');
             expect(sql).toContain('QUANSHOP');
             // Счётчик выведенных кодов на строке — сигнал «возврат проданного» для письма миграции.
             expect(sql).toContain('m.TRANSFER_TYPE = 3 AND m.STATUS = 6) AS CNT_DEAD');
