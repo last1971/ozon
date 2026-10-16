@@ -135,14 +135,36 @@ export class Trade2006ReturnStockService implements IReturnStock {
         await t.execute('UPDATE S SET STATUS = ? WHERE SCODE = ?', [status, scode], false);
     }
 
-    async hasFreeMarkCodes(goodscode: string, t: FirebirdTransaction): Promise<boolean> {
+    async isMarkRequired(goodscode: string, t: FirebirdTransaction): Promise<boolean> {
         if (!isMarkCodesEnabled(this.configService)) return false;
         const required = await t.query(
             'SELECT FIRST 1 1 AS X FROM GOODS_CLASSIF WHERE GOODSCODE = ? AND MARK_REQUIRED = 1',
             [Number(goodscode)],
             false,
         );
-        if (!required.length) return false;
+        return required.length > 0;
+    }
+
+    async ensurePodbLine(
+        p: { scode: number; goodscode: string; realpricecode: number },
+        t: FirebirdTransaction,
+    ): Promise<void> {
+        const exists = await t.query(
+            'SELECT FIRST 1 1 AS X FROM PODBPOS WHERE REALPRICECODE = ? AND SKLAD_ID IS NULL',
+            [p.realpricecode],
+            false,
+        );
+        if (exists.length) return;
+        await t.execute(
+            'INSERT INTO PODBPOS (SCODE, GOODSCODE, REALPRICECODE, DATASTART, QUANSKLAD, QUANSHOP, QUANSKLADNEED, QUANSHOPNEED) ' +
+                "VALUES (?, ?, ?, CAST('NOW' AS DATE), 0, 0, 0, 0)",
+            [p.scode, Number(p.goodscode), p.realpricecode],
+            false,
+        );
+    }
+
+    async hasFreeMarkCodes(goodscode: string, t: FirebirdTransaction): Promise<boolean> {
+        if (!(await this.isMarkRequired(goodscode, t))) return false;
         const free = await t.query(
             'SELECT FREE_COUNT FROM COUNT_FREE_MARKCODES_FOR_GOOD (?)',
             [Number(goodscode)],

@@ -10,6 +10,13 @@ import { LogShortageNotifyCommand } from './commands/log-shortage-notify.command
 import { CreateFboInvoiceCommand } from './commands/create-fbo-invoice.command';
 import { PickupFboCommand } from './commands/pickup-fbo.command';
 import { FboInvoiceCreatorService } from './fbo-invoice-creator.service';
+import { FboShortageCloser } from './fbo-shortage-closer';
+import { PeresortService } from './peresort.service';
+import { LoadShortageLineCommand } from './peresort/load-shortage-line.command';
+import { AssertNotMarkedCommand } from './peresort/assert-not-marked.command';
+import { CreatePeresortDocCommand } from './peresort/create-peresort-doc.command';
+import { PickupLineCommand } from './peresort/pickup-line.command';
+import { CloseShortageCommand } from './peresort/close-shortage.command';
 
 import { MpEventModule } from '../mp-event/mp-event.module';
 
@@ -25,6 +32,13 @@ import { MpEventModule } from '../mp-event/mp-event.module';
         CreateFboInvoiceCommand,
         PickupFboCommand,
         FboInvoiceCreatorService,
+        FboShortageCloser,
+        PeresortService,
+        LoadShortageLineCommand,
+        AssertNotMarkedCommand,
+        CreatePeresortDocCommand,
+        PickupLineCommand,
+        CloseShortageCommand,
     ],
     exports: [PostingFboService, FboMarkMigrationService, DonorTransferService, FboInvoiceCreatorService],
 })

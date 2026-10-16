@@ -1,5 +1,6 @@
 import { defineStore } from "pinia";
 import axios from "../axios.config";
+import { readUser, saveUser } from "./username";
 
 /** Зеркало src/invoice/dto/invoice-donors.dto.ts и src/posting.fbo/dto/fbo-shortage-apply.dto.ts на бэке. */
 export interface DonorRow {
@@ -26,6 +27,8 @@ export interface DonorLine {
     picked: number;
     shortage: number;
     inShortage: boolean;
+    /** Маркируемый товар — пересортицей недобор не закрыть, кнопки нет. */
+    markRequired: boolean;
     donors: DonorRow[];
 }
 
@@ -63,6 +66,17 @@ export interface ApplyResult {
     pickedUp: boolean;
 }
 
+export interface PeresortResult {
+    posting: string;
+    scode: number;
+    realpricecode: number;
+    goodscode: string;
+    quantity: number;
+    spisCode: number;
+    shortageClosed: boolean;
+    pickedUp: boolean;
+}
+
 /** Ключ выбора: строка приёмника + подборка донора. */
 export const pickKey = (realpricecode: number, podbposcode: number) => `${realpricecode}:${podbposcode}`;
 
@@ -80,6 +94,8 @@ export const fboShortageStore = defineStore("fboShortageStore", {
         picks: {} as Record<string, number>, // pickKey → сколько взять
         nominals: {} as Record<string, number>, // realpricecode → номинал для строк без фасовки
         result: null as ApplyResult | null,
+        peresortResult: null as PeresortResult | null,
+        username: readUser(),
         isLoading: false,
         isApplying: false,
         errorMessage: '',
@@ -120,6 +136,10 @@ export const fboShortageStore = defineStore("fboShortageStore", {
         },
     },
     actions: {
+        setUsername(name: string) {
+            this.username = name;
+            saveUser(name);
+        },
         async loadShortages() {
             try {
                 const res = await axios.get<ShortageRow[]>("/api/fbo-shortage");
@@ -133,6 +153,7 @@ export const fboShortageStore = defineStore("fboShortageStore", {
             if (!posting) return;
             this.errorMessage = '';
             this.result = null;
+            this.peresortResult = null;
             this.picks = {};
             this.isLoading = true;
             try {
@@ -170,6 +191,26 @@ export const fboShortageStore = defineStore("fboShortageStore", {
                 this.picks = {};
                 await Promise.all([this.loadShortages(), this.loadOffer()]);
                 this.result = res.data;
+            } catch (e: any) {
+                this.errorMessage = e.response?.data?.message || e.message;
+            } finally {
+                this.isApplying = false;
+            }
+        },
+        /** «Пересортица и подбор»: доноров нет — приходуем недобор строки и подбираем. Что можно, решает бэк. */
+        async peresort(line: DonorLine) {
+            const offer = this.offer;
+            if (!offer) return;
+            this.errorMessage = '';
+            this.isApplying = true;
+            try {
+                const res = await axios.post<PeresortResult>(`/api/fbo-shortage/${encodeURIComponent(this.posting.trim())}/peresort`, {
+                    scode: offer.scode,
+                    realpricecode: line.realpricecode,
+                    username: this.username.trim(),
+                });
+                await Promise.all([this.loadShortages(), this.loadOffer()]);
+                this.peresortResult = res.data;
             } catch (e: any) {
                 this.errorMessage = e.response?.data?.message || e.message;
             } finally {

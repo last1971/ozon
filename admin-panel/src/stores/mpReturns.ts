@@ -2,16 +2,10 @@ import { defineStore } from "pinia";
 import axios from "../axios.config";
 import type { MpService, ReturnAction, ReturnCard, ReturnRow } from "@/contracts/mp-return.dto";
 
-const USER_KEY = 'mpReturns.username';
+import { readUser, saveUser } from "./username";
+
 const isoDay = (d: Date) => d.toISOString().slice(0, 10);
 const daysAgo = (n: number) => isoDay(new Date(Date.now() - n * 86400000));
-const readUser = () => {
-    try {
-        return localStorage.getItem(USER_KEY) ?? '';
-    } catch {
-        return '';
-    }
-};
 
 /**
  * Вкладка «Возвраты»: список полученных маркетплейсом возвратов, поиск по скану этикетки,
@@ -45,11 +39,7 @@ export const mpReturnsStore = defineStore("mpReturnsStore", {
     actions: {
         setUsername(name: string) {
             this.username = name;
-            try {
-                localStorage.setItem(USER_KEY, name);
-            } catch {
-                /* приватное окно — имя просто не запомнится */
-            }
+            saveUser(name);
         },
         async loadReasons() {
             if (this.reasons.length) return;

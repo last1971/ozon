@@ -35,6 +35,7 @@ describe('validatePicks', () => {
                 picked: 0,
                 shortage: 10,
                 inShortage: true,
+                markRequired: false,
                 donors: [donor(1, 6), donor(2, 4), donor(3, 9, { canTake: false, reason: 'код не делится' })],
             },
             {
@@ -46,6 +47,7 @@ describe('validatePicks', () => {
                 picked: 0,
                 shortage: 3,
                 inShortage: true,
+                markRequired: false,
                 donors: [donor(4, 6)],
             },
             {
@@ -57,6 +59,7 @@ describe('validatePicks', () => {
                 picked: 2,
                 shortage: 0,
                 inShortage: false,
+                markRequired: false,
                 donors: [],
             },
             {
@@ -68,6 +71,7 @@ describe('validatePicks', () => {
                 picked: 0,
                 shortage: 2,
                 inShortage: true,
+                markRequired: false,
                 donors: [donor(5, 5)],
             },
         ],

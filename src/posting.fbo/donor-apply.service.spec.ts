@@ -4,6 +4,7 @@ import { BadRequestException } from '@nestjs/common';
 import { INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { DonorApplyService } from './donor-apply.service';
 import { DonorTransferError, DonorTransferService } from './donor-transfer.service';
+import { FboShortageCloser } from './fbo-shortage-closer';
 
 describe('DonorApplyService', () => {
     let service: DonorApplyService;
@@ -49,6 +50,7 @@ describe('DonorApplyService', () => {
                     picked: 0,
                     shortage: 6,
                     inShortage: true,
+                    markRequired: false,
                     donors: [donor],
                 },
             ],
@@ -75,6 +77,7 @@ describe('DonorApplyService', () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 DonorApplyService,
+                FboShortageCloser,
                 {
                     provide: INVOICE_SERVICE,
                     useValue: {

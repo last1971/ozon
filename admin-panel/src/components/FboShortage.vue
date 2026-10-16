@@ -4,6 +4,9 @@ import { computed, onMounted, ref } from "vue";
 
 const store = fboShortageStore();
 const confirm = ref(false);
+/** Строка, по которой спрошено подтверждение пересортицы; null — диалог закрыт. */
+const peresortLine = ref<DonorLine | null>(null);
+const userOk = computed(() => store.username.trim().length > 0);
 
 onMounted(() => store.loadShortages());
 
@@ -44,6 +47,11 @@ function pick(posting: string) {
 async function apply() {
     confirm.value = false;
     await store.apply();
+}
+async function peresort() {
+    const line = peresortLine.value;
+    peresortLine.value = null;
+    if (line) await store.peresort(line);
 }
 const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString() : '');
 </script>
@@ -92,7 +100,15 @@ const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString() : ''
             <v-col v-if="store.offers.length > 1" cols="3">
                 <v-select v-model="store.scode" :items="store.offers.map((o) => ({ value: o.scode, title: `№${o.invoiceNumber} · ${o.prim}` }))" label="Счёт" density="compact" hide-details />
             </v-col>
+            <v-col cols="3">
+                <v-text-field :model-value="store.username" label="Кто оформляет" density="compact" hide-details :error="!userOk" @update:model-value="store.setUsername($event)" />
+            </v-col>
         </v-row>
+
+        <v-alert v-if="store.peresortResult" type="success" variant="tonal" class="mt-4" closable @click:close="store.peresortResult = null">
+            Пересортица: {{ store.peresortResult.goodscode }} × {{ store.peresortResult.quantity }} оприходовано и подобрано, документ списания {{ store.peresortResult.spisCode }}.
+            {{ store.peresortResult.shortageClosed ? 'Недобора не осталось' : 'По другим позициям недобор ещё открыт' }}{{ store.peresortResult.pickedUp ? ', счёт отдан в подбор.' : '.' }}
+        </v-alert>
 
         <!-- Результат применения -->
         <v-alert v-if="store.result" type="success" variant="tonal" class="mt-4" closable @click:close="store.result = null">
@@ -160,6 +176,16 @@ const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString() : ''
                         </tbody>
                     </v-table>
                     <div v-else class="text-medium-emphasis">Доноров нет: у покупателя нет сформированных счетов с этим товаром.</div>
+                    <v-row v-if="!l.markRequired" dense align="center" class="mt-2">
+                        <v-col cols="auto">
+                            <v-btn color="warning" variant="tonal" size="small" prepend-icon="mdi-package-variant-plus"
+                                   :disabled="!userOk || store.isApplying || takenOf(l) > 0" :loading="store.isApplying" @click="peresortLine = l">
+                                Пересортица +{{ l.shortage }} и подбор
+                            </v-btn>
+                        </v-col>
+                        <v-col v-if="!userOk" cols="auto" class="text-caption text-error">Укажите, кто оформляет.</v-col>
+                        <v-col v-else-if="takenOf(l) > 0" cols="auto" class="text-caption text-medium-emphasis">Либо доноры, либо пересортица — уберите «взять».</v-col>
+                    </v-row>
                 </v-card-text>
             </v-card>
 
@@ -182,6 +208,21 @@ const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString() : ''
                 </v-col>
             </v-row>
         </template>
+
+        <v-dialog :model-value="peresortLine !== null" max-width="560" @update:model-value="(v: boolean) => { if (!v) peresortLine = null; }">
+            <v-card v-if="peresortLine">
+                <v-card-title>Пересортица и подбор?</v-card-title>
+                <v-card-text>
+                    <div>{{ peresortLine.name ?? peresortLine.goodscode }}: оприходуем пересортицей {{ peresortLine.shortage }} шт и подберём в счёт №{{ offer?.invoiceNumber }}.</div>
+                    <div class="mt-2 text-medium-emphasis">Будет документ списания с минусом, основание «пересортица». Отменить кнопкой нельзя.</div>
+                </v-card-text>
+                <v-card-actions>
+                    <v-spacer />
+                    <v-btn @click="peresortLine = null">Отмена</v-btn>
+                    <v-btn color="warning" @click="peresort">Оформить</v-btn>
+                </v-card-actions>
+            </v-card>
+        </v-dialog>
 
         <v-dialog v-model="confirm" max-width="560">
             <v-card>

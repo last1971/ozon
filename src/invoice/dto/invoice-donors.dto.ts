@@ -38,6 +38,8 @@ export class DonorLineDto {
     @ApiProperty({ description: 'Сколько штук уже подобрано на этой строке' }) picked: number;
     @ApiProperty({ description: 'Недобор строки = нужно − подобрано' }) shortage: number;
     @ApiProperty({ description: 'Товар строки числится в журнале недобора FBO_SHORTAGE' }) inShortage: boolean;
+    @ApiProperty({ description: 'Товар подлежит маркировке — пересортицей недобор не закрыть (кнопки нет)' })
+    markRequired: boolean;
     @ApiProperty({ type: [DonorDto] }) donors: DonorDto[];
 }
 

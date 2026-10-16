@@ -895,8 +895,14 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         for (const inv of invoices) {
             // Строки берём своим запросом: getInvoiceLinesByInvoiceId отдаёт InvoiceLineDto
             // без REALPRICECODE и наименования, а они здесь и нужны.
+            // MARK_REQ — для кнопки «Пересортица»: маркируемому её не показываем. Маркировка
+            // выключена (магазин) — всё немаркируемое, как и в остальных проверках.
+            const markReq = isMarkCodesEnabled(this.configService)
+                ? 'EXISTS (SELECT 1 FROM GOODS_CLASSIF gc WHERE gc.GOODSCODE = r.GOODSCODE AND gc.MARK_REQUIRED = 1)'
+                : '1 = 0';
             const lines = await t.query(
-                'SELECT r.REALPRICECODE, r.GOODSCODE, r.QUAN, r.PIECES, n.NAME ' +
+                'SELECT r.REALPRICECODE, r.GOODSCODE, r.QUAN, r.PIECES, n.NAME, ' +
+                    `CASE WHEN ${markReq} THEN 1 ELSE 0 END AS MARK_REQ ` +
                     'FROM REALPRICE r ' +
                     'LEFT JOIN GOODS g ON g.GOODSCODE = r.GOODSCODE ' +
                     'LEFT JOIN NAME n ON n.NAMECODE = g.NAMECODE ' +
@@ -939,6 +945,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
                         picked: got,
                         shortage: Trade2006InvoiceService.lineShortage(l.QUAN, got),
                         inShortage: shortage.has(String(l.GOODSCODE)),
+                        markRequired: Number(l.MARK_REQ) === 1,
                         donors: donors
                             .filter((d) => String(d.GOODSCODE) === String(l.GOODSCODE))
                             .map((d) =>

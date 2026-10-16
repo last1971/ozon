@@ -5,6 +5,7 @@ import { DonorTransferError, DonorTransferService } from './donor-transfer.servi
 import { validatePicks } from './donor-picks.validator';
 import { DonorMovedDto, FboShortageApplyDto, FboShortageApplyResultDto } from './dto/fbo-shortage-apply.dto';
 import { NotifyTopic } from '../notify/notify.types';
+import { FboShortageCloser } from './fbo-shortage-closer';
 
 /**
  * Ручной разбор недобора FBO: человек выбрал, с каких доноров сколько взять, — переносим той же
@@ -20,6 +21,7 @@ export class DonorApplyService {
     constructor(
         @Inject(INVOICE_SERVICE) private readonly invoiceService: IInvoice,
         private readonly transfer: DonorTransferService,
+        private readonly closer: FboShortageCloser,
         private readonly eventEmitter: EventEmitter2,
     ) {}
 
@@ -78,20 +80,7 @@ export class DonorApplyService {
                 perGood.set(item.goodscode, (perGood.get(item.goodscode) ?? 0) + result.moved);
             }
 
-            for (const [goodscode, quantity] of perGood) {
-                await this.invoiceService.closeFboShortage(posting, goodscode, quantity, t);
-            }
-            const shortageClosed = !(await this.invoiceService.isInFboShortage(posting, t));
-            let pickedUp = false;
-            if (shortageClosed) {
-                const invoice = (await this.invoiceService.getPrimContaining(posting, t)).find(
-                    (i) => i.id === offer.scode,
-                );
-                if (invoice) {
-                    await this.invoiceService.pickupFboUnlessShortage(invoice, t);
-                    pickedUp = true;
-                }
-            }
+            const { shortageClosed, pickedUp } = await this.closer.close(posting, offer.scode, perGood, t);
             await t.commit(true);
 
             const summary = moved

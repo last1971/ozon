@@ -74,6 +74,17 @@ export interface IReturnStock {
      * Списать такой без скана — оставить в обороте коды без товара. Маркировка выключена — false.
      */
     hasFreeMarkCodes(goodscode: string, t: FirebirdTransaction): Promise<boolean>;
+    /** Товар подлежит маркировке (GOODS_CLASSIF.MARK_REQUIRED=1). Маркировка выключена — false. */
+    isMarkRequired(goodscode: string, t: FirebirdTransaction): Promise<boolean>;
+    /**
+     * Строка подборки под строку счёта, если её ещё нет (нулевая). UPDATE_PODB умеет и вставить,
+     * но расход партии и автостатус счёта вешают триггеры UPDATE — поэтому сперва пустая строка,
+     * потом штатное изменение (так же делает PODBPOS_MIGRATE_QTY).
+     */
+    ensurePodbLine(
+        p: { scode: number; goodscode: string; realpricecode: number },
+        t: FirebirdTransaction,
+    ): Promise<void>;
     /** Остаток на стороне инсталляции, резерв под счета и номера счетов, держащих резерв. */
     stockAndReserve(
         goodscode: string,
