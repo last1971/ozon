@@ -21,6 +21,7 @@ import { CloseShortageCommand } from './peresort/close-shortage.command';
 
 import { MpEventModule } from '../mp-event/mp-event.module';
 import { OzonApiModule } from '../ozon.api/ozon.api.module';
+import { FirebirdModule } from '../firebird/firebird.module';
 import { DonorPiecesService } from './donor-pieces/donor-pieces.service';
 import { DonorPiecesStore } from './donor-pieces/donor-pieces.store';
 import { OzonSupplyClient } from './donor-pieces/ozon-supply.client';
@@ -31,7 +32,7 @@ import { WritePiecesCommand } from './donor-pieces/commands/write-pieces.command
 import { JournalOutcomesCommand } from './donor-pieces/commands/journal-outcomes.command';
 
 @Module({
-    imports: [ProductModule, InvoiceModule, MpEventModule, SpisModule, OzonApiModule],
+    imports: [ProductModule, InvoiceModule, MpEventModule, SpisModule, OzonApiModule, FirebirdModule],
     controllers: [FboShortageController],
     providers: [
         PostingFboService,
