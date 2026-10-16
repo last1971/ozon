@@ -256,6 +256,34 @@ describe('FboMarkMigrationService', () => {
         );
     });
 
+    it('упаковка 2, на доноре 1 шт → донора не трогаем, недобор 2 (счёт 84542, 16.10.2026)', async () => {
+        findFboPodbposCandidates.mockResolvedValueOnce([
+            {
+                podbposcode: 1001,
+                scode: 100,
+                realpricecode: 100,
+                quanAvail: 1,
+                prim: 'W',
+                cntNom: 0,
+                cntLive: 0,
+                cntTt3: 0,
+            },
+        ]);
+
+        const shortages = await service.migrate(
+            [{ price: '1', offer_id: '777-2', quantity: 1 }],
+            ['W'],
+            [line(901, '777-2', 2)],
+            SCODE_B,
+            null,
+            POSTING,
+        );
+
+        expect(migratePodbpos).not.toHaveBeenCalled();
+        expect(migrateMarkCode).not.toHaveBeenCalled();
+        expect(shortages).toEqual([{ goodscode: '777', quantity: 2 }]);
+    });
+
     it('нет кандидатов → shortage на весь объём', async () => {
         findFboPodbposCandidates.mockResolvedValueOnce([]);
 

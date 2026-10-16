@@ -1066,8 +1066,10 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             `${lvlCase} ` +
             Trade2006InvoiceService.PODBPOS_SOURCE +
             'JOIN REALPRICE rp ON rp.REALPRICECODE = pp.REALPRICECODE ' +
-            `WHERE pp.GOODSCODE = ? AND pp.SKLAD_ID IS NULL AND ${this.donorAliveWhere()} AND (${containingClauses})`;
-        const rows = await t.query(sql, [nominal, nominal, nominal, ...prims, goodscode, ...prims], !transaction);
+            // Фасовка донора = фасовка заказа (решение владельца 16.10.2026): поштучная строка
+            // донором для заказа упаковками не является, пустая фасовка считается поштучной.
+            `WHERE pp.GOODSCODE = ? AND pp.SKLAD_ID IS NULL AND COALESCE(rp.PIECES, 1) = ? AND ${this.donorAliveWhere()} AND (${containingClauses})`;
+        const rows = await t.query(sql, [nominal, nominal, nominal, ...prims, goodscode, nominal, ...prims], !transaction);
         const all = rows.map((r) => ({
             podbposcode: r.PODBPOSCODE,
             scode: r.SCODE,

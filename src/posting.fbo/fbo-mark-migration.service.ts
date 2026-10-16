@@ -67,8 +67,16 @@ export class FboMarkMigrationService {
 
             for (const cand of candidates) {
                 if (need <= 0) break;
-                let take = Math.min(cand.quanAvail, need);
-                if (take <= 0) continue;
+                // С донора только целыми упаковками строки (nominal): полупустая упаковка
+                // на доноре остаётся там, недостающее уходит в недобор (решение владельца 16.10.2026).
+                let take = Math.floor(Math.min(cand.quanAvail, need) / nominal) * nominal;
+                if (take <= 0) {
+                    if (cand.quanAvail > 0)
+                        this.logger.log(
+                            `донор ${cand.scode}/RPC ${cand.realpricecode} товара ${gc} пропущен: ${cand.quanAvail} шт меньше упаковки ${nominal}`,
+                        );
+                    continue;
+                }
 
                 // Количественный код (1 КИ = N шт) переехать не может: findLiveMigratableCodes
                 // берёт строго номинал nominal, а дробить КМ без новой этикетки ЧЗ нельзя.
