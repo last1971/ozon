@@ -97,7 +97,13 @@ export class MpReturnService {
                     : `Возврат по «${scan.value}» не найден — возможно, посылка другого кабинета`,
             );
         }
-        return this.read((t) => Promise.all(lines.map((line) => this.builder.build(line, t))));
+        // По очереди, как в list(): параллельные запросы на одной транзакции Firebird молча виснут
+        // (отправление с 25 возвратами не отвечало вовсе, 16.10.2026).
+        return this.read(async (t) => {
+            const cards: ReturnCardDto[] = [];
+            for (const line of lines) cards.push(await this.builder.build(line, t));
+            return cards;
+        });
     }
 
     async accept(service: MpService, extId: string, dto: AcceptReturnDto): Promise<ReturnActionResultDto> {
