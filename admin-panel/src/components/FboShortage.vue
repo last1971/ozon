@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { fboShortageStore, pickKey, type DonorLine, type DonorRow } from "@/stores/fboShortage";
 import { computed, onMounted, ref } from "vue";
+import UsernameField from "./UsernameField.vue";
 
 const store = fboShortageStore();
 const confirm = ref(false);
@@ -101,7 +102,7 @@ const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString() : ''
                 <v-select v-model="store.scode" :items="store.offers.map((o) => ({ value: o.scode, title: `№${o.invoiceNumber} · ${o.prim}` }))" label="Счёт" density="compact" hide-details />
             </v-col>
             <v-col cols="3">
-                <v-text-field :model-value="store.username" label="Кто оформляет" density="compact" hide-details :error="!userOk" @update:model-value="store.setUsername($event)" />
+                <UsernameField v-model="store.username" />
             </v-col>
         </v-row>
 

@@ -2,7 +2,7 @@ import { defineStore } from "pinia";
 import axios from "../axios.config";
 import type { MpService, ReturnAction, ReturnCard, ReturnRow } from "@/contracts/mp-return.dto";
 
-import { readUser, saveUser } from "./username";
+import { readUser } from "./username";
 
 const isoDay = (d: Date) => d.toISOString().slice(0, 10);
 const daysAgo = (n: number) => isoDay(new Date(Date.now() - n * 86400000));
@@ -37,10 +37,6 @@ export const mpReturnsStore = defineStore("mpReturnsStore", {
         },
     },
     actions: {
-        setUsername(name: string) {
-            this.username = name;
-            saveUser(name);
-        },
         async loadReasons() {
             if (this.reasons.length) return;
             try {

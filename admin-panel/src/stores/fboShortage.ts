@@ -1,6 +1,6 @@
 import { defineStore } from "pinia";
 import axios from "../axios.config";
-import { readUser, saveUser } from "./username";
+import { readUser } from "./username";
 
 /** Зеркало src/invoice/dto/invoice-donors.dto.ts и src/posting.fbo/dto/fbo-shortage-apply.dto.ts на бэке. */
 export interface DonorRow {
@@ -136,10 +136,6 @@ export const fboShortageStore = defineStore("fboShortageStore", {
         },
     },
     actions: {
-        setUsername(name: string) {
-            this.username = name;
-            saveUser(name);
-        },
         async loadShortages() {
             try {
                 const res = await axios.get<ShortageRow[]>("/api/fbo-shortage");

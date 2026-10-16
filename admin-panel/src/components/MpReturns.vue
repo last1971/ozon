@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { mpReturnsStore } from "@/stores/mpReturns";
+import UsernameField from "./UsernameField.vue";
 import type { ReturnRowStatus } from "@/contracts/mp-return.dto";
 import { computed, nextTick, onMounted, ref } from "vue";
 
@@ -85,14 +86,7 @@ const fmtDateTime = (d: string | null) => (d ? new Date(d).toLocaleString() : '�
                 <v-btn :loading="store.isLoading" variant="tonal" @click="store.loadList()">Обновить</v-btn>
             </v-col>
             <v-col cols="12" md="3">
-                <v-text-field
-                    :model-value="store.username"
-                    label="Кто принимает"
-                    density="compact"
-                    hide-details
-                    :error="!userOk"
-                    @update:model-value="store.setUsername($event)"
-                />
+                <UsernameField v-model="store.username" label="Кто принимает" />
             </v-col>
         </v-row>
 
