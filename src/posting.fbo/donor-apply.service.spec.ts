@@ -71,6 +71,7 @@ describe('DonorApplyService', () => {
             emit,
         ].forEach((m) => m.mockReset());
         getTransaction.mockResolvedValue(t);
+        rollback.mockResolvedValue(undefined); // обёртка делает rollback().catch()
         findDonorsByPrim.mockResolvedValue(offer());
         isInFboShortage.mockResolvedValue(false);
         getPrimContaining.mockResolvedValue([{ id: 500, remark: 'P-1' }]);

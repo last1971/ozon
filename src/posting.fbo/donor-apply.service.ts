@@ -6,6 +6,7 @@ import { validatePicks } from './donor-picks.validator';
 import { DonorMovedDto, FboShortageApplyDto, FboShortageApplyResultDto } from './dto/fbo-shortage-apply.dto';
 import { NotifyTopic } from '../notify/notify.types';
 import { FboShortageCloser } from './fbo-shortage-closer';
+import { inTransaction } from '../helpers/transaction';
 
 /**
  * Ручной разбор недобора FBO: человек выбрал, с каких доноров сколько взять, — переносим той же
@@ -26,82 +27,80 @@ export class DonorApplyService {
     ) {}
 
     async apply(posting: string, body: FboShortageApplyDto): Promise<FboShortageApplyResultDto> {
-        const t = await this.invoiceService.getTransaction();
-        try {
-            const offer = (await this.invoiceService.findDonorsByPrim(posting, t)).find(
-                (o) => o.scode === Number(body.scode),
-            );
-            if (!offer) throw new NotFoundException(`счёт ${body.scode} по отправлению ${posting} не найден`);
+        return inTransaction(
+            () => this.invoiceService.getTransaction(),
+            async (t) => {
+                const offer = (await this.invoiceService.findDonorsByPrim(posting, t)).find(
+                    (o) => o.scode === Number(body.scode),
+                );
+                if (!offer) throw new NotFoundException(`счёт ${body.scode} по отправлению ${posting} не найден`);
 
-            const { errors, plan } = validatePicks(offer, body.picks, body.nominals ?? {});
-            if (errors.length) throw new BadRequestException(errors.join('; '));
+                const { errors, plan } = validatePicks(offer, body.picks, body.nominals ?? {});
+                if (errors.length) throw new BadRequestException(errors.join('; '));
 
-            // Фантомный резерв приёмника со свободного остатка — снять, как автоматика перед переносом.
-            await this.invoiceService.clearInvoiceReserve(offer.scode, t);
+                // Фантомный резерв приёмника со свободного остатка — снять, как автоматика перед переносом.
+                await this.invoiceService.clearInvoiceReserve(offer.scode, t);
 
-            const moved: DonorMovedDto[] = [];
-            const perGood = new Map<string, number>();
-            for (const item of plan) {
-                let result;
-                try {
-                    result = await this.transfer.transfer(
-                        item.donor,
-                        item.quantity,
-                        {
-                            scode: offer.scode,
-                            realpricecode: item.realpricecode,
-                            goodscode: item.goodscode,
-                            nominal: item.nominal,
-                            posting,
-                        },
-                        t,
-                    );
-                } catch (e) {
-                    if (e instanceof DonorTransferError) {
+                const moved: DonorMovedDto[] = [];
+                const perGood = new Map<string, number>();
+                for (const item of plan) {
+                    let result;
+                    try {
+                        result = await this.transfer.transfer(
+                            item.donor,
+                            item.quantity,
+                            {
+                                scode: offer.scode,
+                                realpricecode: item.realpricecode,
+                                goodscode: item.goodscode,
+                                nominal: item.nominal,
+                                posting,
+                            },
+                            t,
+                        );
+                    } catch (e) {
+                        if (e instanceof DonorTransferError) {
+                            throw new BadRequestException(
+                                `счёт №${item.donor.invoiceNumber}: перенос не прошёл — ${e.message}`,
+                            );
+                        }
+                        throw e;
+                    }
+                    // Застрявший код уменьшил перенос — недобор остался бы; ручной режим так не закрывает.
+                    if (result.moved !== item.quantity) {
                         throw new BadRequestException(
-                            `счёт №${item.donor.invoiceNumber}: перенос не прошёл — ${e.message}`,
+                            `счёт №${item.donor.invoiceNumber}: переехало ${result.moved} из ${item.quantity} (кодов застряло ${result.stuck}) — повторите выбор`,
                         );
                     }
-                    throw e;
+                    moved.push({
+                        realpricecode: item.realpricecode,
+                        goodscode: item.goodscode,
+                        donorInvoiceNumber: item.donor.invoiceNumber,
+                        quantity: result.moved,
+                        codes: result.codes,
+                    });
+                    perGood.set(item.goodscode, (perGood.get(item.goodscode) ?? 0) + result.moved);
                 }
-                // Застрявший код уменьшил перенос — недобор остался бы; ручной режим так не закрывает.
-                if (result.moved !== item.quantity) {
-                    throw new BadRequestException(
-                        `счёт №${item.donor.invoiceNumber}: переехало ${result.moved} из ${item.quantity} (кодов застряло ${result.stuck}) — повторите выбор`,
-                    );
-                }
-                moved.push({
-                    realpricecode: item.realpricecode,
-                    goodscode: item.goodscode,
-                    donorInvoiceNumber: item.donor.invoiceNumber,
-                    quantity: result.moved,
-                    codes: result.codes,
-                });
-                perGood.set(item.goodscode, (perGood.get(item.goodscode) ?? 0) + result.moved);
-            }
 
-            const { shortageClosed, pickedUp } = await this.closer.close(posting, offer.scode, perGood, t);
-            await t.commit(true);
+                const { shortageClosed, pickedUp } = await this.closer.close(posting, offer.scode, perGood, t);
 
-            const summary = moved
-                .map((m) => `${m.goodscode} × ${m.quantity} со счёта №${m.donorInvoiceNumber}`)
-                .join('; ');
-            this.logger.log(
-                `[donor-apply] ${posting} SCODE ${offer.scode}: ${summary}; журнал ${shortageClosed ? 'закрыт' : 'не закрыт'}`,
-            );
-            this.eventEmitter.emit(
-                'error.message',
-                'FBO: недобор закрыт руками',
-                `Заказ: ${posting}\nСчёт: №${offer.invoiceNumber}\nПереехало: ${summary}\n` +
-                    (shortageClosed
-                        ? 'Недобора не осталось, счёт отдан в подбор.'
-                        : 'По другим позициям недобор ещё открыт.'),
-                NotifyTopic.OPS,
-            );
-            return { posting, scode: offer.scode, moved, shortageClosed, pickedUp };
-        } catch (e) {
-            await t.rollback(true);
-            throw e;
-        }
+                const summary = moved
+                    .map((m) => `${m.goodscode} × ${m.quantity} со счёта №${m.donorInvoiceNumber}`)
+                    .join('; ');
+                this.logger.log(
+                    `[donor-apply] ${posting} SCODE ${offer.scode}: ${summary}; журнал ${shortageClosed ? 'закрыт' : 'не закрыт'}`,
+                );
+                this.eventEmitter.emit(
+                    'error.message',
+                    'FBO: недобор закрыт руками',
+                    `Заказ: ${posting}\nСчёт: №${offer.invoiceNumber}\nПереехало: ${summary}\n` +
+                        (shortageClosed
+                            ? 'Недобора не осталось, счёт отдан в подбор.'
+                            : 'По другим позициям недобор ещё открыт.'),
+                    NotifyTopic.OPS,
+                );
+                return { posting, scode: offer.scode, moved, shortageClosed, pickedUp };
+            },
+        );
     }
 }

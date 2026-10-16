@@ -2,6 +2,7 @@ import { FirebirdTransaction } from 'ts-firebird';
 import { ReturnLineDto } from '../dto/return-line.dto';
 import { ReturnCardDto } from '../dto/return-card.dto';
 import { ReturnAction } from '../dto/return-request.dto';
+import { ISpisContext, SpisDoc } from '../../helpers/spis/spis.context';
 
 /** Контекст цепочки приёма строки возврата. Всё — в одной транзакции `t`. */
 export interface AcceptContext {
@@ -25,9 +26,24 @@ export interface AcceptContext {
     writeOff?: WriteOffContext;
 }
 
+/** Документ списания возврата: примечание — отправление и комментарий кладовщика. */
+export const writeOffSpis = (p: {
+    goodscode: string;
+    username: string;
+    quan: number;
+    posting: string;
+    comment: string | null;
+    osnSpisId: number;
+}): SpisDoc => ({
+    goodscode: p.goodscode,
+    username: p.username,
+    quan: p.quan,
+    prim: `Возврат ${p.posting}${p.comment ? `: ${p.comment}` : ''}`,
+    osnSpisId: p.osnSpisId,
+});
+
 /** Контекст цепочки списания принятой строки возврата. */
-export interface WriteOffContext {
-    t: FirebirdTransaction;
+export interface WriteOffContext extends ISpisContext {
     service: ReturnLineDto['service'];
     extId: string;
     posting: string;
@@ -37,6 +53,4 @@ export interface WriteOffContext {
     username: string;
     osnSpisId: number;
     comment: string | null;
-    /** AllocateSpisCode: номер строки списания, выданный заранее. */
-    spisCode?: number;
 }

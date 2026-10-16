@@ -7,6 +7,8 @@ import { IReturnStock, RETURN_STOCK } from '../interfaces/i.return.stock';
 import { MpService } from '../mp-event/mp-event.service';
 import { MpReturnAcceptStore } from '../mp-event/mp-return-accept.store';
 import { parseReturnScan } from '../helpers/return-scan.parser';
+import { writeOffSpis } from './commands/return.contexts';
+import { inTransaction } from '../helpers/transaction';
 import { NotifyTopic } from '../notify/notify.types';
 import { IReturnSource, RETURN_SOURCES } from './sources/i.return.source';
 import { ReturnCardBuilder } from './return-card.builder';
@@ -123,18 +125,17 @@ export class MpReturnService {
             const rec = await this.store.find(service, extId, t);
             if (!rec || rec.decision !== 'RETURN')
                 throw new ReturnRefusedError('Списать можно только принятый возврат');
-            return this.factory.writeOff().execute({
-                t,
-                service,
-                extId,
-                posting: rec.posting ?? '',
+            const doc = {
                 goodscode: rec.goodscode,
                 quan: rec.quan,
-                kis: rec.kis,
                 username: dto.username.trim(),
                 osnSpisId: dto.osnSpisId,
                 comment: dto.comment?.trim() || null,
-            });
+                posting: rec.posting ?? '',
+            };
+            return this.factory
+                .writeOff()
+                .execute({ t, service, extId, kis: rec.kis, ...doc, spis: writeOffSpis(doc) });
         });
         this.eventEmitter.emit(
             'error.message',
@@ -167,27 +168,15 @@ export class MpReturnService {
         return byPosting;
     }
 
-    private async read<T>(fn: (t: FirebirdTransaction) => Promise<T>): Promise<T> {
-        const t = await this.invoiceService.getTransaction();
-        try {
-            const result = await fn(t);
-            await t.commit(true);
-            return result;
-        } catch (e) {
-            await t.rollback(true).catch(() => undefined);
-            throw e;
-        }
+    private read<T>(fn: (t: FirebirdTransaction) => Promise<T>): Promise<T> {
+        return inTransaction(() => this.invoiceService.getTransaction(), fn);
     }
 
     /** Одна транзакция на кнопку: любой отказ или сбой — откат целиком, кладовщику — понятный текст. */
     private async write<T>(fn: (t: FirebirdTransaction) => Promise<T>): Promise<T> {
-        const t = await this.invoiceService.getTransaction();
         try {
-            const result = await fn(t);
-            await t.commit(true);
-            return result;
+            return await this.read(fn);
         } catch (e) {
-            await t.rollback(true).catch(() => undefined);
             if (e instanceof ReturnRefusedError) throw new BadRequestException(e.message);
             const text = String(e?.message ?? e);
             if (LOCK_ERROR.test(text)) {

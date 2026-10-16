@@ -5,9 +5,11 @@ import { INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { PeresortService } from './peresort.service';
 import { LoadShortageLineCommand } from './peresort/load-shortage-line.command';
 import { AssertNotMarkedCommand } from './peresort/assert-not-marked.command';
-import { CreatePeresortDocCommand } from './peresort/create-peresort-doc.command';
+import { BuildPeresortDocCommand } from './peresort/build-peresort-doc.command';
 import { PickupLineCommand } from './peresort/pickup-line.command';
 import { CloseShortageCommand } from './peresort/close-shortage.command';
+import { AllocateSpisCodeCommand } from '../helpers/spis/allocate-spis-code.command';
+import { CreateSpisDocCommand } from '../helpers/spis/create-spis-doc.command';
 
 const step = (name: string, patch: object = {}, fail?: Error) => ({
     execute: jest.fn(async (ctx: any) => {
@@ -16,6 +18,8 @@ const step = (name: string, patch: object = {}, fail?: Error) => ({
     }),
 });
 
+type Steps = 'load' | 'notMarked' | 'buildDoc' | 'allocate' | 'createDoc' | 'pickup' | 'close';
+
 describe('PeresortService', () => {
     const commit = jest.fn();
     const rollback = jest.fn();
@@ -23,11 +27,13 @@ describe('PeresortService', () => {
     const emit = jest.fn();
     const line = { goodscode: '557614', name: 'ECAP', realpricecode: 900 };
 
-    const build = async (over: Partial<Record<'load' | 'notMarked' | 'doc' | 'pickup' | 'close', any>> = {}) => {
+    const build = async (over: Partial<Record<Steps, any>> = {}) => {
         const cmds = {
             load: over.load ?? step('load', { line, quantity: 1 }),
             notMarked: over.notMarked ?? step('notMarked'),
-            doc: over.doc ?? step('doc', { spisCode: 9720 }),
+            buildDoc: over.buildDoc ?? step('buildDoc', { spis: {} }),
+            allocate: over.allocate ?? step('allocate', { spisCode: 9720 }),
+            createDoc: over.createDoc ?? step('createDoc'),
             pickup: over.pickup ?? step('pickup'),
             close: over.close ?? step('close', { shortageClosed: true, pickedUp: true }),
         };
@@ -37,7 +43,9 @@ describe('PeresortService', () => {
                 { provide: INVOICE_SERVICE, useValue: { getTransaction: jest.fn().mockResolvedValue(t) } },
                 { provide: LoadShortageLineCommand, useValue: cmds.load },
                 { provide: AssertNotMarkedCommand, useValue: cmds.notMarked },
-                { provide: CreatePeresortDocCommand, useValue: cmds.doc },
+                { provide: BuildPeresortDocCommand, useValue: cmds.buildDoc },
+                { provide: AllocateSpisCodeCommand, useValue: cmds.allocate },
+                { provide: CreateSpisDocCommand, useValue: cmds.createDoc },
                 { provide: PickupLineCommand, useValue: cmds.pickup },
                 { provide: CloseShortageCommand, useValue: cmds.close },
                 { provide: EventEmitter2, useValue: { emit } },
@@ -46,13 +54,16 @@ describe('PeresortService', () => {
         return { service: module.get(PeresortService), cmds };
     };
 
-    beforeEach(() => [commit, rollback, emit].forEach((m) => m.mockReset()));
+    beforeEach(() => {
+        [commit, rollback, emit].forEach((m) => m.mockReset());
+        rollback.mockResolvedValue(undefined); // обёртка делает rollback().catch()
+    });
 
-    it('порядок: строка → не маркируемый → пересортица → подбор → закрыть недобор; commit, письмо, ответ', async () => {
+    it('порядок: строка → не маркируемый → документ → номер → запись → подбор → закрыть недобор; commit, письмо, ответ', async () => {
         const { service, cmds } = await build();
         const res = await service.apply('P-1', { scode: 500, realpricecode: 900, username: ' Ластовка ' });
         const last = cmds.close.execute.mock.calls[0][0];
-        expect(last.trace).toEqual(['load', 'notMarked', 'doc', 'pickup']);
+        expect(last.trace).toEqual(['load', 'notMarked', 'buildDoc', 'allocate', 'createDoc', 'pickup']);
         expect(last.username).toBe('Ластовка');
         expect(commit).toHaveBeenCalled();
         expect(rollback).not.toHaveBeenCalled();
@@ -81,7 +92,7 @@ describe('PeresortService', () => {
         await expect(service.apply('P-1', { scode: 500, realpricecode: 900, username: 'x' })).rejects.toBeInstanceOf(
             BadRequestException,
         );
-        expect(cmds.doc.execute).not.toHaveBeenCalled();
+        expect(cmds.createDoc.execute).not.toHaveBeenCalled();
         expect(rollback).toHaveBeenCalled();
         expect(commit).not.toHaveBeenCalled();
         expect(emit).not.toHaveBeenCalled();

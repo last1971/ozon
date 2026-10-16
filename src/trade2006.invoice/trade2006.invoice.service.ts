@@ -12,6 +12,7 @@ import { isWrongNominalDonor, needsSplitInChz } from '../helpers/donor.rules';
 import { TransactionDto } from '../posting/dto/transaction.dto';
 import { ResultDto } from '../helpers/dto/result.dto';
 import { goodCode, goodQuantityCoeff, isMarkCodesEnabled, storageSS } from '../helpers';
+import { markRequiredExists } from '../helpers/mark-required.sql';
 import { chunk, flatten, toNumber } from 'lodash';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { Cache } from '@nestjs/cache-manager';
@@ -897,9 +898,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             // без REALPRICECODE и наименования, а они здесь и нужны.
             // MARK_REQ — для кнопки «Пересортица»: маркируемому её не показываем. Маркировка
             // выключена (магазин) — всё немаркируемое, как и в остальных проверках.
-            const markReq = isMarkCodesEnabled(this.configService)
-                ? 'EXISTS (SELECT 1 FROM GOODS_CLASSIF gc WHERE gc.GOODSCODE = r.GOODSCODE AND gc.MARK_REQUIRED = 1)'
-                : '1 = 0';
+            const markReq = isMarkCodesEnabled(this.configService) ? markRequiredExists('r.GOODSCODE') : '1 = 0';
             const lines = await t.query(
                 'SELECT r.REALPRICECODE, r.GOODSCODE, r.QUAN, r.PIECES, n.NAME, ' +
                     `CASE WHEN ${markReq} THEN 1 ELSE 0 END AS MARK_REQ ` +
@@ -1425,8 +1424,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
                 'COALESCE((SELECT SUM(COALESCE(m.QUANTITY, 1)) FROM MARKCODES m ' +
                 'WHERE m.REALPRICECODE = rp.REALPRICECODE AND m.TRANSFER_TYPE = 3), 0) AS ATTACHED ' +
                 'FROM REALPRICE rp WHERE rp.SCODE = ? ' +
-                'AND EXISTS (SELECT 1 FROM GOODS_CLASSIF gc ' +
-                'WHERE gc.GOODSCODE = rp.GOODSCODE AND gc.MARK_REQUIRED = 1) ' +
+                `AND ${markRequiredExists('rp.GOODSCODE')} ` +
                 'AND EXISTS (SELECT 1 FROM MARKCODES m2 WHERE m2.GOODSCODE = rp.GOODSCODE)',
             [scode],
             !transaction,

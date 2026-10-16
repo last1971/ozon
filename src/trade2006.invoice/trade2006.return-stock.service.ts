@@ -4,6 +4,7 @@ import { FirebirdPool, FirebirdTransaction } from 'ts-firebird';
 import { FIREBIRD } from '../firebird/firebird.module';
 import { isMarkCodesEnabled, storageSS } from '../helpers';
 import { IReturnStock, ReturnInvoiceLine, ReturnLineCode, SpisanieDto } from '../interfaces/i.return.stock';
+import { markRequiredExists } from '../helpers/mark-required.sql';
 
 /** Переносы склад↔магазин в справочнике оснований — не списание, в список не показываем. */
 const TRANSFER_REASON_IDS = [10, 24, 25];
@@ -138,7 +139,7 @@ export class Trade2006ReturnStockService implements IReturnStock {
     async isMarkRequired(goodscode: string, t: FirebirdTransaction): Promise<boolean> {
         if (!isMarkCodesEnabled(this.configService)) return false;
         const required = await t.query(
-            'SELECT FIRST 1 1 AS X FROM GOODS_CLASSIF WHERE GOODSCODE = ? AND MARK_REQUIRED = 1',
+            `SELECT 1 AS X FROM RDB$DATABASE WHERE ${markRequiredExists('?')}`,
             [Number(goodscode)],
             false,
         );

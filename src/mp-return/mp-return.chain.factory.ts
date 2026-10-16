@@ -14,9 +14,9 @@ import { RestateInvoiceCommand } from './commands/restate-invoice.command';
 import { RecordAcceptCommand } from './commands/record-accept.command';
 import { RunWriteOffCommand } from './commands/run-write-off.command';
 import { AssertWriteOffAllowedCommand } from './commands/assert-write-off-allowed.command';
-import { AllocateSpisCodeCommand } from './commands/allocate-spis-code.command';
+import { AllocateSpisCodeCommand } from '../helpers/spis/allocate-spis-code.command';
 import { StampMarksForSpisCommand } from './commands/stamp-marks-for-spis.command';
-import { CreateWriteOffDocCommand } from './commands/create-write-off-doc.command';
+import { CreateSpisDocCommand } from '../helpers/spis/create-spis-doc.command';
 import { RecordWriteOffCommand } from './commands/record-write-off.command';
 
 /**
@@ -39,7 +39,7 @@ export class MpReturnChainFactory {
         private readonly writeOffAllowed: AssertWriteOffAllowedCommand,
         private readonly allocateSpisCode: AllocateSpisCodeCommand,
         private readonly stampMarks: StampMarksForSpisCommand,
-        private readonly createDoc: CreateWriteOffDocCommand,
+        private readonly createDoc: CreateSpisDocCommand,
         private readonly recordWriteOff: RecordWriteOffCommand,
     ) {}
 
@@ -66,7 +66,7 @@ export class MpReturnChainFactory {
 
     /** Кнопка «Списать» у принятой строки — и вторая половина «Вернуть и списать». */
     writeOff(): CommandChainAsync<WriteOffContext> {
-        return new CommandChainAsync([
+        return new CommandChainAsync<WriteOffContext>([
             this.writeOffAllowed,
             this.allocateSpisCode,
             this.stampMarks,

@@ -1,6 +1,6 @@
 import { ICommandAsync } from '../../interfaces/i.command.acync';
 import { ReturnRefusedError } from '../return-refused.error';
-import { AcceptContext, WriteOffContext } from './return.contexts';
+import { AcceptContext, WriteOffContext, writeOffSpis } from './return.contexts';
 
 /**
  * Стык цепочек «Вернуть и списать»: из контекста приёма строит контекст списания и запускает цепочку
@@ -11,17 +11,21 @@ export class RunWriteOffCommand implements ICommandAsync<AcceptContext> {
 
     async execute(ctx: AcceptContext): Promise<AcceptContext> {
         if (!ctx.osnSpisId) throw new ReturnRefusedError('Не выбрано основание списания');
+        const doc = {
+            goodscode: ctx.card.invoiceLine.goodscode,
+            quan: ctx.card.quan,
+            username: ctx.username,
+            osnSpisId: ctx.osnSpisId,
+            comment: ctx.comment,
+            posting: ctx.line.posting,
+        };
         const writeOff = await this.writeOffChain.execute({
             t: ctx.t,
             service: ctx.line.service,
             extId: ctx.line.extId,
-            posting: ctx.line.posting,
-            goodscode: ctx.card.invoiceLine.goodscode,
-            quan: ctx.card.quan,
             kis: ctx.kis,
-            username: ctx.username,
-            osnSpisId: ctx.osnSpisId,
-            comment: ctx.comment,
+            ...doc,
+            spis: writeOffSpis(doc),
         });
         return { ...ctx, writeOff };
     }

@@ -1,8 +1,6 @@
 import { AssertWriteOffAllowedCommand } from './assert-write-off-allowed.command';
-import { AllocateSpisCodeCommand } from './allocate-spis-code.command';
-import { CreateWriteOffDocCommand } from './create-write-off-doc.command';
 import { RunWriteOffCommand } from './run-write-off.command';
-import { WriteOffContext } from './return.contexts';
+import { WriteOffContext, writeOffSpis } from './return.contexts';
 
 const wctx = (over: Partial<WriteOffContext> = {}): WriteOffContext => ({
     t: {} as any,
@@ -15,6 +13,14 @@ const wctx = (over: Partial<WriteOffContext> = {}): WriteOffContext => ({
     username: 'Кладовщик',
     osnSpisId: 4,
     comment: null,
+    spis: writeOffSpis({
+        goodscode: '552293',
+        username: 'Кладовщик',
+        quan: 1,
+        posting: 'P-1',
+        comment: null,
+        osnSpisId: 4,
+    }),
     ...over,
 });
 
@@ -45,28 +51,6 @@ describe('AssertWriteOffAllowedCommand', () => {
             stockAndReserve: jest.fn(async () => ({ stock: 1, reserved: 1, reservedBy: [20849] })),
         });
         await expect(c.execute(wctx())).rejects.toThrow('Товар в резерве под счёт 20849');
-    });
-});
-
-describe('AllocateSpisCodeCommand', () => {
-    it('контекст выставляется всегда, и без марок', async () => {
-        const stock = { allocateSpisCode: jest.fn(async () => 9485), setSpisContext: jest.fn() };
-        const res = await new AllocateSpisCodeCommand(stock as any).execute(wctx({ kis: [] }));
-        expect(res.spisCode).toBe(9485);
-        expect(stock.setSpisContext).toHaveBeenCalledWith(9485, expect.anything());
-    });
-});
-
-describe('CreateWriteOffDocCommand', () => {
-    it('документа с выданным номером нет — сбой, всё откатится', async () => {
-        const stock = { spisanie: jest.fn(), spisDocExists: jest.fn(async () => false) };
-        await expect(new CreateWriteOffDocCommand(stock as any).execute(wctx({ spisCode: 1 }))).rejects.toThrow(
-            'не создан',
-        );
-        expect(stock.spisanie).toHaveBeenCalledWith(
-            expect.objectContaining({ goodscode: '552293', quan: 1, prim: 'Возврат P-1', osnSpisId: 4 }),
-            expect.anything(),
-        );
     });
 });
 

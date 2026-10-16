@@ -7,7 +7,10 @@ import { FboShortagePeresortDto, FboShortagePeresortResultDto } from './dto/fbo-
 import { PeresortContext } from './peresort/peresort.context';
 import { LoadShortageLineCommand } from './peresort/load-shortage-line.command';
 import { AssertNotMarkedCommand } from './peresort/assert-not-marked.command';
-import { CreatePeresortDocCommand } from './peresort/create-peresort-doc.command';
+import { BuildPeresortDocCommand } from './peresort/build-peresort-doc.command';
+import { AllocateSpisCodeCommand } from '../helpers/spis/allocate-spis-code.command';
+import { CreateSpisDocCommand } from '../helpers/spis/create-spis-doc.command';
+import { inTransaction } from '../helpers/transaction';
 import { PickupLineCommand } from './peresort/pickup-line.command';
 import { CloseShortageCommand } from './peresort/close-shortage.command';
 
@@ -25,32 +28,38 @@ export class PeresortService {
         @Inject(INVOICE_SERVICE) private readonly invoiceService: IInvoice,
         private readonly load: LoadShortageLineCommand,
         private readonly notMarked: AssertNotMarkedCommand,
-        private readonly createDoc: CreatePeresortDocCommand,
+        private readonly buildDoc: BuildPeresortDocCommand,
+        private readonly allocateSpisCode: AllocateSpisCodeCommand,
+        private readonly createDoc: CreateSpisDocCommand,
         private readonly pickup: PickupLineCommand,
         private readonly closeShortage: CloseShortageCommand,
         private readonly eventEmitter: EventEmitter2,
     ) {}
 
     chain(): CommandChainAsync<PeresortContext> {
-        return new CommandChainAsync([this.load, this.notMarked, this.createDoc, this.pickup, this.closeShortage]);
+        return new CommandChainAsync<PeresortContext>([
+            this.load,
+            this.notMarked,
+            this.buildDoc,
+            this.allocateSpisCode,
+            this.createDoc,
+            this.pickup,
+            this.closeShortage,
+        ]);
     }
 
     async apply(posting: string, dto: FboShortagePeresortDto): Promise<FboShortagePeresortResultDto> {
-        const t = await this.invoiceService.getTransaction();
-        let ctx: PeresortContext;
-        try {
-            ctx = await this.chain().execute({
-                t,
-                posting,
-                scode: Number(dto.scode),
-                realpricecode: Number(dto.realpricecode),
-                username: dto.username.trim(),
-            });
-            await t.commit(true);
-        } catch (e) {
-            await t.rollback(true);
-            throw e;
-        }
+        const ctx = await inTransaction(
+            () => this.invoiceService.getTransaction(),
+            (t) =>
+                this.chain().execute({
+                    t,
+                    posting,
+                    scode: Number(dto.scode),
+                    realpricecode: Number(dto.realpricecode),
+                    username: dto.username.trim(),
+                }),
+        );
 
         const what = `${ctx.line.name ?? ctx.line.goodscode} × ${ctx.quantity}`;
         this.logger.log(

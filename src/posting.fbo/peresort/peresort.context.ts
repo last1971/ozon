@@ -1,12 +1,11 @@
-import { FirebirdTransaction } from 'ts-firebird';
 import { ReturnInvoiceLine } from '../../interfaces/i.return.stock';
+import { ISpisContext } from '../../helpers/spis/spis.context';
 
 /** Основание списания «пересортица» (OSN_SPIS.ID) — так оформляют руками в Trade. */
 export const PERESORT_OSN_SPIS_ID = 1;
 
 /** Контекст цепочки «пересортица и подбор» — всё в одной транзакции `t`. */
-export interface PeresortContext {
-    t: FirebirdTransaction;
+export interface PeresortContext extends ISpisContext {
     posting: string;
     scode: number;
     realpricecode: number;
@@ -15,8 +14,6 @@ export interface PeresortContext {
     line?: ReturnInvoiceLine;
     /** LoadShortageLine: недобор строки = сколько приходуем и подбираем. */
     quantity?: number;
-    /** CreatePeresortDoc: номер документа списания. */
-    spisCode?: number;
     /** CloseShortage. */
     shortageClosed?: boolean;
     pickedUp?: boolean;

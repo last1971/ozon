@@ -19,14 +19,13 @@ import { DisbandPodbCommand } from './commands/disband-podb.command';
 import { RestateInvoiceCommand } from './commands/restate-invoice.command';
 import { RecordAcceptCommand } from './commands/record-accept.command';
 import { AssertWriteOffAllowedCommand } from './commands/assert-write-off-allowed.command';
-import { AllocateSpisCodeCommand } from './commands/allocate-spis-code.command';
 import { StampMarksForSpisCommand } from './commands/stamp-marks-for-spis.command';
-import { CreateWriteOffDocCommand } from './commands/create-write-off-doc.command';
+import { SpisModule } from '../helpers/spis/spis.module';
 import { RecordWriteOffCommand } from './commands/record-write-off.command';
 
 /** Экран приёма возвратов маркетплейсов (план marking/sprint/returns_accept_PLAN.md). */
 @Module({
-    imports: [InvoiceModule, MpEventModule, PostingModule],
+    imports: [InvoiceModule, MpEventModule, PostingModule, SpisModule],
     controllers: [MpReturnController],
     providers: [
         MpReturnService,
@@ -45,9 +44,7 @@ import { RecordWriteOffCommand } from './commands/record-write-off.command';
         RestateInvoiceCommand,
         RecordAcceptCommand,
         AssertWriteOffAllowedCommand,
-        AllocateSpisCodeCommand,
         StampMarksForSpisCommand,
-        CreateWriteOffDocCommand,
         RecordWriteOffCommand,
     ],
 })

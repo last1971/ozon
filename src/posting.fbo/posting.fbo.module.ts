@@ -14,14 +14,15 @@ import { FboShortageCloser } from './fbo-shortage-closer';
 import { PeresortService } from './peresort.service';
 import { LoadShortageLineCommand } from './peresort/load-shortage-line.command';
 import { AssertNotMarkedCommand } from './peresort/assert-not-marked.command';
-import { CreatePeresortDocCommand } from './peresort/create-peresort-doc.command';
+import { BuildPeresortDocCommand } from './peresort/build-peresort-doc.command';
+import { SpisModule } from '../helpers/spis/spis.module';
 import { PickupLineCommand } from './peresort/pickup-line.command';
 import { CloseShortageCommand } from './peresort/close-shortage.command';
 
 import { MpEventModule } from '../mp-event/mp-event.module';
 
 @Module({
-    imports: [ProductModule, InvoiceModule, MpEventModule],
+    imports: [ProductModule, InvoiceModule, MpEventModule, SpisModule],
     controllers: [FboShortageController],
     providers: [
         PostingFboService,
@@ -36,7 +37,7 @@ import { MpEventModule } from '../mp-event/mp-event.module';
         PeresortService,
         LoadShortageLineCommand,
         AssertNotMarkedCommand,
-        CreatePeresortDocCommand,
+        BuildPeresortDocCommand,
         PickupLineCommand,
         CloseShortageCommand,
     ],

@@ -1,7 +1,7 @@
 import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { LoadShortageLineCommand } from './load-shortage-line.command';
 import { AssertNotMarkedCommand } from './assert-not-marked.command';
-import { CreatePeresortDocCommand } from './create-peresort-doc.command';
+import { BuildPeresortDocCommand } from './build-peresort-doc.command';
 import { PickupLineCommand } from './pickup-line.command';
 import { CloseShortageCommand } from './close-shortage.command';
 import { PERESORT_OSN_SPIS_ID, PeresortContext } from './peresort.context';
@@ -75,34 +75,16 @@ describe('AssertNotMarkedCommand', () => {
     });
 });
 
-describe('CreatePeresortDocCommand', () => {
-    const stock = {
-        allocateSpisCode: jest.fn().mockResolvedValue(9720),
-        setSpisContext: jest.fn(),
-        spisanie: jest.fn(),
-        spisDocExists: jest.fn().mockResolvedValue(true),
-    };
-    const cmd = new CreatePeresortDocCommand(stock as any);
-
-    it('списание с МИНУСОМ на недобор, основание «пересортица», номер заранее и в контекст', async () => {
-        const res = await cmd.execute(ctx({ line: line() as any, quantity: 1 }));
-        expect(stock.setSpisContext).toHaveBeenCalledWith(9720, t);
-        expect(stock.spisanie).toHaveBeenCalledWith(
-            {
-                goodscode: '557614',
-                username: 'Ластовка',
-                quan: -1,
-                prim: 'пересортица, недобор FBO, счёт 500 (P-1)',
-                osnSpisId: PERESORT_OSN_SPIS_ID,
-            },
-            t,
-        );
-        expect(res.spisCode).toBe(9720);
-    });
-
-    it('документа с выданным номером нет → ошибка (всё откатится)', async () => {
-        stock.spisDocExists.mockResolvedValueOnce(false);
-        await expect(cmd.execute(ctx({ line: line() as any, quantity: 1 }))).rejects.toThrow(/9720 не создан/);
+describe('BuildPeresortDocCommand', () => {
+    it('документ: списание с МИНУСОМ на недобор, основание «пересортица», примечание со счётом', async () => {
+        const res = await new BuildPeresortDocCommand().execute(ctx({ line: line() as any, quantity: 1 }));
+        expect(res.spis).toEqual({
+            goodscode: '557614',
+            username: 'Ластовка',
+            quan: -1,
+            prim: 'пересортица, недобор FBO, счёт 500 (P-1)',
+            osnSpisId: PERESORT_OSN_SPIS_ID,
+        });
     });
 });
 
