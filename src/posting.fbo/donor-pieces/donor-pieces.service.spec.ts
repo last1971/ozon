@@ -157,7 +157,7 @@ describe('DonorPiecesService', () => {
             const [, subject, body, topic] = events.emit.mock.calls[0];
             expect(subject).toBe('Фасовка доноров FBO: разобрать руками 1');
             expect(body).toContain('Счёт №68058');
-            expect(body).toContain('разбейте строку');
+            expect(body).toContain('Разбейте строку');
             expect(topic).toBe('OPS');
 
             events.emit.mockClear();

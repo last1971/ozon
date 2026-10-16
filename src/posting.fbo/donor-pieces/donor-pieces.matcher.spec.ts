@@ -1,4 +1,5 @@
-import { journalState, matchSupply, parseSupplyNumber } from './donor-pieces.matcher';
+import * as iconv from 'iconv-lite';
+import { journalSafe, journalState, matchSupply, parseSupplyNumber } from './donor-pieces.matcher';
 import { DonorPiecesInvoice, DonorPiecesLine } from './donor-pieces.types';
 
 const line = (realpricecode: number, goodscode: string, quantity: number, pieces: number | null = null): DonorPiecesLine => ({
@@ -56,7 +57,7 @@ describe('matchSupply', () => {
         const res = matchSupply(invoice([line(1, '420357', 5)]), [{ offerId: '420357-2', units: 3 }]);
         expect(res.fills).toEqual([]);
         expect(res.disputes).toEqual([
-            { realpricecode: 1, goodscode: '420357', reason: 'в счёте 5 шт, в поставке 6 шт (420357-2 × 3)' },
+            { realpricecode: 1, goodscode: '420357', reason: 'в счёте 5 шт, в поставке 6 шт (420357-2: 3 уп.)' },
         ]);
     });
 
@@ -71,7 +72,7 @@ describe('matchSupply', () => {
             { offerId: '420357-2', units: 3 },
         ]);
         expect(res.fills).toEqual([]);
-        expect(res.disputes[0].reason).toContain('несколькими фасовками: 420357 × 2, 420357-2 × 3');
+        expect(res.disputes[0].reason).toContain('несколькими фасовками: 420357: 2 уп., 420357-2: 3 уп.');
     });
 
     it('две фасовки, две строки с однозначными штуками → каждой своя', () => {
@@ -122,5 +123,28 @@ describe('journalState', () => {
         expect(a.length).toBeLessThanOrEqual(40);
         expect(journalState({ outcome: 'DISPUTE', disputes: [d('y'), d('x')] })).toBe(a);
         expect(journalState({ outcome: 'DISPUTE', disputes: [d('x')] })).not.toBe(a);
+    });
+});
+
+describe('journalSafe — текст переживает однобайтовую кириллицу журнала', () => {
+    const roundTrip = (t: string, cp: string) => iconv.decode(iconv.encode(t, cp), cp);
+
+    it('×, тире, ёлочки → ?; кириллица, ё и цифры целы; результат кодируется без потерь в cp866 и cp1251', () => {
+        const safe = journalSafe('товар 420357-2 × 3 — «разбейте» строку, счёт №68058 Ёё');
+        expect(safe).toBe('товар 420357-2 ? 3 ? ?разбейте? строку, счёт ?68058 Ёё');
+        for (const cp of ['cp866', 'cp1251']) expect(roundTrip(safe, cp)).toBe(safe);
+    });
+
+    it('все тексты споров сопоставления безопасны для журнала как есть', () => {
+        const inv = { scode: 1, invoiceNumber: 1, prim: 'x', supplyNumber: '2000062193308' };
+        const reasons = [
+            ...matchSupply({ ...inv, lines: [{ realpricecode: 1, goodscode: '1', quantity: 5, pieces: null }] }, [{ offerId: '1-2', units: 3 }]).disputes,
+            ...matchSupply({ ...inv, lines: [{ realpricecode: 1, goodscode: '1', quantity: 8, pieces: null }] }, [{ offerId: '1', units: 2 }, { offerId: '1-2', units: 3 }]).disputes,
+            ...matchSupply({ ...inv, lines: [{ realpricecode: 1, goodscode: '1', quantity: 3, pieces: null }, { realpricecode: 2, goodscode: '1', quantity: 3, pieces: null }] }, [{ offerId: '1-2', units: 3 }]).disputes,
+            ...matchSupply({ ...inv, lines: [{ realpricecode: 1, goodscode: '1', quantity: 0, pieces: null }] }, [{ offerId: '1-0', units: 3 }]).disputes,
+            ...matchSupply({ ...inv, lines: [{ realpricecode: 1, goodscode: '1', quantity: 3, pieces: null }] }, []).disputes,
+        ].map((d) => d.reason);
+        expect(reasons).toHaveLength(5);
+        for (const r of reasons) expect(journalSafe(r)).toBe(r);
     });
 });

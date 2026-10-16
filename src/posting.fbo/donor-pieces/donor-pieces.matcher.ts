@@ -37,7 +37,7 @@ function supplyByGood(items: SupplyItem[]): Map<string, { packs: PackUnits; offe
 const describeOffers = (offers: Map<string, number>) =>
     [...offers.entries()]
         .sort(([a], [b]) => a.localeCompare(b))
-        .map(([offer, units]) => `${offer} × ${units}`)
+        .map(([offer, units]) => `${offer}: ${units} уп.`)
         .join(', ');
 
 /**
@@ -99,7 +99,7 @@ export function matchSupply(
 
         const assigned = assignByQuantity(lines, entry.packs);
         if (!assigned) {
-            dispute(`товар в поставке несколькими фасовками: ${describeOffers(entry.offers)} — разбейте строку по фасовкам`);
+            dispute(`товар в поставке несколькими фасовками: ${describeOffers(entry.offers)}. Разбейте строку по фасовкам`);
             continue;
         }
         for (const l of empty) fills.push({ realpricecode: l.realpricecode, goodscode: gc, pieces: assigned.get(l.realpricecode) });
@@ -126,6 +126,15 @@ function assignByQuantity(lines: DonorPiecesLine[], packs: PackUnits): Map<numbe
         free.delete(coeff);
     }
     return result;
+}
+
+/**
+ * Текст для журнала MP_EVENT: колонки там в однобайтовой кириллице (CYRL), символ вне неё
+ * («×», тире, кавычки-ёлочки) роняет всю транзакцию «Cannot transliterate» (16.10.2026, опт).
+ * Оставляем латиницу, кириллицу, цифры и ASCII-пунктуацию, остальное — «?».
+ */
+export function journalSafe(text: string): string {
+    return text.replace(/[^\x20-\x7E\n\u0410-\u044F\u0401\u0451]/g, '?');
 }
 
 /**

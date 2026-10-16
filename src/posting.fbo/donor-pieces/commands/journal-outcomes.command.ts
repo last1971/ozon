@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ICommandAsync } from '../../../interfaces/i.command.acync';
 import { MpEventService } from '../../../mp-event/mp-event.service';
-import { journalState } from '../donor-pieces.matcher';
+import { journalSafe, journalState } from '../donor-pieces.matcher';
 import { DonorPiecesContext, DonorPiecesResult } from '../donor-pieces.types';
 
 /**
@@ -28,7 +28,11 @@ export class JournalOutcomesCommand implements ICommandAsync<DonorPiecesContext>
                     extId: invoice.supplyNumber ?? `S${invoice.scode}`,
                     state: journalState(result),
                     posting: String(invoice.invoiceNumber),
-                    payload: { scode: invoice.scode, prim: invoice.prim, disputes: result.disputes },
+                    payload: {
+                        scode: invoice.scode,
+                        prim: journalSafe(invoice.prim),
+                        disputes: result.disputes.map((d) => ({ ...d, reason: journalSafe(d.reason) })),
+                    },
                 },
                 ctx.t,
             );
