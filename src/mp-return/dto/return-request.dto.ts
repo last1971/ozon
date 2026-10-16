@@ -1,12 +1,29 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { ArrayMaxSize, IsArray, IsIn, IsInt, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+    ArrayMaxSize,
+    ArrayMinSize,
+    IsArray,
+    IsIn,
+    IsInt,
+    IsNotEmpty,
+    IsOptional,
+    IsString,
+    MaxLength,
+} from 'class-validator';
 import { Type } from 'class-transformer';
 
 export const RETURN_ACTIONS = ['return', 'return-writeoff', 'problem'] as const;
 export type ReturnAction = (typeof RETURN_ACTIONS)[number];
 
-/** Решение кладовщика по строке возврата. */
+/** Решение кладовщика по одному или нескольким возвратам (вся посылка одной кнопкой). */
 export class AcceptReturnDto {
+    @ApiProperty({ type: [String], description: 'id возвратов у маркетплейса; один возврат — список из одного' })
+    @IsArray()
+    @ArrayMinSize(1)
+    @ArrayMaxSize(200)
+    @IsString({ each: true })
+    extIds: string[];
+
     @ApiProperty({ enum: RETURN_ACTIONS, description: 'вернуть / вернуть и списать / проблема' })
     @IsIn(RETURN_ACTIONS as unknown as string[])
     action: ReturnAction;
@@ -17,7 +34,10 @@ export class AcceptReturnDto {
     @MaxLength(80)
     username: string;
 
-    @ApiPropertyOptional({ type: [String], description: 'Сырые сканы марок — разбор на бэке единой читалкой КМ' })
+    @ApiPropertyOptional({
+        type: [String],
+        description: 'Сырые сканы марок на всю кнопку — разбор на бэке единой читалкой КМ, раскладка по возвратам',
+    })
     @IsOptional()
     @IsArray()
     @ArrayMaxSize(500)

@@ -41,21 +41,17 @@ export class MpReturnController {
         return this.service.reasons();
     }
 
-    @Post(':service/:extId/accept')
+    @Post(':service/accept')
     @ApiOperation({
-        summary: 'Решение по строке возврата: вернуть / вернуть и списать / проблема',
-        description: 'Одна транзакция: отказ любого шага откатывает всё, включая приём при «вернуть и списать».',
+        summary: 'Решение по возвратам: вернуть / вернуть и списать / проблема — один или вся посылка',
+        description:
+            'Одна транзакция на все возвраты: отказ любого шага по любому возврату откатывает всё, включая приём при «вернуть и списать».',
     })
     @ApiParam({ name: 'service', enum: ['OZON', 'WB', 'YANDEX'] })
-    @ApiParam({ name: 'extId', description: 'id возврата у маркетплейса' })
     @ApiBody({ type: AcceptReturnDto })
     @ApiOkResponse({ type: ReturnActionResultDto })
-    accept(
-        @Param('service') service: MpService,
-        @Param('extId') extId: string,
-        @Body() body: AcceptReturnDto,
-    ): Promise<ReturnActionResultDto> {
-        return this.service.accept(service, extId, body);
+    accept(@Param('service') service: MpService, @Body() body: AcceptReturnDto): Promise<ReturnActionResultDto> {
+        return this.service.accept(service, body);
     }
 
     @Post(':service/:extId/write-off')

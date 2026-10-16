@@ -19,6 +19,7 @@ import { ReturnLineDto } from './dto/return-line.dto';
 import { ReturnCardDto, ReturnRowDto } from './dto/return-card.dto';
 import { AcceptReturnDto, ReturnActionResultDto, WriteOffReturnDto } from './dto/return-request.dto';
 import { AcceptContext } from './commands/return.contexts';
+import { MarkScanPool } from './mark-scan.pool';
 
 /** Блокировка записи кроном возвратов (раз в 5 минут правит те же коды). */
 const LOCK_ERROR = /deadlock|lock conflict|concurrent update/i;
@@ -106,23 +107,43 @@ export class MpReturnService {
         });
     }
 
-    async accept(service: MpService, extId: string, dto: AcceptReturnDto): Promise<ReturnActionResultDto> {
-        const line = await this.resolveLine(service, extId, dto.posting);
-        const ctx = await this.write((t) =>
-            this.factory.forAction(dto.action).execute({
-                t,
-                line,
-                action: dto.action,
-                username: dto.username.trim(),
-                scans: dto.scans ?? [],
-                comment: dto.comment?.trim() || null,
-                osnSpisId: dto.osnSpisId ?? null,
-                kis: [],
-                retiredKis: [],
-            }),
-        );
-        this.notifyAccepted(ctx);
-        return { ok: true, message: this.acceptMessage(ctx) };
+    /**
+     * Решение кладовщика по одному или нескольким возвратам (вся посылка одной кнопкой).
+     * Та же цепочка по каждому возврату по очереди в одной транзакции; марки — общий пул кнопки.
+     * Отказ по любому возврату откатывает все.
+     */
+    async accept(service: MpService, dto: AcceptReturnDto): Promise<ReturnActionResultDto> {
+        const lines = await this.resolveLines(service, [...new Set(dto.extIds)], dto.posting);
+        const marks = new MarkScanPool(dto.scans ?? []);
+        const done = await this.write(async (t) => {
+            const result: AcceptContext[] = [];
+            for (const line of lines) {
+                const ctx = await this.factory
+                    .forAction(dto.action)
+                    .execute({
+                        t,
+                        line,
+                        action: dto.action,
+                        username: dto.username.trim(),
+                        marks,
+                        comment: dto.comment?.trim() || null,
+                        osnSpisId: dto.osnSpisId ?? null,
+                        kis: [],
+                        retiredKis: [],
+                    })
+                    .catch((e) => {
+                        if (lines.length > 1 && e instanceof ReturnRefusedError) {
+                            throw new ReturnRefusedError(`Возврат ${line.extId} (${line.offerId}): ${e.message}`);
+                        }
+                        throw e;
+                    });
+                result.push(ctx);
+            }
+            marks.assertAllUsed();
+            return result;
+        });
+        this.notifyAccepted(done);
+        return { ok: true, message: this.acceptMessage(done) };
     }
 
     async writeOff(service: MpService, extId: string, dto: WriteOffReturnDto): Promise<ReturnActionResultDto> {
@@ -162,16 +183,21 @@ export class MpReturnService {
         return source;
     }
 
-    /** Строка возврата по id; найденная живьём (в журнале её ещё нет) — по номеру отправления. */
-    private async resolveLine(service: MpService, extId: string, posting?: string): Promise<ReturnLineDto> {
+    /**
+     * Строки возвратов по id. Отправление известно — одним поиском по нему (там же найденные живьём,
+     * которых в журнале ещё нет), остальные — по id.
+     */
+    private async resolveLines(service: MpService, extIds: string[], posting?: string): Promise<ReturnLineDto[]> {
         const source = this.source(service);
-        const byId = (await source.find({ kind: 'extId', value: extId }))[0];
-        if (byId) return byId;
-        const byPosting = posting
-            ? (await source.find({ kind: 'posting', value: posting })).find((l) => l.extId === extId)
-            : null;
-        if (!byPosting) throw new NotFoundException(`Возврат ${extId} не найден`);
-        return byPosting;
+        const byPosting = posting ? await source.find({ kind: 'posting', value: posting }) : [];
+        const lines: ReturnLineDto[] = [];
+        for (const extId of extIds) {
+            const line =
+                byPosting.find((l) => l.extId === extId) ?? (await source.find({ kind: 'extId', value: extId }))[0];
+            if (!line) throw new NotFoundException(`Возврат ${extId} не найден`);
+            lines.push(line);
+        }
+        return lines;
     }
 
     private read<T>(fn: (t: FirebirdTransaction) => Promise<T>): Promise<T> {
@@ -193,31 +219,59 @@ export class MpReturnService {
         }
     }
 
-    private acceptMessage(ctx: AcceptContext): string {
-        if (ctx.action === 'problem') return 'Отмечено проблемой';
-        const base = `Принято ${ctx.card.quan} шт, счёт №${ctx.card.invoice?.number ?? '?'}`;
-        return ctx.writeOff ? `${base}; списано, документ ${ctx.writeOff.spisCode}` : base;
+    private acceptMessage(done: AcceptContext[]): string {
+        const s = summarizeAccepted(done);
+        if (s.action === 'problem')
+            return done.length > 1 ? `Отмечено проблемой: ${done.length}` : 'Отмечено проблемой';
+        const counted = done.length > 1 ? ` (возвратов ${done.length})` : '';
+        const base = `Принято ${s.quan} шт${counted}, счёт №${s.invoices.join(', №')}`;
+        return s.spisCodes.length ? `${base}; списано, ${docsText(s.spisCodes)}` : base;
     }
 
-    /** После commit — замыкание, не шаг цепочки: при откате уведомлять не о чем. */
-    private notifyAccepted(ctx: AcceptContext): void {
-        const { line, card } = ctx;
-        const goods = card.invoiceLine?.name ?? line.productName ?? line.offerId;
-        const head = `${line.posting}: счёт №${card.invoice?.number ?? '?'}, ${goods} — ${card.quan} шт`;
-        if (ctx.action === 'problem') {
+    /** После commit — замыкание, не шаг цепочки: при откате уведомлять не о чем. Одно уведомление на кнопку. */
+    private notifyAccepted(done: AcceptContext[]): void {
+        const s = summarizeAccepted(done);
+        const { line, username, comment } = done[0];
+        if (s.action === 'problem') {
             this.eventEmitter.emit(
                 'error.message',
                 'Проблема с возвратом',
-                `${head}\nПричина покупателя: ${line.reason ?? '—'}\nКладовщик (${ctx.username}): ${ctx.comment}`,
+                `${s.heads.join('\n')}\nПричина покупателя: ${line.reason ?? '—'}\nКладовщик (${username}): ${comment}`,
                 NotifyTopic.OPS,
             );
             return;
         }
-        const parts = [`${head}, принял ${ctx.username}`];
-        if (ctx.writeOff) parts.push(`Списан: документ ${ctx.writeOff.spisCode}`);
-        if (ctx.retiredKis.length && !ctx.writeOff) {
-            parts.push(`Вернуть в оборот в Честном знаке (${ctx.retiredKis.length}):\n${ctx.retiredKis.join('\n')}`);
+        const parts = [`${s.heads.join('\n')}, принял ${username}`];
+        if (s.spisCodes.length) parts.push(`Списан: ${docsText(s.spisCodes)}`);
+        if (s.retiredKis.length && !s.spisCodes.length) {
+            parts.push(`Вернуть в оборот в Честном знаке (${s.retiredKis.length}):\n${s.retiredKis.join('\n')}`);
         }
         this.eventEmitter.emit('error.message', 'Принят возврат', parts.join('\n'), NotifyTopic.OPS);
     }
 }
+
+/** Сводка кнопки: строки «отправление: счёт, товар — N шт» по товару, документы списания, коды в оборот. */
+function summarizeAccepted(done: AcceptContext[]) {
+    const heads = new Map<string, { text: string; quan: number; count: number }>();
+    for (const { line, card } of done) {
+        const goods = card.invoiceLine?.name ?? line.productName ?? line.offerId;
+        const text = `${line.posting}: счёт №${card.invoice?.number ?? '?'}, ${goods}`;
+        const head = heads.get(text) ?? { text, quan: 0, count: 0 };
+        head.quan += card.quan;
+        head.count += 1;
+        heads.set(text, head);
+    }
+    return {
+        action: done[0].action,
+        quan: done.reduce((sum, c) => sum + c.card.quan, 0),
+        invoices: [...new Set(done.map((c) => c.card.invoice?.number ?? '?'))],
+        heads: [...heads.values()].map(
+            (h) => `${h.text} — ${h.quan} шт${h.count > 1 ? ` (возвратов ${h.count})` : ''}`,
+        ),
+        spisCodes: done.map((c) => c.writeOff?.spisCode).filter((c) => c != null),
+        retiredKis: done.flatMap((c) => c.retiredKis),
+    };
+}
+
+const docsText = (codes: number[]): string =>
+    codes.length === 1 ? `документ ${codes[0]}` : `документы ${codes.join(', ')}`;

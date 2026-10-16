@@ -8,6 +8,7 @@ import { AssertAcceptableCommand } from './assert-acceptable.command';
 import { AssertProblemCommentCommand } from './assert-problem-comment.command';
 import { ReturnRefusedError } from '../return-refused.error';
 import { AcceptContext } from './return.contexts';
+import { MarkScanPool } from '../mark-scan.pool';
 
 const KI1 = '0104650194492385215gpBxjCjAX37v';
 const KI2 = '0104650194492385215gpBxjCjAX38v';
@@ -27,7 +28,7 @@ const ctx = (over: any = {}, card: any = {}): AcceptContext =>
         line: { service: 'OZON', extId: '1', posting: 'P-1', units: 1 } as any,
         action: 'return',
         username: 'Кладовщик',
-        scans: [],
+        marks: new MarkScanPool([]),
         comment: null,
         osnSpisId: null,
         kis: [],
@@ -61,7 +62,13 @@ describe('проверки приёма', () => {
 });
 
 describe('ValidateMarksCommand', () => {
-    const run = (scans: string[], card: any) => new ValidateMarksCommand().execute(ctx({ scans }, card));
+    /** Шаг + проверка пула после кнопки — как в сервисе. */
+    const run = async (scans: string[], card: any) => {
+        const marks = new MarkScanPool(scans);
+        const res = await new ValidateMarksCommand().execute(ctx({ marks }, card));
+        marks.assertAllUsed();
+        return res;
+    };
 
     it('кодов на строке нет — сканы не нужны', async () => {
         expect((await run([], {})).kis).toEqual([]);

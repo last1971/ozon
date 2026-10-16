@@ -3,6 +3,7 @@ import { ReturnLineDto } from '../dto/return-line.dto';
 import { ReturnCardDto } from '../dto/return-card.dto';
 import { ReturnAction } from '../dto/return-request.dto';
 import { ISpisContext, SpisDoc } from '../../helpers/spis/spis.context';
+import { MarkScanPool } from '../mark-scan.pool';
 
 /** Контекст цепочки приёма строки возврата. Всё — в одной транзакции `t`. */
 export interface AcceptContext {
@@ -10,8 +11,8 @@ export interface AcceptContext {
     line: ReturnLineDto;
     action: ReturnAction;
     username: string;
-    /** Сырые сканы марок с экрана. */
-    scans: string[];
+    /** Марки, отсканированные на кнопку, — общие для всех её возвратов. */
+    marks: MarkScanPool;
     comment: string | null;
     osnSpisId: number | null;
     /** LoadReturnCard: свежий снимок внутри транзакции. */

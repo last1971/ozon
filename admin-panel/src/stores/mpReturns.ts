@@ -78,9 +78,10 @@ export const mpReturnsStore = defineStore("mpReturnsStore", {
             this.cardIndex = Math.max(0, cards.findIndex((c) => c.canAccept || c.canWriteOff));
             this.resetInput();
         },
+        /** Марки не сбрасываем: их сканируют на всю посылку, переход по вкладкам их не теряет. */
         selectCard(i: number) {
             this.cardIndex = i;
-            this.resetInput();
+            this.resetCardInput();
         },
         closeCard() {
             this.cards = [];
@@ -88,6 +89,10 @@ export const mpReturnsStore = defineStore("mpReturnsStore", {
         },
         resetInput() {
             this.markScans = [];
+            this.resetCardInput();
+        },
+        /** Комментарий и основание списания — свои у каждой карточки. */
+        resetCardInput() {
             this.comment = '';
             const reason = this.card?.line.reason ?? '';
             this.osnSpisId = /брак|поврежд|не работает|дефект|сломан/i.test(reason) ? 4 : this.osnSpisId ?? 4;
@@ -99,28 +104,40 @@ export const mpReturnsStore = defineStore("mpReturnsStore", {
         removeMarkScan(raw: string) {
             this.markScans = this.markScans.filter((s) => s !== raw);
         },
-        async act(action: ReturnAction) {
-            const card = this.card;
-            if (!card) return;
-            await this.post(`/api/mp-return/${card.line.service}/${encodeURIComponent(card.line.extId)}/accept`, {
-                action,
-                username: this.username.trim(),
-                scans: this.markScans,
-                comment: this.comment.trim() || undefined,
-                posting: card.line.posting,
-                osnSpisId: action === 'return-writeoff' ? this.osnSpisId : undefined,
-            });
+        /** Решение по одной карточке или по всей посылке — один запрос, одна транзакция на бэке. */
+        async act(action: ReturnAction, group?: ReturnCard[]) {
+            const cards = group ?? (this.card ? [this.card] : []);
+            const first = cards[0];
+            if (!first) return;
+            await this.post(
+                `/api/mp-return/${first.line.service}/accept`,
+                {
+                    action,
+                    extIds: cards.map((c) => c.line.extId),
+                    username: this.username.trim(),
+                    scans: this.markScans,
+                    comment: this.comment.trim() || undefined,
+                    posting: first.line.posting,
+                    osnSpisId: action === 'return-writeoff' ? this.osnSpisId : undefined,
+                },
+                // Перечитать тем же, что сканировали: одна карточка — штрихкодом её этикетки, посылка — отправлением.
+                cards.length === 1 ? (first.line.barcode ?? first.line.posting) : first.line.posting,
+            );
         },
         async writeOff() {
             const card = this.card;
             if (!card) return;
-            await this.post(`/api/mp-return/${card.line.service}/${encodeURIComponent(card.line.extId)}/write-off`, {
-                username: this.username.trim(),
-                osnSpisId: this.osnSpisId,
-                comment: this.comment.trim() || undefined,
-            });
+            await this.post(
+                `/api/mp-return/${card.line.service}/${encodeURIComponent(card.line.extId)}/write-off`,
+                {
+                    username: this.username.trim(),
+                    osnSpisId: this.osnSpisId,
+                    comment: this.comment.trim() || undefined,
+                },
+                card.line.barcode ?? card.line.posting,
+            );
         },
-        async post(url: string, body: unknown) {
+        async post(url: string, body: unknown, refreshBy: string) {
             const card = this.card!;
             this.errorMessage = '';
             this.okMessage = '';
@@ -128,8 +145,7 @@ export const mpReturnsStore = defineStore("mpReturnsStore", {
             try {
                 const res = await axios.post<{ ok: boolean; message: string }>(url, body);
                 this.okMessage = `${card.line.posting}: ${res.data.message}`;
-                // Перечитать карточку тем же, что сканировали: штрихкод этикетки есть у каждой записи журнала.
-                await Promise.all([this.lookup(card.line.barcode ?? card.line.posting), this.loadList()]);
+                await Promise.all([this.lookup(refreshBy), this.loadList()]);
                 this.okMessage = `${card.line.posting}: ${res.data.message}`;
             } catch (e: any) {
                 this.errorMessage = e.response?.data?.message || e.message;

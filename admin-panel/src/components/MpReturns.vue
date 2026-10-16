@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { mpReturnsStore } from "@/stores/mpReturns";
 import UsernameField from "./UsernameField.vue";
-import type { ReturnRowStatus } from "@/contracts/mp-return.dto";
+import type { ReturnCard, ReturnRowStatus } from "@/contracts/mp-return.dto";
 import { computed, nextTick, onMounted, ref } from "vue";
 
 const store = mpReturnsStore();
@@ -17,30 +17,51 @@ onMounted(() => {
 const card = computed(() => store.card);
 /** Код маркировки: (01)GTIN(14)(21)… — всё остальное считаем сканом посылки. */
 const isMarkScan = (text: string) => /^\(?01\)?\d{14}\(?21\)?/.test(text.trim());
-const scannedPieces = computed(() => {
-    const c = card.value;
-    if (!c) return 0;
+/** Штуки по отсканированным маркам, которые есть на строках этих карточек (количественный код — своим количеством). */
+function scannedPieces(cards: ReturnCard[]): number {
+    const codes = cards.filter((c) => c.marksRequired).flatMap((c) => c.codes);
     return store.markScans.reduce((sum, raw) => {
-        const code = c.codes.find((k) => raw.trim().startsWith(k.ki) || raw.replace(/\((\d{2})\)/g, '$1').startsWith(k.ki));
+        const code = codes.find((k) => raw.trim().startsWith(k.ki) || raw.replace(/\((\d{2})\)/g, '$1').startsWith(k.ki));
         return sum + (code?.quantity ?? 0);
     }, 0);
-});
-const marksOk = computed(() => !card.value?.marksRequired || scannedPieces.value === card.value.quan);
+}
+/** Сколько штук должны покрыть марки. */
+const neededPieces = (cards: ReturnCard[]) => cards.filter((c) => c.marksRequired).reduce((sum, c) => sum + c.quan, 0);
+const marksOk = (cards: ReturnCard[]) => scannedPieces(cards) === neededPieces(cards);
 const userOk = computed(() => store.username.trim().length > 0);
-const canReturn = computed(() => !!card.value?.canAccept && marksOk.value && userOk.value && !store.isSaving);
+const canAcceptAll = (cards: ReturnCard[]) =>
+    cards.length > 0 && cards.every((c) => c.canAccept) && marksOk(cards) && userOk.value && !store.isSaving;
+const canReturn = computed(() => !!card.value && canAcceptAll([card.value]));
+
+/** Посылка: необработанные возвраты, если их больше одного — для кнопок «все». */
+const groupCards = computed(() => store.cards.filter((c) => !c.accepted));
+const isGroup = computed(() => groupCards.value.length > 1);
+const canReturnGroup = computed(() => isGroup.value && canAcceptAll(groupCards.value));
+/** «SSR-40AA-H × 25 шт» по каждому товару посылки. */
+const groupSummary = computed(() => {
+    const byGoods = new Map<string, number>();
+    for (const c of groupCards.value) {
+        const name = c.invoiceLine?.name ?? c.line.productName ?? c.line.offerId;
+        byGoods.set(name, (byGoods.get(name) ?? 0) + c.quan);
+    }
+    return [...byGoods].map(([name, quan]) => `${name} × ${quan} шт`).join(', ');
+});
+/** Марки сканируют на то, что принимают: всю посылку или одну карточку. */
+const marksScope = computed<ReturnCard[]>(() => (isGroup.value ? groupCards.value : card.value ? [card.value] : []));
+const marksExpected = computed(() => marksScope.value.some((c) => c.marksRequired && c.canAccept));
 
 async function onScan() {
     const text = scanInput.value;
     scanInput.value = '';
-    if (card.value?.marksRequired && card.value.canAccept && isMarkScan(text)) store.addMarkScan(text);
+    if (marksExpected.value && isMarkScan(text)) store.addMarkScan(text);
     else await store.lookup(text);
     focusScan();
 }
 function focusScan() {
     nextTick(() => scanField.value?.focus());
 }
-async function act(action: 'return' | 'return-writeoff' | 'problem') {
-    await store.act(action);
+async function act(action: 'return' | 'return-writeoff' | 'problem', cards?: ReturnCard[]) {
+    await store.act(action, cards);
     focusScan();
 }
 async function writeOff() {
@@ -93,7 +114,7 @@ const fmtDateTime = (d: string | null) => (d ? new Date(d).toLocaleString() : '�
         <v-text-field
             ref="scanField"
             v-model="scanInput"
-            :label="card?.marksRequired && card.canAccept ? 'Скан марки или новой посылки' : 'Скан этикетки возврата ii…, номер отправления или заказа'"
+            :label="marksExpected ? 'Скан марки или новой посылки' : 'Скан этикетки возврата ii…, номер отправления или заказа'"
             prepend-inner-icon="mdi-barcode-scan"
             density="comfortable"
             autofocus
@@ -106,6 +127,22 @@ const fmtDateTime = (d: string | null) => (d ? new Date(d).toLocaleString() : '�
             <v-tabs v-if="store.cards.length > 1" :model-value="store.cardIndex" density="compact" @update:model-value="store.selectCard(Number($event))">
                 <v-tab v-for="(c, i) in store.cards" :key="c.line.extId" :value="i">{{ c.line.offerId }}</v-tab>
             </v-tabs>
+            <v-alert v-if="isGroup" type="info" variant="tonal" density="compact" class="ma-3">
+                <div>
+                    В посылке {{ store.cards.length }} возвратов, не обработано <b>{{ groupCards.length }}</b>: {{ groupSummary }}
+                </div>
+                <div v-if="groupCards.some((c) => !c.canAccept)" class="text-error">
+                    Все сразу принять нельзя: есть возвраты с запретом — смотрите их вкладки
+                </div>
+                <div class="mt-2">
+                    <v-btn color="primary" variant="flat" class="me-2" :disabled="!canReturnGroup" :loading="store.isSaving" @click="act('return', groupCards)">
+                        Вернуть все ({{ groupCards.length }})
+                    </v-btn>
+                    <v-btn color="primary" variant="tonal" :disabled="!canReturnGroup || !store.osnSpisId" :loading="store.isSaving" @click="act('return-writeoff', groupCards)">
+                        Вернуть и списать все ({{ groupCards.length }})
+                    </v-btn>
+                </div>
+            </v-alert>
             <v-card-title class="text-subtitle-1 d-flex align-center">
                 Возврат {{ card.line.extId }} · {{ card.line.posting }} · {{ card.line.schema ?? '' }}
                 <v-spacer />
@@ -136,9 +173,9 @@ const fmtDateTime = (d: string | null) => (d ? new Date(d).toLocaleString() : '�
                     <div v-if="card.accepted.comment" class="mt-1">Комментарий: {{ card.accepted.comment }}</div>
                 </div>
 
-                <div v-if="card.marksRequired && card.canAccept" class="mt-3">
-                    <div :class="marksOk ? 'text-success' : 'text-error'">
-                        Марки: отсканировано на {{ scannedPieces }} из {{ card.quan }} шт
+                <div v-if="marksExpected" class="mt-3">
+                    <div :class="marksOk(marksScope) ? 'text-success' : 'text-error'">
+                        Марки{{ isGroup ? ' на всю посылку' : '' }}: отсканировано на {{ scannedPieces(marksScope) }} из {{ neededPieces(marksScope) }} шт
                     </div>
                     <v-chip v-for="s in store.markScans" :key="s" closable class="me-1 mt-1" @click:close="store.removeMarkScan(s)">
                         {{ s.slice(0, 31) }}…
