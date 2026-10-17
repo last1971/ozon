@@ -111,6 +111,20 @@ describe('MpEventService', () => {
             expect(rows[0].extId).toBe('789-1');
         });
 
+        it('listSettledUnhandled добавляет тишину по LAST_SEEN числом в тексте, не параметром', async () => {
+            query.mockResolvedValueOnce([{ EXT_ID: '10296', POSTING: null, FIRST_SEEN: '2026-10-17T00:00:00' }]);
+            const rows = await service.listSettledUnhandled('TRADE', 'INCOMING', 'pending', 15);
+            expect(query.mock.calls[0][0]).toContain('LAST_SEEN < DATEADD(-15 MINUTE TO CURRENT_TIMESTAMP)');
+            expect(query.mock.calls[0][1]).toEqual(['TRADE', 'INCOMING', 'pending']);
+            expect(rows[0]).toEqual({ extId: '10296', posting: null, firstSeen: new Date('2026-10-17T00:00:00') });
+        });
+
+        it('listSettledUnhandled с нулём — без условия по LAST_SEEN', async () => {
+            query.mockResolvedValueOnce([]);
+            await service.listSettledUnhandled('TRADE', 'INCOMING', 'pending', 0);
+            expect(query.mock.calls[0][0]).not.toContain('DATEADD');
+        });
+
         it('listStatesForPosting ищет по номеру отправления и отдаёт состояния', async () => {
             query.mockResolvedValueOnce([{ STATE: 'MovingToOzon' }, { STATE: 'Utilized' }]);
             await expect(service.listStatesForPosting('OZON', 'RETURN', '456')).resolves.toEqual([

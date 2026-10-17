@@ -8,20 +8,14 @@ export class Trade2006IncomingController {
     constructor(private readonly trade2006IncomingService: Trade2006IncomingService) {}
 
     @Post('check')
-    @ApiOperation({ summary: 'Ручная проверка новых товаров' })
-    @ApiResponse({ status: 200, description: 'Проверка выполнена успешно' })
+    @ApiOperation({ summary: 'Разобрать очередь приходов сейчас, не дожидаясь тишины и крона' })
+    @ApiResponse({ status: 200, description: 'Очередь разобрана' })
     async manualCheck(): Promise<{ success: boolean; message: string }> {
-        try {
-            await this.trade2006IncomingService.manualCheck();
-            return {
-                success: true,
-                message: 'Проверка новых товаров выполнена успешно',
-            };
-        } catch (error) {
-            return {
-                success: false,
-                message: `Ошибка при проверке новых товаров: ${error.message}`,
-            };
-        }
+        const ctx = await this.trade2006IncomingService.manualCheck();
+        if (!ctx) return { success: false, message: 'Проход уже идёт или упал — см. лог' };
+        return {
+            success: true,
+            message: `Приходов: ${ctx.prihods.length}, товаров: ${ctx.skus.length}`,
+        };
     }
 }

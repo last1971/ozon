@@ -259,6 +259,15 @@ export const cronConfig: Record<string, CronSetup> = {
         },
         development: false,
     },
+    incomingGoods: {
+        production: {
+            enabled: true,
+            settings: {
+                time: '0 7/10 * * * *',
+            },
+        },
+        development: false,
+    },
     fillDonorPieces: {
         production: {
             enabled: true,

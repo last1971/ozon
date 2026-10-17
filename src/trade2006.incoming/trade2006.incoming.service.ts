@@ -1,79 +1,72 @@
-import { Inject, Injectable, Logger, OnModuleInit } from '@nestjs/common';
-import { WithTransactions } from '../helpers/mixin/transaction.mixin';
-import { FIREBIRD } from '../firebird/firebird.module';
-import { FirebirdPool } from 'ts-firebird';
-import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Cron } from '@nestjs/schedule';
+import { CommandChainAsync } from '../helpers/command/command.chain.async';
+import { IncomingContext } from './incoming.types';
+import { LoadPendingIncomingCommand } from './commands/load-pending-incoming.command';
+import { LoadIncomingGoodsCommand } from './commands/load-incoming-goods.command';
+import { RepriceIncomingGoodsCommand } from './commands/reprice-incoming-goods.command';
+import { MarkIncomingHandledCommand } from './commands/mark-incoming-handled.command';
 
+/**
+ * Приход товара в Trade → пересчёт цен на площадках.
+ *
+ * Событие рождает сама база: триггер на строке прихода (SKLADIN/SHOPIN, патч 62) кладёт в журнал
+ * MP_EVENT заявку «приход NP, pending» — один документ = одна заявка, сколько бы строк ни ввели.
+ * Delphi по сети никуда не ходит, как и с пачками ЧЗ. Крон раз в 10 минут берёт заявки, к которым
+ * INCOMING_SETTLED_MINUTES минут никто не прикасался (приход ещё набивают — ждём), собирает коды
+ * товаров и прогоняет цепочку прихода из цен. Очередь переживает рестарт узла; упавший проход
+ * оставляет заявки на следующий.
+ */
 @Injectable()
-export class Trade2006IncomingService extends WithTransactions(class {}) implements OnModuleInit {
+export class Trade2006IncomingService {
     private readonly logger = new Logger(Trade2006IncomingService.name);
-    private lastShopInCode: number = 0;
-    private storageTable: string;
+    private running = false;
 
     constructor(
-        @Inject(FIREBIRD) private pool: FirebirdPool,
-        private eventEmitter: EventEmitter2,
-        private configService: ConfigService,
-    ) {
-        super();
-        this.storageTable =
-            configService.get<string>('STORAGE_TYPE', 'SHOPSKLAD').toUpperCase() === 'SHOPSKLAD' ? 'SHOPIN' : 'SKLADIN';
+        private readonly configService: ConfigService,
+        private readonly loadPending: LoadPendingIncomingCommand,
+        private readonly loadGoods: LoadIncomingGoodsCommand,
+        private readonly reprice: RepriceIncomingGoodsCommand,
+        private readonly markHandled: MarkIncomingHandledCommand,
+    ) {}
+
+    chain(): CommandChainAsync<IncomingContext> {
+        return new CommandChainAsync<IncomingContext>([
+            this.loadPending,
+            this.loadGoods,
+            this.reprice,
+            this.markHandled,
+        ]);
     }
 
-    // Инициализация при запуске модуля
-    async onModuleInit() {
-        // Получение максимального SHOPINCODE при старте
-        await this.fetchLastShopInCode();
-        // this.lastShopInCode = 415250;
-        this.logger.log(`Начальный ${this.storageTable}CODE: ${this.lastShopInCode}`);
+    // Боевое время задаёт cron.setup.ts; минута :07/:17/… — мимо пятиминуток и profitCheck (:04).
+    @Cron('0 7/10 * * * *', { name: 'incomingGoods' })
+    async run(): Promise<IncomingContext | null> {
+        return this.process(Number(this.configService.get<number>('INCOMING_SETTLED_MINUTES', 15)));
     }
 
-    // Получение максимального SHOPINCODE
-    private async fetchLastShopInCode(): Promise<void> {
-        return this.withTransaction(async (transaction) => {
-            const result = await transaction.query(
-                `SELECT MAX(${this.storageTable}CODE) AS MAX_CODE FROM ${this.storageTable}`,
-                [],
-            );
+    /** Ручной запуск: берём всё, что в очереди, не дожидаясь тишины. */
+    async manualCheck(): Promise<IncomingContext | null> {
+        return this.process(0);
+    }
 
-            if (result && result[0] && result[0].MAX_CODE !== null) {
-                this.lastShopInCode = Number(result[0].MAX_CODE);
+    private async process(settledMinutes: number): Promise<IncomingContext | null> {
+        if (this.running) return null;
+        this.running = true;
+        try {
+            const ctx = await this.chain().execute({ settledMinutes, prihods: [], skus: [] });
+            if (ctx.prihods.length) {
+                this.logger.log(
+                    `[incoming] приходов ${ctx.prihods.length} (${ctx.prihods.map((p) => p.np).join(', ')}), товаров ${ctx.skus.length}`,
+                );
             }
-        });
-    }
-
-    async checkNewGoods() {
-        this.logger.debug(`Проверка новых товаров. Текущий ${this.storageTable}CODE: ${this.lastShopInCode}`);
-
-        return this.withTransaction(async (transaction) => {
-            // Получаем новые записи с SHOPINCODE больше сохраненного
-            const newRecords = await transaction.query(
-                `SELECT ${this.storageTable}CODE AS CODE, GOODSCODE FROM ${this.storageTable} WHERE ${this.storageTable}CODE > ? ORDER BY ${this.storageTable}CODE`,
-                [this.lastShopInCode],
-            );
-
-            if (newRecords && newRecords.length > 0) {
-                this.logger.log(`Найдено ${newRecords.length} новых записей`);
-
-                // Собираем все GOODSCODE в массив
-                const goodsCodes = newRecords.map((record) => record.GOODSCODE);
-
-                // Отправляем событие с массивом всех кодов
-                this.eventEmitter.emit('incoming.goods', goodsCodes);
-
-                // Обновляем lastShopInCode до максимального значения
-                this.lastShopInCode = Math.max(...newRecords.map((record) => Number(record.CODE)));
-
-                this.logger.debug(`Обновлен ${this.storageTable}CODE до: ${this.lastShopInCode}`);
-            } else {
-                this.logger.debug('Новых записей не найдено');
-            }
-        });
-    }
-
-    // Метод для ручного обновления и проверки (если нужно)
-    async manualCheck(): Promise<void> {
-        return this.checkNewGoods();
+            return ctx;
+        } catch (e) {
+            this.logger.error(`пересчёт цен по приходу не выполнен, заявки остались в очереди — ${e.message}`);
+            return null;
+        } finally {
+            this.running = false;
+        }
     }
 }

@@ -4,8 +4,8 @@ import { FirebirdPool, FirebirdTransaction } from 'ts-firebird';
 import { FIREBIRD } from '../firebird/firebird.module';
 import { readBlob } from '../firebird/read-blob';
 
-/** Маркетплейс — часть ключа дедупа и единицы отсчёта окна. */
-export type MpService = 'OZON' | 'WB' | 'YANDEX';
+/** Маркетплейс — часть ключа дедупа и единицы отсчёта окна. TRADE — события самой базы Trade (приход). */
+export type MpService = 'OZON' | 'WB' | 'YANDEX' | 'TRADE';
 /**
  * Вид потока. Окно считается отдельно по каждой паре (SERVICE, KIND).
  * CANCEL_WAIT — не поток с маркетплейса, а наша отметка «отменён после отгрузки,
@@ -15,8 +15,17 @@ export type MpService = 'OZON' | 'WB' | 'YANDEX';
  * (ключ — номер поставки): повторный итог не новый, письма по нему нет.
  * PROFIT_CHECK — очередь проверки прибыльности заказа (ключ — номер отправления, состояние pending;
  * HANDLED_AT = проверено). Данные заказа — в PAYLOAD.
+ * INCOMING — очередь пересчёта цен по приходу Trade (ключ — номер прихода NP, состояние pending;
+ * пишет триггер базы SKLADIN/SHOPIN_AI_INCOMING, патч 62). Коды товаров воркер берёт из таблицы прихода.
  */
-export type MpKind = 'POSTING_FBS' | 'POSTING_FBO' | 'RETURN' | 'CANCEL_WAIT' | 'DONOR_PIECES' | 'PROFIT_CHECK';
+export type MpKind =
+    | 'POSTING_FBS'
+    | 'POSTING_FBO'
+    | 'RETURN'
+    | 'CANCEL_WAIT'
+    | 'DONOR_PIECES'
+    | 'PROFIT_CHECK'
+    | 'INCOMING';
 
 /** Строка журнала с разобранным PAYLOAD — для экранов, которым нужны данные события, а не только факт. */
 export interface MpEventRowDto {
@@ -188,11 +197,38 @@ export class MpEventService {
         state?: string,
         t: FirebirdTransaction = null,
     ): Promise<{ extId: string; posting: string | null; firstSeen: Date }[]> {
+        return this.selectUnhandled(service, kind, state, 0, t);
+    }
+
+    /**
+     * Неразобранные события, к которым не прикасались settledMinutes минут (LAST_SEEN): очередь
+     * прихода Trade ждёт, пока документ перестанут набивать, и берёт его один раз, а не по строке.
+     */
+    async listSettledUnhandled(
+        service: MpService,
+        kind: MpKind,
+        state: string,
+        settledMinutes: number,
+        t: FirebirdTransaction = null,
+    ): Promise<{ extId: string; posting: string | null; firstSeen: Date }[]> {
+        return this.selectUnhandled(service, kind, state, settledMinutes, t);
+    }
+
+    private async selectUnhandled(
+        service: MpService,
+        kind: MpKind,
+        state: string | undefined,
+        settledMinutes: number,
+        t: FirebirdTransaction,
+    ): Promise<{ extId: string; posting: string | null; firstSeen: Date }[]> {
+        // Число своё, не из запроса — в текст, а не параметром: тип параметра внутри DATEADD Firebird 2.5 не выводит.
+        const settled = Math.max(0, Math.floor(Number(settledMinutes) || 0));
         return this.withTransaction(t, async (transaction) => {
             const rows = await transaction.query(
                 'SELECT EXT_ID, POSTING, FIRST_SEEN FROM MP_EVENT' +
                     ' WHERE SERVICE = ? AND KIND = ? AND HANDLED_AT IS NULL' +
                     (state ? ' AND STATE = ?' : '') +
+                    (settled > 0 ? ` AND LAST_SEEN < DATEADD(-${settled} MINUTE TO CURRENT_TIMESTAMP)` : '') +
                     ' ORDER BY FIRST_SEEN',
                 state ? [service, kind, state] : [service, kind],
                 false,

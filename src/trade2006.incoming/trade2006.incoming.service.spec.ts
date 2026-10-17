@@ -1,141 +1,110 @@
-import { Test, TestingModule } from '@nestjs/testing';
-import { Trade2006IncomingService } from './trade2006.incoming.service';
-import { FIREBIRD } from '../firebird/firebird.module';
-import { EventEmitter2 } from '@nestjs/event-emitter';
+import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
+import { Trade2006IncomingService } from './trade2006.incoming.service';
+import { IncomingStore } from './incoming.store';
+import { LoadPendingIncomingCommand } from './commands/load-pending-incoming.command';
+import { LoadIncomingGoodsCommand } from './commands/load-incoming-goods.command';
+import { RepriceIncomingGoodsCommand } from './commands/reprice-incoming-goods.command';
+import { MarkIncomingHandledCommand } from './commands/mark-incoming-handled.command';
+import { MpEventService } from '../mp-event/mp-event.service';
+import { ExtraPriceService } from '../price/extra.price.service';
+import { FIREBIRD } from '../firebird/firebird.module';
 
-describe('Trade2006IncomingService', () => {
+describe('Trade2006IncomingService (очередь приходов)', () => {
+    const journal = {
+        listSettledUnhandled: jest.fn().mockResolvedValue([]),
+        markHandled: jest.fn().mockResolvedValue(undefined),
+    };
+    const chainExecute = jest.fn().mockResolvedValue({});
+    const prices = { incomingGoodsChain: () => ({ execute: chainExecute }), chainLogger: () => undefined };
+    const query = jest.fn().mockResolvedValue([]);
+    const transaction = { query, commit: jest.fn(), rollback: jest.fn() };
+    const config = { get: jest.fn((k: string, d?: any) => ({ STORAGE_TYPE: 'SKLAD' })[k] ?? d) };
     let service: Trade2006IncomingService;
-    let eventEmitterMock: any;
 
     beforeEach(async () => {
-        eventEmitterMock = {
-            emit: jest.fn(),
-        };
-
-        const module: TestingModule = await Test.createTestingModule({
+        jest.clearAllMocks();
+        // Через контейнер Nest: ловит неразрешимые зависимости (урок DonorPiecesStore 16.10).
+        const module = await Test.createTestingModule({
             providers: [
                 Trade2006IncomingService,
-                {
-                    provide: FIREBIRD,
-                    useValue: {
-                        getTransaction: jest.fn(),
-                    },
-                },
-                {
-                    provide: EventEmitter2,
-                    useValue: eventEmitterMock,
-                },
-                {
-                    provide: ConfigService,
-                    useValue: {
-                        get: (key: string) => {
-                            if (key === 'STORAGE_TYPE') return 'SHOPSKLAD';
-                            return null;
-                        },
-                    },
-                },
+                IncomingStore,
+                LoadPendingIncomingCommand,
+                LoadIncomingGoodsCommand,
+                RepriceIncomingGoodsCommand,
+                MarkIncomingHandledCommand,
+                { provide: MpEventService, useValue: journal },
+                { provide: ExtraPriceService, useValue: prices },
+                { provide: ConfigService, useValue: config },
+                { provide: FIREBIRD, useValue: { getTransaction: async () => transaction } },
             ],
         }).compile();
-
-        service = module.get<Trade2006IncomingService>(Trade2006IncomingService);
+        service = module.get(Trade2006IncomingService);
     });
 
-    afterEach(() => {
-        jest.clearAllMocks();
+    it('очередь пуста — цепочка цен не зовётся, помечать нечего', async () => {
+        const ctx = await service.run();
+        expect(journal.listSettledUnhandled).toHaveBeenCalledWith('TRADE', 'INCOMING', 'pending', 15);
+        expect(chainExecute).not.toHaveBeenCalled();
+        expect(journal.markHandled).not.toHaveBeenCalled();
+        expect(ctx.stopChain).toBe(true);
     });
 
-    it('should be defined', () => {
-        expect(service).toBeDefined();
-    });
-
-    describe('fetchLastShopInCode', () => {
-        it('should fetch last SHOPINCODE on init', async () => {
-            const query = jest.fn().mockReturnValue([{ MAX_CODE: 123 }]);
-            const mockTransaction = { query };
-
-            jest.spyOn(service, 'withTransaction').mockImplementation((callback: any) => {
-                return callback(mockTransaction);
-            });
-
-            await service.onModuleInit();
-
-            expect(query).toHaveBeenCalledWith('SELECT MAX(SHOPINCODE) AS MAX_CODE FROM SHOPIN', []);
-            expect((service as any).lastShopInCode).toBe(123);
-        });
-
-        it('should handle null MAX_CODE', async () => {
-            const query = jest.fn().mockReturnValue([{ MAX_CODE: null }]);
-            const mockTransaction = { query };
-
-            jest.spyOn(service, 'withTransaction').mockImplementation((callback: any) => {
-                return callback(mockTransaction);
-            });
-
-            await service.onModuleInit();
-
-            expect((service as any).lastShopInCode).toBe(0);
+    it('два прихода → коды без повторов → цепочка прихода → оба помечены', async () => {
+        journal.listSettledUnhandled.mockResolvedValueOnce([
+            { extId: '10296', posting: null, firstSeen: new Date() },
+            { extId: '10297', posting: null, firstSeen: new Date() },
+        ]);
+        query.mockResolvedValueOnce([{ GOODSCODE: 568615 }, { GOODSCODE: 557283 }]);
+        const ctx = await service.run();
+        expect(query.mock.calls[0][0]).toContain('FROM SKLADIN WHERE NP IN (?, ?)');
+        expect(query.mock.calls[0][1]).toEqual(['10296', '10297']);
+        expect(ctx.skus).toEqual(['568615', '557283']);
+        expect(chainExecute).toHaveBeenCalledWith(expect.objectContaining({ skus: ['568615', '557283'] }));
+        expect(journal.markHandled).toHaveBeenCalledTimes(2);
+        expect(journal.markHandled).toHaveBeenCalledWith({
+            service: 'TRADE',
+            kind: 'INCOMING',
+            extId: '10296',
+            state: 'pending',
         });
     });
 
-    describe('checkNewGoods', () => {
-        it('should emit event with array of GOODSCODE when new records found', async () => {
-            const newRecords = [
-                { CODE: 125, GOODSCODE: 'A001' },
-                { CODE: 126, GOODSCODE: 'B002' },
-            ];
-
-            const query = jest.fn().mockReturnValue(newRecords);
-            const mockTransaction = { query };
-
-            jest.spyOn(service, 'withTransaction').mockImplementation((callback: any) => {
-                return callback(mockTransaction);
-            });
-
-            // Установка lastShopInCode
-            (service as any).lastShopInCode = 124;
-
-            await service.checkNewGoods();
-
-            expect(query).toHaveBeenCalledWith(
-                'SELECT SHOPINCODE AS CODE, GOODSCODE FROM SHOPIN WHERE SHOPINCODE > ? ORDER BY SHOPINCODE',
-                [124],
-            );
-
-            expect(eventEmitterMock.emit).toHaveBeenCalledWith('incoming.goods', ['A001', 'B002']);
-
-            expect((service as any).lastShopInCode).toBe(126);
-        });
-
-        it('should not emit event when no new records found', async () => {
-            const query = jest.fn().mockReturnValue([]);
-            const mockTransaction = { query };
-
-            jest.spyOn(service, 'withTransaction').mockImplementation((callback: any) => {
-                return callback(mockTransaction);
-            });
-
-            (service as any).lastShopInCode = 124;
-
-            await service.checkNewGoods();
-
-            expect(query).toHaveBeenCalledWith(
-                'SELECT SHOPINCODE AS CODE, GOODSCODE FROM SHOPIN WHERE SHOPINCODE > ? ORDER BY SHOPINCODE',
-                [124],
-            );
-
-            expect(eventEmitterMock.emit).not.toHaveBeenCalled();
-            expect((service as any).lastShopInCode).toBe(124);
-        });
+    it('приход без строк — цены не считаем, но заявку закрываем', async () => {
+        journal.listSettledUnhandled.mockResolvedValueOnce([{ extId: '10298', posting: null, firstSeen: new Date() }]);
+        query.mockResolvedValueOnce([]);
+        await service.run();
+        expect(chainExecute).not.toHaveBeenCalled();
+        expect(journal.markHandled).toHaveBeenCalledTimes(1);
     });
 
-    describe('manualCheck', () => {
-        it('should call checkNewGoods', async () => {
-            const spy = jest.spyOn(service, 'checkNewGoods').mockResolvedValue(undefined);
+    it('цепочка цен упала — заявки остаются в очереди, run отдаёт null', async () => {
+        journal.listSettledUnhandled.mockResolvedValueOnce([{ extId: '10299', posting: null, firstSeen: new Date() }]);
+        query.mockResolvedValueOnce([{ GOODSCODE: 1 }]);
+        chainExecute.mockRejectedValueOnce(new Error('Ozon 500'));
+        const ctx = await service.run();
+        expect(ctx).toBeNull();
+        expect(journal.markHandled).not.toHaveBeenCalled();
+    });
 
-            await service.manualCheck();
+    it('ручной запуск берёт очередь без ожидания тишины', async () => {
+        await service.manualCheck();
+        expect(journal.listSettledUnhandled).toHaveBeenCalledWith('TRADE', 'INCOMING', 'pending', 0);
+    });
 
-            expect(spy).toHaveBeenCalled();
-        });
+    it('магазин: таблица SHOPIN, NP передаётся числом', async () => {
+        config.get.mockImplementation((k: string, d?: any) => ({ STORAGE_TYPE: 'SHOPSKLAD' })[k] ?? d);
+        const module = await Test.createTestingModule({
+            providers: [
+                IncomingStore,
+                { provide: ConfigService, useValue: config },
+                { provide: FIREBIRD, useValue: { getTransaction: async () => transaction } },
+            ],
+        }).compile();
+        query.mockResolvedValueOnce([{ GOODSCODE: 5 }, { GOODSCODE: 5 }]);
+        const codes = await module.get(IncomingStore).goodsOfPrihods(['10300']);
+        expect(query.mock.calls[0][0]).toContain('FROM SHOPIN WHERE NP IN (?)');
+        expect(query.mock.calls[0][1]).toEqual([10300]);
+        expect(codes).toEqual(['5']);
     });
 });

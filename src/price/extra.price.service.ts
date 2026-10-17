@@ -11,7 +11,7 @@ import { ConfigService } from '@nestjs/config';
 import { UpdatePriceDto } from './dto/update.price.dto';
 import { Cron } from '@nestjs/schedule';
 import { WbCommissionDto } from '../wb.card/dto/wb.commission.dto';
-import { EventEmitter2, OnEvent } from '@nestjs/event-emitter';
+import { EventEmitter2 } from '@nestjs/event-emitter';
 import { ExtraGoodService } from '../good/extra.good.service';
 import { toNumber, first } from 'lodash';
 import { PriceDto } from './dto/price.dto';
@@ -171,29 +171,36 @@ export class ExtraPriceService {
     }
 
     /**
-     * Обработчик события получения входящих товаров.
-     * Обновляет цены для всех маркетплейсов на основе новых поступлений товаров.
-     * @param skus
+     * Цепочка прихода товара — единственное место, где известен её состав (решение владельца 17.10.2026):
+     * проверить, что коды есть → коды Trade в артикулы площадок → сбросить доступную цену →
+     * пересчитать цены на всех площадках → сверить нашу цену с ценой площадки и сообщить о расхождении →
+     * запустить пересчёт акций Озона → сложить итог → записать в лог.
+     * Наценки по приходу НЕ пересчитываются: они остаются как были, цена следует за новой входящей;
+     * товару без наценок цена считается по дефолтам PERC_* (buildPriceables).
+     * Зовут: очередь приходов (Trade2006IncomingService) и ручная кнопка POST /price/incoming-goods.
      */
-    @OnEvent('incoming.goods', { async: true })
-    async handleIncomingGoods(skus: string[]): Promise<void> {
-        const context: IGoodsProcessingContext = {
-            skus,
-            logger: this.logger,
-        };
-        const chain = new CommandChainAsync<IGoodsProcessingContext>([
+    incomingGoodsChain(): CommandChainAsync<IGoodsProcessingContext> {
+        return new CommandChainAsync<IGoodsProcessingContext>([
             this.validateSkusNotEmptyCommand,
             this.tradeSkusCommand,
             this.resetAvailablePriceCommand,
-            this.updatePercentsForGoodSkusCommand,
             this.updatePriceForGoodSkusCommand,
             this.checkPriceDifferenceAndNotifyCommand,
             this.emitUpdatePromosCommand,
             this.setResultProcessingMessageCommand,
             this.logResultProcessingMessageCommand,
         ]);
+    }
+
+    /** Логгер для контекста цепочек — чтобы шаги писали от имени сервиса цен, где бы их ни запустили. */
+    chainLogger(): IGoodsProcessingContext['logger'] {
+        return this.logger;
+    }
+
+    /** Ручной запуск цепочки прихода по кодам Trade (кнопка). Ошибку гасит в лог — это не очередь, повторять некому. */
+    async handleIncomingGoods(skus: string[]): Promise<void> {
         try {
-            await chain.execute(context);
+            await this.incomingGoodsChain().execute({ skus, logger: this.logger });
         } catch (error) {
             this.logger.error(`Error updating prices after incoming goods: ${error.message}`, error.stack);
         }
