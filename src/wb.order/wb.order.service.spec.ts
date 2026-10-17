@@ -1168,11 +1168,12 @@ describe('WbOrderService.lookupSalePrices (проверка прибыльнос
         ]);
         (service as any).getOrders = getOrders;
         const res = await service.lookupSalePrices([
-            { posting: '6057334305', externalId: 'ecb.r92.0.0', since: new Date('2026-10-17T12:38:54') },
-            { posting: '1', externalId: 'ecb.zero', since: new Date('2026-10-17T10:00:00') },
+            { posting: '6057334305', externalId: 'ecb.r92.0.0', since: new Date('2026-10-17T12:38:54Z') },
+            { posting: '1', externalId: 'ecb.zero', since: new Date('2026-10-17T10:00:00Z') },
         ]);
         expect(getOrders).toHaveBeenCalledTimes(1);
-        expect(getOrders.mock.calls[0][0]).toMatch(/^2026-10-17T09:00:00/);
+        // 10:00 UTC = 13:00 МСК, минус час нахлёста — по Москве, как читает статистика, не по часам узла
+        expect(getOrders.mock.calls[0][0]).toMatch(/^2026-10-17T12:00:00/);
         expect(res.get('ecb.r92.0.0')).toEqual([{ offer_id: '553603', units: 1, pricePerUnit: 4692 }]);
         expect(res.has('other')).toBe(false);
         expect(res.has('ecb.zero')).toBe(false);

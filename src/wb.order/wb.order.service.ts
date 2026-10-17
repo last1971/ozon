@@ -648,7 +648,10 @@ export class WbOrderService implements IOrderable, IFboSales, IMarkSubmittable, 
         const result = new Map<string, SaleLine[]>();
         if (!refs.length) return result;
         const since = refs.reduce((min, r) => (r.since < min ? r.since : min), refs[0].since);
+        // dateFrom статистика читает по Москве; часы узла +07, без перевода пояса запрос уезжал в будущее
+        // и возвращал пусто (17.10.2026: заказ в статистике с 19:11 МСК, проходы в 20:04 МСК его не видели).
         const dateFrom = DateTime.fromJSDate(since)
+            .setZone('Europe/Moscow')
             .minus({ hours: 1 })
             .toISO({ suppressMilliseconds: true, includeOffset: false });
         const wanted = new Set(refs.map((r) => r.externalId));
