@@ -68,7 +68,12 @@ export class ProfitCheckService {
     async enqueue(event: InvoiceCreatedEvent): Promise<void> {
         try {
             const service = this.serviceOf(event);
-            if (!service) return;
+            if (!service) {
+                this.logger.warn(
+                    `${event.posting?.posting_number}: площадка не определена — в очередь проверки прибыли не записан`,
+                );
+                return;
+            }
             const source = this.sources.of(service);
             const priceSource = source?.salePriceSource() ?? 'none';
             if (priceSource === 'none') return;

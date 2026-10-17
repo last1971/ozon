@@ -23,7 +23,10 @@ export class CreateFboInvoiceCommand implements ICommandAsync<IFboCreateContext>
     ) {}
 
     async execute(context: IFboCreateContext): Promise<IFboCreateContext> {
-        const { posting, prims, buyerId, transaction } = context;
+        const { prims, buyerId, transaction } = context;
+        // Площадку заказа FBO знает только контекст (из API Озона/ВБ заказ приходит без неё); счёт и его
+        // слушатели (проверка прибыльности) узнают её из заказа, а не из env покупателя — на рознице его нет.
+        const posting = { ...context.posting, service: context.service };
 
         // WB: подбора нет вовсе → «левый» заказ, тихо пропускаем (не создаём).
         if (context.skipIfNoPodbor && !(await this.hasAnyPodbor(context))) {

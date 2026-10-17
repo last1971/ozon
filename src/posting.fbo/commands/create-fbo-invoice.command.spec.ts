@@ -130,6 +130,9 @@ describe('CreateFboInvoiceCommand', () => {
             expect(decrementPodbpos).not.toHaveBeenCalled();
             expect(logMigrationLink).not.toHaveBeenCalled();
             expect(createInvoiceFromPostingDto).toHaveBeenCalled();
+            // Площадка из контекста уезжает в заказ: хук проверки прибыльности на рознице без OZON_BUYER_ID
+            // иначе молчит (17.10.2026, FBO 0160611402-0105-1 в очередь не встал).
+            expect(createInvoiceFromPostingDto.mock.calls[0][1]).toEqual(expect.objectContaining({ service: 'ozon' }));
             expect(res.invoice).toBe(invoice);
             expect(res.shortages).toEqual([{ goodscode: '444', quantity: 2 }]);
         });
