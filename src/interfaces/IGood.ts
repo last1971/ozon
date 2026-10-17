@@ -8,6 +8,7 @@ import { WbCardDto } from '../wb.card/dto/wb.card.dto';
 import { WbCommissionDto } from '../wb.card/dto/wb.commission.dto';
 import { UpdatePriceDto } from '../price/dto/update.price.dto';
 import { GoodServiceEnum } from '../good/good.service.enum';
+import { IPriceable } from './i.priceable';
 
 export interface IGood {
     /** Транзакция для чтения нескольких выборок из одного снимка (остаток и коды не должны разъезжаться). */
@@ -25,6 +26,15 @@ export interface IGood {
         skus: string[],
         prices?: Map<string, UpdatePriceDto>,
     ): Promise<any>;
+    /**
+     * Данные расчёта цены по артикулам (себестоимость, наценки, комиссия, доставка) — единственный
+     * сборщик: им кормится и пересчёт цен, и проверка прибыльности заказов. Без себестоимости артикул пропускается.
+     */
+    buildPriceables(
+        service: IPriceUpdateable | null,
+        skus: string[],
+        prices?: Map<string, UpdatePriceDto>,
+    ): Promise<IPriceable[]>;
     generatePercentsForService(
         service: IPriceUpdateable | null,
         skus: string[],

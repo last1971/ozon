@@ -1,5 +1,6 @@
 import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import { ProductService } from '../product/product.service';
+import { SaleLine, SalePriceSource } from '../order/profit-check/profit-check.types';
 import { PostingsRequestDto } from './dto/postings.request.dto';
 import { PostingDto } from './dto/posting.dto';
 import { DateTime } from 'luxon';
@@ -448,6 +449,15 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
                 isMarketplace: true,
             },
         ];
+    }
+
+    /** В заказе Озона price — наша цена со всеми нашими скидками (проверено 17.10.2026 по financial_data). */
+    salePriceSource(): SalePriceSource {
+        return 'posting';
+    }
+
+    async lookupSalePrices(): Promise<Map<string, SaleLine[]>> {
+        return new Map();
     }
 
     async getByPostingNumber(postingNumber: string): Promise<PostingDto> {

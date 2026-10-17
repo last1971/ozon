@@ -15,6 +15,7 @@ import { StatsOrderRequestDto } from './dto/stats.order.request.dto';
 import { OrderStatsDto } from './dto/order.stats.dto';
 import { FirebirdTransaction } from 'ts-firebird';
 import { GoodServiceEnum } from '../good/good.service.enum';
+import { SaleLine, SalePriceSource } from '../order/profit-check/profit-check.types';
 import { FbsPrepareDto, IMarkSubmittable, SubmitFailureDto, SubmitResultDto } from '../interfaces/IMarkSubmittable';
 import { YandexBoxLayoutRequestDto, YandexOrderDto, YandexOrderItemDto } from './dto/yandex.order.dto';
 import { PostingPackLine } from '../posting/interfaces/posting-pack-line';
@@ -81,6 +82,15 @@ export class YandexOrderService implements IOrderable, IMarkSubmittable, OnModul
     private static errorText(res: any): string {
         const err = res?.error ?? {};
         return `${err.status ?? ''} ${err.message || err.service_message || 'нет ответа'}`.trim();
+    }
+
+    /** В заказе Яндекса цена до скидки, нашей цены продажи API заказа не отдаёт — проверка прибыльности не применима. */
+    salePriceSource(): SalePriceSource {
+        return 'none';
+    }
+
+    async lookupSalePrices(): Promise<Map<string, SaleLine[]>> {
+        return new Map();
     }
 
     private toPosting(order: YandexOrderDto): PostingDto {

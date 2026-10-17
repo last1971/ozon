@@ -292,6 +292,18 @@ class EnvironmentVariables {
     @Transform(({ obj }) => obj.FBO_RECONCILE_DRY === 'true' || obj.FBO_RECONCILE_DRY === true)
     FBO_RECONCILE_DRY: boolean;
 
+    /** Проверка прибыльности заказов: предупреждение, если цена ниже минимальной больше чем на столько процентов. */
+    @IsOptional()
+    @IsNumber()
+    @Transform(({ obj }) => (obj.PROFIT_CHECK_WARN_PERC === undefined ? undefined : Number(obj.PROFIT_CHECK_WARN_PERC)))
+    PROFIT_CHECK_WARN_PERC: number;
+
+    /** Проверка прибыльности: сколько часов ждать нашу цену от площадки (ВБ: статистика с задержкой). */
+    @IsOptional()
+    @IsNumber()
+    @Transform(({ obj }) => (obj.PROFIT_CHECK_LOOKUP_HOURS === undefined ? undefined : Number(obj.PROFIT_CHECK_LOOKUP_HOURS)))
+    PROFIT_CHECK_LOOKUP_HOURS: number;
+
     @IsOptional()
     @IsNumber()
     VAT_RATE: number;

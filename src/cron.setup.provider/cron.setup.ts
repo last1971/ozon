@@ -246,6 +246,19 @@ export const cronConfig: Record<string, CronSetup> = {
      * в пустую фасовку, письмо — только про новые спорные итоги (журнал MP_EVENT, вид DONOR_PIECES).
      * 21:47 — после рабочего дня, мимо пятиминуток. На dev выключен — кабинет боевой.
      */
+    /**
+     * Прибыльность заказов (ProfitCheckService): очередь в журнале MP_EVENT, тема «цены».
+     * Каждые 10 минут на :04 — мимо пятиминуток (:00–:03) и наблюдателей (:01, :02). На dev выключен.
+     */
+    profitCheck: {
+        production: {
+            enabled: true,
+            settings: {
+                time: '0 4/10 * * * *',
+            },
+        },
+        development: false,
+    },
     fillDonorPieces: {
         production: {
             enabled: true,

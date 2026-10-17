@@ -1,5 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { IGood } from '../interfaces/IGood';
+import { IPriceable } from '../interfaces/i.priceable';
 import { IAvitoGoodStore } from '../interfaces/i.avito.good.store';
 import { GoodDto } from '../good/dto/good.dto';
 import { FIREBIRD } from '../firebird/firebird.module';
@@ -602,6 +603,16 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         skus: string[],
         prices?: Map<string, UpdatePriceDto>,
     ): Promise<any> {
+        const priceables = await this.buildPriceables(service, skus, prices);
+        const updatePrices = priceables.map((priceData) => calculatePrice(priceData, service.getObtainCoeffs()));
+        return updatePrices.length > 0 ? service.updatePrices(updatePrices) : null;
+    }
+
+    async buildPriceables(
+        service: IPriceUpdateable | null,
+        skus: string[],
+        prices?: Map<string, UpdatePriceDto>,
+    ): Promise<IPriceable[]> {
         const { goods, percents, products } = await this.priceCalculationHelper.preparePricesContext(
             service,
             skus,
@@ -619,7 +630,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
             percents.push(...newPercents);
         }
 
-        const updatePrices: UpdatePriceDto[] = [];
+        const priceables: IPriceable[] = [];
 
         for (const product of products) {
             const incoming_price = this.priceCalculationHelper.getIncomingPrice(product, goods, prices);
@@ -637,7 +648,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                     available_price: 0,
                 };
 
-                const priceData = {
+                priceables.push({
                     adv_perc,
                     fbs_direct_flow_trans_max_amount: product.getTransMaxAmount(),
                     incoming_price,
@@ -648,12 +659,10 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                     perc,
                     sales_percent: product.getSalesPercent(),
                     sum_pack: packing_price,
-                };
-
-                updatePrices.push(calculatePrice(priceData, service.getObtainCoeffs()));
+                });
             }
         }
-        return updatePrices.length > 0 ? service.updatePrices(updatePrices) : null;
+        return priceables;
     }
 
     @Cron('0 0 9-19 * * 1-6', { name: 'checkGoodCount' })

@@ -47,6 +47,49 @@ export function problematicPricesMessage(context: { products: any[]; thresholdPe
     };
 }
 
+/**
+ * Проверка прибыльности заказов (ProfitCheckService). Один проход — одно сообщение:
+ * сперва тревоги (прибыли нет), потом предупреждения (ниже минимальной), потом «не проверено».
+ * Пуш только если есть хоть одна тревога.
+ */
+export function profitCheckMessage(items: any[]): NotifyMessage {
+    const alerts = items.filter((i) => i.level === 'alert');
+    const warns = items.filter((i) => i.level === 'warn');
+    const skips = items.filter((i) => i.level === 'skip');
+    const fmt = (n: number | null | undefined) => (n === null || n === undefined ? '—' : String(Math.round(n)));
+    const head = (i: any) =>
+        `${i.payload?.service} ${i.posting}${i.payload?.invoiceNumber ? ` · счёт №${i.payload.invoiceNumber}` : ''}`;
+    const lineOf = (v: any) =>
+        v.level === 'skip'
+            ? `  ${v.offer_id} × ${v.units}: не проверено — ${v.reason}`
+            : `  ${v.offer_id} × ${v.units}: цена ${fmt(v.pricePerUnit)}, мин ${fmt(v.minPrice)}, ` +
+              `себестоимость ${fmt(v.cost)} (${v.costSource}), прибыль ${fmt(v.profitPerUnit)} за шт, итого ${fmt(v.profitTotal)}`;
+    const block = (title: string, list: any[]) =>
+        list.length
+            ? [
+                  title,
+                  ...list.map((i) =>
+                      [
+                          head(i),
+                          ...(i.verdicts ?? []).map(lineOf),
+                          ...(i.reason && !i.verdicts ? [`  ${i.reason}`] : []),
+                      ].join('\n'),
+                  ),
+              ]
+            : [];
+    const parts = [
+        ...block(`🔴 ПРИБЫЛИ НЕТ: ${alerts.length}`, alerts),
+        ...block(`🟡 Ниже минимальной цены: ${warns.length}`, warns),
+        ...block(`⚪ Не проверено: ${skips.length}`, skips),
+    ];
+    const subject = alerts.length
+        ? `Заказ без прибыли: ${alerts.length}${warns.length ? `, ниже минимальной ${warns.length}` : ''}`
+        : warns.length
+          ? `Заказы ниже минимальной цены: ${warns.length}`
+          : `Прибыльность заказов: не проверено ${skips.length}`;
+    return { subject, text: parts.join('\n'), notice: alerts.length === 0 };
+}
+
 export function tickMessage(): NotifyMessage {
     return {
         subject: 'Синхронизация с маркетплейсами',

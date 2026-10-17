@@ -13,8 +13,10 @@ export type MpService = 'OZON' | 'WB' | 'YANDEX';
  * возврат которых так и не появился.
  * DONOR_PIECES — итог проставления фасовки счёту-донору FORFBO по составу поставки
  * (ключ — номер поставки): повторный итог не новый, письма по нему нет.
+ * PROFIT_CHECK — очередь проверки прибыльности заказа (ключ — номер отправления, состояние pending;
+ * HANDLED_AT = проверено). Данные заказа — в PAYLOAD.
  */
-export type MpKind = 'POSTING_FBS' | 'POSTING_FBO' | 'RETURN' | 'CANCEL_WAIT' | 'DONOR_PIECES';
+export type MpKind = 'POSTING_FBS' | 'POSTING_FBO' | 'RETURN' | 'CANCEL_WAIT' | 'DONOR_PIECES' | 'PROFIT_CHECK';
 
 /** Строка журнала с разобранным PAYLOAD — для экранов, которым нужны данные события, а не только факт. */
 export interface MpEventRowDto {
@@ -200,6 +202,24 @@ export class MpEventService {
                 posting: r.POSTING ? String(r.POSTING) : null,
                 firstSeen: new Date(r.FIRST_SEEN),
             }));
+        });
+    }
+
+    /** То же, что listUnhandled, но с PAYLOAD — для очередей, у которых данные лежат в записи. */
+    async listUnhandledRows(
+        service: MpService,
+        kind: MpKind,
+        state: string,
+        t: FirebirdTransaction = null,
+    ): Promise<MpEventRowDto[]> {
+        return this.withTransaction(t, async (transaction) => {
+            const rows = await transaction.query(
+                'SELECT EXT_ID, STATE, POSTING, FIRST_SEEN, PAYLOAD FROM MP_EVENT' +
+                    ' WHERE SERVICE = ? AND KIND = ? AND STATE = ? AND HANDLED_AT IS NULL ORDER BY FIRST_SEEN',
+                [service, kind, state],
+                false,
+            );
+            return this.toRows(rows, transaction);
         });
     }
 

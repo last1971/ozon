@@ -39,6 +39,12 @@ export class PostingDto {
     isFbo?: boolean;
 
     @ApiProperty({
+        description: 'Идентификатор заказа в статистике площадки, если отличается от номера (ВБ FBS: rid = srid статистики)',
+        required: false,
+    })
+    external_id?: string;
+
+    @ApiProperty({
         description:
             'Явный признак «товар передан в доставку» — заполняет нормализатор маркетплейса, ' +
             'у которого нет озоновских delivering_date/substatus (ВБ: supplierStatus=complete или отказ при вручении)',

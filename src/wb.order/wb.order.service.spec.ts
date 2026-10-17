@@ -310,6 +310,7 @@ describe('WbOrderService', () => {
                 in_process_at: '1',
                 posting_number: '1',
                 service: GoodServiceEnum.WB,
+                external_id: '123',
                 products: [
                     {
                         offer_id: '11-1',
@@ -630,6 +631,7 @@ describe('WbOrderService', () => {
             status: status,
             in_process_at: order.createdAt,
             service: GoodServiceEnum.WB,
+            external_id: order.rid,
             products: [
                 {
                     price: (order.convertedPrice / 100).toString(),
@@ -1153,5 +1155,27 @@ describe('WbOrderService', () => {
         it('returnCounts всегда undefined: одно задание = одна единица, частичности нет', async () => {
             expect(await service.returnCounts({} as any)).toBeUndefined();
         });
+    });
+});
+
+describe('WbOrderService.lookupSalePrices (проверка прибыльности)', () => {
+    it('статистика одним запросом от самой ранней даты; srid → наша цена со скидкой; чужие и без цены — мимо', async () => {
+        const service = Object.create(WbOrderService.prototype) as WbOrderService;
+        const getOrders = jest.fn().mockResolvedValue([
+            { srid: 'ecb.r92.0.0', supplierArticle: '553603', priceWithDisc: 4692, totalPrice: 7952 },
+            { srid: 'other', supplierArticle: '1', priceWithDisc: 10 },
+            { srid: 'ecb.zero', supplierArticle: '2', priceWithDisc: 0 },
+        ]);
+        (service as any).getOrders = getOrders;
+        const res = await service.lookupSalePrices([
+            { posting: '6057334305', externalId: 'ecb.r92.0.0', since: new Date('2026-10-17T12:38:54') },
+            { posting: '1', externalId: 'ecb.zero', since: new Date('2026-10-17T10:00:00') },
+        ]);
+        expect(getOrders).toHaveBeenCalledTimes(1);
+        expect(getOrders.mock.calls[0][0]).toMatch(/^2026-10-17T09:00:00/);
+        expect(res.get('ecb.r92.0.0')).toEqual([{ offer_id: '553603', units: 1, pricePerUnit: 4692 }]);
+        expect(res.has('other')).toBe(false);
+        expect(res.has('ecb.zero')).toBe(false);
+        expect(service.salePriceSource()).toBe('lookup');
     });
 });

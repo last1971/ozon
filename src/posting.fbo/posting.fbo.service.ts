@@ -11,6 +11,7 @@ import { FirebirdTransaction } from 'ts-firebird';
 import { isMarkCodesEnabled } from '../helpers';
 import { MP_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
 import { GoodServiceEnum } from '../good/good.service.enum';
+import { SaleLine, SalePriceSource } from '../order/profit-check/profit-check.types';
 import { FboInvoiceCreatorService } from './fbo-invoice-creator.service';
 import { MpEventService } from '../mp-event/mp-event.service';
 import { IFboReconcilable } from '../interfaces/IFboReconcilable';
@@ -147,6 +148,15 @@ export class PostingFboService implements IOrderable, IFboSales, IFboReconcilabl
 
     async getByPostingNumber(_postingNumber: string): Promise<PostingDto> {
         return Promise.resolve(undefined);
+    }
+
+    /** FBO-отправление Озона несёт ту же нашу цену, что и FBS. */
+    salePriceSource(): SalePriceSource {
+        return 'posting';
+    }
+
+    async lookupSalePrices(): Promise<Map<string, SaleLine[]>> {
+        return new Map();
     }
 
     /**

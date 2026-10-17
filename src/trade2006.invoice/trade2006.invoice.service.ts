@@ -523,7 +523,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         t: FirebirdTransaction = null,
     ): Promise<InvoiceDto> {
         this.logger.log(`Create order ${posting.posting_number} with ${posting.products.length} lines for ${buyerId}`);
-        return this.create(
+        const invoice = await this.create(
             {
                 buyerId,
                 date: new Date(posting.in_process_at),
@@ -542,6 +542,11 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             },
             t,
         );
+        // Единственная точка создания счёта по заказу любой площадки: отсюда заказ встаёт в очередь
+        // проверки прибыльности (ProfitCheckService), той же транзакцией. Слушатели ждём, иначе
+        // запись в журнал могла бы уйти после commit.
+        await this.eventEmitter.emitAsync('invoice.created', { buyerId, posting, invoice, transaction: t });
+        return invoice;
     }
     async getLastIncomingPrice(id: string, transaction: FirebirdTransaction = null): Promise<number> {
         const workingTransaction = transaction || (await this.getTransaction());

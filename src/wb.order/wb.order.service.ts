@@ -36,6 +36,7 @@ import { isMarkCodesEnabled } from '../helpers';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { IFboSales } from '../interfaces/IFboSales';
 import { MP_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
+import { SaleLine, SalePriceRef, SalePriceSource } from '../order/profit-check/profit-check.types';
 import { MpEventDto, MpEventService } from '../mp-event/mp-event.service';
 import { MpDecisionRunnerService } from '../mp-decision/mp-decision.runner.service';
 import { IReturnable } from '../interfaces/IReturnable';
@@ -388,6 +389,8 @@ export class WbOrderService implements IOrderable, IFboSales, IMarkSubmittable, 
             status: status,
             in_process_at: order.createdAt,
             service: GoodServiceEnum.WB,
+            // rid заказа = srid в статистике: по нему проверка прибыльности найдёт нашу цену.
+            external_id: order.rid,
             ...(shipped === undefined ? {} : { shipped }),
             products: [
                 {
@@ -630,6 +633,37 @@ export class WbOrderService implements IOrderable, IFboSales, IMarkSubmittable, 
 
     getBuyerId(): number {
         return this.configService.get<number>('WB_BUYER_ID', 24532);
+    }
+
+    /** В заказе ВБ только цена покупателя; наша (priceWithDisc) — в статистике заказов, с задержкой до получаса. */
+    salePriceSource(): SalePriceSource {
+        return 'lookup';
+    }
+
+    /**
+     * Статистика заказов одним запросом от самой ранней даты (лимит ручки — раз в минуту):
+     * srid → строки с нашей ценой со скидкой. FBS: srid = rid заказа; FBO: srid = номер отправления у нас.
+     */
+    async lookupSalePrices(refs: SalePriceRef[]): Promise<Map<string, SaleLine[]>> {
+        const result = new Map<string, SaleLine[]>();
+        if (!refs.length) return result;
+        const since = refs.reduce((min, r) => (r.since < min ? r.since : min), refs[0].since);
+        const dateFrom = DateTime.fromJSDate(since)
+            .minus({ hours: 1 })
+            .toISO({ suppressMilliseconds: true, includeOffset: false });
+        const wanted = new Set(refs.map((r) => r.externalId));
+        const rows: any[] = (await this.getOrders(dateFrom)) ?? [];
+        for (const row of rows) {
+            const srid = String(row.srid ?? '');
+            if (!wanted.has(srid)) continue;
+            const price = Number(row.priceWithDisc);
+            if (!(price > 0)) continue;
+            result.set(srid, [
+                ...(result.get(srid) ?? []),
+                { offer_id: String(row.supplierArticle), units: 1, pricePerUnit: price },
+            ]);
+        }
+        return result;
     }
 
     async getOrdersStickers(orders: number[]): Promise<WbOrderStickersDto> {

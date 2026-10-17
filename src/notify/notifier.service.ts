@@ -5,7 +5,7 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import { createHash } from 'crypto';
 import { Environment } from '../env.validation';
-import { halfStoreMessage, isNoticeTopic, problematicPricesMessage, tickMessage, wbOrdersMessage } from './formatters';
+import { halfStoreMessage, isNoticeTopic, problematicPricesMessage, tickMessage, wbOrdersMessage, profitCheckMessage } from './formatters';
 import { instanceTag, resolveInstance } from './instance';
 import { NotifyRetryService } from './notify-retry.service';
 import { NotifyRouteRepository } from './notify-route.repository';
@@ -102,6 +102,12 @@ export class NotifierService {
     @OnEvent('half.store', { async: true })
     async halfStore(good: any, bound: any): Promise<boolean> {
         return this.notify(NotifyTopic.PRICES, halfStoreMessage(good, bound));
+    }
+
+    /** Проверка прибыльности заказов: тревога — с пушем, одни предупреждения — тихо. */
+    @OnEvent('profit.check', { async: true })
+    async profitCheck(items: any[]): Promise<boolean> {
+        return this.notify(NotifyTopic.PRICES, profitCheckMessage(items ?? []));
     }
 
     @OnEvent('problematic.prices', { async: true })

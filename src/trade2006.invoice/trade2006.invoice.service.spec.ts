@@ -46,7 +46,7 @@ describe('Trade2006InvoiceService', () => {
                 },
                 {
                     provide: EventEmitter2,
-                    useValue: { emit },
+                    useValue: { emit, emitAsync: jest.fn().mockResolvedValue([]) },
                 },
                 {
                     provide: Cache,

@@ -3,6 +3,7 @@ import { AppController } from './app.controller';
 import { AppService } from './app.service';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { OzonApiModule } from './ozon.api/ozon.api.module';
+import { ProfitCheckModule } from './order/profit-check/profit-check.module';
 import { TnvedSyncModule } from './tnved-sync/tnved-sync.module';
 import { DictModule } from './dict/dict.module';
 import { ProductModule } from './product/product.module';
@@ -111,6 +112,7 @@ import JSONbig from 'json-bigint';
         }),
         ScheduleModule.forRoot(),
         JobModule,
+        ProfitCheckModule,
         OzonApiModule,
         ProductModule,
         ElectronicaApiModule,
