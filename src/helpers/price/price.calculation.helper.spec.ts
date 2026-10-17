@@ -289,6 +289,37 @@ describe('PriceCalculationHelper', () => {
             expect(mockService.getObtainCoeffs).not.toHaveBeenCalled();
         });
 
+        it('без площадки налог берётся из TAX_UNIT, а не ноль (ноль = ветка ОСНО)', async () => {
+            const build = async (taxUnit: number | undefined) => {
+                const module = await Test.createTestingModule({
+                    providers: [
+                        PriceCalculationHelper,
+                        {
+                            provide: ConfigService,
+                            useValue: {
+                                get: (key: string, d?: any) =>
+                                    key === 'TAX_UNIT' && taxUnit !== undefined ? taxUnit : d,
+                            },
+                        },
+                    ],
+                }).compile();
+                return module.get(PriceCalculationHelper);
+            };
+            const usn = await build(11);
+            const spy = jest.spyOn(usn as any, 'calculatePriceWithCoeffs');
+            usn.adjustPercents(initialPrice);
+            expect(spy.mock.calls[0][1]).toEqual(expect.objectContaining({ taxUnit: 11, sumObtain: 0, percMil: 0 }));
+            const osno = await build(0);
+            const spyOsno = jest.spyOn(osno as any, 'calculatePriceWithCoeffs');
+            osno.adjustPercents(initialPrice);
+            expect(spyOsno.mock.calls[0][1]).toEqual(expect.objectContaining({ taxUnit: 0 }));
+            // TAX_UNIT не задан — дефолт 6, как у сервисов площадок
+            const def = await build(undefined);
+            const spyDef = jest.spyOn(def as any, 'calculatePriceWithCoeffs');
+            def.adjustPercents(initialPrice);
+            expect(spyDef.mock.calls[0][1]).toEqual(expect.objectContaining({ taxUnit: 6 }));
+        });
+
         it('should calculate lower percents with zero coefficients than with service coefficients', () => {
             const resultWithService = helper.adjustPercents(initialPrice, mockService);
             const resultWithoutService = helper.adjustPercents(initialPrice);

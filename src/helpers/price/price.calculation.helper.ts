@@ -19,18 +19,24 @@ export class PriceCalculationHelper {
     private readonly MIN_PROFIT_RUB: number;
     private readonly MIN_STOCK_PERCENT: number;
 
-    private static readonly ZERO_COEFFS: ObtainCoeffsDto = {
-        minMil: 0,
-        percMil: 0,
-        percEkv: 0,
-        sumObtain: 0,
-        sumLabel: 0,
-        taxUnit: 0,
-    };
+    /**
+     * «Общие» коэффициенты подбора наценки без площадки (одна наценка в OZON_PERC на все площадки):
+     * расходов площадки нет, но налог — наш, из TAX_UNIT, как у каждой площадки. Ноль здесь значил бы
+     * «ОСНО» (ветка с НДС и налогом на прибыль) и на рознице с УСН 11 % считал бы не то (17.10.2026).
+     */
+    private readonly genericCoeffs: ObtainCoeffsDto;
 
     constructor(private readonly configService: ConfigService) {
         this.MIN_PROFIT_RUB = this.configService.get<number>('MIN_PROFIT_RUB', 20);
         this.MIN_STOCK_PERCENT = this.configService.get<number>('MIN_STOCK_PERCENT', 80);
+        this.genericCoeffs = {
+            minMil: 0,
+            percMil: 0,
+            percEkv: 0,
+            sumObtain: 0,
+            sumLabel: 0,
+            taxUnit: toNumber(this.configService.get<number>('TAX_UNIT', 6)),
+        };
     }
 
     selectWarehouse(fboCount: number, fbsCount: number, fboCommission: number, fbsCommission: number): 'fbo' | 'fbs' {
@@ -142,7 +148,7 @@ export class PriceCalculationHelper {
         initialPrice: IPriceable,
         service?: IPriceUpdateable,
     ): { min_perc: number; perc: number; old_perc: number } {
-        const coeffs = service?.getObtainCoeffs() ?? PriceCalculationHelper.ZERO_COEFFS;
+        const coeffs = service?.getObtainCoeffs() ?? this.genericCoeffs;
 
         let { min_perc, perc, old_perc } = this.getInitialPercents(
             initialPrice.available_price != null && initialPrice.available_price > 0
