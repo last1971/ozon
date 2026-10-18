@@ -40,9 +40,13 @@ describe('ProfitCheckService', () => {
     const priceService = { getObtainCoeffs: () => coeffs };
     const prices = { getService: jest.fn().mockReturnValue(priceService) };
     const goods = { buildPriceables: jest.fn().mockResolvedValue([hdr]) };
-    const ozon = { salePriceSource: () => 'posting', lookupSalePrices: jest.fn() };
-    const wb = { salePriceSource: () => 'lookup', lookupSalePrices: jest.fn().mockResolvedValue(new Map()) };
-    const yandex = { salePriceSource: () => 'none', lookupSalePrices: jest.fn() };
+    const ozon = { getBuyerId: jest.fn(() => 24231), salePriceSource: () => 'posting', lookupSalePrices: jest.fn() };
+    const wb = {
+        getBuyerId: jest.fn(() => 24243),
+        salePriceSource: () => 'lookup',
+        lookupSalePrices: jest.fn().mockResolvedValue(new Map()),
+    };
+    const yandex = { getBuyerId: jest.fn(() => 24465), salePriceSource: () => 'none', lookupSalePrices: jest.fn() };
     const config = {
         get: jest.fn(
             (k: string, d?: any) => ({ OZON_BUYER_ID: 24231, WB_BUYER_ID: 24243, YANDEX_BUYER_ID: 24465 })[k] ?? d,
@@ -119,6 +123,13 @@ describe('ProfitCheckService', () => {
                 priceSource: 'lookup',
                 externalId: 'ecb.r92.0.0',
             });
+        });
+
+        it('розница: покупатель Озона без OZON_BUYER_ID в env (дефолт 24416) — площадку называет сам Озон', async () => {
+            ozon.getBuyerId.mockReturnValueOnce(24416);
+            await service.enqueue({ buyerId: 24416, posting: posting(), invoice, transaction: t });
+            expect(journal.record).toHaveBeenCalledTimes(1);
+            expect(journal.record.mock.calls[0][0]).toMatchObject({ service: 'OZON', extId: 'P-1' });
         });
 
         it('Яндекс (none) и неизвестный покупатель — в очередь не попадают; сбой журнала счёт не роняет', async () => {

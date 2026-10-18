@@ -131,19 +131,11 @@ export class ProfitCheckService {
         }
     }
 
-    /** Площадка заказа: явный признак в заказе, иначе по покупателю счёта. */
+    /** Площадка заказа: явный признак в заказе, иначе по покупателю счёта — спрашиваем у самих площадок. */
     private serviceOf(event: InvoiceCreatedEvent): MpService | null {
         const explicit = event.posting.service?.toUpperCase();
         if (explicit === 'OZON' || explicit === 'WB' || explicit === 'YANDEX') return explicit;
-        const byBuyer: [string, MpService][] = [
-            ['OZON_BUYER_ID', 'OZON'],
-            ['WB_BUYER_ID', 'WB'],
-            ['YANDEX_BUYER_ID', 'YANDEX'],
-        ];
-        for (const [key, service] of byBuyer) {
-            if (Number(this.configService.get(key)) === Number(event.buyerId)) return service;
-        }
-        return null;
+        return this.sources.serviceOfBuyer(event.buyerId);
     }
 }
 
