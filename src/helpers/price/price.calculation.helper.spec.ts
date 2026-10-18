@@ -95,6 +95,7 @@ describe('PriceCalculationHelper', () => {
                 updatePercentsForService: jest.fn().mockResolvedValue(undefined),
                 generatePercentsForService: jest.fn().mockResolvedValue(undefined),
                 buildPriceables: jest.fn().mockResolvedValue([]),
+                getQuantityThresholds: jest.fn().mockResolvedValue(new Map()),
             };
 
             const result = await helper.preparePricesContext(mockService, skus, mockGoodService);
@@ -144,6 +145,7 @@ describe('PriceCalculationHelper', () => {
                 updatePercentsForService: jest.fn().mockResolvedValue(undefined),
                 generatePercentsForService: jest.fn().mockResolvedValue(undefined),
                 buildPriceables: jest.fn().mockResolvedValue([]),
+                getQuantityThresholds: jest.fn().mockResolvedValue(new Map()),
             };
 
             const result = await helper.preparePricesContext(null, skus, mockGoodService);

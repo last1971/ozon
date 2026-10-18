@@ -12,6 +12,7 @@ import { IPriceable } from '../../interfaces/i.priceable';
 import { toNumber } from 'lodash';
 import { ObtainCoeffsDto } from '../dto/obtain.coeffs.dto';
 import { GenericProductCoeffsAdapter } from './generic.product.coeffs.adapter';
+import { PricesContextDto } from '../dto/prices.context.dto';
 
 @Injectable()
 export class PriceCalculationHelper {
@@ -84,11 +85,15 @@ export class PriceCalculationHelper {
         return warehouse === 'fbo' ? commissions.sales_percent_fbo : commissions.sales_percent_fbs;
     }
 
+    /**
+     * @param known уже загруженные себестоимости и наценки (тот же снимок) — тогда в базу не ходим
+     */
     async preparePricesContext(
         service: IPriceUpdateable | null,
         skus: string[],
         goodService: IGood,
         transaction: FirebirdTransaction = null,
+        known?: PricesContextDto,
     ): Promise<{
         codes: string[];
         goods: GoodPriceDto[];
@@ -96,8 +101,8 @@ export class PriceCalculationHelper {
         products: IProductCoeffsable[];
     }> {
         const codes = skus.map((item) => goodCode({ offer_id: item }));
-        const goods = await goodService.prices(codes, transaction);
-        const percents = await goodService.getPerc(codes, transaction);
+        const goods = known ? known.goods : await goodService.prices(codes, transaction);
+        const percents = known ? known.percents : await goodService.getPerc(codes, transaction);
         const products = service
             ? await service.getProductsWithCoeffs(skus)
             : skus.map((sku) => new GenericProductCoeffsAdapter(sku));

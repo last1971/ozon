@@ -22,7 +22,7 @@ export const calculateCosts = (
     const fixedCosts: number =
         toNumber(percents.sumObtain) +
         toNumber(percents.sumLabel) +
-        toNumber(price.sum_pack) +
+        toNumber(percents.sumPack ?? price.sum_pack) +
         toNumber(price.fbs_direct_flow_trans_max_amount);
 
     const dynamicCosts: number =
@@ -102,6 +102,7 @@ export const calculatePrice = (
         old_price: calc(price.old_perc, price),
         price: calc(price.perc, price),
         incoming_price: price.incoming_price,
+        available_price: price.available_price,
         sum_pack: price.sum_pack,
     };
 };

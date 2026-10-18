@@ -60,6 +60,8 @@ export class UpdatePriceDto {
     @IsOptional()
     @IsNumber()
     incoming_price?: number;
+    /** Рыночная цена из наценок (OZON_PERC.AVAILABLE_PRICE): если > 0, цена считалась от неё, а не от закупки. */
+    available_price?: number;
     sum_pack?: number;
     @ApiProperty({
         description: 'Ставка НДС (число или строка)',

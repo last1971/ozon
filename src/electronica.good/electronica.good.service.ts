@@ -11,6 +11,7 @@ import { GoodWbDto } from '../good/dto/good.wb.dto';
 import { WbCommissionDto } from '../wb.card/dto/wb.commission.dto';
 import { FirebirdTransaction } from 'ts-firebird';
 import { GoodServiceEnum } from '../good/good.service.enum';
+import { TierThresholdsDto } from '../helpers/price/quantity.tiers.helper';
 
 @Injectable()
 export class ElectronicaGoodService implements IGood {
@@ -74,6 +75,10 @@ export class ElectronicaGoodService implements IGood {
 
     buildPriceables(): Promise<IPriceable[]> {
         return Promise.resolve([]);
+    }
+
+    getQuantityThresholds(): Promise<Map<string, TierThresholdsDto>> {
+        return Promise.resolve(new Map());
     }
 
     getWbData(_ids: string[]): Promise<GoodWbDto[]> {

@@ -7,7 +7,15 @@ import { FIREBIRD } from '../firebird/firebird.module';
 import { FirebirdPool, FirebirdTransaction } from 'ts-firebird';
 import { GoodPriceDto } from '../good/dto/good.price.dto';
 import { GoodPercentDto } from '../good/dto/good.percent.dto';
-import { calculatePrice, getPieces, goodCode, goodQuantityCoeff, isMarkCodesEnabled } from '../helpers';
+import {
+    calculatePrice,
+    getPieces,
+    goodCode,
+    goodQuantityCoeff,
+    isMarkCodesEnabled,
+    TierThresholdsDto,
+} from '../helpers';
+import { PricesContextDto } from '../helpers/dto/prices.context.dto';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
 import { UpdatePriceDto } from '../price/dto/update.price.dto';
 import { ConfigService } from '@nestjs/config';
@@ -172,6 +180,29 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
             return allResults;
         }, t);
     }
+    /** Пороги ступеней из Trade: PRICE.QUANMOPT (мелкий опт) и PRICE.QUANOPT (опт); в PRICE одна строка на товар. */
+    async getQuantityThresholds(
+        codes: string[],
+        t: FirebirdTransaction = null,
+    ): Promise<Map<string, TierThresholdsDto>> {
+        const result = new Map<string, TierThresholdsDto>();
+        if (codes.length === 0) return result;
+
+        return this.withTransaction(async (transaction) => {
+            for (const batch of chunk(codes, 50)) {
+                const rows = await transaction.query(
+                    `SELECT GOODSCODE, QUANMOPT, QUANOPT FROM PRICE WHERE GOODSCODE IN (${batch.map(() => '?').join(',')})`,
+                    batch,
+                    false,
+                );
+                for (const row of rows) {
+                    result.set(row.GOODSCODE.toString(), { mopt: row.QUANMOPT, opt: row.QUANOPT });
+                }
+            }
+            return result;
+        }, t);
+    }
+
     async setPercents(perc: GoodPercentDto, t: FirebirdTransaction = null): Promise<void> {
         const transaction = t ?? (await this.pool.getTransaction());
         await transaction.execute(
@@ -490,12 +521,11 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         service: IPriceUpdateable | null,
         skus: string[],
         goodPercentsDto?: Map<string, Partial<GoodPercentDto>>,
+        known?: PricesContextDto,
     ): Promise<GoodPercentDto[]> {
-        const { goods, percents, products } = await this.priceCalculationHelper.preparePricesContext(
-            service,
-            skus,
-            this,
-        );
+        const { goods, percents, products } = known
+            ? await this.priceCalculationHelper.preparePricesContext(service, skus, this, null, known)
+            : await this.priceCalculationHelper.preparePricesContext(service, skus, this);
 
         const results: GoodPercentDto[] = [];
 
@@ -503,7 +533,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
             const sku = product.getSku();
             const gCode = goodCode({ offer_id: sku });
             const gCoeff = goodQuantityCoeff({ offer_id: sku });
-            const incoming_price = this.priceCalculationHelper.getIncomingPrice(product, goods);
+            const incoming_price = this.priceCalculationHelper.getIncomingPrice(product, goods, known?.prices);
 
             // Пропускаем если нет закупочной цены
             if (!incoming_price || incoming_price <= 0) {
@@ -626,7 +656,12 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
             return !percents.some((p) => p.offer_id.toString() === gCode && p.pieces === gCoeff);
         });
         if (missingSkus.length > 0) {
-            const newPercents = await this.generatePercentsForService(null, missingSkus);
+            // Тот же снимок себестоимостей и наценок, что и у основного расчёта, без второго похода в базу
+            const newPercents = await this.generatePercentsForService(null, missingSkus, undefined, {
+                goods,
+                percents,
+                prices,
+            });
             percents.push(...newPercents);
         }
 

@@ -301,7 +301,9 @@ class EnvironmentVariables {
     /** Проверка прибыльности: сколько часов ждать нашу цену от площадки (ВБ: статистика с задержкой). */
     @IsOptional()
     @IsNumber()
-    @Transform(({ obj }) => (obj.PROFIT_CHECK_LOOKUP_HOURS === undefined ? undefined : Number(obj.PROFIT_CHECK_LOOKUP_HOURS)))
+    @Transform(({ obj }) =>
+        obj.PROFIT_CHECK_LOOKUP_HOURS === undefined ? undefined : Number(obj.PROFIT_CHECK_LOOKUP_HOURS),
+    )
     PROFIT_CHECK_LOOKUP_HOURS: number;
 
     @IsOptional()
@@ -355,6 +357,21 @@ class EnvironmentVariables {
     @IsOptional()
     @IsNumber()
     SYLIUS_EXT_PERC: number;
+
+    /** Этикетка для Sylius вместо общей SUM_LABEL (0 — без этикетки) */
+    @IsOptional()
+    @IsNumber()
+    SYLIUS_SUM_LABEL: number;
+
+    /** Упаковка для Sylius вместо упаковки из наценок товара (0 — без упаковки) */
+    @IsOptional()
+    @IsNumber()
+    SYLIUS_SUM_PACK: number;
+
+    /** Пороги ступеней цены по умолчанию: `50:10/100,200:5/20,1000:3/10,2/5` */
+    @IsOptional()
+    @IsString()
+    SYLIUS_TIER_DEFAULTS: string;
 
     @IsOptional()
     @IsString()

@@ -173,6 +173,21 @@ describe('Trade2006GoodService', () => {
         await service.getPerc(['3']);
         expect(query.mock.calls[0]).toEqual(['select * from ozon_perc where goodscode in (?)', ['3'], false]);
     });
+    it('getQuantityThresholds — пороги ступеней из PRICE', async () => {
+        query.mockReturnValueOnce([
+            { GOODSCODE: 3, QUANMOPT: 10, QUANOPT: 100 },
+            { GOODSCODE: 4, QUANMOPT: null, QUANOPT: null },
+        ]);
+        const res = await service.getQuantityThresholds(['3', '4', '5']);
+        expect(query.mock.calls[0]).toEqual([
+            'SELECT GOODSCODE, QUANMOPT, QUANOPT FROM PRICE WHERE GOODSCODE IN (?,?,?)',
+            ['3', '4', '5'],
+            false,
+        ]);
+        expect(res.get('3')).toEqual({ mopt: 10, opt: 100 });
+        expect(res.get('4')).toEqual({ mopt: null, opt: null });
+        expect(res.has('5')).toBe(false);
+    });
     it('test setPerc', async () => {
         await service.setPercents({ offer_id: '123', adv_perc: 10 });
         expect(execute.mock.calls[0]).toEqual([
@@ -243,7 +258,12 @@ describe('Trade2006GoodService', () => {
 
         await service.updatePriceForService(priceUdateable, ['1']);
 
-        expect(generateSpy).toHaveBeenCalledWith(null, ['1']);
+        // подбор получает уже загруженный снимок себестоимостей и наценок, в базу второй раз не ходит
+        expect(generateSpy).toHaveBeenCalledWith(null, ['1'], undefined, {
+            goods: [{ code: 1, name: 'ONE', price: 10.11 }],
+            percents: expect.any(Array),
+            prices: undefined,
+        });
         generateSpy.mockRestore();
     });
 

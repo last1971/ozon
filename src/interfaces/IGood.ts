@@ -9,6 +9,8 @@ import { WbCommissionDto } from '../wb.card/dto/wb.commission.dto';
 import { UpdatePriceDto } from '../price/dto/update.price.dto';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { IPriceable } from './i.priceable';
+import { PricesContextDto } from '../helpers/dto/prices.context.dto';
+import { TierThresholdsDto } from '../helpers/price/quantity.tiers.helper';
 
 export interface IGood {
     /** Транзакция для чтения нескольких выборок из одного снимка (остаток и коды не должны разъезжаться). */
@@ -35,11 +37,18 @@ export interface IGood {
         skus: string[],
         prices?: Map<string, UpdatePriceDto>,
     ): Promise<IPriceable[]>;
+    /**
+     * Подбор наценок по артикулам. `known` — уже загруженные себестоимости/наценки и подложенные себестоимости
+     * (тот же снимок, без второго похода в базу).
+     */
     generatePercentsForService(
         service: IPriceUpdateable | null,
         skus: string[],
         goodPercentsDto?: Map<string, Partial<GoodPercentDto>>,
+        known?: PricesContextDto,
     ): Promise<GoodPercentDto[]>;
+    /** Пороги ступеней цены от количества из Trade (PRICE.QUANMOPT/QUANOPT) по кодам товаров. */
+    getQuantityThresholds(codes: string[], t?: FirebirdTransaction): Promise<Map<string, TierThresholdsDto>>;
     updatePercentsForService(
         service: IPriceUpdateable,
         skus: string[],

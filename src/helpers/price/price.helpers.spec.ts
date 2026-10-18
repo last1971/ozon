@@ -31,6 +31,14 @@ describe('Price helpers', () => {
         expect(dynamicCosts).toBe(5 + 1 + 2 + 4);
     });
 
+    it('calculateCosts — подмена упаковки площадкой (sumPack), ноль тоже подмена', () => {
+        const price = { sum_pack: 10, fbs_direct_flow_trans_max_amount: 20, sales_percent: 5, adv_perc: 2 };
+        const percents = { sumObtain: 5, sumLabel: 3, taxUnit: 1, percEkv: 4 };
+        expect(calculateCosts(price as any, { ...percents, sumPack: 0 } as any).fixedCosts).toBe(5 + 3 + 0 + 20);
+        expect(calculateCosts(price as any, { ...percents, sumPack: 7 } as any).fixedCosts).toBe(5 + 3 + 7 + 20);
+        expect(calculateCosts(price as any, { ...percents, sumPack: undefined } as any).fixedCosts).toBe(38);
+    });
+
     it('calculatePay', () => {
         const price = {
             adv_perc: 1,
@@ -86,6 +94,7 @@ describe('Price helpers', () => {
             currency_code: 'RUB',
             min_price: '257',
             incoming_price: 1,
+            available_price: 100,
             offer_id: '123',
             old_price: '384',
             price: '313',
