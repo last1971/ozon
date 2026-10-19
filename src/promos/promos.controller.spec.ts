@@ -3,6 +3,7 @@ import { OzonPromosApi } from './promos.api';
 import { PromosController } from './promos.controller';
 import { PromosService } from './promos.service';
 import { PromoPriceService } from './price-lever/promo-price.service';
+import { PromoSweepService } from './price-lever/sweep/promo-sweep.service';
 
 describe('PromosController', () => {
     let controller: PromosController;
@@ -10,6 +11,7 @@ describe('PromosController', () => {
     const states = jest.fn();
     const plans = jest.fn();
     const apply = jest.fn();
+    const sweepStart = jest.fn();
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
@@ -18,6 +20,7 @@ describe('PromosController', () => {
                 { provide: PromosService, useValue: {} },
                 { provide: OzonPromosApi, useValue: { page } },
                 { provide: PromoPriceService, useValue: { states, plans, apply } },
+                { provide: PromoSweepService, useValue: { start: sweepStart } },
             ],
         }).compile();
         controller = module.get(PromosController);
@@ -50,5 +53,13 @@ describe('PromosController', () => {
         apply.mockResolvedValue([]);
         await controller.priceApply({ offer_ids: ['532100'], target: 'min', percent: 14 });
         expect(apply).toHaveBeenCalledWith(['532100'], 'min', 14);
+    });
+
+    it('below-min-sweep: без apply — только отчёт; метка браузера в задачу', () => {
+        sweepStart.mockReturnValue({ id: 'j' });
+        expect(controller.belowMinSweep(undefined, 'cid')).toEqual({ id: 'j' });
+        expect(sweepStart).toHaveBeenCalledWith(false, 'cid');
+        controller.belowMinSweep(true, '');
+        expect(sweepStart).toHaveBeenLastCalledWith(true, undefined);
     });
 });

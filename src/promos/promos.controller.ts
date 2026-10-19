@@ -1,10 +1,12 @@
-import { Body, Controller, Get, HttpCode, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, ParseBoolPipe, Post, Query } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { ActionProductsPageParamsDto } from './dto/actionProductsPage.dto';
 import { ActionsDto } from './dto/actions.dto';
 import { AddRemoveProductToActionsParamsDto } from './dto/addRemoveProductToActionsParams.dto';
 import { PromoPricePlanRequestDto, PromoPriceStateRequestDto } from './dto/promoPrice.dto';
+import { JobStateDto } from '../job/job.state.dto';
 import { PromoPriceService } from './price-lever/promo-price.service';
+import { PromoSweepService } from './price-lever/sweep/promo-sweep.service';
 import { PromoPriceApplyResult, PromoPricePlan, PromoPriceState } from './price-lever/promo-price.types';
 import { OzonPromosApi } from './promos.api';
 import { AddRemoveProductToAction, FitProductsStrategy, PromosService } from './promos.service';
@@ -17,6 +19,7 @@ export class PromosController {
         private readonly service: PromosService,
         private readonly api: OzonPromosApi,
         private readonly promoPrice: PromoPriceService,
+        private readonly sweep: PromoSweepService,
     ) {}
 
     @ApiOkResponse({ description: 'Список акций, в которых можно участвовать.', type: [ActionsDto] })
@@ -103,5 +106,22 @@ export class PromosController {
     @HttpCode(200)
     priceApply(@Body() body: PromoPricePlanRequestDto): Promise<PromoPriceApplyResult[]> {
         return this.promoPrice.apply(body.offer_ids, PromoPriceService.parseTarget(body.target), body.percent);
+    }
+
+    @ApiOperation({
+        summary: 'Ozon: сверка «ниже минимума» по всем товарам в акциях (фоновая задача)',
+        description:
+            'Товары, у которых цена покупателю ниже min_price → план (процент — минимум нашей акции, Ozon-акции ' +
+            'держат пол или выкидываются). apply=false — только отчёт, apply=true — применить. Ход и отчёт — GET /job/:id.',
+    })
+    @ApiQuery({ name: 'apply', type: Boolean, required: false })
+    @ApiOkResponse({ type: JobStateDto })
+    @Post('ozon/below-min-sweep')
+    @HttpCode(200)
+    belowMinSweep(
+        @Query('apply', new ParseBoolPipe({ optional: true })) apply?: boolean,
+        @Headers('x-client-id') clientId?: string,
+    ): JobStateDto {
+        return this.sweep.start(Boolean(apply), clientId || undefined);
     }
 }

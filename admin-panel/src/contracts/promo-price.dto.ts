@@ -1,4 +1,4 @@
-/** Зеркало src/promos/price-lever/promo-price.types.ts на бэке (ручки /api/promos/ozon/price-state, price-plan, price-apply). */
+/** Зеркало src/promos/price-lever/promo-price.types.ts на бэке (ручки /api/promos/ozon/price-*, below-min-sweep). */
 
 /** Цель: 'min' — min_price, 'normal' — price, число — своя цена в коридоре [min_price, price]. */
 export type PromoTarget = 'min' | 'normal' | number;
@@ -81,4 +81,41 @@ export interface PromoPriceApplyResult extends PromoPricePlan {
     results: PromoStepResult[];
     /** Все шаги прошли. */
     applied: boolean;
+}
+
+/** Товар в отчёте сверки «ниже минимума»: план без полного состояния (отчёт на сотни строк). */
+export interface PromoSweepItem {
+    offerId: string;
+    productId: number;
+    price: number;
+    minPrice: number;
+    buyerBefore: number;
+    buyerAfter: number;
+    ok: boolean;
+    steps: PromoPriceStep[];
+    notes: string[];
+    /** Только при применении. */
+    results?: PromoStepResult[];
+    applied?: boolean;
+}
+
+/** Итог сверки: сколько товаров ниже минимума и чем их лечит план. */
+export interface PromoSweepReport {
+    apply: boolean;
+    /** Товаров в акциях, проверено. */
+    checked: number;
+    belowMin: number;
+    /** Ozon-акции остались (цена поднята до пола), из них никого не выкинули. */
+    keptInOzon: number;
+    /** Хоть из одной Ozon-акции выкинуты. */
+    removedFromOzon: number;
+    /** Меняется процент нашей акции. */
+    percentChanged: number;
+    /** План не выводит выше минимума. */
+    unfixable: number;
+    /** Ниже минимума, но шагов нет (формула расходится с Ozon) — смотреть руками. */
+    nothingToDo: number;
+    /** При применении: товаров, где не все шаги прошли. */
+    failed: number;
+    items: PromoSweepItem[];
 }

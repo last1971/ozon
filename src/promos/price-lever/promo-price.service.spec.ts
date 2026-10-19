@@ -141,6 +141,31 @@ describe('PromoPriceService — состояние товара из обоих 
         expect(res.applied).toBe(true);
     });
 
+    it('allInActionsStates: участники Ozon-акций и нашей акции, кандидаты — нет; цены пачками по product_id', async () => {
+        listActions.mockResolvedValue([{ id: 1977747, title: 'Эластичный бустинг', is_voucher_action: false }]);
+        listAll
+            .mockResolvedValueOnce([ozonProduct(11)]) // участник Ozon-акции
+            .mockResolvedValueOnce([ozonProduct(12, { actionPrice: 0 })]); // только кандидат — не берём
+        activeAction.mockResolvedValue({ id: 4376619, title: '26-10', minPercent: 5 });
+        sellerListAll
+            .mockResolvedValueOnce([sellerProduct(13)]) // участник нашей
+            .mockResolvedValueOnce([sellerProduct(14, { isActive: false })]); // кандидат нашей — не берём
+        getPrices.mockResolvedValue({
+            items: [
+                { ...v5item, product_id: 11 },
+                { ...v5item, product_id: 13 },
+            ],
+        });
+
+        const states = await service.allInActionsStates();
+
+        expect(getPrices).toHaveBeenCalledTimes(1);
+        expect(getPrices.mock.calls[0][0]).toEqual({ product_id: [11, 13], visibility: 'ALL', limit: 2 });
+        expect(states.map((s) => s.productId)).toEqual([11, 13]);
+        expect(states[0].ozonActions[0]).toMatchObject({ actionId: 1977747, participant: true });
+        expect(states[1].seller).toMatchObject({ isActive: true, percent: 5 });
+    });
+
     it('пустой список и больше 100 артикулов — 400', async () => {
         await expect(service.states([' '])).rejects.toThrow('нет артикулов');
         await expect(service.states(Array.from({ length: 101 }, (_, i) => String(i)))).rejects.toThrow('100');

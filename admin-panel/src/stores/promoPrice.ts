@@ -1,6 +1,40 @@
 import { defineStore } from "pinia";
 import axios from "../axios.config";
-import type { PromoPriceApplyResult, PromoPricePlan, PromoPriceState, PromoTarget } from "@/contracts/promo-price.dto";
+import type { JobState } from "@/contracts/job.state";
+import type {
+    PromoPriceApplyResult,
+    PromoPricePlan,
+    PromoPriceState,
+    PromoPriceStep,
+    PromoStepResult,
+    PromoSweepReport,
+    PromoTarget,
+} from "@/contracts/promo-price.dto";
+
+/** Вид фоновой задачи сверки (src/promos/price-lever/sweep/promo-sweep.context.ts на бэке). */
+export const PROMO_SWEEP_JOB = 'ozon-promo-below-min';
+
+/** Запуск сверки «ниже минимума»: apply=false — отчёт, apply=true — применить. Ход — через useJob(PROMO_SWEEP_JOB). */
+export const startPromoSweep = async (apply: boolean): Promise<JobState<PromoSweepReport>> =>
+    (await axios.post<JobState<PromoSweepReport>>("/api/promos/ozon/below-min-sweep", null, { params: { apply } })).data;
+
+/** Шаг плана человеческими словами — один текст для карточки товара и для сверки. */
+export const stepText = (s: PromoPriceStep): string => {
+    switch (s.kind) {
+        case 'ozon-set':
+            return s.from === null ? `Добавить в «${s.title}» по ${s.to} ₽` : `«${s.title}»: цена ${s.from} → ${s.to} ₽`;
+        case 'ozon-remove':
+            return `Выкинуть из «${s.title}» (${s.reason})`;
+        case 'percent':
+            return s.from === null ? `Добавить в нашу акцию с ${s.to} %` : `Наша акция: ${s.from} → ${s.to} %`;
+    }
+};
+export const stepIcon = (s: PromoPriceStep) =>
+    s.kind === 'ozon-remove' ? 'mdi-close-circle-outline' : s.kind === 'percent' ? 'mdi-percent' : 'mdi-tag-outline';
+export const resultColor = (r?: PromoStepResult) =>
+    !r ? undefined : r.status === 'ok' ? 'success' : r.status === 'skipped' ? 'warning' : 'error';
+export const resultLabel = (r?: PromoStepResult) =>
+    !r ? '' : r.status === 'ok' ? 'выполнено' : r.status === 'skipped' ? 'пропущено' : 'отказ';
 
 /** Ошибка API → текст: Nest отдаёт message строкой или массивом (валидация). */
 const errorText = (e: any): string => {

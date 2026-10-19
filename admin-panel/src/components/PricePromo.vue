@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
-import { promoPriceStore } from "@/stores/promoPrice";
-import type { PromoPriceStep, PromoStepResult, PromoTarget } from "@/contracts/promo-price.dto";
+import { promoPriceStore, resultColor, resultLabel, stepIcon, stepText } from "@/stores/promoPrice";
+import type { PromoStepResult, PromoTarget } from "@/contracts/promo-price.dto";
 
 /**
  * Акции товара Ozon в карточке цены: где товар участвует, по какой цене, сколько платит покупатель,
@@ -47,25 +47,6 @@ const runApply = async () => {
 };
 /** Итог шага после применения; до применения — undefined. */
 const resultOf = (i: number): PromoStepResult | undefined => applied.value?.results[i];
-const resultColor = (r?: PromoStepResult) =>
-    !r ? undefined : r.status === 'ok' ? 'success' : r.status === 'skipped' ? 'warning' : 'error';
-const resultLabel = (r?: PromoStepResult) =>
-    !r ? '' : r.status === 'ok' ? 'выполнено' : r.status === 'skipped' ? 'пропущено' : 'отказ';
-
-const stepText = (s: PromoPriceStep): string => {
-    switch (s.kind) {
-        case 'ozon-set':
-            return s.from === null
-                ? `Добавить в «${s.title}» по ${s.to} ₽`
-                : `«${s.title}»: цена ${s.from} → ${s.to} ₽`;
-        case 'ozon-remove':
-            return `Выкинуть из «${s.title}» (${s.reason})`;
-        case 'percent':
-            return s.from === null ? `Добавить в нашу акцию с ${s.to} %` : `Наша акция: ${s.from} → ${s.to} %`;
-    }
-};
-const stepIcon = (s: PromoPriceStep) =>
-    s.kind === 'ozon-remove' ? 'mdi-close-circle-outline' : s.kind === 'percent' ? 'mdi-percent' : 'mdi-tag-outline';
 </script>
 
 <template>
