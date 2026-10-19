@@ -28,11 +28,11 @@ export class IncomingStore extends WithTransactions(class {}) {
         const codes: string[] = [];
         const seen = new Set<string>();
         for (const part of chunk(nps, 500)) {
+            // Коммитит withTransaction; query(..., true) коммитил бы второй раз — «Invalid transaction handle» (19.10.2026).
             const rows = await this.withTransaction((transaction) =>
                 transaction.query(
                     `SELECT DISTINCT GOODSCODE FROM ${this.table} WHERE NP IN (${part.map(() => '?').join(', ')})`,
                     part.map((np) => (this.table === 'SHOPIN' ? Number(np) : np)),
-                    true,
                 ),
             );
             for (const r of rows) {
