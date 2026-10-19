@@ -43,9 +43,10 @@ export class ResolveSalePricesCommand implements ICommandAsync<ProfitCheckContex
             for (const item of group) {
                 const lines = found.get(item.payload.externalId);
                 if (lines?.length) {
-                    item.payload = { ...item.payload, lines };
+                    item.payload = { ...item.payload, lines, priceOrigin: 'lookup' };
                     item.resolved = true;
                 } else if (item.firstSeen.getTime() < deadline) {
+                    item.expired = true;
                     item.reason = `площадка не отдала нашу цену за ${ctx.lookupHours} ч`;
                 } else {
                     item.deferred = true;

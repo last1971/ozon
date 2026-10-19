@@ -58,7 +58,8 @@ export function profitCheckMessage(items: any[]): NotifyMessage {
     const skips = items.filter((i) => i.level === 'skip');
     const fmt = (n: number | null | undefined) => (n === null || n === undefined ? '—' : String(Math.round(n)));
     const head = (i: any) =>
-        `${i.payload?.service} ${i.posting}${i.payload?.invoiceNumber ? ` · счёт №${i.payload.invoiceNumber}` : ''}`;
+        `${i.payload?.service} ${i.posting}${i.payload?.invoiceNumber ? ` · счёт №${i.payload.invoiceNumber}` : ''}` +
+        (i.payload?.priceOrigin === 'card' ? ' · цена из карточки на момент проверки, статистика заказ не отдала' : '');
     const lineOf = (v: any) =>
         v.level === 'skip'
             ? `  ${v.offer_id} × ${v.units}: не проверено — ${v.reason}`

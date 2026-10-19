@@ -10,6 +10,7 @@ import { MpEventService, MpService } from '../../mp-event/mp-event.service';
 import { PostingDto } from '../../posting/dto/posting.dto';
 import { LoadPendingCommand } from './commands/load-pending.command';
 import { ResolveSalePricesCommand } from './commands/resolve-sale-prices.command';
+import { FallbackSalePricesCommand } from './commands/fallback-sale-prices.command';
 import { LoadPriceContextCommand } from './commands/load-price-context.command';
 import { EvaluateCommand } from './commands/evaluate.command';
 import { NotifyCommand } from './commands/notify.command';
@@ -46,6 +47,7 @@ export class ProfitCheckService {
         private readonly configService: ConfigService,
         private readonly loadPending: LoadPendingCommand,
         private readonly resolvePrices: ResolveSalePricesCommand,
+        private readonly fallbackPrices: FallbackSalePricesCommand,
         private readonly loadPriceContext: LoadPriceContextCommand,
         private readonly evaluate: EvaluateCommand,
         private readonly notify: NotifyCommand,
@@ -56,6 +58,7 @@ export class ProfitCheckService {
         return new CommandChainAsync<ProfitCheckContext>([
             this.loadPending,
             this.resolvePrices,
+            this.fallbackPrices,
             this.loadPriceContext,
             this.evaluate,
             this.notify,

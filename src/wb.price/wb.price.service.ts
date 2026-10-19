@@ -18,6 +18,7 @@ import { GoodWbDto } from '../good/dto/good.wb.dto';
 import { WbCardDto } from '../wb.card/dto/wb.card.dto';
 import { IVatUpdateable } from 'src/interfaces/i.vat.updateable';
 import { JobProgress } from '../interfaces/i.job.context';
+import { WbCurrentPricesService } from './wb.current-prices.service';
 
 /** Задача для ВБ upload/task: nmID + базовая цена + скидка, %. */
 export interface WbPriceTask {
@@ -26,8 +27,7 @@ export interface WbPriceTask {
     discount: number;
 }
 
-/** Текущее состояние товара в кабинете ВБ — те же поля, что и в задаче отправки. */
-export type WbCurrentPrice = WbPriceTask;
+export type { WbCurrentPrice } from './wb.current-prices.service';
 
 /** Построчный итог массовой ВБ-ручки. */
 export interface WbBulkPriceReport {
@@ -49,6 +49,7 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
         private api: WbApiService,
         private cardService: WbCardService,
         private cardWriter: WbCardWriter,
+        private currentPrices: WbCurrentPricesService,
     ) {}
     async checkVatForAll(
         expectedVat: number,
@@ -225,33 +226,6 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
     }
 
     /**
-     * Текущие цены кабинета из ВБ (discounts-prices list/goods/filter), постранично.
-     * Ключ — vendorCode (артикул продавца); значение — nmID, базовая (зачёркнутая) цена и текущая скидка.
-     */
-    private async getCurrentPrices(): Promise<Map<string, WbCurrentPrice>> {
-        const map = new Map<string, WbCurrentPrice>();
-        const limit = 1000;
-        for (let offset = 0; ; offset += limit) {
-            const res = await this.api.method(
-                'https://discounts-prices-api.wildberries.ru/api/v2/list/goods/filter',
-                'get',
-                { limit, offset },
-                true,
-            );
-            const goods = res?.data?.listGoods ?? [];
-            for (const g of goods) {
-                map.set(g.vendorCode, {
-                    nmID: g.nmID,
-                    price: Number(g.sizes?.[0]?.price ?? 0),
-                    discount: Number(g.discount ?? 0),
-                });
-            }
-            if (goods.length < limit) break;
-        }
-        return map;
-    }
-
-    /**
      * Общее ядро массовых ВБ-ручек. Считает скидку каждому артикулу через calcDiscount
      * и одной задачей отправляет в ВБ. minPrice берётся из Firebird, базовая цена — из кабинета ВБ.
      * calcDiscount: вернуть процент, вернуть null — пропустить, бросить — записать в errors.
@@ -262,7 +236,7 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
     ): Promise<WbBulkPriceReport> {
         const wbData = await this.goodService.getWbData(articles);
         const minPriceByArt = new Map(wbData.map((w) => [w.id, Number(w.minPrice)]));
-        const current = await this.getCurrentPrices();
+        const current = await this.currentPrices.getAll();
 
         const data: WbPriceTask[] = [];
         const missing: string[] = [];

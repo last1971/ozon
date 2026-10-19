@@ -42,4 +42,16 @@ describe('profitCheckMessage', () => {
         expect(m.text).toContain('⚪ Не проверено: 1');
         expect(m.text).toContain('  площадка не отдала нашу цену за 3 ч');
     });
+    it('цена взята из карточки — это видно в заголовке заказа; по статистике — без пометки', () => {
+        const card = profitCheckMessage([
+            item('warn', { payload: { service: 'WB', invoiceNumber: 21016, priceOrigin: 'card' } }),
+        ]);
+        expect(card.text).toContain(
+            'WB 6057334305 · счёт №21016 · цена из карточки на момент проверки, статистика заказ не отдала',
+        );
+        const stat = profitCheckMessage([
+            item('warn', { payload: { service: 'WB', invoiceNumber: 21016, priceOrigin: 'lookup' } }),
+        ]);
+        expect(stat.text).not.toContain('из карточки');
+    });
 });

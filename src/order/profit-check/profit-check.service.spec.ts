@@ -5,6 +5,7 @@ import { ProfitCheckService } from './profit-check.service';
 import { SalePriceSources } from './sale-price.sources';
 import { LoadPendingCommand } from './commands/load-pending.command';
 import { ResolveSalePricesCommand } from './commands/resolve-sale-prices.command';
+import { FallbackSalePricesCommand } from './commands/fallback-sale-prices.command';
 import { LoadPriceContextCommand } from './commands/load-price-context.command';
 import { EvaluateCommand } from './commands/evaluate.command';
 import { NotifyCommand } from './commands/notify.command';
@@ -45,6 +46,7 @@ describe('ProfitCheckService', () => {
         getBuyerId: jest.fn(() => 24243),
         salePriceSource: () => 'lookup',
         lookupSalePrices: jest.fn().mockResolvedValue(new Map()),
+        fallbackSalePrices: jest.fn().mockResolvedValue(new Map()),
     };
     const yandex = { getBuyerId: jest.fn(() => 24465), salePriceSource: () => 'none', lookupSalePrices: jest.fn() };
     const config = {
@@ -64,6 +66,7 @@ describe('ProfitCheckService', () => {
                 SalePriceSources,
                 LoadPendingCommand,
                 ResolveSalePricesCommand,
+                FallbackSalePricesCommand,
                 LoadPriceContextCommand,
                 EvaluateCommand,
                 NotifyCommand,
@@ -228,6 +231,41 @@ describe('ProfitCheckService', () => {
             const items = emitter.emit.mock.calls[0][1];
             expect(items[0].level).toBe('skip');
             expect(items[0].reason).toContain('за 3 ч');
+            expect(wb.fallbackSalePrices).toHaveBeenCalledWith([
+                { externalId: 'ecb.x', lines: [{ offer_id: '568615', units: 1, pricePerUnit: 1197.11 }] },
+            ]);
+        });
+
+        it('ВБ: статистика не отдала за 3 ч, карточка отдала → проверено по цене карточки с пометкой', async () => {
+            const old = row({
+                firstSeen: new Date(Date.now() - 4 * 3600_000),
+                payload: { ...row().payload, service: 'WB', priceSource: 'lookup', externalId: 'ecb.x' },
+            });
+            journal.listUnhandledRows.mockImplementation(async (s: string) => (s === 'WB' ? [old] : []));
+            wb.fallbackSalePrices.mockResolvedValueOnce(
+                new Map([['ecb.x', [{ offer_id: '568615', units: 1, pricePerUnit: 900 }]]]),
+            );
+            await service.run();
+            expect(journal.markHandled).toHaveBeenCalledTimes(1);
+            const items = emitter.emit.mock.calls[0][1];
+            expect(items[0].level).toBe('alert');
+            expect(items[0].reason).toBeUndefined();
+            expect(items[0].payload.priceOrigin).toBe('card');
+            expect(items[0].verdicts[0].pricePerUnit).toBe(900);
+        });
+
+        it('ВБ: найдено в статистике → запасной источник не спрашиваем', async () => {
+            const old = row({
+                firstSeen: new Date(Date.now() - 4 * 3600_000),
+                payload: { ...row().payload, service: 'WB', priceSource: 'lookup', externalId: 'ecb.y' },
+            });
+            journal.listUnhandledRows.mockImplementation(async (s: string) => (s === 'WB' ? [old] : []));
+            wb.lookupSalePrices.mockResolvedValueOnce(
+                new Map([['ecb.y', [{ offer_id: '568615', units: 1, pricePerUnit: 1837 }]]]),
+            );
+            await service.run();
+            expect(wb.fallbackSalePrices).not.toHaveBeenCalled();
+            expect(journal.markHandled).toHaveBeenCalledTimes(1);
         });
 
         it('площадка выключена на узле → не проверено', async () => {

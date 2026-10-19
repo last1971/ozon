@@ -9,6 +9,7 @@ import { ProfitCheckService } from './profit-check.service';
 import { SalePriceSources } from './sale-price.sources';
 import { LoadPendingCommand } from './commands/load-pending.command';
 import { ResolveSalePricesCommand } from './commands/resolve-sale-prices.command';
+import { FallbackSalePricesCommand } from './commands/fallback-sale-prices.command';
 import { LoadPriceContextCommand } from './commands/load-price-context.command';
 import { EvaluateCommand } from './commands/evaluate.command';
 import { NotifyCommand } from './commands/notify.command';
@@ -21,6 +22,7 @@ import { MarkHandledCommand } from './commands/mark-handled.command';
         SalePriceSources,
         LoadPendingCommand,
         ResolveSalePricesCommand,
+        FallbackSalePricesCommand,
         LoadPriceContextCommand,
         EvaluateCommand,
         NotifyCommand,

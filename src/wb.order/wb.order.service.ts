@@ -36,7 +36,9 @@ import { isMarkCodesEnabled } from '../helpers';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { IFboSales } from '../interfaces/IFboSales';
 import { MP_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
-import { SaleLine, SalePriceRef, SalePriceSource } from '../order/profit-check/profit-check.types';
+import { SaleFallbackRef, SaleLine, SalePriceRef, SalePriceSource } from '../order/profit-check/profit-check.types';
+import { ISalePriceFallback } from '../interfaces/IOrderable';
+import { WbCurrentPricesService } from '../wb.price/wb.current-prices.service';
 import { MpEventDto, MpEventService } from '../mp-event/mp-event.service';
 import { MpDecisionRunnerService } from '../mp-decision/mp-decision.runner.service';
 import { IReturnable } from '../interfaces/IReturnable';
@@ -57,7 +59,7 @@ interface WbOrderEvent {
 }
 
 @Injectable()
-export class WbOrderService implements IOrderable, IFboSales, IMarkSubmittable, IReturnable {
+export class WbOrderService implements IOrderable, ISalePriceFallback, IFboSales, IMarkSubmittable, IReturnable {
     private readonly logger = new Logger(WbOrderService.name);
     private postingDtos: Map<string, PostingDto>;
     constructor(
@@ -75,6 +77,7 @@ export class WbOrderService implements IOrderable, IFboSales, IMarkSubmittable, 
         private readonly wbCustomer: WbCustomerService,
         private readonly mpEvent: MpEventService,
         private readonly mpRunner: MpDecisionRunnerService,
+        private readonly currentPrices: WbCurrentPricesService,
     ) {
         this.postingDtos = new Map<string, PostingDto>();
     }
@@ -665,6 +668,25 @@ export class WbOrderService implements IOrderable, IFboSales, IMarkSubmittable, 
                 ...(result.get(srid) ?? []),
                 { offer_id: String(row.supplierArticle), units: 1, pricePerUnit: price },
             ]);
+        }
+        return result;
+    }
+
+    /**
+     * Запасная наша цена: статистика ВБ навсегда теряет часть заказов FBS (19.10.2026: 25 из 454 за 30 дней,
+     * в любой валюте). Берём текущую цену со скидкой из карточки — у заказов того же дня совпадала со
+     * статистикой до рубля; после пересчёта цен между заказом и проверкой может отличаться.
+     */
+    async fallbackSalePrices(refs: SaleFallbackRef[]): Promise<Map<string, SaleLine[]>> {
+        const result = new Map<string, SaleLine[]>();
+        if (!refs.length) return result;
+        const current = await this.currentPrices.getAll();
+        for (const ref of refs) {
+            const lines = ref.lines.map((l) => ({
+                ...l,
+                pricePerUnit: Number(current.get(String(l.offer_id))?.discountedPrice),
+            }));
+            if (lines.length && lines.every((l) => l.pricePerUnit > 0)) result.set(ref.externalId, lines);
         }
         return result;
     }

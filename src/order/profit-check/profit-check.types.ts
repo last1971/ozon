@@ -27,6 +27,18 @@ export interface SalePriceRef {
     since: Date;
 }
 
+/** Ссылка для запасного поиска: заказ и его строки (артикулы и количество из заказа). */
+export interface SaleFallbackRef {
+    externalId: string;
+    lines: SaleLine[];
+}
+
+/**
+ * Откуда в итоге взята наша цена: lookup — основной поиск (точная цена на момент заказа);
+ * card — запасной: карточка площадки на момент проверки (основной заказ не отдал).
+ */
+export type SalePriceOrigin = 'lookup' | 'card';
+
 /** Что кладём в журнал при создании счёта — всё, что нужно проверке, без повторных походов в базу. */
 export interface ProfitCheckPayload {
     service: MpService;
@@ -37,6 +49,8 @@ export interface ProfitCheckPayload {
     priceSource: SalePriceSource;
     /** При priceSource=posting — наши цены; при lookup — цены покупателя, заменяются на найденные. */
     lines: SaleLine[];
+    /** Для lookup: откуда взята найденная цена (ставит шаг поиска). */
+    priceOrigin?: SalePriceOrigin;
 }
 
 export type ProfitLevel = 'ok' | 'warn' | 'alert' | 'skip';
@@ -61,6 +75,8 @@ export interface ProfitCheckItem {
     resolved: boolean;
     /** ResolveSalePrices: цены пока нет, оставить в очереди до следующего прохода. */
     deferred: boolean;
+    /** ResolveSalePrices: основной поиск не дал цену за lookupHours — дальше запасной источник. */
+    expired?: boolean;
     verdicts?: LineVerdict[];
     level?: ProfitLevel;
     reason?: string;

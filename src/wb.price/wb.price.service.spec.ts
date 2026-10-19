@@ -5,6 +5,7 @@ import { GOOD_SERVICE } from '../interfaces/IGood';
 import { WbApiService } from '../wb.api/wb.api.service';
 import { WbCardService } from '../wb.card/wb.card.service';
 import { WbCardWriter } from '../wb.card/wb.card.writer';
+import { WbCurrentPricesService } from './wb.current-prices.service';
 import { WbPriceCoeffsAdapter } from './wb.price.coeffs.adapter';
 
 describe('WbPriceService', () => {
@@ -44,6 +45,7 @@ describe('WbPriceService', () => {
                     provide: WbCardWriter,
                     useValue: { write },
                 },
+                WbCurrentPricesService,
             ],
         }).compile();
 

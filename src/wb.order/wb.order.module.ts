@@ -12,6 +12,7 @@ import { ProcessedCacheModule } from '../processed-cache/processed-cache.module'
 import { MpEventModule } from '../mp-event/mp-event.module';
 import { MpDecisionModule } from '../mp-decision/mp-decision.module';
 import { WbCustomerModule } from '../wb.customer/wb.customer.module';
+import { WbCurrentPricesModule } from '../wb.price/wb.current-prices.module';
 
 @Module({
     imports: [
@@ -22,6 +23,7 @@ import { WbCustomerModule } from '../wb.customer/wb.customer.module';
         MpEventModule,
         MpDecisionModule,
         WbCustomerModule,
+        WbCurrentPricesModule,
     ],
     providers: [
         WbOrderService,

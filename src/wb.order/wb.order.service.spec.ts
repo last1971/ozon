@@ -18,6 +18,9 @@ import { clearRateLimitCache } from '../helpers/decorators/rate-limit.decorator'
 import { WbCustomerService } from '../wb.customer/wb.customer.service';
 import { MpEventService } from '../mp-event/mp-event.service';
 import { MpDecisionRunnerService } from '../mp-decision/mp-decision.runner.service';
+import { WbCurrentPricesService } from '../wb.price/wb.current-prices.service';
+
+const currentPricesGetAll = jest.fn().mockResolvedValue(new Map());
 
 describe('WbOrderService', () => {
     let service: WbOrderService;
@@ -210,6 +213,7 @@ describe('WbOrderService', () => {
                         flush: mpFlush,
                     },
                 },
+                { provide: WbCurrentPricesService, useValue: { getAll: currentPricesGetAll } },
             ],
         }).compile();
         method.mockClear();
@@ -1178,5 +1182,44 @@ describe('WbOrderService.lookupSalePrices (проверка прибыльнос
         expect(res.has('other')).toBe(false);
         expect(res.has('ecb.zero')).toBe(false);
         expect(service.salePriceSource()).toBe('lookup');
+    });
+    describe('fallbackSalePrices — цена карточки, если статистика заказ не отдала', () => {
+        const service = Object.assign(Object.create(WbOrderService.prototype), {
+            currentPrices: { getAll: currentPricesGetAll },
+        }) as WbOrderService;
+
+        it('цена со скидкой по артикулу каждой строки, количество из заказа', async () => {
+            currentPricesGetAll.mockResolvedValueOnce(
+                new Map([
+                    ['570491', { nmID: 1, price: 470, discount: 20, discountedPrice: 376 }],
+                    ['568615-2', { nmID: 2, price: 1000, discount: 10, discountedPrice: 900 }],
+                ]),
+            );
+            const res = await service.fallbackSalePrices([
+                { externalId: 'eL.a', lines: [{ offer_id: '570491', units: 1, pricePerUnit: 272.5 }] },
+                { externalId: 'eL.b', lines: [{ offer_id: '568615-2', units: 3, pricePerUnit: 700 }] },
+            ]);
+            expect(res.get('eL.a')).toEqual([{ offer_id: '570491', units: 1, pricePerUnit: 376 }]);
+            expect(res.get('eL.b')).toEqual([{ offer_id: '568615-2', units: 3, pricePerUnit: 900 }]);
+        });
+
+        it('нет цены хоть по одной строке — заказ не возвращается; пустой вход — без запроса', async () => {
+            currentPricesGetAll.mockResolvedValueOnce(
+                new Map([['570491', { nmID: 1, price: 470, discount: 20, discountedPrice: 376 }]]),
+            );
+            const res = await service.fallbackSalePrices([
+                {
+                    externalId: 'eL.c',
+                    lines: [
+                        { offer_id: '570491', units: 1, pricePerUnit: 1 },
+                        { offer_id: '999999', units: 1, pricePerUnit: 1 },
+                    ],
+                },
+            ]);
+            expect(res.has('eL.c')).toBe(false);
+            currentPricesGetAll.mockClear();
+            expect((await service.fallbackSalePrices([])).size).toBe(0);
+            expect(currentPricesGetAll).not.toHaveBeenCalled();
+        });
     });
 });
