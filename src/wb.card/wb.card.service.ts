@@ -224,6 +224,12 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
         return this.wbCards.get(sku) ?? null;
     }
 
+    /** Карточка по артикулу ВБ (nmID) из загруженных; не загружена — null. */
+    getWbCardByNmId(nmId: number): WbCardDto | null {
+        for (const card of this.wbCards.values()) if (card.nmID === nmId) return card;
+        return null;
+    }
+
     async getWbCardAsync(sku: string): Promise<WbCardDto | null> {
         let ret = this.getWbCard(sku);
         if (!ret) {

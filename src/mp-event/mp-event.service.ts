@@ -6,6 +6,8 @@ import { readBlob } from '../firebird/read-blob';
 
 /** Маркетплейс — часть ключа дедупа и единицы отсчёта окна. TRADE — события самой базы Trade (приход). */
 export type MpService = 'OZON' | 'WB' | 'YANDEX' | 'TRADE';
+/** Как площадку называть в текстах кладовщику. */
+export const MP_SERVICE_NAME: Record<MpService, string> = { OZON: 'Ozon', WB: 'ВБ', YANDEX: 'Яндекс', TRADE: 'Trade' };
 /**
  * Вид потока. Окно считается отдельно по каждой паре (SERVICE, KIND).
  * CANCEL_WAIT — не поток с маркетплейса, а наша отметка «отменён после отгрузки,

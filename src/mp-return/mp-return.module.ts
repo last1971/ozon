@@ -7,6 +7,9 @@ import { MpReturnService } from './mp-return.service';
 import { MpReturnChainFactory } from './mp-return.chain.factory';
 import { ReturnCardBuilder } from './return-card.builder';
 import { OzonReturnSource } from './sources/ozon.return.source';
+import { WbReturnSource } from './sources/wb.return.source';
+import { WbApiModule } from '../wb.api/wb.api.module';
+import { WbCardModule } from '../wb.card/wb.card.module';
 import { RETURN_SOURCES } from './sources/i.return.source';
 import { LoadReturnCardCommand } from './commands/load-return-card.command';
 import { AssertNotProcessedCommand } from './commands/assert-not-processed.command';
@@ -25,14 +28,19 @@ import { RecordWriteOffCommand } from './commands/record-write-off.command';
 
 /** Экран приёма возвратов маркетплейсов (план marking/sprint/returns_accept_PLAN.md). */
 @Module({
-    imports: [InvoiceModule, MpEventModule, PostingModule, SpisModule],
+    imports: [InvoiceModule, MpEventModule, PostingModule, SpisModule, WbApiModule, WbCardModule],
     controllers: [MpReturnController],
     providers: [
         MpReturnService,
         MpReturnChainFactory,
         ReturnCardBuilder,
         OzonReturnSource,
-        { provide: RETURN_SOURCES, useFactory: (ozon: OzonReturnSource) => [ozon], inject: [OzonReturnSource] },
+        WbReturnSource,
+        {
+            provide: RETURN_SOURCES,
+            useFactory: (ozon: OzonReturnSource, wb: WbReturnSource) => [ozon, wb],
+            inject: [OzonReturnSource, WbReturnSource],
+        },
         LoadReturnCardCommand,
         AssertNotProcessedCommand,
         AssertAcceptableCommand,

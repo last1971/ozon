@@ -4,7 +4,7 @@ import { DateTime } from 'luxon';
 import { FirebirdTransaction } from 'ts-firebird';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { IReturnStock, RETURN_STOCK } from '../interfaces/i.return.stock';
-import { MpService } from '../mp-event/mp-event.service';
+import { MP_SERVICE_NAME, MpService } from '../mp-event/mp-event.service';
 import { MpReturnAcceptStore } from '../mp-event/mp-return-accept.store';
 import { parseReturnScan } from '../helpers/return-scan.parser';
 import { writeOffSpis } from './commands/return.contexts';
@@ -88,13 +88,13 @@ export class MpReturnService {
         const scan = parseReturnScan(q);
         if (!scan)
             throw new BadRequestException(
-                `Не распознано: «${q}». Нужна этикетка возврата ii…, номер отправления или заказа`,
+                `Не распознано: «${q}». Нужна этикетка или стикер возврата, номер отправления или заказа`,
             );
         const lines = await this.source(service).find(scan);
         if (!lines.length) {
             throw new NotFoundException(
                 scan.kind === 'barcode'
-                    ? `Возврат ${scan.value} не найден. Если Ozon ещё не отметил посылку — повторите через 5 минут или введите номер отправления`
+                    ? `Возврат ${scan.value} не найден. Если ${MP_SERVICE_NAME[service]} ещё не отметил посылку — повторите через 5 минут или введите номер отправления`
                     : `Возврат по «${scan.value}» не найден — возможно, посылка другого кабинета`,
             );
         }

@@ -1,5 +1,10 @@
 /** Зеркало src/mp-return/dto/*.ts на бэке. */
 export type MpService = 'OZON' | 'WB' | 'YANDEX';
+/** Площадки экрана возвратов: название кладовщику и что сканировать. */
+export const RETURN_SERVICES: { value: MpService; title: string; scanHint: string }[] = [
+    { value: 'OZON', title: 'Ozon', scanHint: 'Скан этикетки возврата ii…, номер отправления или заказа' },
+    { value: 'WB', title: 'ВБ', scanHint: 'Скан стикера возврата ВБ или номер заказа' },
+];
 
 export interface ReturnLine {
     service: MpService;

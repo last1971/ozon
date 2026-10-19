@@ -1,12 +1,13 @@
 <script setup lang="ts">
 import { mpReturnsStore } from "@/stores/mpReturns";
 import UsernameField from "./UsernameField.vue";
-import type { ReturnCard, ReturnRowStatus } from "@/contracts/mp-return.dto";
+import { RETURN_SERVICES, type MpService, type ReturnCard, type ReturnRowStatus } from "@/contracts/mp-return.dto";
 import { computed, nextTick, onMounted, ref } from "vue";
 
 const store = mpReturnsStore();
 const scanInput = ref('');
 const scanField = ref<any>(null);
+const serviceOf = (service: MpService) => RETURN_SERVICES.find((s) => s.value === service);
 
 onMounted(() => {
     store.loadList();
@@ -92,7 +93,7 @@ const fmtDateTime = (d: string | null) => (d ? new Date(d).toLocaleString() : '�
 
         <v-row dense align="center" class="mb-2">
             <v-col cols="12" md="2">
-                <v-select v-model="store.service" :items="['OZON']" label="Маркетплейс" density="compact" hide-details @update:model-value="store.loadList()" />
+                <v-select v-model="store.service" :items="RETURN_SERVICES" item-title="title" item-value="value" label="Маркетплейс" density="compact" hide-details @update:model-value="store.loadList()" />
             </v-col>
             <v-col cols="6" md="2">
                 <v-text-field v-model="store.from" type="date" label="Получены с" density="compact" hide-details />
@@ -114,7 +115,7 @@ const fmtDateTime = (d: string | null) => (d ? new Date(d).toLocaleString() : '�
         <v-text-field
             ref="scanField"
             v-model="scanInput"
-            :label="marksExpected ? 'Скан марки или новой посылки' : 'Скан этикетки возврата ii…, номер отправления или заказа'"
+            :label="marksExpected ? 'Скан марки или новой посылки' : serviceOf(store.service)?.scanHint"
             prepend-inner-icon="mdi-barcode-scan"
             density="comfortable"
             autofocus
@@ -159,7 +160,7 @@ const fmtDateTime = (d: string | null) => (d ? new Date(d).toLocaleString() : '�
                     <span v-if="card.invoiceLine"> · подобрано на строке {{ card.invoiceLine.picked }}</span>
                 </div>
                 <div>Причина: {{ card.line.reason ?? '—' }} ({{ card.line.isBuyout ? 'после выкупа' : 'отмена до выкупа' }})</div>
-                <div class="text-medium-emphasis">Ozon: {{ card.line.stateName ?? '—' }}, получен {{ fmtDateTime(card.line.receivedAt) }}</div>
+                <div class="text-medium-emphasis">{{ serviceOf(card.line.service)?.title }}: {{ card.line.stateName ?? '—' }}, получен {{ fmtDateTime(card.line.receivedAt) }}</div>
 
                 <v-alert v-for="w in card.warnings" :key="w" type="warning" density="compact" variant="tonal" class="mt-2">{{ w }}</v-alert>
                 <v-alert v-for="b in card.blockers" :key="b" type="error" density="compact" variant="tonal" class="mt-2">{{ b }}</v-alert>

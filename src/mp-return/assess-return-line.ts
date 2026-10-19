@@ -2,6 +2,7 @@ import { ReturnInvoiceLine, ReturnLineCode } from '../interfaces/i.return.stock'
 import { ReturnLineDto } from './dto/return-line.dto';
 import { ReturnAcceptViewDto, ReturnInvoiceViewDto, ReturnRowStatus } from './dto/return-card.dto';
 import { ALL_CANCELLATION_SUFFIXES } from '../helpers/order.cancellation.constants';
+import { MP_SERVICE_NAME } from '../mp-event/mp-event.service';
 
 export interface AssessInput {
     line: ReturnLineDto;
@@ -32,7 +33,7 @@ export function assessReturnLine(c: AssessInput): Assessment {
     const blockers: string[] = [];
     const { line, invoice, invoiceLine, codes, quan } = c;
 
-    if (!line.receivedAt) warnings.push('Ozon ещё не отметил посылку полученной');
+    if (!line.receivedAt) warnings.push(`${MP_SERVICE_NAME[line.service]} ещё не отметил посылку полученной`);
     if (line.reason && DEFECT_REASON.test(line.reason))
         warnings.push('Брак по словам покупателя — проверить до приёма');
     if (line.isOpened) warnings.push('Покупатель вскрывал упаковку');
