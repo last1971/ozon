@@ -135,6 +135,7 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                     fboCount: productInfo?.fboCount || 0,
                     typeId: productInfo?.typeId,
                     volumeWeight: productInfo?.volumeWeight,
+                    marketing_actions: item.marketing_actions?.actions ?? [],
                 };
             }),
         };

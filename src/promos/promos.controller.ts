@@ -1,8 +1,11 @@
-import { Controller, Get, Post, Query } from '@nestjs/common';
-import { ApiOkResponse, ApiQuery, ApiTags } from '@nestjs/swagger';
+import { Body, Controller, Get, HttpCode, Post, Query } from '@nestjs/common';
+import { ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { ActionProductsPageParamsDto } from './dto/actionProductsPage.dto';
 import { ActionsDto } from './dto/actions.dto';
 import { AddRemoveProductToActionsParamsDto } from './dto/addRemoveProductToActionsParams.dto';
+import { PromoPricePlanRequestDto, PromoPriceStateRequestDto } from './dto/promoPrice.dto';
+import { PromoPriceService } from './price-lever/promo-price.service';
+import { PromoPriceApplyResult, PromoPricePlan, PromoPriceState } from './price-lever/promo-price.types';
 import { OzonPromosApi } from './promos.api';
 import { AddRemoveProductToAction, FitProductsStrategy, PromosService } from './promos.service';
 
@@ -13,6 +16,7 @@ export class PromosController {
     constructor(
         private readonly service: PromosService,
         private readonly api: OzonPromosApi,
+        private readonly promoPrice: PromoPriceService,
     ) {}
 
     @ApiOkResponse({ description: 'Список акций, в которых можно участвовать.', type: [ActionsDto] })
@@ -65,5 +69,39 @@ export class PromosController {
         @Query() params: AddRemoveProductToActionsParamsDto,
     ): Promise<AddRemoveProductToAction[]> {
         return this.service.addRemoveProductToActions(params.ids, params.chunkLimit);
+    }
+
+    @ApiOperation({
+        summary: 'Ozon: состояние товара в акциях',
+        description:
+            'Цены, наш процент, Ozon-акции (участник/кандидат, цена, лимит), цена покупателю. Ничего не меняет. ~40 запросов к Ozon.',
+    })
+    @Post('ozon/price-state')
+    @HttpCode(200)
+    priceState(@Body() body: PromoPriceStateRequestDto): Promise<PromoPriceState[]> {
+        return this.promoPrice.states(body.offer_ids);
+    }
+
+    @ApiOperation({
+        summary: 'Ozon: план цены через акции (dry-run)',
+        description:
+            'Шаги: цена в Ozon-акции / выкинуть из Ozon-акции / процент нашей акции, итог покупателю. Ничего не применяет.',
+    })
+    @Post('ozon/price-plan')
+    @HttpCode(200)
+    pricePlan(@Body() body: PromoPricePlanRequestDto): Promise<PromoPricePlan[]> {
+        return this.promoPrice.plans(body.offer_ids, PromoPriceService.parseTarget(body.target), body.percent);
+    }
+
+    @ApiOperation({
+        summary: 'Ozon: применить план цены через акции',
+        description:
+            'Читает состояние заново, считает план и выполняет шаги: сначала Ozon-акции, потом процент нашей акции. ' +
+            'Повышение процента пропускается, если шаг по Ozon-акции не прошёл. Ответ — итог по каждому шагу.',
+    })
+    @Post('ozon/price-apply')
+    @HttpCode(200)
+    priceApply(@Body() body: PromoPricePlanRequestDto): Promise<PromoPriceApplyResult[]> {
+        return this.promoPrice.apply(body.offer_ids, PromoPriceService.parseTarget(body.target), body.percent);
     }
 }

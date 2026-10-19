@@ -1,4 +1,5 @@
 import { ApiProperty } from '@nestjs/swagger';
+import { MarketingActionDto } from '../../helpers/price/buyer.price.helper';
 
 export class PriceDto {
     @ApiProperty({ description: 'Код товара Озон' })
@@ -45,4 +46,9 @@ export class PriceDto {
     typeId?: number;
     @ApiProperty({ description: 'Объёмный вес в литрах', type: Number, required: false })
     volumeWeight?: number;
+    @ApiProperty({
+        description: 'Акции товара сейчас (v5 marketing_actions): у Ozon-акций value — цена, у нашей — процент',
+        required: false,
+    })
+    marketing_actions?: MarketingActionDto[];
 }

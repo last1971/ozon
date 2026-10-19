@@ -6,6 +6,7 @@ import { computed, ref, watch } from 'vue';
 import { debounce } from 'lodash';
 import { tariffStore } from '@/stores/tariffStore';
 import { useInfoSnackbar } from '@/composable/useInfoSnackbar'
+import PricePromo from '@/components/PricePromo.vue';
 
 const { showSuccess, showError } = useInfoSnackbar()
 
@@ -214,6 +215,8 @@ const isSumZero = (index: number) => {
                 </tr>
             </tbody>
         </v-table>
+        <v-divider :thickness="3" />
+        <PricePromo :offer-id="value.offer_id" />
     </div>
 </template>
 

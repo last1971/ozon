@@ -1,3 +1,5 @@
+import { MarketingActionDto } from '../../helpers/price/buyer.price.helper';
+
 export class ProductPriceDto {
     commissions: {
         fbs_direct_flow_trans_max_amount: number;
@@ -26,4 +28,11 @@ export class ProductPriceDto {
     };
     volume_weight: number;
     product_id: number;
+    /** Акции, в которых товар участвует сейчас (v5): у Ozon-акций value — цена, у нашей seller-акции — процент. */
+    marketing_actions?: {
+        current_period_from: string;
+        current_period_to: string;
+        actions: MarketingActionDto[];
+        ozon_actions_exist: boolean;
+    };
 }
