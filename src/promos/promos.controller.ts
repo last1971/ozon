@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Headers, HttpCode, ParseBoolPipe, Post, Query } from '@nestjs/common';
+import { Body, Controller, Get, Headers, HttpCode, ParseBoolPipe, ParseEnumPipe, Post, Query } from '@nestjs/common';
 import { ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { ActionProductsPageParamsDto } from './dto/actionProductsPage.dto';
 import { ActionsDto } from './dto/actions.dto';
@@ -7,6 +7,7 @@ import { PromoPricePlanRequestDto, PromoPriceStateRequestDto } from './dto/promo
 import { JobStateDto } from '../job/job.state.dto';
 import { PromoPriceService } from './price-lever/promo-price.service';
 import { PromoSweepService } from './price-lever/sweep/promo-sweep.service';
+import { SWEEP_GOAL_KINDS, SweepGoalKind } from './price-lever/sweep/sweep-goal';
 import { PromoPriceApplyResult, PromoPricePlan, PromoPriceState } from './price-lever/promo-price.types';
 import { OzonPromosApi } from './promos.api';
 import { AddRemoveProductToAction, FitProductsStrategy, PromosService } from './promos.service';
@@ -109,19 +110,23 @@ export class PromosController {
     }
 
     @ApiOperation({
-        summary: 'Ozon: сверка «ниже минимума» по всем товарам в акциях (фоновая задача)',
+        summary: 'Ozon: сверка акций по цели (фоновая задача)',
         description:
-            'Товары, у которых цена покупателю ниже min_price → план (процент — минимум нашей акции, Ozon-акции ' +
-            'держат пол или выкидываются). apply=false — только отчёт, apply=true — применить. Ход и отчёт — GET /job/:id.',
+            'goal=below-min — товары, у которых цена покупателю ниже min_price (процент — минимум нашей акции); ' +
+            'goal=min|normal — цена покупателю не равна минимальной/нормальной, план приводит к ней в обе стороны. ' +
+            'apply=false — только отчёт, apply=true — применить. Ход и отчёт — GET /job/:id.',
     })
     @ApiQuery({ name: 'apply', type: Boolean, required: false })
+    @ApiQuery({ name: 'goal', enum: SWEEP_GOAL_KINDS, required: false })
     @ApiOkResponse({ type: JobStateDto })
-    @Post('ozon/below-min-sweep')
+    @Post('ozon/promo-sweep')
     @HttpCode(200)
-    belowMinSweep(
+    promoSweep(
         @Query('apply', new ParseBoolPipe({ optional: true })) apply?: boolean,
+        @Query('goal', new ParseEnumPipe(Object.fromEntries(SWEEP_GOAL_KINDS.map((k) => [k, k])), { optional: true }))
+        goal?: SweepGoalKind,
         @Headers('x-client-id') clientId?: string,
     ): JobStateDto {
-        return this.sweep.start(Boolean(apply), clientId || undefined);
+        return this.sweep.start(Boolean(apply), goal ?? 'below-min', clientId || undefined);
     }
 }

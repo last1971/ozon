@@ -55,11 +55,11 @@ describe('PromosController', () => {
         expect(apply).toHaveBeenCalledWith(['532100'], 'min', 14);
     });
 
-    it('below-min-sweep: без apply — только отчёт; метка браузера в задачу', () => {
+    it('promo-sweep: без apply — только отчёт, без цели — «ниже минимальной»; метка браузера в задачу', () => {
         sweepStart.mockReturnValue({ id: 'j' });
-        expect(controller.belowMinSweep(undefined, 'cid')).toEqual({ id: 'j' });
-        expect(sweepStart).toHaveBeenCalledWith(false, 'cid');
-        controller.belowMinSweep(true, '');
-        expect(sweepStart).toHaveBeenLastCalledWith(true, undefined);
+        expect(controller.promoSweep(undefined, undefined, 'cid')).toEqual({ id: 'j' });
+        expect(sweepStart).toHaveBeenCalledWith(false, 'below-min', 'cid');
+        controller.promoSweep(true, 'normal', '');
+        expect(sweepStart).toHaveBeenLastCalledWith(true, 'normal', undefined);
     });
 });

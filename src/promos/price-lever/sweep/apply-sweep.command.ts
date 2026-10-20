@@ -5,7 +5,7 @@ import { IPromoSweepContext } from './promo-sweep.context';
 
 /** Применить планы по одному товару. Без apply — пропуск. Отмена задачи проверяется между товарами. */
 @Injectable()
-export class ApplyBelowMinCommand implements IJobCommand<IPromoSweepContext> {
+export class ApplySweepCommand implements IJobCommand<IPromoSweepContext> {
     readonly phase = 'применение';
 
     constructor(private readonly applier: PromoPriceApplier) {}

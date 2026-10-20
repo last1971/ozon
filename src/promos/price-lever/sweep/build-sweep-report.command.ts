@@ -18,6 +18,7 @@ export class BuildSweepReportCommand implements IJobCommand<IPromoSweepContext> 
                 productId: p.productId,
                 price: p.state.price,
                 minPrice: p.state.minPrice,
+                target: p.target,
                 buyerBefore: p.buyerBefore,
                 buyerAfter: p.buyerAfter,
                 ok: p.ok,
@@ -28,20 +29,21 @@ export class BuildSweepReportCommand implements IJobCommand<IPromoSweepContext> 
         });
         context.report = {
             apply: context.apply,
+            goal: context.goal,
             checked: context.checked ?? 0,
-            belowMin: plans.length,
+            selected: plans.length,
             keptInOzon: plans.filter((p) => has(p, 'ozon-set') && !has(p, 'ozon-remove')).length,
             removedFromOzon: plans.filter((p) => has(p, 'ozon-remove')).length,
             percentChanged: plans.filter((p) => has(p, 'percent')).length,
             unfixable: plans.filter((p) => !p.ok).length,
             nothingToDo: plans.filter((p) => !p.steps.length).length,
             failed: (context.results ?? []).filter((r) => !r.applied).length,
-            // сначала то, что не лечится и не прошло, потом по глубине провала ниже минимума
+            // сначала то, что не лечится и не прошло, потом по дальности от цели
             items: items.sort(
                 (a, b) =>
                     Number(a.ok) - Number(b.ok) ||
                     Number(a.applied ?? true) - Number(b.applied ?? true) ||
-                    a.buyerBefore / a.minPrice - b.buyerBefore / b.minPrice,
+                    Math.abs(b.buyerBefore / b.target - 1) - Math.abs(a.buyerBefore / a.target - 1),
             ),
         };
         Object.assign(context.progress.counters, {

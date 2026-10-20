@@ -9,10 +9,10 @@ import { PromosService } from './promos.service';
 import { OzonSellerActionsApi } from './seller-actions.api';
 import { PromoPriceApplier } from './price-lever/promo-price.applier';
 import { PromoPriceService } from './price-lever/promo-price.service';
-import { ApplyBelowMinCommand } from './price-lever/sweep/apply-below-min.command';
+import { ApplySweepCommand } from './price-lever/sweep/apply-sweep.command';
 import { BuildSweepReportCommand } from './price-lever/sweep/build-sweep-report.command';
-import { CollectBelowMinCommand } from './price-lever/sweep/collect-below-min.command';
-import { PlanBelowMinCommand } from './price-lever/sweep/plan-below-min.command';
+import { CollectSweepCommand } from './price-lever/sweep/collect-sweep.command';
+import { PlanSweepCommand } from './price-lever/sweep/plan-sweep.command';
 import { PromoSweepService } from './price-lever/sweep/promo-sweep.service';
 
 @Module({
@@ -23,9 +23,9 @@ import { PromoSweepService } from './price-lever/sweep/promo-sweep.service';
         PromosService,
         PromoPriceService,
         PromoPriceApplier,
-        CollectBelowMinCommand,
-        PlanBelowMinCommand,
-        ApplyBelowMinCommand,
+        CollectSweepCommand,
+        PlanSweepCommand,
+        ApplySweepCommand,
         BuildSweepReportCommand,
         PromoSweepService,
     ],

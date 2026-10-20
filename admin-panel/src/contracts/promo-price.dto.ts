@@ -1,4 +1,4 @@
-/** Зеркало src/promos/price-lever/promo-price.types.ts на бэке (ручки /api/promos/ozon/price-*, below-min-sweep). */
+/** Зеркало src/promos/price-lever/promo-price.types.ts на бэке (ручки /api/promos/ozon/price-*, promo-sweep). */
 
 /** Цель: 'min' — min_price, 'normal' — price, число — своя цена в коридоре [min_price, price]. */
 export type PromoTarget = 'min' | 'normal' | number;
@@ -89,6 +89,8 @@ export interface PromoSweepItem {
     productId: number;
     price: number;
     minPrice: number;
+    /** Цель плана в рублях. */
+    target: number;
     buyerBefore: number;
     buyerAfter: number;
     ok: boolean;
@@ -100,11 +102,36 @@ export interface PromoSweepItem {
 }
 
 /** Итог сверки: сколько товаров ниже минимума и чем их лечит план. */
+/** Цель сверки акций (src/promos/price-lever/sweep/sweep-goal.ts на бэке). */
+export type SweepGoalKind = 'below-min' | 'min' | 'normal';
+export const SWEEP_GOALS: { value: SweepGoalKind; title: string; hint: string }[] = [
+    {
+        value: 'below-min',
+        title: 'Ниже минимальной',
+        hint: 'Товары в акциях, у которых цена покупателю ниже минимальной. План: наш процент — минимум акции, ' +
+            'акции Ozon остаются, если их лимит держит минимальную, иначе товар из них выкидывается.',
+    },
+    {
+        value: 'min',
+        title: 'Привести к минимальной',
+        hint: 'Товары в акциях, у которых цена покупателю не равна минимальной — дороже или дешевле. План ведёт к ' +
+            'минимальной в обе стороны: наш процент и цены в акциях Ozon, ниже минимальной не опускает.',
+    },
+    {
+        value: 'normal',
+        title: 'Привести к нормальной',
+        hint: 'Товары в акциях, у которых цена покупателю не равна нормальной. План ведёт к нормальной: ' +
+            'наш процент — не меньше минимума акции, акции Ozon — по цене под цель.',
+    },
+];
+
 export interface PromoSweepReport {
     apply: boolean;
+    goal: SweepGoalKind;
     /** Товаров в акциях, проверено. */
     checked: number;
-    belowMin: number;
+    /** Отобрано целью. */
+    selected: number;
     /** Ozon-акции остались (цена поднята до пола), из них никого не выкинули. */
     keptInOzon: number;
     /** Хоть из одной Ozon-акции выкинуты. */

@@ -1,3 +1,4 @@
+import type { SweepGoalKind } from './sweep/sweep-goal';
 /**
  * Ручка цены через акции: состояние товара и план (dry-run). Доменные типы без полей Seller API.
  * Цена покупателю = min(цены Ozon-акций, price) × (1 − процент нашей акции) — см. buyer.price.helper.
@@ -92,6 +93,8 @@ export interface PromoSweepItem {
     productId: number;
     price: number;
     minPrice: number;
+    /** Цель плана в рублях. */
+    target: number;
     buyerBefore: number;
     buyerAfter: number;
     ok: boolean;
@@ -102,12 +105,14 @@ export interface PromoSweepItem {
     applied?: boolean;
 }
 
-/** Итог сверки: сколько товаров ниже минимума и чем их лечит план. */
+/** Итог сверки: сколько товаров отобрала цель и чем их лечит план. */
 export interface PromoSweepReport {
     apply: boolean;
+    goal: SweepGoalKind;
     /** Товаров в акциях, проверено. */
     checked: number;
-    belowMin: number;
+    /** Отобрано целью. */
+    selected: number;
     /** Ozon-акции остались (цена поднята до пола), из них никого не выкинули. */
     keptInOzon: number;
     /** Хоть из одной Ozon-акции выкинуты. */
@@ -116,7 +121,7 @@ export interface PromoSweepReport {
     percentChanged: number;
     /** План не выводит выше минимума. */
     unfixable: number;
-    /** Ниже минимума, но шагов нет (формула расходится с Ozon) — смотреть руками. */
+    /** Отобран, но шагов нет (формула расходится с Ozon или акции не дают) — смотреть руками. */
     nothingToDo: number;
     /** При применении: товаров, где не все шаги прошли. */
     failed: number;

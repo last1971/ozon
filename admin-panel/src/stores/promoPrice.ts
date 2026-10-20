@@ -9,14 +9,15 @@ import type {
     PromoStepResult,
     PromoSweepReport,
     PromoTarget,
+    SweepGoalKind,
 } from "@/contracts/promo-price.dto";
 
 /** Вид фоновой задачи сверки (src/promos/price-lever/sweep/promo-sweep.context.ts на бэке). */
-export const PROMO_SWEEP_JOB = 'ozon-promo-below-min';
+export const PROMO_SWEEP_JOB = 'ozon-promo-sweep';
 
-/** Запуск сверки «ниже минимума»: apply=false — отчёт, apply=true — применить. Ход — через useJob(PROMO_SWEEP_JOB). */
-export const startPromoSweep = async (apply: boolean): Promise<JobState<PromoSweepReport>> =>
-    (await axios.post<JobState<PromoSweepReport>>("/api/promos/ozon/below-min-sweep", null, { params: { apply } })).data;
+/** Запуск сверки акций по цели: apply=false — отчёт, apply=true — применить. Ход — через useJob(PROMO_SWEEP_JOB). */
+export const startPromoSweep = async (apply: boolean, goal: SweepGoalKind): Promise<JobState<PromoSweepReport>> =>
+    (await axios.post<JobState<PromoSweepReport>>("/api/promos/ozon/promo-sweep", null, { params: { apply, goal } })).data;
 
 /** Шаг плана человеческими словами — один текст для карточки товара и для сверки. */
 export const stepText = (s: PromoPriceStep): string => {

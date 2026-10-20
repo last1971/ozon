@@ -1,14 +1,15 @@
 import { emptyProgress } from '../../../interfaces/i.job.context';
 import { PromoPricePlan, PromoPriceState } from '../promo-price.types';
-import { ApplyBelowMinCommand } from './apply-below-min.command';
+import { ApplySweepCommand } from './apply-sweep.command';
 import { BuildSweepReportCommand } from './build-sweep-report.command';
-import { CollectBelowMinCommand } from './collect-below-min.command';
-import { PlanBelowMinCommand } from './plan-below-min.command';
+import { CollectSweepCommand } from './collect-sweep.command';
+import { PlanSweepCommand } from './plan-sweep.command';
 import { IPromoSweepContext } from './promo-sweep.context';
 
-describe('сверка «ниже минимума» — команды цепочки', () => {
+describe('сверка акций — команды цепочки', () => {
     const ctx = (over: Partial<IPromoSweepContext> = {}): IPromoSweepContext => ({
         apply: false,
+        goal: 'below-min',
         progress: emptyProgress(),
         ...over,
     });
@@ -34,15 +35,50 @@ describe('сверка «ниже минимума» — команды цепо
                 state(3, { buyerPrice: 0 }),
                 state(4, { minPrice: 0 }),
             ]);
-        const c = await new CollectBelowMinCommand({ allInActionsStates } as any).execute(ctx());
+        const c = await new CollectSweepCommand({ allInActionsStates } as any).execute(ctx());
         expect(c.states?.map((s) => s.productId)).toEqual([1]);
-        expect(c.progress.counters).toEqual({ checked: 4, belowMin: 1 });
+        expect(c.progress.counters).toEqual({ checked: 4, selected: 1 });
     });
 
-    it('plan: цель min, процент — минимум акции товара (7), а не 5 и не текущие 21', async () => {
-        const c = await new PlanBelowMinCommand().execute(ctx({ states: [state(1)] }));
+    it('collect «к минимальной»: в обе стороны от min_price, расхождение до рубля — мимо', async () => {
+        const allInActionsStates = jest
+            .fn()
+            .mockResolvedValue([
+                state(1),
+                state(2, { buyerPrice: 240 }),
+                state(3, { buyerPrice: 214 }),
+                state(4, { buyerPrice: 0 }),
+            ]);
+        const c = await new CollectSweepCommand({ allInActionsStates } as any).execute(ctx({ goal: 'min' }));
+        expect(c.states?.map((s) => s.productId)).toEqual([1, 2]);
+    });
+
+    it('collect «к нормальной»: всё, что не равно price', async () => {
+        const allInActionsStates = jest
+            .fn()
+            .mockResolvedValue([state(1), state(2, { buyerPrice: 255 }), state(3, { buyerPrice: 237 })]);
+        const c = await new CollectSweepCommand({ allInActionsStates } as any).execute(ctx({ goal: 'normal' }));
+        expect(c.states?.map((s) => s.productId)).toEqual([1, 3]);
+    });
+
+    it('plan «ниже минимальной»: цель min, процент — минимум акции товара (7), а не 5 и не текущие 21', async () => {
+        const c = await new PlanSweepCommand().execute(ctx({ states: [state(1)] }));
         expect(c.plans?.[0].steps).toEqual([{ kind: 'percent', actionId: 4376619, sku: 10, from: 21, to: 7 }]);
         expect(c.plans?.[0].buyerAfter).toBe(237);
+    });
+
+    it('plan «к минимальной» вниз: дорогой товар — наш процент вверх до цели, не ниже дна', async () => {
+        const c = await new PlanSweepCommand().execute(
+            ctx({ goal: 'min', states: [state(1, { buyerPrice: 242, seller: { ...state(1).seller!, percent: 5 } })] }),
+        );
+        expect(c.plans?.[0].target).toBe(213);
+        expect(c.plans?.[0].steps).toEqual([{ kind: 'percent', actionId: 4376619, sku: 10, from: 5, to: 16 }]);
+        expect(c.plans?.[0].buyerAfter).toBeGreaterThanOrEqual(213);
+    });
+
+    it('plan «к нормальной»: цель = price', async () => {
+        const c = await new PlanSweepCommand().execute(ctx({ goal: 'normal', states: [state(1)] }));
+        expect(c.plans?.[0].target).toBe(255);
     });
 
     describe('apply', () => {
@@ -54,7 +90,7 @@ describe('сверка «ниже минимума» — команды цепо
 
         it('без apply — исполнителя не зовём', async () => {
             const apply = jest.fn();
-            await new ApplyBelowMinCommand({ apply } as any).execute(ctx({ plans: [plan(1)] }));
+            await new ApplySweepCommand({ apply } as any).execute(ctx({ plans: [plan(1)] }));
             expect(apply).not.toHaveBeenCalled();
         });
 
@@ -62,7 +98,7 @@ describe('сверка «ниже минимума» — команды цепо
             const apply = jest
                 .fn()
                 .mockImplementation(async (p) => ({ ...p, results: [], applied: p.productId === 1 }));
-            const c = await new ApplyBelowMinCommand({ apply } as any).execute(
+            const c = await new ApplySweepCommand({ apply } as any).execute(
                 ctx({ apply: true, plans: [plan(1), plan(2, 0), plan(3)] }),
             );
             expect(apply).toHaveBeenCalledTimes(2);
@@ -75,7 +111,7 @@ describe('сверка «ниже минимума» — команды цепо
                 context.stopChain = true;
                 return { ...p, results: [], applied: true };
             });
-            await new ApplyBelowMinCommand({ apply } as any).execute(context);
+            await new ApplySweepCommand({ apply } as any).execute(context);
             expect(apply).toHaveBeenCalledTimes(1);
         });
     });
@@ -90,6 +126,7 @@ describe('сверка «ниже минимума» — команды цепо
                 ok,
                 buyerBefore,
                 buyerAfter: 214,
+                target: 213,
                 state: { price: 255, minPrice: 213 },
             }) as unknown as PromoPricePlan;
         const plans = [
@@ -108,8 +145,9 @@ describe('сверка «ниже минимума» — команды цепо
         );
         expect(c.report).toMatchObject({
             apply: true,
+            goal: 'below-min',
             checked: 600,
-            belowMin: 4,
+            selected: 4,
             keptInOzon: 1,
             removedFromOzon: 1,
             percentChanged: 2,
