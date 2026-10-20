@@ -68,8 +68,11 @@ const orderService = ref<GoodServiceEnum | null>(null);
 const service = computed<GoodServiceEnum>(() => orderService.value ?? GoodServiceEnum.OZON);
 const isOzon = computed(() => service.value === GoodServiceEnum.OZON);
 const isYandex = computed(() => service.value === GoodServiceEnum.YANDEX);
+// «Подобрано» — у всех: без него счёт ВБ висел в статусе 3, и отмена ВБ до приёмки снимала коды и
+// возвращала на склад товар, который уже уехал (20.10.2026, три OPB666N). С кнопкой счёт в статусе 4,
+// отмена собранного идёт как у Озона — письмо «разобрать посылку».
 // Флоу «Подобрано» → «Передать»: Озон и Яндекс (у Яндекса «Передать» = коды + «готов к отгрузке»).
-// ВБ — своя кнопка «Передать коды», статус меняет поставка.
+// ВБ — после «Подобрано» своя кнопка «Передать коды» и ШК посылки, статус у ВБ меняет поставка.
 const hasTransferFlow = computed(() => isOzon.value || isYandex.value);
 const mpName = computed(() => (isOzon.value ? 'Озон' : isYandex.value ? 'Яндекс' : 'ВБ'));
 
@@ -126,16 +129,14 @@ const requiresMarkScan = computed(() =>
 const needMarkScan = computed(
     () => (requiresMarkScan.value || (hasTransferFlow.value && mpWantsMarks.value)) && !isReadyToFinish.value,
 );
-// «Передать коды» (ВБ) доступно, когда сборка начата и все КМ отсканированы (или их нет).
+// «Передать коды» (ВБ) доступно после «Подобрано».
 const canSubmitMarks = computed(
-    () => firstDisabled.value && isReadyToFinish.value && !submitInProgress.value,
+    () => firstDisabled.value && isReadyToFinish.value && pickDone.value && !submitInProgress.value,
 );
 // КМ-шаг закрыт: заказ загружен и все КМ отсканированы (или не требуются).
 const kmReady = computed(() => firstDisabled.value && isReadyToFinish.value);
 // «Подобрано» — после закрытия КМ-шага, до подбора.
-const canPick = computed(
-    () => hasTransferFlow.value && kmReady.value && !pickDone.value && !pickInProgress.value,
-);
+const canPick = computed(() => kmReady.value && !pickDone.value && !pickInProgress.value);
 // «Передать/Проверить» — после подбора, до успешной передачи.
 const canTransfer = computed(
     () => hasTransferFlow.value && pickDone.value && !transferDone.value && !transferInProgress.value,
@@ -263,10 +264,9 @@ async function onFirstInput() {
                         60000,
                     );
                 }
-                // Сканить нечего/уже готово. ВБ → сразу поле ШК. OZON/Яндекс → ждём «Подобрано».
+                // Сканить нечего/уже готово → ждём «Подобрано».
                 markScanDisabled.value = true;
-                secondDisabled.value = hasTransferFlow.value;
-                if (!hasTransferFlow.value) await setFocus(secondInputRef);
+                secondDisabled.value = true;
             }
         } else {
             firstDisabled.value = false;
@@ -287,10 +287,9 @@ async function onMarkScanInput() {
         markScanInput.value = '';
         showSnackbar(`КМ привязан (${res.data.attached.ki.slice(0, 18)}…)`, 'success');
         if (markProgress.value.isReadyToFinish) {
-            // Все КМ отсканированы. ВБ → поле ШК. OZON/Яндекс → ждём «Подобрано».
+            // Все КМ отсканированы → ждём «Подобрано».
             markScanDisabled.value = true;
-            secondDisabled.value = hasTransferFlow.value;
-            if (!hasTransferFlow.value) await setFocus(secondInputRef);
+            secondDisabled.value = true;
         } else {
             await setFocus(markScanInputRef);
         }
@@ -348,14 +347,21 @@ async function onSubmitMarks() {
     }
 }
 
-// OZON «Подобрано» — подбор счёта (как крон, идемпотентно). Ошибка → стоп.
+// «Подобрано» — подбор счёта (как крон, идемпотентно). Ошибка → стоп.
+// ВБ: дальше «Передать коды» и ШК посылки; Озон/Яндекс: «Передать/Проверить».
 async function onPick() {
     if (!canPick.value) return;
     pickInProgress.value = true;
     try {
         await axios.post(`/api/pickup/${firstInput.value}/pick`);
         pickDone.value = true;
-        showSnackbar('Счёт подобран — можно передавать', 'success');
+        if (hasTransferFlow.value) {
+            showSnackbar('Счёт подобран — можно передавать', 'success');
+        } else {
+            secondDisabled.value = false;
+            showSnackbar('Счёт подобран — передайте коды и сканируйте ШК посылки', 'success');
+            await setFocus(secondInputRef);
+        }
     } catch (e: any) {
         const message = e?.response?.data?.message ?? e.message;
         showSnackbar(`Подбор не выполнен: ${message}`, 'error', 60000);
@@ -612,8 +618,8 @@ watch(
                 </v-btn>
             </v-col>
 
-            <!-- OZON/Яндекс: подбор счёта -->
-            <v-col cols="2" v-if="hasTransferFlow">
+            <!-- Подбор счёта — у всех маркетплейсов -->
+            <v-col cols="2">
                 <v-btn
                     block
                     color="secondary"
