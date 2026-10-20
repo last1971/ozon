@@ -326,6 +326,11 @@ class EnvironmentVariables {
     @IsUrl({ require_tld: false })
     SYLIUS_URL: string;
 
+    /** Витрины: коды поставщиков-«не приходов» через запятую (возвраты, пересортица). Не задано — 1079,1246,2713. */
+    @IsOptional()
+    @IsString()
+    SHOWCASE_NOT_ARRIVAL_SUPPLIERS: string;
+
     @IsOptional()
     @IsEmail()
     SYLIUS_EMAIL: string;

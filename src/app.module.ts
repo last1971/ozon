@@ -52,6 +52,7 @@ import { AvitoPriceModule } from './avito.price/avito.price.module';
 import { SyliusModule } from './sylius/sylius.module';
 import { ChzModule } from './chz/chz.module';
 import { SyliusPriceModule } from './sylius.price/sylius.price.module';
+import { SyliusShowcaseModule } from './sylius.showcase/sylius.showcase.module';
 import { AIModule } from './ai/ai.module';
 import { AIProductModule } from './ai.product/ai.product.module';
 import { OzonCategoryModule } from './ozon.category/ozon.category.module';
@@ -165,6 +166,7 @@ import JSONbig from 'json-bigint';
         SyliusModule,
         ChzModule,
         SyliusPriceModule,
+        SyliusShowcaseModule,
         AIModule,
         AIProductModule,
         OzonCategoryModule,

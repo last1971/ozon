@@ -366,6 +366,16 @@ export const cronConfig: Record<string, CronSetup> = {
             },
         },
     },
+    // Витрины сайта electronica.su (Новинки, Хиты) — раз в 30 минут; работает только там, где SERVICES содержит sylius.
+    syliusShowcase: {
+        production: {
+            enabled: true,
+            settings: {
+                time: '0 */30 * * * *',
+            },
+        },
+        development: false,
+    },
     testCase1: {
         production: false,
         development: false,

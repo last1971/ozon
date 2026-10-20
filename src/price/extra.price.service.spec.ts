@@ -93,7 +93,13 @@ describe('ExtraPriceService', () => {
     mockWbPriceService.updateAllPrices = jest.fn();
     mockWbPriceService.createAction = jest.fn();
 
-    const mockSyliusPriceService = new SyliusPriceService(null, null, null, null) as jest.Mocked<SyliusPriceService>;
+    const mockSyliusPriceService = new SyliusPriceService(
+        null,
+        null,
+        null,
+        null,
+        null,
+    ) as jest.Mocked<SyliusPriceService>;
     mockSyliusPriceService.getObtainCoeffs = jest.fn();
     mockSyliusPriceService.getProductsWithCoeffs = jest.fn();
     mockSyliusPriceService.updatePrices = jest.fn();

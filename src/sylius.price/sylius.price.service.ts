@@ -8,6 +8,8 @@ import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
 import { SyliusApiService } from '../sylius/sylius.api.service';
 import { SyliusProductService } from '../sylius/sylius.product.service';
 import { SyliusPriceCoeffsAdapter } from './sylius.price.coeffs.adapter';
+import { SyliusShowcaseService } from '../sylius.showcase/sylius.showcase.service';
+import { ShowcaseDealPrice } from '../helpers/showcase/showcase.lists';
 import {
     buildTiers,
     calculatePrice,
@@ -34,12 +36,19 @@ export class SyliusPriceService implements IPriceUpdateable {
     private readonly logger = new Logger(SyliusPriceService.name);
     /** Пороги ступеней по умолчанию от розничной цены (SYLIUS_TIER_DEFAULTS, иначе зашитые). */
     private readonly tierDefaults: TierDefaultRow[];
+    /**
+     * Цены, ушедшие в Sylius за текущую полную отправку (updateAllPrices) — из них в конце список «Лучшие
+     * предложения». null — полной отправки сейчас нет: частичные (по приходу, по одному товару) deals не трогают,
+     * иначе список на сайте затирался бы тремя товарами.
+     */
+    private dealsRun: Map<string, ShowcaseDealPrice> | null = null;
 
     constructor(
         private configService: ConfigService,
         @Inject(GOOD_SERVICE) private goodService: IGood,
         private api: SyliusApiService,
         private syliusProductService: SyliusProductService,
+        private showcase: SyliusShowcaseService,
     ) {
         this.tierDefaults = parseTierDefaults(
             this.configService?.get<string>('SYLIUS_TIER_DEFAULTS', DEFAULT_TIER_THRESHOLDS) ?? DEFAULT_TIER_THRESHOLDS,
@@ -122,6 +131,9 @@ export class SyliusPriceService implements IPriceUpdateable {
                 'post',
                 { prices },
             );
+            for (const [code, entry] of Object.entries(prices)) {
+                this.dealsRun?.set(code, { code, price: entry.price, originalPrice: entry.originalPrice ?? 0 });
+            }
             const rejected = result.rejectedTiers ?? [];
             this.logger.log(
                 `Sylius: updated ${result.updated}, not found ${result.notFound}, rejected tiers ${rejected.length}`,
@@ -197,12 +209,32 @@ export class SyliusPriceService implements IPriceUpdateable {
     }
 
     async updateAllPrices(level = 0, args: any = null): Promise<any> {
+        if (level === 0) this.dealsRun = new Map();
+        try {
+            return await this.updateAllPricesPage(level, args);
+        } finally {
+            if (level === 0) await this.sendDeals();
+        }
+    }
+
+    /** Конец полной отправки: «Лучшие предложения» из того, что реально ушло. Сбой витрины цены не роняет. */
+    private async sendDeals(): Promise<void> {
+        const prices = [...(this.dealsRun?.values() ?? [])];
+        this.dealsRun = null;
+        try {
+            await this.showcase.sendDeals(prices);
+        } catch (e) {
+            this.logger.error(`Sylius: список deals не отправлен — ${(e as Error).message}`);
+        }
+    }
+
+    private async updateAllPricesPage(level: number, args: any): Promise<any> {
         const variants = await this.syliusProductService.getGoodIds(args);
         const errors: any[] =
             (await this.goodService.updatePriceForService(this, Array.from(variants.goods.keys()))) ?? [];
 
         if (variants.nextArgs) {
-            errors.push(...((await this.updateAllPrices(level + 1, variants.nextArgs)) ?? []));
+            errors.push(...((await this.updateAllPricesPage(level + 1, variants.nextArgs)) ?? []));
         }
 
         if (level === 0) {

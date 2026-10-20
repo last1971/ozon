@@ -5,12 +5,14 @@ import { SyliusApiService } from '../sylius/sylius.api.service';
 import { SyliusProductService } from '../sylius/sylius.product.service';
 import { GOOD_SERVICE } from '../interfaces/IGood';
 import { IPriceable } from '../interfaces/i.priceable';
+import { SyliusShowcaseService } from '../sylius.showcase/sylius.showcase.service';
 
 describe('SyliusPriceService', () => {
     let service: SyliusPriceService;
     let mockApi: jest.Mocked<SyliusApiService>;
     let mockSyliusProductService: jest.Mocked<SyliusProductService>;
     let mockGoodService: any;
+    let sendDeals: jest.Mock;
 
     beforeEach(async () => {
         mockApi = {
@@ -21,6 +23,8 @@ describe('SyliusPriceService', () => {
             getGoodIds: jest.fn().mockResolvedValue({ goods: new Map([['SKU1', 1]]), nextArgs: null }),
             skuList: ['SKU1', 'SKU2', '335594'],
         } as any;
+
+        sendDeals = jest.fn().mockResolvedValue(null);
 
         mockGoodService = {
             updatePriceForService: jest.fn().mockResolvedValue([]),
@@ -52,6 +56,7 @@ describe('SyliusPriceService', () => {
                 { provide: GOOD_SERVICE, useValue: mockGoodService },
                 { provide: SyliusApiService, useValue: mockApi },
                 { provide: SyliusProductService, useValue: mockSyliusProductService },
+                { provide: SyliusShowcaseService, useValue: { sendDeals } },
             ],
         }).compile();
 
@@ -97,6 +102,7 @@ describe('SyliusPriceService', () => {
                     { provide: GOOD_SERVICE, useValue: mockGoodService },
                     { provide: SyliusApiService, useValue: mockApi },
                     { provide: SyliusProductService, useValue: mockSyliusProductService },
+                    { provide: SyliusShowcaseService, useValue: { sendDeals } },
                 ],
             }).compile();
             const coeffs = module.get<SyliusPriceService>(SyliusPriceService).getObtainCoeffs();
@@ -283,6 +289,49 @@ describe('SyliusPriceService', () => {
             expect(mockSyliusProductService.getGoodIds).toHaveBeenCalledTimes(2);
             expect(mockGoodService.updatePriceForService).toHaveBeenCalledTimes(2);
             expect(result).toEqual([{ offer_id: 'SKU1', error: 'e1' }]);
+        });
+    });
+
+    describe('«Лучшие предложения» вместе с ценами', () => {
+        const price = (offer_id: string, p: string, old: string) =>
+            ({ offer_id, price: p, old_price: old, min_price: '1' }) as any;
+
+        it('полная отправка: в deals уходят коды, реально ушедшие в Sylius, в копейках — один раз в конце', async () => {
+            mockApi.method.mockResolvedValue({ updated: 2, notFound: 0 });
+            mockSyliusProductService.getGoodIds
+                .mockResolvedValueOnce({ goods: new Map([['SKU1', 1]]), nextArgs: { page: 2 } } as any)
+                .mockResolvedValueOnce({ goods: new Map([['SKU2', 1]]), nextArgs: null } as any);
+            mockGoodService.updatePriceForService.mockImplementation(async (svc: SyliusPriceService, codes: string[]) =>
+                svc.updatePrices(codes.map((c) => price(c, c === 'SKU1' ? '80' : '50', '100'))),
+            );
+
+            await service.updateAllPrices();
+
+            expect(sendDeals).toHaveBeenCalledTimes(1);
+            expect(sendDeals).toHaveBeenCalledWith([
+                { code: 'SKU1', price: 8000, originalPrice: 10000 },
+                { code: 'SKU2', price: 5000, originalPrice: 10000 },
+            ]);
+        });
+
+        it('пачка цен не ушла (ошибка API) — её коды в deals не попадают', async () => {
+            mockApi.method.mockRejectedValue(new Error('500'));
+            mockGoodService.updatePriceForService.mockImplementation(async (svc: SyliusPriceService) =>
+                svc.updatePrices([price('SKU1', '80', '100')]),
+            );
+            await service.updateAllPrices();
+            expect(sendDeals).toHaveBeenCalledWith([]);
+        });
+
+        it('частичная отправка (по приходу) deals не трогает', async () => {
+            mockApi.method.mockResolvedValue({ updated: 1, notFound: 0 });
+            await service.updatePrices([price('SKU1', '80', '100')]);
+            expect(sendDeals).not.toHaveBeenCalled();
+        });
+
+        it('сбой отправки deals не роняет отправку цен', async () => {
+            sendDeals.mockRejectedValue(new Error('showcase down'));
+            await expect(service.updateAllPrices()).resolves.toEqual([]);
         });
     });
 });
