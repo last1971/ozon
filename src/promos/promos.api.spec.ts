@@ -97,6 +97,58 @@ describe('OzonPromosApi — контракт Seller API по акциям (v2, 1
         });
     });
 
+    it('update — акция не принимает остаток (эластичный бустинг, 400): повтор без stock', async () => {
+        method
+            .mockResolvedValueOnce({
+                error: {
+                    service_message: 'Request failed with status code 400',
+                    message: 'stock not supported for this action',
+                },
+            })
+            .mockResolvedValueOnce({
+                active_product_ids: [570341],
+                deactivated_product_ids: [],
+                rejected: [],
+                warnings: [],
+            });
+        const res = await api.update(1977747, [{ productId: 570341, actionPrice: 5793, stock: 3 }]);
+        expect(method).toHaveBeenCalledTimes(2);
+        expect(method.mock.calls[0][1].products[0]).toHaveProperty('stock', 3);
+        expect(method.mock.calls[1][1]).toEqual({
+            action_id: 1977747,
+            products: [{ product_id: 570341, action_price: { amount: '5793', currency: 'RUB' } }],
+        });
+        expect(res.added).toEqual([570341]);
+    });
+
+    it('update — другая ошибка Озона: все товары запроса в отказ с текстом Озона, без повтора', async () => {
+        method.mockResolvedValueOnce({
+            error: { service_message: 'Request failed with status code 400', message: 'action not found' },
+        });
+        const res = await api.update(9, [
+            { productId: 1, actionPrice: 100, stock: 0 },
+            { productId: 2, actionPrice: 200, stock: 0 },
+        ]);
+        expect(method).toHaveBeenCalledTimes(1);
+        expect(res).toEqual({
+            added: [],
+            removed: [],
+            rejected: [
+                { productId: 1, reason: 'action not found' },
+                { productId: 2, reason: 'action not found' },
+            ],
+            warnings: [],
+        });
+    });
+
+    it('update — без остатка тоже отбито: отказ с текстом второго ответа', async () => {
+        method
+            .mockResolvedValueOnce({ error: { message: 'stock not supported for this action' } })
+            .mockResolvedValueOnce({ error: { message: 'DiscountPercent must be greater or equal than 45' } });
+        const res = await api.update(9, [{ productId: 1, actionPrice: 100, stock: 1 }]);
+        expect(res.rejected).toEqual([{ productId: 1, reason: 'DiscountPercent must be greater or equal than 45' }]);
+    });
+
     it('update/deactivate — пустой список не уходит в API (там 400 на пустой массив)', async () => {
         expect(await api.update(9, [])).toEqual({ added: [], removed: [], rejected: [], warnings: [] });
         expect(await api.deactivate(9, [])).toEqual([]);

@@ -77,14 +77,21 @@ export class OzonPromosApi {
      */
     async update(actionId: number, products: ActionProductUpdate[]): Promise<ActionUpdateResult> {
         if (!products.length) return { added: [], removed: [], rejected: [], warnings: [] };
-        const res = await this.ozon.method('/v1/actions/products/update', {
-            action_id: actionId,
-            products: products.map((p) => ({
-                product_id: p.productId,
-                action_price: OzonPromosApi.money(p.actionPrice),
-                stock: p.stock,
-            })),
-        });
+        let res = await this.sendUpdate(actionId, products, true);
+        // «Эластичный бустинг» остаток не принимает: 400 «stock not supported for this action» (20.10.2026, 570341)
+        if (/stock not supported/i.test(OzonPromosApi.errorText(res))) {
+            res = await this.sendUpdate(actionId, products, false);
+        }
+        // Ошибка Озона — не «пустой ответ»: каждый товар запроса в отказ с текстом Озона
+        const error = OzonPromosApi.errorText(res);
+        if (error) {
+            return {
+                added: [],
+                removed: [],
+                rejected: products.map((p) => ({ productId: p.productId, reason: error })),
+                warnings: [],
+            };
+        }
         return {
             added: res?.active_product_ids ?? [],
             removed: res?.deactivated_product_ids ?? [],
@@ -94,6 +101,23 @@ export class OzonPromosApi {
             })),
             warnings: (res?.warnings ?? []).map((w: unknown) => (typeof w === 'string' ? w : JSON.stringify(w))),
         };
+    }
+
+    private sendUpdate(actionId: number, products: ActionProductUpdate[], withStock: boolean): Promise<any> {
+        return this.ozon.method('/v1/actions/products/update', {
+            action_id: actionId,
+            products: products.map((p) => ({
+                product_id: p.productId,
+                action_price: OzonPromosApi.money(p.actionPrice),
+                ...(withStock ? { stock: p.stock } : {}),
+            })),
+        });
+    }
+
+    /** Текст ошибки, которую OzonApiService вернул вместо ответа ({ error: { message } }); нет ошибки — ''. */
+    private static errorText(res: any): string {
+        const e = res?.error;
+        return e ? String(e.message || e.service_message || 'ошибка Ozon без текста') : '';
     }
 
     /** Принудительное исключение — только для акций с промокодами; остальным это 400. */
