@@ -10,5 +10,9 @@ export interface IncomingContext {
     prihods: IncomingPrihod[];
     /** Коды товаров всех приходов прохода, без повторов. */
     skus: string[];
+    /** Коды товаров по приходу (номер прихода → коды). */
+    goodsByPrihod?: Map<string, string[]>;
+    /** Коды Trade, которым цену посчитать не из чего (товара нет на складе) — их приходы ждут следующего прохода. */
+    heldSkus?: string[];
     stopChain?: boolean;
 }

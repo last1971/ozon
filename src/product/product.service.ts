@@ -1,4 +1,4 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { OzonApiService } from '../ozon.api/ozon.api.service';
 import { ProductListResultDto } from './dto/product.list.result.dto';
 import { ProductCodeStockDto, ProductCodeUpdateStockResultDto } from './dto/product.code.dto';
@@ -29,6 +29,7 @@ import { RateLimit } from '../helpers/decorators/rate-limit.decorator';
 
 @Injectable()
 export class ProductService extends ICountUpdateable implements OnModuleInit, IProductable {
+    private readonly logger = new Logger(ProductService.name);
     private warehouseId: number;
     constructor(
         private ozonApiService: OzonApiService,
@@ -223,8 +224,16 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
 
         for (const chunk of chunks) {
             const result = await this.updateCount(chunk);
-            const response = result.result || [];
-            totalUpdated += response.length; // Увеличиваем счетчик успешно обновленных товаров
+            const response = result?.result || [];
+            // Обновлённым считаем только принятое Озоном; отказ (updated:false) — в лог с причиной
+            totalUpdated += response.filter((r) => r.updated).length;
+            for (const refused of response.filter((r) => !r.updated)) {
+                const sent = chunk.find((c) => c.offer_id === refused.offer_id)?.stock;
+                const why = (refused.errors || [])
+                    .map((e: any) => (typeof e === 'string' ? e : [e?.code, e?.message].filter(Boolean).join(' ')))
+                    .join('; ');
+                this.logger.warn(`остаток ${refused.offer_id} = ${sent} Озон не принял: ${why || 'без причины'}`);
+            }
         }
 
         return totalUpdated;

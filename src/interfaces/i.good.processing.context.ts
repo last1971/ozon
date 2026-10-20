@@ -1,5 +1,6 @@
 import { PriceDto } from '../price/dto/price.dto';
 import { Buffer } from 'exceljs';
+import { ServicePriceReport } from '../price/price-update.report';
 
 export interface IUnprofitableItem {
     offer_id: string;
@@ -20,4 +21,6 @@ export interface IGoodsProcessingContext {
     logger?: { log: (msg: string) => void };
     priceThreshold?: number;
     filterMaxIncomingPrice?: number;
+    /** Итог пересчёта цен по площадкам (UpdatePriceForGoodSkusCommand). */
+    priceReports?: ServicePriceReport[];
 }

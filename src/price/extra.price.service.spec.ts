@@ -37,6 +37,8 @@ import { UpdateOzonPricesCommand } from './commands/update-ozon-prices.command';
 import { NotifyHighPriceCommand } from './commands/notify-high-price.command';
 import { CalculateUnprofitableCommand } from './commands/calculate-unprofitable.command';
 import { ExportUnprofitableXlsxCommand } from './commands/export-unprofitable-xlsx.command';
+import { LogPriceReportsCommand } from './commands/log-price-reports.command';
+import { VerifyOzonPricesCommand } from './commands/verify-ozon-prices.command';
 import { NotifyTopic } from '../notify/notify.types';
 
 jest.mock('../yandex.price/yandex.price.service');
@@ -131,6 +133,7 @@ describe('ExtraPriceService', () => {
         getQuantities: jest.fn(),
         updateCountForService: jest.fn(),
         updatePriceForService: jest.fn(),
+        repriceForService: jest.fn(),
         updateWbCategory: jest.fn(),
         getWbCategoryByName: jest.fn(),
         resetAvailablePrice: jest.fn(),
@@ -177,6 +180,8 @@ describe('ExtraPriceService', () => {
                 { provide: NotifyHighPriceCommand, useValue: mockCommand },
                 { provide: CalculateUnprofitableCommand, useValue: mockCommand },
                 { provide: ExportUnprofitableXlsxCommand, useValue: mockCommand },
+                { provide: LogPriceReportsCommand, useValue: mockCommand },
+                { provide: VerifyOzonPricesCommand, useValue: mockCommand },
             ],
         }).compile();
 
@@ -212,6 +217,8 @@ describe('ExtraPriceService', () => {
             mockCommand as any, // notifyHighPriceCommand
             mockCommand as any, // calculateUnprofitableCommand
             mockCommand as any, // exportUnprofitableXlsxCommand
+            mockCommand as any, // logPriceReportsCommand
+            mockCommand as any, // verifyOzonPricesCommand
         );
     });
 
@@ -259,6 +266,8 @@ describe('ExtraPriceService', () => {
                 mockCommand as any, // notifyHighPriceCommand
                 mockCommand as any, // calculateUnprofitableCommand
                 mockCommand as any, // exportUnprofitableXlsxCommand
+                mockCommand as any, // logPriceReportsCommand
+                mockCommand as any, // verifyOzonPricesCommand
             );
 
             const service = extraPriceService.getService(GoodServiceEnum.OZON);
@@ -337,7 +346,7 @@ describe('ExtraPriceService', () => {
             mockExtraGoodService.tradeSkusToServiceSkus
                 .mockReturnValueOnce(['serviceSku1'])
                 .mockReturnValueOnce(['serviceSku2']);
-            mockGoodService.updatePriceForService.mockResolvedValue({});
+            mockGoodService.repriceForService.mockResolvedValue({ inputs: [], sent: [], skipped: [], response: {} });
 
             await extraPriceService.updatePriceForGoodSkus(skus);
 
@@ -358,12 +367,13 @@ describe('ExtraPriceService', () => {
             mockExtraGoodService.tradeSkusToServiceSkus
                 .mockReturnValueOnce(mappedSkus1)
                 .mockReturnValueOnce(mappedSkus2);
-            mockGoodService.updatePriceForService.mockResolvedValue({});
+            mockGoodService.repriceForService.mockResolvedValue({ inputs: [], sent: [], skipped: [], response: {} });
 
-            await extraPriceService.updatePriceForGoodSkus(skus);
+            const reports = await extraPriceService.updatePriceForGoodSkus(skus);
 
-            expect(mockGoodService.updatePriceForService).toHaveBeenCalledWith(mockYandexPriceService, mappedSkus1);
-            expect(mockGoodService.updatePriceForService).toHaveBeenCalledWith(mockWbPriceService, mappedSkus2);
+            expect(mockGoodService.repriceForService).toHaveBeenCalledWith(mockYandexPriceService, mappedSkus1);
+            expect(mockGoodService.repriceForService).toHaveBeenCalledWith(mockWbPriceService, mappedSkus2);
+            expect(reports.map((r) => r.service)).toEqual([GoodServiceEnum.YANDEX, GoodServiceEnum.WB]);
         });
 
         it('should handle the case when no services are registered', async () => {
@@ -371,10 +381,10 @@ describe('ExtraPriceService', () => {
             extraPriceService['services'] = new Map();
 
             const skus = ['sku1', 'sku2'];
-            await extraPriceService.updatePriceForGoodSkus(skus);
+            expect(await extraPriceService.updatePriceForGoodSkus(skus)).toEqual([]);
 
             expect(mockExtraGoodService.tradeSkusToServiceSkus).not.toHaveBeenCalled();
-            expect(mockGoodService.updatePriceForService).not.toHaveBeenCalled();
+            expect(mockGoodService.repriceForService).not.toHaveBeenCalled();
         });
     });
 
@@ -799,6 +809,8 @@ describe('ExtraPriceService', () => {
                 mockCommand as any,
                 mockCommand as any,
                 mockCommand as any,
+                mockCommand as any,
+                mockCommand as any,
             );
         });
 
@@ -873,6 +885,8 @@ describe('ExtraPriceService', () => {
                 mockCommand as any,
                 mockCommand as any,
                 mockCommand as any,
+                mockCommand as any, // logPriceReportsCommand
+                mockCommand as any, // verifyOzonPricesCommand
             );
 
             await expect(extraPriceService.updateVatForAllMismatches(GoodServiceEnum.YANDEX, 20)).rejects.toThrow(

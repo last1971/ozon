@@ -26,15 +26,24 @@ describe('IncomingStore', () => {
     };
 
     it('коды прихода — одна транзакция, один коммит (двойной ронял пересчёт цен с 17.10.2026)', async () => {
-        const { store, t } = make('SKLAD', [{ GOODSCODE: 101 }, { GOODSCODE: 102 }]);
-        await expect(store.goodsOfPrihods(['65147', '65146'])).resolves.toEqual(['101', '102']);
+        const { store, t } = make('SKLAD', [
+            { NP: '65147', GOODSCODE: 101 },
+            { NP: '65146', GOODSCODE: 102 },
+            { NP: '65146', GOODSCODE: 101 },
+        ]);
+        await expect(store.goodsByPrihod(['65147', '65146'])).resolves.toEqual(
+            new Map([
+                ['65147', ['101']],
+                ['65146', ['102', '101']],
+            ]),
+        );
         expect(t.commit).toHaveBeenCalledTimes(1);
         expect(t.query.mock.calls[0][0]).toContain('FROM SKLADIN');
     });
 
     it('магазин — SHOPIN, номер прихода числом', async () => {
-        const { store, t } = make('SHOPSKLAD', [{ GOODSCODE: 7 }]);
-        await store.goodsOfPrihods(['123']);
+        const { store, t } = make('SHOPSKLAD', [{ NP: 123, GOODSCODE: 7 }]);
+        await expect(store.goodsByPrihod(['123'])).resolves.toEqual(new Map([['123', ['7']]]));
         expect(t.query.mock.calls[0][0]).toContain('FROM SHOPIN');
         expect(t.query.mock.calls[0][1]).toEqual([123]);
     });

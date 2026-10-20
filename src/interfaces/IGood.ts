@@ -11,6 +11,7 @@ import { GoodServiceEnum } from '../good/good.service.enum';
 import { IPriceable } from './i.priceable';
 import { PricesContextDto } from '../helpers/dto/prices.context.dto';
 import { TierThresholdsDto } from '../helpers/price/quantity.tiers.helper';
+import { PriceUpdateReport } from '../price/price-update.report';
 
 export interface IGood {
     /** Транзакция для чтения нескольких выборок из одного снимка (остаток и коды не должны разъезжаться). */
@@ -28,6 +29,12 @@ export interface IGood {
         skus: string[],
         prices?: Map<string, UpdatePriceDto>,
     ): Promise<any>;
+    /** То же, что updatePriceForService, но с отчётом: из чего считали, что отправили, ответ площадки, кого пропустили. */
+    repriceForService(
+        service: IPriceUpdateable,
+        skus: string[],
+        prices?: Map<string, UpdatePriceDto>,
+    ): Promise<PriceUpdateReport>;
     /**
      * Данные расчёта цены по артикулам (себестоимость, наценки, комиссия, доставка) — единственный
      * сборщик: им кормится и пересчёт цен, и проверка прибыльности заказов. Без себестоимости артикул пропускается.

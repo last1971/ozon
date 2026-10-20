@@ -232,8 +232,24 @@ describe('ProductService', () => {
         const res = await service.getGoodIds('');
         expect(res).toEqual({ goods: new Map([['345', 1]]), nextArgs: '123' });
     });
+    it('updateGoodCounts: считает только принятые Озоном, отказ — не обновлён', async () => {
+        method.mockResolvedValueOnce({
+            result: [
+                { offer_id: '1', updated: true, errors: [] },
+                { offer_id: '2', updated: false, errors: [{ code: 'TOO_MANY_REQUESTS', message: 'limit' }] },
+            ],
+        });
+        expect(
+            await service.updateGoodCounts(
+                new Map([
+                    ['1', 1],
+                    ['2', 5],
+                ]),
+            ),
+        ).toEqual(1);
+    });
     it('updateGoodCounts', async () => {
-        method.mockResolvedValueOnce({ result: [2] });
+        method.mockResolvedValueOnce({ result: [{ offer_id: '1', updated: true, errors: [] }] });
         const res = await service.updateGoodCounts(new Map([['1', 1]]));
         expect(res).toEqual(1);
         expect(method.mock.calls[0]).toEqual([

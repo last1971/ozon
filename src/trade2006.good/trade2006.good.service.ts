@@ -31,6 +31,7 @@ import { Cache } from '@nestjs/cache-manager';
 import { WbCommissionDto } from '../wb.card/dto/wb.commission.dto';
 import { WithTransactions } from '../helpers/mixin/transaction.mixin';
 import { PriceCalculationHelper } from '../helpers/price/price.calculation.helper';
+import { PriceSkip, PriceUpdateReport } from '../price/price-update.report';
 
 @Injectable()
 export class Trade2006GoodService extends WithTransactions(class {}) implements IGood, IAvitoGoodStore {
@@ -633,9 +634,19 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         skus: string[],
         prices?: Map<string, UpdatePriceDto>,
     ): Promise<any> {
-        const priceables = await this.buildPriceables(service, skus, prices);
-        const updatePrices = priceables.map((priceData) => calculatePrice(priceData, service.getObtainCoeffs()));
-        return updatePrices.length > 0 ? service.updatePrices(updatePrices) : null;
+        return (await this.repriceForService(service, skus, prices)).response;
+    }
+
+    async repriceForService(
+        service: IPriceUpdateable,
+        skus: string[],
+        prices?: Map<string, UpdatePriceDto>,
+    ): Promise<PriceUpdateReport> {
+        const { priceables, skipped } = await this.collectPriceables(service, skus, prices);
+        const coeffs = service.getObtainCoeffs();
+        const sent = priceables.map((priceData) => calculatePrice(priceData, coeffs));
+        const response = sent.length > 0 ? await service.updatePrices(sent) : null;
+        return { coeffs, inputs: priceables, sent, skipped, response };
     }
 
     async buildPriceables(
@@ -643,6 +654,18 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         skus: string[],
         prices?: Map<string, UpdatePriceDto>,
     ): Promise<IPriceable[]> {
+        return (await this.collectPriceables(service, skus, prices)).priceables;
+    }
+
+    /**
+     * Данные расчёта по артикулам площадки + кого пропустили и почему. Входная берётся из снимка склада
+     * (prices(): NULL, если свободного остатка нет) или из подложенных `prices`; не больше нуля — цену не считаем.
+     */
+    private async collectPriceables(
+        service: IPriceUpdateable | null,
+        skus: string[],
+        prices?: Map<string, UpdatePriceDto>,
+    ): Promise<{ priceables: IPriceable[]; skipped: PriceSkip[] }> {
         const { goods, percents, products } = await this.priceCalculationHelper.preparePricesContext(
             service,
             skus,
@@ -666,10 +689,16 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         }
 
         const priceables: IPriceable[] = [];
+        const skipped: PriceSkip[] = [];
 
         for (const product of products) {
             const incoming_price = this.priceCalculationHelper.getIncomingPrice(product, goods, prices);
-            if (incoming_price !== 0) {
+            // Нет строки склада → undefined × фасовка = NaN; раньше NaN уходил в расчёт и на площадку
+            if (!(incoming_price > 0)) {
+                const gCode = goodCode({ offer_id: product.getSku() });
+                const inStock = goods.some((g) => g.code.toString() === gCode);
+                skipped.push({ offer_id: product.getSku(), reason: inStock ? 'no-free-stock' : 'not-in-stock' });
+            } else {
                 const gCode = goodCode({ offer_id: product.getSku() });
                 const gCoeff = goodQuantityCoeff({ offer_id: product.getSku() });
                 const { min_perc, perc, old_perc, adv_perc, packing_price, available_price } = percents.find(
@@ -697,7 +726,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                 });
             }
         }
-        return priceables;
+        return { priceables, skipped };
     }
 
     @Cron('0 0 9-19 * * 1-6', { name: 'checkGoodCount' })

@@ -9,7 +9,8 @@ export class LoadIncomingGoodsCommand implements ICommandAsync<IncomingContext> 
     constructor(private readonly store: IncomingStore) {}
 
     async execute(ctx: IncomingContext): Promise<IncomingContext> {
-        const skus = await this.store.goodsOfPrihods(ctx.prihods.map((p) => p.np));
-        return { ...ctx, skus };
+        const goodsByPrihod = await this.store.goodsByPrihod(ctx.prihods.map((p) => p.np));
+        const skus = [...new Set([...goodsByPrihod.values()].flat())];
+        return { ...ctx, skus, goodsByPrihod };
     }
 }

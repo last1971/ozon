@@ -45,6 +45,9 @@ import { CalculateUnprofitableCommand } from './commands/calculate-unprofitable.
 import { ExportUnprofitableXlsxCommand } from './commands/export-unprofitable-xlsx.command';
 import { Buffer } from 'exceljs';
 import { NotifyTopic } from '../notify/notify.types';
+import { ServicePriceReport } from './price-update.report';
+import { LogPriceReportsCommand } from './commands/log-price-reports.command';
+import { VerifyOzonPricesCommand } from './commands/verify-ozon-prices.command';
 
 @Injectable()
 export class ExtraPriceService {
@@ -83,6 +86,8 @@ export class ExtraPriceService {
         private readonly notifyHighPriceCommand: NotifyHighPriceCommand,
         private readonly calculateUnprofitableCommand: CalculateUnprofitableCommand,
         private readonly exportUnprofitableXlsxCommand: ExportUnprofitableXlsxCommand,
+        private readonly logPriceReportsCommand: LogPriceReportsCommand,
+        private readonly verifyOzonPricesCommand: VerifyOzonPricesCommand,
     ) {
         this.services = new Map<GoodServiceEnum, IPriceUpdateable>();
         const services = this.configService.get<GoodServiceEnum[]>('SERVICES', []);
@@ -132,15 +137,18 @@ export class ExtraPriceService {
         );
     }
 
-    public updatePriceForGoodSkus(skus: string[]): Promise<any> {
+    /** Пересчитать и отправить цены по кодам Trade на всех площадках; отчёт по каждой, где эти товары есть. */
+    public async updatePriceForGoodSkus(skus: string[]): Promise<ServicePriceReport[]> {
         const serviceEntries = [...this.services.entries()];
 
-        return Promise.all(
-            serviceEntries.map(([serviceEnum, service]) => {
+        const reports = await Promise.all(
+            serviceEntries.map(async ([serviceEnum, service]): Promise<ServicePriceReport | null> => {
                 const serviceSkus = this.extraGoodService.tradeSkusToServiceSkus(skus, serviceEnum);
-                return serviceSkus.length > 0 ? this.goodService.updatePriceForService(service, serviceSkus) : null;
+                if (serviceSkus.length === 0) return null;
+                return { service: serviceEnum, ...(await this.goodService.repriceForService(service, serviceSkus)) };
             }),
         );
+        return reports.filter(Boolean);
     }
 
     @Cron('0 0 0 * * 0', { name: 'updateAllServicePrices' })
@@ -173,7 +181,9 @@ export class ExtraPriceService {
     /**
      * Цепочка прихода товара — единственное место, где известен её состав (решение владельца 17.10.2026):
      * проверить, что коды есть → коды Trade в артикулы площадок → сбросить доступную цену →
-     * пересчитать цены на всех площадках → сверить нашу цену с ценой площадки и сообщить о расхождении →
+     * пересчитать цены на всех площадках → журнал по товару (из чего считали, что отправили, что ответила площадка) →
+     * перечитать цены Озона и сверить с отправленными (не сошлось — повтор, снова нет — письмо «цены») →
+     * сверить маркетинговую цену с минимальной и сообщить о расхождении →
      * запустить пересчёт акций Озона → сложить итог → записать в лог.
      * Наценки по приходу НЕ пересчитываются: они остаются как были, цена следует за новой входящей;
      * товару без наценок цена считается по дефолтам PERC_* (buildPriceables).
@@ -185,6 +195,8 @@ export class ExtraPriceService {
             this.tradeSkusCommand,
             this.resetAvailablePriceCommand,
             this.updatePriceForGoodSkusCommand,
+            this.logPriceReportsCommand,
+            this.verifyOzonPricesCommand,
             this.checkPriceDifferenceAndNotifyCommand,
             this.emitUpdatePromosCommand,
             this.setResultProcessingMessageCommand,

@@ -32,6 +32,8 @@ import { UpdateOzonPricesCommand } from './commands/update-ozon-prices.command';
 import { NotifyHighPriceCommand } from './commands/notify-high-price.command';
 import { CalculateUnprofitableCommand } from './commands/calculate-unprofitable.command';
 import { ExportUnprofitableXlsxCommand } from './commands/export-unprofitable-xlsx.command';
+import { LogPriceReportsCommand } from './commands/log-price-reports.command';
+import { VerifyOzonPricesCommand } from './commands/verify-ozon-prices.command';
 
 @Module({
     imports: [
@@ -69,6 +71,8 @@ import { ExportUnprofitableXlsxCommand } from './commands/export-unprofitable-xl
         NotifyHighPriceCommand,
         CalculateUnprofitableCommand,
         ExportUnprofitableXlsxCommand,
+        LogPriceReportsCommand,
+        VerifyOzonPricesCommand,
     ],
     controllers: [PriceController],
     exports: [
@@ -96,6 +100,8 @@ import { ExportUnprofitableXlsxCommand } from './commands/export-unprofitable-xl
         NotifyHighPriceCommand,
         CalculateUnprofitableCommand,
         ExportUnprofitableXlsxCommand,
+        LogPriceReportsCommand,
+        VerifyOzonPricesCommand,
     ],
 })
 export class PriceModule {}

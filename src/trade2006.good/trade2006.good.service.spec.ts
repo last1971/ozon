@@ -267,6 +267,35 @@ describe('Trade2006GoodService', () => {
         generateSpy.mockRestore();
     });
 
+    it('repriceForService: без входной цены не считаем и говорим почему — нет свободного остатка / нет на складе', async () => {
+        mockPriceCalculationHelper.preparePricesContext.mockResolvedValueOnce({
+            codes: ['1', '2'],
+            goods: [{ code: 1, name: 'ONE', price: null }],
+            percents: [
+                { offer_id: '1', pieces: 1 },
+                { offer_id: '2', pieces: 1 },
+            ],
+            products: ['1', '2'].map((sku) => ({
+                getSku: () => sku,
+                getTransMaxAmount: () => 40,
+                getSalesPercent: () => 10,
+            })),
+        });
+        // строка склада без свободного остатка → null × 1 = 0; строки нет → undefined × 1 = NaN
+        mockPriceCalculationHelper.getIncomingPrice.mockReturnValueOnce(0).mockReturnValueOnce(NaN);
+        updatePrices.mockClear();
+
+        const report = await service.repriceForService(priceUdateable, ['1', '2']);
+
+        expect(report.skipped).toEqual([
+            { offer_id: '1', reason: 'no-free-stock' },
+            { offer_id: '2', reason: 'not-in-stock' },
+        ]);
+        expect(report.sent).toEqual([]);
+        expect(report.response).toBeNull();
+        expect(updatePrices).not.toHaveBeenCalled();
+    });
+
     it('checkCounts', async () => {
         query.mockResolvedValueOnce([{ GOODSCODE: '111' }, { GOODSCODE: '222' }]);
         get.mockResolvedValueOnce(false).mockResolvedValueOnce(true);

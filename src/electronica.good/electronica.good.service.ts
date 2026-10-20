@@ -12,6 +12,7 @@ import { WbCommissionDto } from '../wb.card/dto/wb.commission.dto';
 import { FirebirdTransaction } from 'ts-firebird';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { TierThresholdsDto } from '../helpers/price/quantity.tiers.helper';
+import { PriceUpdateReport } from '../price/price-update.report';
 
 @Injectable()
 export class ElectronicaGoodService implements IGood {
@@ -71,6 +72,10 @@ export class ElectronicaGoodService implements IGood {
 
     updatePriceForService(_service: IPriceUpdateable, _skus: string[]): Promise<any> {
         return Promise.resolve(undefined);
+    }
+
+    repriceForService(): Promise<PriceUpdateReport> {
+        return Promise.resolve({ inputs: [], sent: [], skipped: [], response: null });
     }
 
     buildPriceables(): Promise<IPriceable[]> {
