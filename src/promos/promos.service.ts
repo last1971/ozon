@@ -162,6 +162,7 @@ export class PromosService {
      * остальные («Эластичный бустинг», «Скидка на сток») — через update нашим полом
      * (минимальная с учётом процента нашей акции): выше лимита акции — Ozon исключает товар,
      * в пределах лимита — оставляет с этой ценой, что для нас тоже приемлемо (итог покупателю не ниже минимума).
+     * Если Ozon отклонил снятие ценой (эластичный бустинг) — принудительно через deactivate.
      * Открыто для ручки цены (PromoPriceApplier): снятие там идёт этим же правилом, не копией.
      */
     async remove(
@@ -183,7 +184,16 @@ export class PromosService {
                 `акция ${action.id}: ${res.added.length} товаров остались в акции по нашему полу (в пределах лимита)`,
             );
         }
-        return { success_ids: res.removed, failed: res.rejected };
+        if (!res.rejected.length) return { success_ids: res.removed, failed: [] };
+        // Эластичный бустинг цену выше лимита не принимает и товар не исключает (20.10.2026, 532100:
+        // «DiscountPercent must be greater or equal than 45…») — такие снимаем принудительно.
+        const rejectedIds = res.rejected.map((r) => r.productId);
+        const forced = await this.api.deactivate(action.id, rejectedIds);
+        if (forced.length) this.logger.log(`акция ${action.id}: принудительно сняты ${forced.length} товаров`);
+        return {
+            success_ids: [...res.removed, ...forced],
+            failed: res.rejected.filter((r) => !forced.includes(r.productId)),
+        };
     }
 
     private async findAction(actionId: number): Promise<Action> {

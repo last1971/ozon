@@ -117,6 +117,27 @@ describe('PromosService — правила участия в акциях', () =
             expect(sellerListAll).toHaveBeenCalledWith('list', 4376619);
         });
 
+        it('Ozon отклонил снятие ценой (эластичный бустинг) — принудительно deactivate; не снятые — в failed', async () => {
+            listActions.mockResolvedValue([boosting]);
+            listAll.mockResolvedValue(inAction);
+            getProductsPrices.mockResolvedValue(prices);
+            getFreeProductCount.mockResolvedValue(counts);
+            const reason = 'DiscountPercent must be greater or equal than 45.0328, but actual is 10.4595';
+            update.mockResolvedValue(
+                okUpdate({
+                    removed: [4],
+                    rejected: [
+                        { productId: 1, reason },
+                        { productId: 3, reason },
+                    ],
+                }),
+            );
+            deactivate.mockResolvedValue([1]);
+
+            expect(await service.unfitProductsRemoval(1)).toBe(2);
+            expect(deactivate).toHaveBeenCalledWith(1, [1, 3]);
+        });
+
         it('промокоды: снятие принудительно через deactivate', async () => {
             listActions.mockResolvedValue([voucher]);
             listAll.mockResolvedValue(inAction);
