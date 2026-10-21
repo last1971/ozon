@@ -18,6 +18,12 @@ export class YandexApiService {
         private httpService: HttpService,
         private vaultService: VaultService,
     ) {}
+    /** Кампания кабинета розницы — для ручек `campaigns/{id}/…`. */
+    async campaignId(): Promise<number> {
+        const yandexSeller = await this.vaultService.get('yandex-seller');
+        return Number(yandexSeller['electronica-company']);
+    }
+
     async method(name: string, method: string, options: any): Promise<any> {
         const yandexSeller = await this.vaultService.get('yandex-seller');
         let response: Observable<AxiosResponse>;

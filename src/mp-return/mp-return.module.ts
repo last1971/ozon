@@ -8,6 +8,8 @@ import { MpReturnChainFactory } from './mp-return.chain.factory';
 import { ReturnCardBuilder } from './return-card.builder';
 import { OzonReturnSource } from './sources/ozon.return.source';
 import { WbReturnSource } from './sources/wb.return.source';
+import { YandexReturnSource } from './sources/yandex.return.source';
+import { YandexApiModule } from '../yandex.api/yandex.api.module';
 import { WbApiModule } from '../wb.api/wb.api.module';
 import { WbCardModule } from '../wb.card/wb.card.module';
 import { RETURN_SOURCES } from './sources/i.return.source';
@@ -28,7 +30,7 @@ import { RecordWriteOffCommand } from './commands/record-write-off.command';
 
 /** Экран приёма возвратов маркетплейсов (план marking/sprint/returns_accept_PLAN.md). */
 @Module({
-    imports: [InvoiceModule, MpEventModule, PostingModule, SpisModule, WbApiModule, WbCardModule],
+    imports: [InvoiceModule, MpEventModule, PostingModule, SpisModule, WbApiModule, WbCardModule, YandexApiModule],
     controllers: [MpReturnController],
     providers: [
         MpReturnService,
@@ -36,10 +38,11 @@ import { RecordWriteOffCommand } from './commands/record-write-off.command';
         ReturnCardBuilder,
         OzonReturnSource,
         WbReturnSource,
+        YandexReturnSource,
         {
             provide: RETURN_SOURCES,
-            useFactory: (ozon: OzonReturnSource, wb: WbReturnSource) => [ozon, wb],
-            inject: [OzonReturnSource, WbReturnSource],
+            useFactory: (ozon: OzonReturnSource, wb: WbReturnSource, yandex: YandexReturnSource) => [ozon, wb, yandex],
+            inject: [OzonReturnSource, WbReturnSource, YandexReturnSource],
         },
         LoadReturnCardCommand,
         AssertNotProcessedCommand,

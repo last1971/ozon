@@ -7,17 +7,20 @@ export type ReturnScan =
 
 /** Русская раскладка сканера: латинская «i» приходит как «ш». */
 const LAYOUT_II = /^[шШ]{2}/;
+/** То же для этикетки возврата Яндекса: «VOZ_FBS_» приходит как «МЩЯ_АИЫ_». */
+const LAYOUT_VOZ = /^мщя_аиы_/i;
 
 /**
  * Разбор скана/ввода на экране возвратов. Одна функция на все маркетплейсы:
  *  - `ii18506448347`, `ii1850644 8347`, `шш1850644 8347` → штрихкод возвратной этикетки Ozon;
  *  - `0103411105-0207-1` → номер отправления;
  *  - `0103411105-0207` → номер заказа (отправлений может быть несколько);
+ *  - `VOZ_FBS_27059326`, `62026013058-1` → этикетка возврата / коробка невыкупа Яндекса;
  *  - только цифры → id возврата у маркетплейса.
  * Номер ищется и внутри длинной строки (QR этикетки может нести больше, чем номер).
  */
 export function parseReturnScan(raw: string): ReturnScan | null {
-    const text = (raw ?? '').trim().replace(LAYOUT_II, 'ii');
+    const text = (raw ?? '').trim().replace(LAYOUT_II, 'ii').replace(LAYOUT_VOZ, 'VOZ_FBS_');
     if (!text) return null;
 
     const barcode = text.match(/ii\s*(\d[\d\s]{6,}\d)/i);
@@ -28,6 +31,9 @@ export function parseReturnScan(raw: string): ReturnScan | null {
 
     const order = text.match(/\b(\d{6,12}-\d{4})\b/);
     if (order) return { kind: 'order', value: order[1] };
+
+    const yandex = text.match(/\b(VOZ_[A-Z]{3}_\d+|\d{8,12}-\d{1,3})\b/i);
+    if (yandex) return { kind: 'barcode', value: yandex[1].toUpperCase() };
 
     const digits = text.replace(/\s+/g, '');
     if (/^\d{5,20}$/.test(digits)) return { kind: 'extId', value: digits };

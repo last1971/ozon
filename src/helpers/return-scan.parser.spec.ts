@@ -11,6 +11,9 @@ describe('parseReturnScan', () => {
         ['https://x/?p=0177240708-0022-2&z=1', { kind: 'posting', value: '0177240708-0022-2' }],
         ['0103411105-0207', { kind: 'order', value: '0103411105-0207' }],
         ['1001644468', { kind: 'extId', value: '1001644468' }],
+        ['VOZ_FBS_27059326', { kind: 'barcode', value: 'VOZ_FBS_27059326' }],
+        ['мщя_аиы_27059326', { kind: 'barcode', value: 'VOZ_FBS_27059326' }],
+        ['62026013058-1', { kind: 'barcode', value: '62026013058-1' }],
     ])('%s', (raw, expected) => {
         expect(parseReturnScan(raw)).toEqual(expected);
     });

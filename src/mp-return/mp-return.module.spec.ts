@@ -21,7 +21,7 @@ import { RETURN_SOURCES } from './sources/i.return.source';
 class FakeGlobalsModule {}
 
 describe('MpReturnModule — старт контейнера Nest', () => {
-    it('собирает экран возвратов с источниками Ozon и ВБ (зависимости импортированы)', async () => {
+    it('собирает экран возвратов с источниками Ozon, ВБ и Яндекса (зависимости импортированы)', async () => {
         const module = await Test.createTestingModule({
             imports: [
                 FakeGlobalsModule,
@@ -31,6 +31,6 @@ describe('MpReturnModule — старт контейнера Nest', () => {
             ],
         }).compile();
         expect(module.get(MpReturnService)).toBeInstanceOf(MpReturnService);
-        expect(module.get(RETURN_SOURCES).map((s) => s.service)).toEqual(['OZON', 'WB']);
+        expect(module.get(RETURN_SOURCES).map((s) => s.service)).toEqual(['OZON', 'WB', 'YANDEX']);
     });
 });

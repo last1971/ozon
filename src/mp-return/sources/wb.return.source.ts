@@ -10,6 +10,7 @@ import { RateLimit } from '../../helpers/decorators/rate-limit.decorator';
 import { ReturnScan } from '../../helpers/return-scan.parser';
 import { ReturnLineDto } from '../dto/return-line.dto';
 import { IReturnSource } from './i.return.source';
+import { ReturnHistoryCache } from './return-history.cache';
 
 /** Отчёт ВБ «Возвраты и перемещения»: одна строка — одна штука. */
 const REPORT_URL = 'https://seller-analytics-api.wildberries.ru/api/v1/analytics/goods-return';
@@ -17,9 +18,6 @@ const REPORT_URL = 'https://seller-analytics-api.wildberries.ru/api/v1/analytics
 const CHUNK_DAYS = 31;
 /** Сколько отрезков от сегодня держим: забирают через 3–10 дней после заказа (19.10.2026), запас — три месяца. */
 const HISTORY_CHUNKS = 3;
-const CACHE_MS = 5 * 60_000;
-/** Промах по скану перечитывает отчёт, но не чаще раза в 30 с. */
-const MISS_REFRESH_MS = 30_000;
 /** Статус «забрали с ПВЗ» — его и показывает список. */
 const ISSUED = 'Выдано';
 /** Даты отчёта без пояса — московские (`2026-10-09T09:37:11`). */
@@ -45,7 +43,7 @@ export interface WbGoodsReturnRow {
 @Injectable()
 export class WbReturnSource implements IReturnSource {
     readonly service = 'WB' as const;
-    private cache: { at: number; rows: Promise<WbGoodsReturnRow[]> } | null = null;
+    private readonly history = new ReturnHistoryCache(() => this.readHistory());
 
     constructor(
         private readonly api: WbApiService,
@@ -56,7 +54,7 @@ export class WbReturnSource implements IReturnSource {
 
     async listReceived(from: Date, to: Date): Promise<ReturnLineDto[]> {
         if (!this.enabled()) return [];
-        const rows = (await this.report()).filter((r) => {
+        const rows = (await this.history.rows()).filter((r) => {
             const at = completedAt(r)?.toJSDate();
             return at && at >= from && at < to;
         });
@@ -70,25 +68,11 @@ export class WbReturnSource implements IReturnSource {
             rows.filter((r) =>
                 [r.stickerId, r.shkId, r.orderId, r.srid].some((v) => v != null && String(v) === scan.value),
             );
-        let rows = match(await this.report());
-        if (!rows.length && Date.now() - (this.cache?.at ?? 0) > MISS_REFRESH_MS) rows = match(await this.report(true));
-        return this.toLines(rows);
+        return this.toLines(await this.history.find(match));
     }
 
     private enabled(): boolean {
         return this.config.get<GoodServiceEnum[]>('SERVICES', []).includes(GoodServiceEnum.WB);
-    }
-
-    /** Один отчёт на все окна; параллельные вызовы ждут одно чтение, сбой кэш не занимает. */
-    private report(fresh = false): Promise<WbGoodsReturnRow[]> {
-        if (fresh || !this.cache || Date.now() - this.cache.at > CACHE_MS) {
-            const rows = this.readHistory();
-            this.cache = { at: Date.now(), rows };
-            rows.catch(() => {
-                if (this.cache?.rows === rows) this.cache = null;
-            });
-        }
-        return this.cache.rows;
     }
 
     private async readHistory(): Promise<WbGoodsReturnRow[]> {

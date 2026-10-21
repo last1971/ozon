@@ -4,6 +4,7 @@ export type MpService = 'OZON' | 'WB' | 'YANDEX';
 export const RETURN_SERVICES: { value: MpService; title: string; scanHint: string }[] = [
     { value: 'OZON', title: 'Ozon', scanHint: 'Скан этикетки возврата ii…, номер отправления или заказа' },
     { value: 'WB', title: 'ВБ', scanHint: 'Скан стикера возврата ВБ или номер заказа' },
+    { value: 'YANDEX', title: 'Яндекс', scanHint: 'Скан этикетки VOZ_… или коробки 6…-1, номер заказа' },
 ];
 
 export interface ReturnLine {
