@@ -298,7 +298,6 @@ describe('Trade2006GoodService', () => {
 
     it('checkCounts', async () => {
         query.mockResolvedValueOnce([{ GOODSCODE: '111' }, { GOODSCODE: '222' }]);
-        get.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
         await service.checkCounts();
         expect(query.mock.calls[0]).toEqual(['SELECT GOODSCODE FROM GOODSCOUNTCHANGE WHERE CHANGED=1', [], true]);
         expect(emit.mock.calls[0]).toEqual(['counts.changed', [{ code: 1, quantity: 2, reserve: 1 }]]);
@@ -307,8 +306,36 @@ describe('Trade2006GoodService', () => {
             ['111', '222'],
             true,
         ]);
-        const res = await service.checkCounts();
-        expect(res).toHaveLength(0);
+    });
+
+    it('checkCounts: тик, вставший за долгим чтением флагов, не кидает событие второй раз', async () => {
+        // Первый тик висит на чтении GOODSCOUNTCHANGE (чужая транзакция держит таблицу)
+        let release: (rows: any[]) => void;
+        query.mockReturnValueOnce(new Promise((r) => (release = r)));
+        const first = service.checkCounts();
+        const second = await service.checkCounts();
+        expect(second).toEqual([]);
+
+        release([{ GOODSCODE: '111' }]);
+        await first;
+        expect(emit.mock.calls.filter((c) => c[0] === 'counts.changed')).toHaveLength(1);
+
+        // Замок снят — следующий тик снова читает флаги
+        query.mockResolvedValueOnce([]);
+        await service.checkCounts();
+        expect(query.mock.calls.filter((c) => c[0].startsWith('SELECT GOODSCODE FROM GOODSCOUNTCHANGE'))).toHaveLength(
+            2,
+        );
+    });
+
+    it('checkCounts: ошибка чтения не оставляет замок висеть', async () => {
+        query.mockRejectedValueOnce(new Error('lock conflict'));
+        await expect(service.checkCounts()).rejects.toThrow('lock conflict');
+        query.mockResolvedValueOnce([]);
+        await service.checkCounts();
+        expect(query.mock.calls.filter((c) => c[0].startsWith('SELECT GOODSCODE FROM GOODSCOUNTCHANGE'))).toHaveLength(
+            2,
+        );
     });
 
     it('checkBounds', async () => {

@@ -15,7 +15,6 @@ import { goodCode, goodQuantityCoeff, isMarkCodesEnabled, storageSS } from '../h
 import { markRequiredExists } from '../helpers/mark-required.sql';
 import { chunk, flatten, toNumber } from 'lodash';
 import { EventEmitter2 } from '@nestjs/event-emitter';
-import { Cache } from '@nestjs/cache-manager';
 import { InvoiceGetDto } from '../invoice/dto/invoice.get.dto';
 import { InvoiceLineDto } from '../invoice/dto/invoice.line.dto';
 import { ISOLATION_READ_UNCOMMITTED } from 'node-firebird';
@@ -50,7 +49,6 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         @Inject(FIREBIRD) private pool: FirebirdPool,
         private configService: ConfigService,
         private eventEmitter: EventEmitter2,
-        private cacheManager: Cache,
         private gtdResolver: GtdResolver,
     ) {
         super();
@@ -431,7 +429,6 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
     }
     async updateByTransactions(transactions: TransactionDto[], t: FirebirdTransaction = null): Promise<ResultDto> {
         this.logger.log(`updateByTransactions: начало, получено ${transactions.length} транзакций`);
-        await this.cacheManager.set('updateByTransactions', true, 0);
         const transaction = t ?? (await this.pool.getTransaction());
         try {
             this.logger.log('updateByTransactions: ищем счета по posting numbers');
@@ -470,7 +467,6 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
                     (dto) => !invoices.find((invoice) => invoice.remark === dto.posting_number),
                 );
                 if (!t) await transaction.rollback(true);
-                await this.cacheManager.set('updateByTransactions', false, 0);
                 return {
                     isSuccess: false,
                     message: `Not find ${delta.map((invoice) => invoice.posting_number).toString()}`,
@@ -478,13 +474,11 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             }
 
             */
-            await this.cacheManager.set('updateByTransactions', false, 0);
             if (!t) await transaction.commit(true);
             return res;
         } catch (e) {
             this.logger.error(e.message);
             if (!t) await transaction.rollback(true);
-            await this.cacheManager.set('updateByTransactions', false, 0);
             return {
                 isSuccess: false,
                 message: e.message,

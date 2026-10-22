@@ -37,6 +37,12 @@ import { PriceSkip, PriceUpdateReport } from '../price/price-update.report';
 export class Trade2006GoodService extends WithTransactions(class {}) implements IGood, IAvitoGoodStore {
     private storageTable: string;
     private readonly logger = new Logger(Trade2006GoodService.name);
+    /**
+     * Тик checkCounts ещё идёт. Чтение GOODSCOUNTCHANGE ждёт чужую длинную транзакцию
+     * (недельный прогон начислений), за это время встают следующие минутные тики,
+     * просыпаются разом, читают один набор флагов и кидают одно событие дважды.
+     */
+    private countsRunning = false;
     constructor(
         @Inject(FIREBIRD) private pool: FirebirdPool,
         private configService: ConfigService,
@@ -731,32 +737,36 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
 
     @Cron('0 0 9-19 * * 1-6', { name: 'checkGoodCount' })
     async checkCounts(): Promise<any[]> {
-        const updateByTransactions = await this.cacheManager.get('updateByTransactions');
-        if (updateByTransactions) return [];
-        const t = await this.pool.getTransaction();
-        const res = await t.query('SELECT GOODSCODE FROM GOODSCOUNTCHANGE WHERE CHANGED=1', [], true);
-        if (res.length === 0) return;
-        this.eventEmitter.emit(
-            'counts.changed',
-            await this.in(
-                res.map((r) => r.GOODSCODE),
-                null,
-            ),
-        );
-        await Promise.all(
-            chunk(res, 50).map(async (part: any) => {
-                const t = await this.pool.getTransaction();
-                const codes = part.map((good) => good.GOODSCODE);
-                return t.execute(
-                    `UPDATE GOODSCOUNTCHANGE SET CHANGED=0 WHERE GOODSCODE IN (${'?'
-                        .repeat(codes.length)
-                        .split('')
-                        .join()})`,
-                    codes,
-                    true,
-                );
-            }),
-        );
+        if (this.countsRunning) return [];
+        this.countsRunning = true;
+        try {
+            const t = await this.pool.getTransaction();
+            const res = await t.query('SELECT GOODSCODE FROM GOODSCOUNTCHANGE WHERE CHANGED=1', [], true);
+            if (res.length === 0) return;
+            this.eventEmitter.emit(
+                'counts.changed',
+                await this.in(
+                    res.map((r) => r.GOODSCODE),
+                    null,
+                ),
+            );
+            await Promise.all(
+                chunk(res, 50).map(async (part: any) => {
+                    const t = await this.pool.getTransaction();
+                    const codes = part.map((good) => good.GOODSCODE);
+                    return t.execute(
+                        `UPDATE GOODSCOUNTCHANGE SET CHANGED=0 WHERE GOODSCODE IN (${'?'
+                            .repeat(codes.length)
+                            .split('')
+                            .join()})`,
+                        codes,
+                        true,
+                    );
+                }),
+            );
+        } finally {
+            this.countsRunning = false;
+        }
     }
 
     @OnEvent('counts.changed', { async: true })

@@ -5,7 +5,6 @@ import { Trade2006InvoiceService } from '../trade2006.invoice/trade2006.invoice.
 import { FIREBIRD, FirebirdModule } from '../firebird/firebird.module';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FirebirdPool } from 'ts-firebird';
-import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
 import { InvoiceController } from './invoice.controller';
 import { IsRemarkValid } from '../validators/is.remark.valid';
 import { MarkScanFbsService } from './mark-scan-fbs.service';
@@ -26,10 +25,9 @@ import { Trade2006ReturnStockService } from '../trade2006.invoice/trade2006.retu
                 configService: ConfigService,
                 pool: FirebirdPool,
                 eventEmitter: EventEmitter2,
-                cacheManager: Cache,
                 gtdResolver: GtdResolver,
-            ) => new Trade2006InvoiceService(pool, configService, eventEmitter, cacheManager, gtdResolver),
-            inject: [ConfigService, FIREBIRD, EventEmitter2, CACHE_MANAGER, GtdResolver],
+            ) => new Trade2006InvoiceService(pool, configService, eventEmitter, gtdResolver),
+            inject: [ConfigService, FIREBIRD, EventEmitter2, GtdResolver],
         },
     ],
     exports: [INVOICE_SERVICE, RETURN_STOCK, MarkScanFbsService, IsRemarkValid],
