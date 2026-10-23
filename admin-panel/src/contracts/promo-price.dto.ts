@@ -65,6 +65,8 @@ export interface PromoPricePlan {
     buyerAfter: number;
     /** Итог не ниже min_price. */
     ok: boolean;
+    /** Шагов нет, а ближе к цели не подойти: следующий шаг рычага уводит ниже цели. */
+    closest: boolean;
     notes: string[];
     state: PromoPriceState;
 }
@@ -94,6 +96,8 @@ export interface PromoSweepItem {
     buyerBefore: number;
     buyerAfter: number;
     ok: boolean;
+    /** Шагов нет — ближе к цели не подойти. */
+    closest: boolean;
     steps: PromoPriceStep[];
     notes: string[];
     /** Только при применении. */
@@ -140,7 +144,9 @@ export interface PromoSweepReport {
     percentChanged: number;
     /** План не выводит выше минимума. */
     unfixable: number;
-    /** Ниже минимума, но шагов нет (формула расходится с Ozon) — смотреть руками. */
+    /** Шагов нет: цена уже ближайшая к цели, следующий шаг уводит ниже. */
+    closest: number;
+    /** Шагов нет и это не «ближе нельзя» (формула расходится с Ozon) — смотреть руками. */
     nothingToDo: number;
     /** При применении: товаров, где не все шаги прошли. */
     failed: number;

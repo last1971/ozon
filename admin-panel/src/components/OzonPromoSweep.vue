@@ -111,6 +111,7 @@ async function applyAll() {
                     <span class="me-4">выкинуть из акций Ozon: {{ report.removedFromOzon }}</span>
                     <span class="me-4">меняется наш процент: {{ report.percentChanged }}</span>
                     <span v-if="report.unfixable" class="me-4 text-error">не вытянуть: {{ report.unfixable }}</span>
+                    <span v-if="report.closest" class="me-4 text-medium-emphasis">ближе нельзя: {{ report.closest }}</span>
                     <span v-if="report.nothingToDo" class="me-4 text-warning">смотреть руками: {{ report.nothingToDo }}</span>
                     <span v-if="report.apply" class="me-4" :class="report.failed ? 'text-error' : ''">не всё прошло: {{ report.failed }}</span>
                 </div>
@@ -137,7 +138,8 @@ async function applyAll() {
                         {{ resultLabel(item.results[i]) }}<template v-if="item.results[i].reason">: {{ item.results[i].reason }}</template>
                     </v-chip>
                 </div>
-                <div v-if="!item.steps.length" class="text-warning text-body-2">шагов нет — смотреть в карточке цены</div>
+                <div v-if="item.closest" class="text-medium-emphasis text-body-2">ближе нельзя — следующий шаг уводит ниже цели</div>
+                <div v-else-if="!item.steps.length" class="text-warning text-body-2">шагов нет — смотреть в карточке цены</div>
             </template>
         </v-data-table>
 

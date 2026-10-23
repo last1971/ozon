@@ -117,13 +117,14 @@ describe('сверка акций — команды цепочки', () => {
     });
 
     it('report: счётчики по шагам, нелечимые и непрошедшие — первыми', async () => {
-        const p = (productId: number, steps: string[], ok = true, buyerBefore = 200): PromoPricePlan =>
+        const p = (productId: number, steps: string[], ok = true, buyerBefore = 200, closest = false): PromoPricePlan =>
             ({
                 offerId: String(productId),
                 productId,
                 steps: steps.map((kind) => ({ kind })),
                 notes: [],
                 ok,
+                closest,
                 buyerBefore,
                 buyerAfter: 214,
                 target: 213,
@@ -134,6 +135,7 @@ describe('сверка акций — команды цепочки', () => {
             p(2, ['ozon-remove', 'percent'], true, 100),
             p(3, ['percent'], false, 205),
             p(4, [], true, 212),
+            p(5, [], true, 215, true),
         ];
         const c = await new BuildSweepReportCommand().execute(
             ctx({
@@ -147,15 +149,17 @@ describe('сверка акций — команды цепочки', () => {
             apply: true,
             goal: 'below-min',
             checked: 600,
-            selected: 4,
+            selected: 5,
             keptInOzon: 1,
             removedFromOzon: 1,
             percentChanged: 2,
             unfixable: 1,
+            closest: 1,
             nothingToDo: 1,
             failed: 1,
         });
-        expect(c.report?.items.map((i) => i.productId)).toEqual([3, 1, 2, 4]);
+        expect(c.report?.items.map((i) => i.productId)).toEqual([3, 1, 2, 5, 4]);
+        expect(c.report?.items.find((i) => i.productId === 5)).toMatchObject({ closest: true });
         expect(c.report?.items[1]).toMatchObject({ applied: false, price: 255, minPrice: 213 });
         expect(c.report?.items[0]).not.toHaveProperty('state');
     });

@@ -22,6 +22,7 @@ export class BuildSweepReportCommand implements IJobCommand<IPromoSweepContext> 
                 buyerBefore: p.buyerBefore,
                 buyerAfter: p.buyerAfter,
                 ok: p.ok,
+                closest: p.closest,
                 steps: p.steps,
                 notes: p.notes,
                 ...(r ? { results: r.results, applied: r.applied } : {}),
@@ -36,7 +37,8 @@ export class BuildSweepReportCommand implements IJobCommand<IPromoSweepContext> 
             removedFromOzon: plans.filter((p) => has(p, 'ozon-remove')).length,
             percentChanged: plans.filter((p) => has(p, 'percent')).length,
             unfixable: plans.filter((p) => !p.ok).length,
-            nothingToDo: plans.filter((p) => !p.steps.length).length,
+            closest: plans.filter((p) => p.closest).length,
+            nothingToDo: plans.filter((p) => !p.steps.length && !p.closest).length,
             failed: (context.results ?? []).filter((r) => !r.applied).length,
             // сначала то, что не лечится и не прошло, потом по дальности от цели
             items: items.sort(

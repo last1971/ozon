@@ -97,6 +97,8 @@ export const planPromoPrice = (s: PromoPriceState, target: PromoTarget, percentW
     }
 
     const buyerAfter = buyerPrice(s.price, kept, percent);
+    // Рычаг, который держит цену: акции Ozon — рубль цены в акции, наша акция — процент от price.
+    const leverStep = kept.length ? 1 : seller ? s.price / 100 : 0;
     return {
         offerId: s.offerId,
         productId: s.productId,
@@ -107,6 +109,7 @@ export const planPromoPrice = (s: PromoPriceState, target: PromoTarget, percentW
         buyerBefore: s.buyerPrice,
         buyerAfter,
         ok: buyerAfter >= s.minPrice,
+        closest: !steps.length && leverStep > 0 && buyerAfter > t && buyerAfter - leverStep < t,
         notes,
         state: s,
     };

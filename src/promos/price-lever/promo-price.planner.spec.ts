@@ -132,7 +132,32 @@ describe('planPromoPrice — план цены через акции (без в�
         const plan = planPromoPrice(state({ seller: null, ozonActions: [] }), 'min', 10);
         expect(plan.steps).toEqual([]);
         expect(plan.buyerAfter).toBe(255);
+        expect(plan.closest).toBe(false);
         expect(plan.notes.join()).toContain('процент не назначить');
+    });
+
+    /** 542774 живьём 23.10: норм 2557, мин 1714, наш 32 % → 1739; 33 % дало бы 1713 — ниже минимальной. */
+    it('«к минимальной»: цена выше цели меньше чем на шаг процента — шагов нет, ближе нельзя', () => {
+        const s = state({
+            offerId: '542774',
+            price: 2557,
+            minPrice: 1714,
+            buyerPrice: 1739,
+            buyerPriceCalc: 1739,
+            seller: seller({ percent: 32 }),
+            ozonActions: [],
+        });
+        const plan = planPromoPrice(s, 'min');
+        expect(plan.steps).toEqual([]);
+        expect(plan.buyerAfter).toBe(1739);
+        expect(plan.closest).toBe(true);
+    });
+
+    it('цена выше цели больше чем на шаг процента — есть шаг, не «ближе нельзя»', () => {
+        const s = state({ price: 2557, minPrice: 1714, buyerPrice: 1790, seller: seller({ percent: 30 }), ozonActions: [] });
+        const plan = planPromoPrice(s, 'min');
+        expect(plan.steps).toEqual([expect.objectContaining({ kind: 'percent', from: 30, to: 32 })]);
+        expect(plan.closest).toBe(false);
     });
 
     it('цель вне коридора зажимается с пометкой; процент ниже минимума акции поднимается', () => {
