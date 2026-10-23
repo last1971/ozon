@@ -154,6 +154,7 @@ export class PromoPriceService {
                     actionPrice: participant ? p.actionPrice : 0,
                     maxActionPrice: p.maxActionPrice,
                     stock: p.stock,
+                    startsAt: action.date_start || null,
                 });
                 slots.set(p.id, list);
             };

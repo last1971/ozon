@@ -63,7 +63,7 @@ describe('PromoPriceService — состояние товара из обоих 
         getPrices.mockResolvedValue({ items: [v5item], cursor: '' });
         listActions.mockResolvedValue([
             { id: 1977747, title: 'Эластичный бустинг', is_voucher_action: false },
-            { id: 4400847, title: 'Максимальный бустинг 11.11', is_voucher_action: false },
+            { id: 4400847, title: 'Максимальный бустинг 11.11', is_voucher_action: false, date_start: '2026-10-21T21:00:00Z' },
         ]);
         listAll
             .mockResolvedValueOnce([ozonProduct(2065673718), ozonProduct(1)]) // участники 1977747
@@ -96,6 +96,7 @@ describe('PromoPriceService — состояние товара из обоих 
                     actionPrice: 226,
                     maxActionPrice: 245,
                     stock: 0,
+                    startsAt: null,
                 },
                 {
                     actionId: 4400847,
@@ -105,6 +106,7 @@ describe('PromoPriceService — состояние товара из обоих 
                     actionPrice: 0,
                     maxActionPrice: 200,
                     stock: 0,
+                    startsAt: '2026-10-21T21:00:00Z',
                 },
             ],
         });

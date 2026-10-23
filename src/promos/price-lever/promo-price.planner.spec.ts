@@ -19,6 +19,7 @@ describe('planPromoPrice — план цены через акции (без в�
         actionPrice: 226,
         maxActionPrice: 245,
         stock: 0,
+        startsAt: null,
         ...over,
     });
     /** 383367 живьём 19.10: 321/255/213, эластичный 226 (лимит 245), наши 5 % → 215. */
@@ -151,6 +152,51 @@ describe('planPromoPrice — план цены через акции (без в�
         expect(plan.steps).toEqual([]);
         expect(plan.buyerAfter).toBe(1739);
         expect(plan.closest).toBe(true);
+    });
+
+    /** 569106 живьём 23.10: норм 186, мин 160, наш 13 % → 161,82 (покупателю 162); 14 % → 159,96 — ниже минимальной. */
+    it('«ближе нельзя» по точной цене следующего шага, не по округлённой', () => {
+        const s = state({ offerId: '569106', price: 186, minPrice: 160, buyerPrice: 162, seller: seller({ percent: 13 }), ozonActions: [] });
+        const plan = planPromoPrice(s, 'min');
+        expect(plan.steps).toEqual([]);
+        expect(plan.buyerAfter).toBe(162);
+        expect(plan.closest).toBe(true);
+    });
+
+    describe('акция Ozon, которая ещё не началась (513498 живьём 23.10: Супербустинг 1598 только 30.10)', () => {
+        const superboost = elastic({
+            actionId: 4420432,
+            title: 'Супербустинг с дополнительными баллами за скидки',
+            actionPrice: 1598,
+            maxActionPrice: 1941,
+            startsAt: '2026-10-29T21:00:00Z',
+        });
+        const s513498 = state({
+            offerId: '513498',
+            price: 2174,
+            minPrice: 1518,
+            buyerPrice: 2065,
+            seller: seller({ percent: 5 }),
+            ozonActions: [superboost],
+        });
+
+        it('до старта больше часа — не учитываем: минимальную держит наш процент 5 → 30', () => {
+            const plan = planPromoPrice(s513498, 'min', undefined, new Date('2026-10-23T09:00:00Z'));
+            expect(plan.steps).toEqual([expect.objectContaining({ kind: 'percent', from: 5, to: 30 })]);
+            expect(plan.buyerAfter).toBe(1522);
+            expect(plan.notes.join()).toContain('начнётся 30.10');
+        });
+
+        it('за час до старта — учитываем как идущую: процент обратно к минимуму акции, цена в акции по полу', () => {
+            const plan = planPromoPrice(
+                { ...s513498, seller: seller({ percent: 30 }) },
+                'min',
+                undefined,
+                new Date('2026-10-29T20:00:00Z'),
+            );
+            expect(plan.steps).toEqual([expect.objectContaining({ kind: 'percent', from: 30, to: 5 })]);
+            expect(plan.buyerAfter).toBe(1518);
+        });
     });
 
     it('цена выше цели больше чем на шаг процента — есть шаг, не «ближе нельзя»', () => {

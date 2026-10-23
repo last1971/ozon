@@ -1,6 +1,22 @@
 import { buyerPrice, ozonActionFloor } from '../../helpers/price/buyer.price.helper';
 import { OzonActionSlot, PromoPricePlan, PromoPriceState, PromoPriceStep, PromoTarget } from './promo-price.types';
 
+/**
+ * Акцию Ozon учитываем за час до старта, раньше — как будто её нет (решение 23.10.2026). Сверка идёт чаще
+ * раза в час: за час до начала перестроит цену под неё, и наш процент не сложится с ценой акции ниже минимума.
+ */
+const ACTION_LEAD_MS = 60 * 60 * 1000;
+const counts = (a: OzonActionSlot, now: Date): boolean =>
+    !a.startsAt || Date.parse(a.startsAt) - ACTION_LEAD_MS <= now.getTime();
+const startText = (iso: string): string =>
+    new Date(iso).toLocaleString('ru-RU', {
+        timeZone: 'Europe/Moscow',
+        day: '2-digit',
+        month: '2-digit',
+        hour: '2-digit',
+        minute: '2-digit',
+    });
+
 /** Цель в рублях: 'min' → min_price, 'normal' → price, число как есть. Неизвестная строка → ошибка. */
 export const targetRubles = (s: PromoPriceState, target: PromoTarget): number => {
     if (target === 'min') return s.minPrice;
@@ -20,7 +36,12 @@ export const targetRubles = (s: PromoPriceState, target: PromoTarget): number =>
  * 4. Ozon-акций не осталось → цену держит наша акция: процент под цель от price, не ниже minPercent
  *    и не глубже дна. Кандидат нашей акции в этом случае в неё добавляется.
  */
-export const planPromoPrice = (s: PromoPriceState, target: PromoTarget, percentWanted?: number): PromoPricePlan => {
+export const planPromoPrice = (
+    s: PromoPriceState,
+    target: PromoTarget,
+    percentWanted?: number,
+    now: Date = new Date(),
+): PromoPricePlan => {
     const notes: string[] = [];
     const steps: PromoPriceStep[] = [];
 
@@ -41,6 +62,10 @@ export const planPromoPrice = (s: PromoPriceState, target: PromoTarget, percentW
     const kept: number[] = [];
 
     for (const a of s.ozonActions) {
+        if (!counts(a, now)) {
+            notes.push(`«${a.title}» начнётся ${startText(a.startsAt as string)} — пока не учитываем`);
+            continue;
+        }
         const fits = a.maxActionPrice > 0 && a.maxActionPrice >= floor;
         if (a.isVoucher) {
             if (a.participant && a.actionPrice > 0 && a.actionPrice < floor) {
@@ -97,8 +122,12 @@ export const planPromoPrice = (s: PromoPriceState, target: PromoTarget, percentW
     }
 
     const buyerAfter = buyerPrice(s.price, kept, percent);
-    // Рычаг, который держит цену: акции Ozon — рубль цены в акции, наша акция — процент от price.
-    const leverStep = kept.length ? 1 : seller ? s.price / 100 : 0;
+    // Следующий шаг рычага без округления: рубль ниже в Ozon-акции или процент больше в нашей.
+    const next = kept.length
+        ? (Math.min(...kept) - 1) * (1 - percent / 100)
+        : seller
+          ? s.price * (1 - (percent + 1) / 100)
+          : null;
     return {
         offerId: s.offerId,
         productId: s.productId,
@@ -109,7 +138,7 @@ export const planPromoPrice = (s: PromoPriceState, target: PromoTarget, percentW
         buyerBefore: s.buyerPrice,
         buyerAfter,
         ok: buyerAfter >= s.minPrice,
-        closest: !steps.length && leverStep > 0 && buyerAfter > t && buyerAfter - leverStep < t,
+        closest: !steps.length && next !== null && buyerAfter > t && next < t,
         notes,
         state: s,
     };

@@ -16,6 +16,8 @@ export interface OzonActionSlot {
     /** Предельная цена: выше — Ozon в акцию не берёт (или исключает). */
     maxActionPrice: number;
     stock: number;
+    /** Начало акции; null — неизвестно. */
+    startsAt: string | null;
 }
 
 /** Товар в нашей seller-акции; null в состоянии — товар туда не годится или акции нет. */

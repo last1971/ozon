@@ -16,18 +16,25 @@ export interface MarketingActionDto {
 /** Рассрочки и АБ-тесты Ozon тоже лежат в marketing_actions, но их value — процент, не цена. */
 const NOT_PRICE_ACTION = ['Рассрочк', 'АБ тест'];
 
+/** Акция идёт в момент now; без дат — считаем идущей. */
+const runsAt = (a: MarketingActionDto, now: Date): boolean =>
+    !(Date.parse(a.date_from) > now.getTime()) && !(Date.parse(a.date_to) < now.getTime());
+
 /**
- * Оставить только акции, задающие ЦЕНУ: не рассрочка/АБ-тест, не наша акция (её value — процент)
+ * Оставить только акции, задающие ЦЕНУ СЕЙЧАС: идут в момент now (будущая цену покупателю не меняет —
+ * Супербустинг 30.10 на 513498, 23.10.2026), не рассрочка/АБ-тест, не наша акция (её value — процент)
  * и value похож на цену (не меньше трети min_price — отсекает проценты вроде 4/12/24 у дорогих товаров).
  */
 export const ozonPriceActions = (
     actions: MarketingActionDto[] | undefined,
     minPrice: number,
     ourTitle?: string,
+    now: Date = new Date(),
 ): MarketingActionDto[] =>
     (actions ?? []).filter(
         (a) =>
             a.value > 0 &&
+            runsAt(a, now) &&
             (!ourTitle || a.title !== ourTitle) &&
             !NOT_PRICE_ACTION.some((k) => a.title.includes(k)) &&
             a.value >= minPrice * 0.3,

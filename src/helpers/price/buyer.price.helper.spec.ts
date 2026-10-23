@@ -50,5 +50,14 @@ describe('buyer price helper — наложение акций Ozon и наше�
             expect(ozonPriceActions(actions, 2596).map((a) => a.value)).toEqual([2739, 2800]);
         });
         it('undefined → пусто', () => expect(ozonPriceActions(undefined, 100)).toEqual([]));
+        it('акция, которая ещё не началась или уже кончилась, цену сейчас не задаёт (513498: Супербустинг 30.10)', () => {
+            const dated = [
+                { title: 'Супербустинг', value: 1598, date_from: '2026-10-29T21:00:00Z', date_to: '2026-10-30T21:00:59Z' },
+                { title: 'Прошлая', value: 1500, date_from: '2026-10-01T00:00:00Z', date_to: '2026-10-10T00:00:00Z' },
+                { title: 'Идёт', value: 1700, date_from: '2026-10-20T00:00:00Z', date_to: '2026-11-10T00:00:00Z' },
+            ];
+            const now = new Date('2026-10-23T09:00:00Z');
+            expect(ozonPriceActions(dated, 1518, undefined, now).map((a) => a.title)).toEqual(['Идёт']);
+        });
     });
 });

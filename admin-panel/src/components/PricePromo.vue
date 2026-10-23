@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { promoPriceStore, resultColor, resultLabel, stepIcon, stepText } from "@/stores/promoPrice";
-import type { PromoStepResult, PromoTarget } from "@/contracts/promo-price.dto";
+import type { OzonActionSlot, PromoStepResult, PromoTarget } from "@/contracts/promo-price.dto";
 
 /**
  * Акции товара Ozon в карточке цены: где товар участвует, по какой цене, сколько платит покупатель,
@@ -33,6 +33,11 @@ const target = computed<PromoTarget | null>(() => {
     return n > 0 ? n : null;
 });
 const percentValue = computed(() => (percent.value.trim() === '' ? undefined : Number(percent.value)));
+
+/** Акция ещё не началась — на цену покупателю пока не влияет. */
+const upcoming = (a: OzonActionSlot) => Boolean(a.startsAt && Date.parse(a.startsAt) > Date.now());
+const startText = (a: OzonActionSlot) =>
+    new Date(a.startsAt as string).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
 
 const belowMin = computed(() => state.value && state.value.buyerPrice < state.value.minPrice);
 const formulaMismatch = computed(() => state.value && Math.abs(state.value.buyerPrice - state.value.buyerPriceCalc) > 1);
@@ -86,7 +91,10 @@ const resultOf = (i: number): PromoStepResult | undefined => applied.value?.resu
                     </tr>
                     <tr v-for="a in state.ozonActions" :key="a.actionId">
                         <td>{{ a.title }}<span v-if="a.isVoucher"> (промокод)</span></td>
-                        <td>{{ a.participant ? 'участвует' : 'кандидат' }}</td>
+                        <td>
+                            {{ a.participant ? 'участвует' : 'кандидат' }}
+                            <span v-if="upcoming(a)" class="text-medium-emphasis"> · с {{ startText(a) }}</span>
+                        </td>
                         <td>{{ a.participant ? a.actionPrice + ' ₽' : '—' }}</td>
                         <td>{{ a.maxActionPrice }} ₽</td>
                     </tr>
