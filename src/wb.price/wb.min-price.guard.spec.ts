@@ -6,7 +6,14 @@ describe('WbMinPriceGuard — крон «ВБ к минимальной»', () =
     const emit = jest.fn();
     const guard = (services: GoodServiceEnum[] = [GoodServiceEnum.WB]) =>
         new WbMinPriceGuard({ setMinPrices } as any, { get: () => services } as any, { emit } as any);
-    const report = (over: any = {}) => ({ toUpdate: 0, belowMin: [], errors: [], changes: [], uploadId: null, ...over });
+    const report = (over: any = {}) => ({
+        toUpdate: 0,
+        belowMin: [],
+        errors: [],
+        changes: [],
+        uploadId: null,
+        ...over,
+    });
     beforeEach(() => [setMinPrices, emit].forEach((m) => m.mockReset()));
 
     it('зовёт ручку по всем карточкам; поменял — событие с отчётом', async () => {

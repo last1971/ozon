@@ -21,7 +21,10 @@ describe('PromoSweepService — запуск сверки фоновой зад�
 
     it('крон holdMin — «Привести к минимальной» с применением', () => {
         const run = jest.fn().mockReturnValue({ id: 'j2' });
-        const svc = new PromoSweepService({ run } as any, ...([{}, {}, {}, {}, {}] as any[]) as [any, any, any, any, any]);
+        const svc = new PromoSweepService(
+            { run } as any,
+            ...([{}, {}, {}, {}, {}] as any[] as [any, any, any, any, any]),
+        );
         svc.holdMin();
         expect(run.mock.calls[0][0]).toMatchObject({ params: { apply: true, goal: 'min' }, clientId: 'cron' });
     });

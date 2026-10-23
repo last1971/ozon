@@ -125,7 +125,9 @@ describe('WbPriceService', () => {
     it('updatePrices: без минимальной — скидка до price, как раньше', async () => {
         getWbData.mockResolvedValueOnce([{ id: '123', commission: 2, tariff: 3 }]);
         getNmID.mockReturnValueOnce(1);
-        await service.updatePrices([{ offer_id: '123', price: '2', old_price: '3', incoming_price: 0.5, currency_code: 'RUB' }]);
+        await service.updatePrices([
+            { offer_id: '123', price: '2', old_price: '3', incoming_price: 0.5, currency_code: 'RUB' },
+        ]);
         expect(method.mock.calls[0][2]).toEqual({ data: [{ discount: 33, nmID: 1, price: 3 }] });
     });
 
