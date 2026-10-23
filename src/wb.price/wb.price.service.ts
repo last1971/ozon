@@ -49,6 +49,8 @@ export interface WbBulkPriceReport {
 @Injectable()
 export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
     private static readonly VAT_CHARACTERISTIC_ID = 15001405;
+    /** setMinPrices не трогает карточку, если база «до скидки» во столько раз и больше выше минимальной. */
+    static readonly MAX_BASE_TO_MIN = 3;
     private logger = new Logger(WbPriceService.name);
     constructor(
         private configService: ConfigService,
@@ -318,6 +320,13 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
             articles.length ? articles : 'all',
             (base, minPrice, currentDiscount) => {
                 if (!(minPrice > 0)) throw new Error('нет min_price в Firebird');
+                // База в разы выше минимальной — заглушка «не продавать» (93 000 ₽, 23.10.2026) или неверная
+                // минимальная фасовки: не трогаем. Снижение в 3 раза и больше ВБ и сам кладёт в карантин.
+                if (base >= minPrice * WbPriceService.MAX_BASE_TO_MIN) {
+                    throw new Error(
+                        `база ${base} в ${Math.floor(base / minPrice)} раз выше минимальной ${minPrice} — заглушка?`,
+                    );
+                }
                 const discount = wbDiscountTo(base, minPrice);
                 return discount === currentDiscount ? null : discount;
             },

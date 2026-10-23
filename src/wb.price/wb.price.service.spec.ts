@@ -360,6 +360,24 @@ describe('WbPriceService', () => {
             expect(method.mock.calls.some((c) => String(c[0]).includes('upload/task'))).toBe(false);
         });
 
+        it('база в 3 раза и выше минимальной (заглушка 93 000) — не трогаем, в errors с причиной', async () => {
+            getWbData.mockResolvedValueOnce([
+                { id: '509331-10', minPrice: 452, commission: 0, tariff: 0 },
+                { id: 'A', minPrice: 80, commission: 0, tariff: 0 },
+            ]);
+            mockCabinet([
+                { vendorCode: '509331-10', nmID: 7, discount: 0, sizes: [{ price: 93000 }] },
+                { vendorCode: 'A', nmID: 1, discount: 0, sizes: [{ price: 100 }] },
+            ]);
+
+            const report = await service.setMinPrices([]);
+
+            expect(uploadPayload()).toEqual([{ nmID: 1, price: 100, discount: 20 }]);
+            expect(report.errors).toEqual([
+                expect.stringContaining('509331-10: база 93000 в 205 раз выше минимальной 452'),
+            ]);
+        });
+
         it('база ниже минимальной — скидка 0, артикул в belowMin', async () => {
             getWbData.mockResolvedValueOnce([{ id: 'A', minPrice: 120, commission: 0, tariff: 0 }]);
             mockCabinet([{ vendorCode: 'A', nmID: 1, discount: 10, sizes: [{ price: 100 }] }]);
