@@ -5,7 +5,16 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { Cron } from '@nestjs/schedule';
 import { createHash } from 'crypto';
 import { Environment } from '../env.validation';
-import { halfStoreMessage, isNoticeTopic, problematicPricesMessage, tickMessage, wbOrdersMessage, profitCheckMessage } from './formatters';
+import {
+    halfStoreMessage,
+    isNoticeTopic,
+    ozonPromoSweepMessage,
+    problematicPricesMessage,
+    tickMessage,
+    wbMinPricesMessage,
+    wbOrdersMessage,
+    profitCheckMessage,
+} from './formatters';
 import { instanceTag, resolveInstance } from './instance';
 import { NotifyRetryService } from './notify-retry.service';
 import { NotifyRouteRepository } from './notify-route.repository';
@@ -108,6 +117,18 @@ export class NotifierService {
     @OnEvent('profit.check', { async: true })
     async profitCheck(items: any[]): Promise<boolean> {
         return this.notify(NotifyTopic.PRICES, profitCheckMessage(items ?? []));
+    }
+
+    /** Сторож ВБ поменял цены, чтобы покупатель видел минимальную. */
+    @OnEvent('wb.min.prices', { async: true })
+    async wbMinPrices(report: any): Promise<boolean> {
+        return this.notify(NotifyTopic.PRICES, wbMinPricesMessage(report));
+    }
+
+    /** Сверка акций Ozon с применением что-то поменяла (крон или кнопка). */
+    @OnEvent('ozon.promo.sweep', { async: true })
+    async ozonPromoSweep(report: any): Promise<boolean> {
+        return this.notify(NotifyTopic.PRICES, ozonPromoSweepMessage(report));
     }
 
     @OnEvent('problematic.prices', { async: true })

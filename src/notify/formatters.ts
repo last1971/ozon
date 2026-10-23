@@ -91,6 +91,69 @@ export function profitCheckMessage(items: any[]): NotifyMessage {
     return { subject, text: parts.join('\n'), notice: alerts.length === 0 };
 }
 
+/** Сколько строк списка показать в сообщении, остальное — «и ещё N». */
+const LIST_LIMIT = 20;
+const listed = (lines: string[]): string[] =>
+    lines.length > LIST_LIMIT ? [...lines.slice(0, LIST_LIMIT), `  … и ещё ${lines.length - LIST_LIMIT}`] : lines;
+
+/** Сторож ВБ: что поменяли, чтобы покупатель видел минимальную. Тихо — без пуша. */
+export function wbMinPricesMessage(report: {
+    changes: { article: string; from: number; to: number; buyerAfter: number }[];
+    belowMin: string[];
+    errors: string[];
+    uploadId: string | null;
+}): NotifyMessage {
+    const up = report.changes.filter((c) => c.to < c.from);
+    const down = report.changes.filter((c) => c.to > c.from);
+    const row = (c: { article: string; from: number; to: number; buyerAfter: number }) =>
+        `  ${c.article}: скидка ${c.from} → ${c.to} %, покупателю ${c.buyerAfter}`;
+    const parts = [
+        ...(up.length ? [`⬆ Подняли до минимальной (акция ВБ опустила): ${up.length}`, ...listed(up.map(row))] : []),
+        ...(down.length ? [`⬇ Опустили до минимальной: ${down.length}`, ...listed(down.map(row))] : []),
+        ...(report.belowMin.length
+            ? [
+                  `🟡 База «до скидки» ниже минимальной — нужен пересчёт цены: ${report.belowMin.length}`,
+                  ...listed(report.belowMin.map((a) => `  ${a}`)),
+              ]
+            : []),
+        ...(report.errors.length ? [`Не трогали (нет минимальной и др.): ${report.errors.length}`] : []),
+        `Задача ВБ: ${report.uploadId ?? '—'}`,
+    ];
+    return {
+        subject: `ВБ к минимальной: подняли ${up.length}, опустили ${down.length}`,
+        text: parts.join('\n'),
+        notice: true,
+    };
+}
+
+/** Сверка акций Ozon с применением: что поменяли и что не прошло. Тихо — без пуша. */
+export function ozonPromoSweepMessage(report: {
+    items: { offerId: string; applied?: boolean; steps: unknown[]; results?: { status: string; reason?: string }[] }[];
+    keptInOzon: number;
+    removedFromOzon: number;
+    percentChanged: number;
+    nothingToDo: number;
+}): NotifyMessage {
+    const tried = report.items.filter((i) => i.steps.length && i.applied !== undefined);
+    const ok = tried.filter((i) => i.applied);
+    const failed = tried.filter((i) => !i.applied);
+    const reason = (i: (typeof failed)[number]) => i.results?.find((r) => r.status !== 'ok')?.reason ?? 'не прошло';
+    const parts = [
+        `Применено: ${ok.length} (меняли наш процент ${report.percentChanged}, остались в акциях Ozon ${report.keptInOzon}, ` +
+            `выкинуты из акций Ozon ${report.removedFromOzon})`,
+        ...listed(ok.map((i) => `  ${i.offerId}`)),
+        ...(failed.length
+            ? [`🟡 Не прошло: ${failed.length}`, ...listed(failed.map((i) => `  ${i.offerId}: ${reason(i)}`))]
+            : []),
+        ...(report.nothingToDo ? [`Смотреть руками: ${report.nothingToDo}`] : []),
+    ];
+    return {
+        subject: `Озон акции к минимальной: применено ${ok.length}${failed.length ? `, не прошло ${failed.length}` : ''}`,
+        text: parts.join('\n'),
+        notice: true,
+    };
+}
+
 export function tickMessage(): NotifyMessage {
     return {
         subject: 'Синхронизация с маркетплейсами',

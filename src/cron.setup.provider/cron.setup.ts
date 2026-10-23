@@ -268,6 +268,24 @@ export const cronConfig: Record<string, CronSetup> = {
         },
         development: false,
     },
+    wbHoldMinPrices: {
+        production: {
+            enabled: true,
+            settings: {
+                time: '0 9/15 * * * *',
+            },
+        },
+        development: false,
+    },
+    ozonPromoSweepMin: {
+        production: {
+            enabled: true,
+            settings: {
+                time: '0 20/30 * * * *',
+            },
+        },
+        development: false,
+    },
     fillDonorPieces: {
         production: {
             enabled: true,

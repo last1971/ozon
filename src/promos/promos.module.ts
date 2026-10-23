@@ -14,6 +14,7 @@ import { BuildSweepReportCommand } from './price-lever/sweep/build-sweep-report.
 import { CollectSweepCommand } from './price-lever/sweep/collect-sweep.command';
 import { PlanSweepCommand } from './price-lever/sweep/plan-sweep.command';
 import { PromoSweepService } from './price-lever/sweep/promo-sweep.service';
+import { NotifySweepCommand } from './price-lever/sweep/notify-sweep.command';
 
 @Module({
     imports: [OzonApiModule, ProductModule, PriceModule, JobModule],
@@ -27,6 +28,7 @@ import { PromoSweepService } from './price-lever/sweep/promo-sweep.service';
         PlanSweepCommand,
         ApplySweepCommand,
         BuildSweepReportCommand,
+        NotifySweepCommand,
         PromoSweepService,
     ],
     controllers: [PromosController],
