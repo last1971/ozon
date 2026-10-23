@@ -4,4 +4,5 @@
  * floor, а не round: округление вверх дало бы бо́льшую скидку и цену ниже target. Отрицательной не бывает.
  */
 export const wbDiscountTo = (base: number, target: number): number =>
-    Math.max(0, Math.floor((1 - target / base) * 100));
+    // + 1e-9: (1 − 80/100) × 100 = 19.999999999999996 — без допуска floor дал бы 19 вместо 20
+    Math.max(0, Math.floor((1 - target / base) * 100 + 1e-9));

@@ -12,7 +12,7 @@ import { WbDiscountUpdateDto } from './dto/wb.discount.update.dto';
 import { WbCardService } from '../wb.card/wb.card.service';
 import { WbCardWriter } from '../wb.card/wb.card.writer';
 import { readColumnByHeader } from '../helpers';
-import { find, first } from 'lodash';
+import { chunk, find, first } from 'lodash';
 import Excel from 'exceljs';
 import { GoodWbDto } from '../good/dto/good.wb.dto';
 import { WbCardDto } from '../wb.card/dto/wb.card.dto';
@@ -38,6 +38,12 @@ export interface WbBulkPriceReport {
     skipped: string[];
     errors: string[];
     uploadId: string | null;
+    /** true — только отчёт, в ВБ ничего не ушло. */
+    dryRun: boolean;
+    /** Что меняется (при dryRun — что поменялось бы): скидка была → станет, цена покупателю после. */
+    changes: { article: string; from: number; to: number; buyerAfter: number }[];
+    /** После новой скидки цена покупателю всё равно ниже минимальной (база «до скидки» ниже минимальной). */
+    belowMin: string[];
 }
 
 @Injectable()
@@ -236,17 +242,21 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
      * calcDiscount: вернуть процент, вернуть null — пропустить, бросить — записать в errors.
      */
     private async applyWb(
-        articles: string[],
+        articles: string[] | 'all',
         calcDiscount: (base: number, minPrice: number, currentDiscount: number) => number | null,
+        dryRun = false,
     ): Promise<WbBulkPriceReport> {
+        const current = await this.currentPrices.getAll();
+        if (articles === 'all') articles = [...current.keys()];
         const wbData = await this.goodService.getWbData(articles);
         const minPriceByArt = new Map(wbData.map((w) => [w.id, Number(w.minPrice)]));
-        const current = await this.currentPrices.getAll();
 
         const data: WbPriceTask[] = [];
         const missing: string[] = [];
         const skipped: string[] = [];
         const errors: string[] = [];
+        const changes: WbBulkPriceReport['changes'] = [];
+        const belowMin: string[] = [];
 
         for (const article of articles) {
             const cur = current.get(article);
@@ -271,22 +281,48 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
                 continue;
             }
             data.push({ nmID: cur.nmID, price: cur.price, discount });
+            const buyerAfter = Math.round(cur.price * (1 - discount / 100));
+            changes.push({ article, from: cur.discount, to: discount, buyerAfter });
+            if (minPrice > 0 && buyerAfter < minPrice) belowMin.push(article);
         }
 
-        let uploadId: string | null = null;
-        if (data.length) {
-            const res = await this.pushPriceTasks(data);
-            uploadId = res?.data?.id ?? null;
+        // ВБ принимает до 1000 товаров в задаче («все» по кабинету — больше)
+        const uploadIds: string[] = [];
+        if (!dryRun) {
+            for (const part of chunk(data, 1000)) {
+                const res = await this.pushPriceTasks(part);
+                if (res?.data?.id) uploadIds.push(String(res.data.id));
+            }
         }
-        return { total: articles.length, toUpdate: data.length, missing, skipped, errors, uploadId };
+        const uploadId = uploadIds.join(', ') || null;
+        return {
+            total: articles.length,
+            toUpdate: data.length,
+            missing,
+            skipped,
+            errors,
+            uploadId,
+            dryRun,
+            changes,
+            belowMin,
+        };
     }
 
-    /** Ручка 1: выставить в ВБ цену = минимальной (min_price из Firebird) для списка артикулов. */
-    async setMinPrices(articles: string[]): Promise<WbBulkPriceReport> {
-        return this.applyWb(articles, (base, minPrice) => {
-            if (!(minPrice > 0)) throw new Error('нет min_price в Firebird');
-            return wbDiscountTo(base, minPrice);
-        });
+    /**
+     * Ручка 1: цена покупателю ВБ = минимальной (min_price из Firebird), в обе стороны — и после акции ВБ,
+     * задравшей скидку, и когда цена выше минимальной. Пустой список — все карточки кабинета.
+     * Уже стоящие на минимальной пропускаются: ВБ на повтор отвечает 400 «already set». dryRun — только отчёт.
+     */
+    async setMinPrices(articles: string[], dryRun = false): Promise<WbBulkPriceReport> {
+        return this.applyWb(
+            articles.length ? articles : 'all',
+            (base, minPrice, currentDiscount) => {
+                if (!(minPrice > 0)) throw new Error('нет min_price в Firebird');
+                const discount = wbDiscountTo(base, minPrice);
+                return discount === currentDiscount ? null : discount;
+            },
+            dryRun,
+        );
     }
 
     /** Ручка 2: выставить фиксированную скидку percent на список артикулов. */

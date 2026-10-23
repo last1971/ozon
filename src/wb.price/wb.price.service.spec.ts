@@ -327,5 +327,45 @@ describe('WbPriceService', () => {
             expect(report.toUpdate).toBe(0);
             expect(method.mock.calls.some((c) => String(c[0]).includes('upload/task'))).toBe(false);
         });
+
+        /** 526388 живьём 22.10: акция ВБ задрала скидку до 57 % (779 ₽), минимальная 1243 → 31 % (1250). */
+        it('setMinPrices без артикулов — все карточки кабинета; акция ВБ ниже минимальной поднимается', async () => {
+            getWbData.mockResolvedValueOnce([
+                { id: '526388', minPrice: 1243, commission: 0, tariff: 0 },
+                { id: 'A', minPrice: 95, commission: 0, tariff: 0 },
+            ]);
+            mockCabinet([
+                { vendorCode: '526388', nmID: 197594272, discount: 57, sizes: [{ price: 1811 }] },
+                { vendorCode: 'A', nmID: 1, discount: 5, sizes: [{ price: 100 }] },
+            ]);
+
+            const report = await service.setMinPrices([]);
+
+            expect(getWbData).toHaveBeenCalledWith(['526388', 'A']);
+            expect(uploadPayload()).toEqual([{ nmID: 197594272, price: 1811, discount: 31 }]);
+            expect(report.changes).toEqual([{ article: '526388', from: 57, to: 31, buyerAfter: 1250 }]);
+            expect(report.skipped).toEqual(['A']); // уже на минимальной — ВБ на повтор отвечает 400
+        });
+
+        it('setMinPrices dryRun — отчёт без отправки в ВБ', async () => {
+            getWbData.mockResolvedValueOnce([{ id: 'A', minPrice: 80, commission: 0, tariff: 0 }]);
+            mockCabinet([{ vendorCode: 'A', nmID: 1, discount: 0, sizes: [{ price: 100 }] }]);
+
+            const report = await service.setMinPrices(['A'], true);
+
+            expect(report).toMatchObject({ dryRun: true, toUpdate: 1, uploadId: null });
+            expect(report.changes).toEqual([{ article: 'A', from: 0, to: 20, buyerAfter: 80 }]);
+            expect(method.mock.calls.some((c) => String(c[0]).includes('upload/task'))).toBe(false);
+        });
+
+        it('база ниже минимальной — скидка 0, артикул в belowMin', async () => {
+            getWbData.mockResolvedValueOnce([{ id: 'A', minPrice: 120, commission: 0, tariff: 0 }]);
+            mockCabinet([{ vendorCode: 'A', nmID: 1, discount: 10, sizes: [{ price: 100 }] }]);
+
+            const report = await service.setMinPrices(['A']);
+
+            expect(uploadPayload()).toEqual([{ nmID: 1, price: 100, discount: 0 }]);
+            expect(report.belowMin).toEqual(['A']);
+        });
     });
 });

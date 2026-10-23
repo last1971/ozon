@@ -36,7 +36,7 @@ import { WbCommissionDto } from '../wb.card/dto/wb.commission.dto';
 import { ExtraPriceService } from './extra.price.service';
 import { WbPriceService, WbBulkPriceReport } from '../wb.price/wb.price.service';
 import { GoodPercentDto } from '../good/dto/good.percent.dto';
-import { WbBulkPriceDto, WbBulkDiscountDto } from './dto/wb.bulk.price.dto';
+import { WbBulkPriceDto, WbBulkDiscountDto, WbMinPriceDto } from './dto/wb.bulk.price.dto';
 
 @ApiTags('price')
 @Controller('price')
@@ -220,7 +220,12 @@ export class PriceController {
     }
 
     @Post('wb/min-price')
-    @ApiOperation({ summary: 'ВБ: выставить цену = минимальной (min_price из Firebird) для списка артикулов' })
+    @ApiOperation({
+        summary: 'ВБ: цена покупателю = минимальной (min_price из Firebird), в обе стороны',
+        description:
+            'Без артикулов и файла — все карточки кабинета. Уже стоящие на минимальной пропускаются. ' +
+            'dryRun=true — только отчёт (changes), в ВБ ничего не уходит.',
+    })
     @ApiConsumes('multipart/form-data', 'application/json')
     @ApiBody({
         schema: {
@@ -234,19 +239,20 @@ export class PriceController {
                 articles: {
                     type: 'array',
                     items: { type: 'string' },
-                    description: 'Список артикулов (если без файла)',
+                    description: 'Список артикулов (если без файла); пусто — все карточки кабинета',
                 },
+                dryRun: { type: 'boolean', description: 'true — только отчёт' },
             },
         },
     })
     @UseInterceptors(FileInterceptor('file'))
     async wbSetMinPrices(
-        @Body() body: WbBulkPriceDto,
+        @Body() body: WbMinPriceDto,
         @UploadedFile('file') file?: Express.Multer.File,
     ): Promise<WbBulkPriceReport> {
         const wb = this.extraService.getService(GoodServiceEnum.WB) as WbPriceService;
         const articles = file ? await wb.articlesFromFile(file) : (body.articles ?? []);
-        return wb.setMinPrices(articles);
+        return wb.setMinPrices(articles, Boolean(body.dryRun));
     }
 
     @Post('wb/discount')

@@ -15,6 +15,14 @@ export class WbBulkPriceDto {
     articles?: string[];
 }
 
+/** Вход ручки min-price: артикулы (пусто — все карточки кабинета) или файл + dryRun. */
+export class WbMinPriceDto extends WbBulkPriceDto {
+    @ApiProperty({ description: 'true — только отчёт, в ВБ ничего не отправлять.', required: false })
+    @IsOptional()
+    @Transform(({ value }) => value === true || value === 'true')
+    dryRun?: boolean;
+}
+
 /** Вход ручек discount / discount-safe: список артикулов (или файл) + обязательная скидка. */
 export class WbBulkDiscountDto extends WbBulkPriceDto {
     @ApiProperty({
