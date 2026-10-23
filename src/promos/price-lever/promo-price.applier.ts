@@ -78,6 +78,7 @@ export class PromoPriceApplier {
                 { productId: plan.productId, actionPrice: step.to, stock },
             ]);
             if (res.added.includes(plan.productId)) return { step, status: 'ok' };
+            if (res.unchanged.includes(plan.productId)) return { step, status: 'ok', reason: 'уже стоит' };
             const rejected = res.rejected.find((r) => r.productId === plan.productId);
             if (rejected) return { step, status: 'rejected', reason: rejected.reason };
             if (res.removed.includes(plan.productId)) {

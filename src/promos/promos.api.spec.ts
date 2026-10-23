@@ -92,6 +92,7 @@ describe('OzonPromosApi — контракт Seller API по акциям (v2, 1
         expect(res).toEqual({
             added: [1],
             removed: [2],
+            unchanged: [],
             rejected: [{ productId: 3, reason: 'product ID: 3 not found' }],
             warnings: [],
         });
@@ -133,6 +134,7 @@ describe('OzonPromosApi — контракт Seller API по акциям (v2, 1
         expect(res).toEqual({
             added: [],
             removed: [],
+            unchanged: [],
             rejected: [
                 { productId: 1, reason: 'action not found' },
                 { productId: 2, reason: 'action not found' },
@@ -149,8 +151,26 @@ describe('OzonPromosApi — контракт Seller API по акциям (v2, 1
         expect(res.rejected).toEqual([{ productId: 1, reason: 'DiscountPercent must be greater or equal than 45' }]);
     });
 
+    it('update — «Product update has no changes» не отказ, а «уже стоит» (23.10.2026, 552293)', async () => {
+        method.mockResolvedValueOnce({
+            active_product_ids: [],
+            deactivated_product_ids: [],
+            rejected: [
+                { product_id: 1, reason: 'Product update has no changes' },
+                { product_id: 2, reason: 'DiscountPercent must be greater or equal than 45' },
+            ],
+            warnings: [],
+        });
+        const res = await api.update(9, [
+            { productId: 1, actionPrice: 4158, stock: 0 },
+            { productId: 2, actionPrice: 100, stock: 0 },
+        ]);
+        expect(res.unchanged).toEqual([1]);
+        expect(res.rejected).toEqual([{ productId: 2, reason: 'DiscountPercent must be greater or equal than 45' }]);
+    });
+
     it('update/deactivate — пустой список не уходит в API (там 400 на пустой массив)', async () => {
-        expect(await api.update(9, [])).toEqual({ added: [], removed: [], rejected: [], warnings: [] });
+        expect(await api.update(9, [])).toEqual({ added: [], removed: [], unchanged: [], rejected: [], warnings: [] });
         expect(await api.deactivate(9, [])).toEqual([]);
         expect(method).not.toHaveBeenCalled();
     });

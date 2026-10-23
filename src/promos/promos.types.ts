@@ -38,6 +38,8 @@ export interface RejectedProduct {
 export interface ActionUpdateResult {
     added: number[];
     removed: number[];
+    /** Ozon: «Product update has no changes» — запрошенное уже стоит (цена та же / товара в акции уже нет). */
+    unchanged: number[];
     rejected: RejectedProduct[];
     warnings: string[];
 }

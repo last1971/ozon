@@ -34,7 +34,7 @@ describe('PromosService — правила участия в акциях', () =
         minStock: 0,
         ...over,
     });
-    const okUpdate = (over: any = {}) => ({ added: [], removed: [], rejected: [], warnings: [], ...over });
+    const okUpdate = (over: any = {}) => ({ added: [], removed: [], unchanged: [], rejected: [], warnings: [], ...over });
     const boosting = { id: 1, is_voucher_action: false } as any;
     const voucher = { id: 2, is_voucher_action: true } as any;
 
@@ -136,6 +136,17 @@ describe('PromosService — правила участия в акциях', () =
 
             expect(await service.unfitProductsRemoval(1)).toBe(2);
             expect(deactivate).toHaveBeenCalledWith(1, [1, 3]);
+        });
+
+        it('снятие «уже стоит» (товара в акции нет) — снят, без принудительного deactivate', async () => {
+            listActions.mockResolvedValue([boosting]);
+            listAll.mockResolvedValue(inAction);
+            getProductsPrices.mockResolvedValue(prices);
+            getFreeProductCount.mockResolvedValue(counts);
+            update.mockResolvedValue(okUpdate({ removed: [1, 4], unchanged: [3] }));
+
+            expect(await service.unfitProductsRemoval(1)).toBe(3);
+            expect(deactivate).not.toHaveBeenCalled();
         });
 
         it('промокоды: снятие принудительно через deactivate', async () => {

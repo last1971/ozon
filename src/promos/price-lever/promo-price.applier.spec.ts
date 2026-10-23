@@ -12,7 +12,7 @@ describe('PromoPriceApplier — исполнение шагов плана', () 
     const remove = jest.fn();
     const calls: string[] = [];
 
-    const okUpdate = (over: any = {}) => ({ added: [], removed: [], rejected: [], warnings: [], ...over });
+    const okUpdate = (over: any = {}) => ({ added: [], removed: [], unchanged: [], rejected: [], warnings: [], ...over });
     /** 532100 живьём: выкинуть из эластичного (967/1256), наш 5 → 14 %. */
     const plan = (steps: PromoPriceStep[], over: Partial<PromoPricePlan> = {}): PromoPricePlan =>
         ({
@@ -122,6 +122,15 @@ describe('PromoPriceApplier — исполнение шагов плана', () 
         const res = await applier.apply(plan([set, { ...raise, from: null }]));
         expect(res.results.map((r) => r.status)).toEqual(['rejected', 'skipped']);
         expect(res.results[0].reason).toBe('stock');
+    });
+
+    it('цена в акции уже стоит («no changes») — ok «уже стоит», процент после него повышается', async () => {
+        update.mockResolvedValue(okUpdate({ unchanged: [77] }));
+        const set: PromoPriceStep = { kind: 'ozon-set', actionId: 1977747, title: 'Эластичный', from: 967, to: 1256 };
+        const res = await applier.apply(plan([set, raise]));
+        expect(res.results[0]).toMatchObject({ status: 'ok', reason: 'уже стоит' });
+        expect(res.results[1].status).toBe('ok');
+        expect(res.applied).toBe(true);
     });
 
     it('update исключил товар вместо смены цены — rejected с понятной причиной', async () => {

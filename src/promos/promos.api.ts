@@ -1,6 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { OzonApiService } from '../ozon.api/ozon.api.service';
-import { Action, ActionProduct, ActionProductUpdate, ActionUpdateResult } from './promos.types';
+import { Action, ActionProduct, ActionProductUpdate, ActionUpdateResult, RejectedProduct } from './promos.types';
+
+/** Ozon отвечает так, когда запрошенное уже стоит. */
+const NO_CHANGES = /has no changes/i;
 
 /** Деньги в Seller API v2: сумма строкой, валюта (в акциях часто пустая). */
 interface Money {
@@ -76,7 +79,7 @@ export class OzonPromosApi {
      * выше лимита — исключается (для «Эластичного бустинга» и «Скидки на сток»).
      */
     async update(actionId: number, products: ActionProductUpdate[]): Promise<ActionUpdateResult> {
-        if (!products.length) return { added: [], removed: [], rejected: [], warnings: [] };
+        if (!products.length) return { added: [], removed: [], unchanged: [], rejected: [], warnings: [] };
         let res = await this.sendUpdate(actionId, products, true);
         // «Эластичный бустинг» остаток не принимает: 400 «stock not supported for this action» (20.10.2026, 570341)
         if (/stock not supported/i.test(OzonPromosApi.errorText(res))) {
@@ -88,17 +91,22 @@ export class OzonPromosApi {
             return {
                 added: [],
                 removed: [],
+                unchanged: [],
                 rejected: products.map((p) => ({ productId: p.productId, reason: error })),
                 warnings: [],
             };
         }
+        const rejected: RejectedProduct[] = (res?.rejected ?? []).map((r: { product_id: number; reason: string }) => ({
+            productId: r.product_id,
+            reason: String(r.reason ?? ''),
+        }));
+        // «Изменений нет» — не отказ: Ozon уже держит то, что просим (23.10.2026: общая цена бустингов, товар уже вне акции)
+        const unchanged = rejected.filter((r) => NO_CHANGES.test(r.reason));
         return {
             added: res?.active_product_ids ?? [],
             removed: res?.deactivated_product_ids ?? [],
-            rejected: (res?.rejected ?? []).map((r: { product_id: number; reason: string }) => ({
-                productId: r.product_id,
-                reason: String(r.reason ?? ''),
-            })),
+            unchanged: unchanged.map((r) => r.productId),
+            rejected: rejected.filter((r) => !unchanged.includes(r)),
             warnings: (res?.warnings ?? []).map((w: unknown) => (typeof w === 'string' ? w : JSON.stringify(w))),
         };
     }

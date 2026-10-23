@@ -184,14 +184,15 @@ export class PromosService {
                 `акция ${action.id}: ${res.added.length} товаров остались в акции по нашему полу (в пределах лимита)`,
             );
         }
-        if (!res.rejected.length) return { success_ids: res.removed, failed: [] };
+        // «уже стоит» на снятии — товара в акции уже нет
+        if (!res.rejected.length) return { success_ids: [...res.removed, ...res.unchanged], failed: [] };
         // Эластичный бустинг цену выше лимита не принимает и товар не исключает (20.10.2026, 532100:
         // «DiscountPercent must be greater or equal than 45…») — такие снимаем принудительно.
         const rejectedIds = res.rejected.map((r) => r.productId);
         const forced = await this.api.deactivate(action.id, rejectedIds);
         if (forced.length) this.logger.log(`акция ${action.id}: принудительно сняты ${forced.length} товаров`);
         return {
-            success_ids: [...res.removed, ...forced],
+            success_ids: [...res.removed, ...res.unchanged, ...forced],
             failed: res.rejected.filter((r) => !forced.includes(r.productId)),
         };
     }
