@@ -19,6 +19,7 @@ import { WbCardDto } from '../wb.card/dto/wb.card.dto';
 import { IVatUpdateable } from 'src/interfaces/i.vat.updateable';
 import { JobProgress } from '../interfaces/i.job.context';
 import { WbCurrentPricesService } from './wb.current-prices.service';
+import { wbDiscountTo } from '../helpers/price/wb.discount.helper';
 
 /** Задача для ВБ upload/task: nmID + базовая цена + скидка, %. */
 export interface WbPriceTask {
@@ -177,11 +178,15 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
         // const wbCards = await this.cardService.getCardsByVendorCodes(skus);
         const data = updatePrices.map((updatePrice) => {
             const nmID = this.cardService.getNmID(updatePrice.offer_id);
+            const base = parseInt(updatePrice.old_price);
+            const minPrice = Number(updatePrice.min_price);
             return {
                 nmID: parseInt(nmID),
                 // find(wbCards, { vendorCode: updatePrice.offer_id }).nmID,
-                price: parseInt(updatePrice.old_price),
-                discount: Math.floor((1 - parseInt(updatePrice.price) / parseInt(updatePrice.old_price)) * 100),
+                price: base,
+                // Правило владельца 23.10.2026: покупатель ВБ видит минимальную, база «до скидки» — витрина.
+                // Без минимальной — до price, как раньше.
+                discount: wbDiscountTo(base, minPrice > 0 ? minPrice : parseInt(updatePrice.price)),
             };
         });
         /*
@@ -280,8 +285,7 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
     async setMinPrices(articles: string[]): Promise<WbBulkPriceReport> {
         return this.applyWb(articles, (base, minPrice) => {
             if (!(minPrice > 0)) throw new Error('нет min_price в Firebird');
-            // floor, а не round: округление вверх дало бы бо́льшую скидку и цену ниже min_price.
-            return Math.max(0, Math.floor((1 - minPrice / base) * 100));
+            return wbDiscountTo(base, minPrice);
         });
     }
 
@@ -294,7 +298,7 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
     async setDiscountSafe(articles: string[], percent: number): Promise<WbBulkPriceReport> {
         return this.applyWb(articles, (base, minPrice) => {
             if (!(minPrice > 0)) throw new Error('нет min_price в Firebird');
-            const maxSafe = Math.max(0, Math.floor((1 - minPrice / base) * 100));
+            const maxSafe = wbDiscountTo(base, minPrice);
             return Math.min(percent, maxSafe);
         });
     }
