@@ -2,6 +2,7 @@ import axios from 'axios';
 import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as dotenv from 'dotenv';
+import { hostname } from 'os';
 
 // Загружаем переменные окружения из .env файла
 dotenv.config();
@@ -16,11 +17,16 @@ const CONFIG = {
     SUMMARY_INTERVAL: 3600000, // сводка раз в час вместо строки на каждый тик
     RESTART_DELAY: 5000,   // 5 секунд после рестарта
     MAX_RETRIES: 3,        // количество попыток проверки перед рестартом
+    // База через общий пул сервиса: сам сервис ждёт её 5 с и отвечает 503 (25.10.2026 пул висел 10 часов, /api был жив)
+    DB_HEALTH_TIMEOUT: 10000,
+    NOTIFY_WAIT: 180000,   // сколько ждать подъёма после рестарта, чтобы сообщить причину
 };
 
 class Watchdog {
     private lastRestartTime: number = 0;
     private failedChecks: number = 0;
+    /** Причина последнего провала — уходит в сообщение после рестарта. */
+    private lastFailure = '';
     /** Печатаем СОБЫТИЕ, а не тик: молчим, пока состояние не изменилось. */
     private lastHealthy: boolean | null = null;
     private lastSummaryAt = 0;
@@ -72,6 +78,40 @@ class Watchdog {
         }
     }
 
+    /** База через сервис: 200 — ответила, иначе текст причины. */
+    async checkDb(): Promise<string | null> {
+        try {
+            await axios.get(`${CONFIG.API_URL}/health/db`, {
+                timeout: CONFIG.DB_HEALTH_TIMEOUT,
+                validateStatus: (status) => status === 200,
+            });
+            return null;
+        } catch (error) {
+            const data = error.response?.data;
+            return `база: ${data?.error ?? data?.message?.error ?? error.message}`;
+        }
+    }
+
+    /** После рестарта — сообщение в DEV через сам сервис (его маршруты и доставка), когда он поднимется. */
+    async notifyRestart(reason: string): Promise<void> {
+        const until = Date.now() + CONFIG.NOTIFY_WAIT;
+        while (Date.now() < until) {
+            await new Promise((r) => setTimeout(r, CONFIG.RESTART_DELAY));
+            if (!(await this.checkHealth()) || (await this.checkDb())) continue;
+            try {
+                await axios.post(`${CONFIG.API_URL}/notify/event`, {
+                    topic: 'DEV',
+                    subject: `ozon на ${hostname()} перезапущен сторожем`,
+                    text: `${CONFIG.MAX_RETRIES} проверки подряд не прошли: ${reason}. После перезапуска сервис и база отвечают.`,
+                });
+            } catch (error) {
+                console.error('Notify failed:', error.message);
+            }
+            return;
+        }
+        console.error(`[${new Date().toISOString()}] После рестарта не поднялся за ${CONFIG.NOTIFY_WAIT / 1000} с — сообщить нечем`);
+    }
+
     async restartApp(): Promise<boolean> {
         const now = Date.now();
         // Предотвращаем слишком частые рестарты
@@ -86,6 +126,7 @@ class Watchdog {
             this.lastRestartTime = now;
             this.failedChecks = 0;
             console.log(`[${new Date().toISOString()}] Application restarted successfully`);
+            void this.notifyRestart(this.lastFailure);
             return true;
         } catch (error) {
             console.error('Error restarting application:', error);
@@ -104,13 +145,16 @@ class Watchdog {
         this.ticks++;
         this.maxCpu = Math.max(this.maxCpu, cpuUsage);
 
-        // Всегда проверяем health независимо от CPU
-        const isHealthy = await this.checkHealth();
+        // Всегда проверяем health независимо от CPU; базу — только у живого сервиса
+        const apiOk = await this.checkHealth();
+        const dbFailure = apiOk ? await this.checkDb() : null;
+        const isHealthy = apiOk && !dbFailure;
 
         if (!isHealthy) {
             this.failedChecks++;
+            this.lastFailure = dbFailure ?? 'сервис не отвечает на /api';
             console.log(
-                `[${new Date().toISOString()}] Health check failed (attempt ${this.failedChecks}/${CONFIG.MAX_RETRIES}), CPU ${cpuUsage}%`,
+                `[${new Date().toISOString()}] Health check failed (attempt ${this.failedChecks}/${CONFIG.MAX_RETRIES}): ${this.lastFailure}, CPU ${cpuUsage}%`,
             );
 
             if (this.failedChecks >= CONFIG.MAX_RETRIES) {

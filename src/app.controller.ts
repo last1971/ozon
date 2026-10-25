@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Inject, Post } from '@nestjs/common';
+import { Body, Controller, Get, Inject, Post, ServiceUnavailableException } from '@nestjs/common';
 import { AppService } from './app.service';
 import { VaultService } from 'vault-module/lib/vault.service';
 import { ApiOperation, ApiResponse, ApiTags } from '@nestjs/swagger';
@@ -7,6 +7,10 @@ import { FirebirdPool } from 'ts-firebird';
 import { PoolStatsDto } from './firebird/dto/pool.stats.dto';
 import { NotifierService } from './notify/notifier.service';
 import { NotifyTopic } from './notify/notify.types';
+import { DbPingResult, pingDatabase } from './firebird/ping-database';
+
+/** Сколько ждём ответа базы в проверке живости: обычный ответ — десятки мс. */
+const DB_HEALTH_TIMEOUT_MS = 5000;
 
 @ApiTags('app')
 @Controller()
@@ -50,6 +54,29 @@ export class AppController {
             activeTransactions,
             utilizationPercent,
         };
+    }
+
+    /**
+     * Живость базы для сторожа (tools/watchdog.ts): SELECT через общий пул с таймаутом. `GET /api` в базу
+     * не ходит — 25.10.2026 пул висел 10 часов, а сервис считался здоровым.
+     */
+    @Get('health/db')
+    @ApiOperation({ summary: 'Живость базы: SELECT через общий пул; 503 — база не ответила за 5 с (пул завис)' })
+    async dbHealth(): Promise<DbPingResult> {
+        const result = await pingDatabase(this.pool, DB_HEALTH_TIMEOUT_MS);
+        if (!result.ok) throw new ServiceUnavailableException({ ...result, pool: this.pool && this.getPoolStats() });
+        return result;
+    }
+
+    /** Уведомление по теме от процессов рядом с сервисом (сторож): маршруты и доставка — те же, что у сервиса. */
+    @Post('notify/event')
+    @ApiOperation({ summary: 'Уведомление по теме: {topic, subject, text}' })
+    async notifyEvent(@Body() body: { topic?: NotifyTopic; subject: string; text: string }): Promise<{ ok: boolean }> {
+        const ok = await this.notifier.notify(body?.topic ?? NotifyTopic.DEV, {
+            subject: String(body?.subject ?? ''),
+            text: String(body?.text ?? ''),
+        });
+        return { ok };
     }
 
     /**
