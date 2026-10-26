@@ -61,11 +61,13 @@ jobs:
             npm run build
             test -f dist/main.js
             pm2 restart ozon --update-env
-            # Ждём, пока поднимется: /api отвечает 200, иначе выкатка считается неудачной
-            for i in $(seq 1 30); do
+            # Ждём, пока поднимется: /api отвечает 200, иначе выкатка считается неудачной.
+            # Старт Nest на магазине — 2–3 минуты (HNSW-индекс, SKU площадок); 26.10.2026 ждали
+            # минуту, деплой «упал», сторож остался выключенным и админка не пересобралась.
+            for i in $(seq 1 100); do
               if curl -sf -m 3 "http://127.0.0.1:${APP_PORT:-3002}/api" >/dev/null; then echo "ozon up"; break; fi
-              if [ "$i" = 30 ]; then echo "ozon did not come up"; pm2 logs ozon --lines 50 --nostream; exit 1; fi
-              sleep 2
+              if [ "$i" = 100 ]; then echo "ozon did not come up"; pm2 logs ozon --lines 50 --nostream; exit 1; fi
+              sleep 3
             done
             pm2 delete ozon-watchdog || true
             pm2 start "npx ts-node tools/watchdog.ts" --name ozon-watchdog
