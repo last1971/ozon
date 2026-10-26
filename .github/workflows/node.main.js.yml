@@ -34,6 +34,10 @@ jobs:
   deploy:
     needs: [test]
     runs-on: ubuntu-latest
+    # Две выкатки подряд не идут одновременно (вторая ждёт первую)
+    concurrency:
+      group: deploy-ozon
+      cancel-in-progress: false
 
     steps:
       - name: SSH and deploy trade app
@@ -43,17 +47,29 @@ jobs:
           username: ${{ secrets.SSH_USERNAME }}
           key: ${{ secrets.SSH_KEY }}
           port: ${{ secrets.SSH_PORT }}
+          command_timeout: 30m
           script: |
+            set -euo pipefail
             export NVM_DIR=~/.nvm
             source ~/.nvm/nvm.sh
             cd ~/ozon
-            git pull origin main          
-            npm install 
+            git pull origin main
+            # Сторож на время сборки останавливается: nest build стирает dist, и сторож перезапускал ozon
+            # на пустую папку (25.10.2026 — 16 падений, pm2 errored, ozon стоял 32 минуты)
+            pm2 stop ozon-watchdog || true
+            npm ci
             npm run build
+            test -f dist/main.js
             pm2 restart ozon --update-env
-            # Запускаем watchdog
+            # Ждём, пока поднимется: /api отвечает 200, иначе выкатка считается неудачной
+            for i in $(seq 1 30); do
+              if curl -sf -m 3 "http://127.0.0.1:${APP_PORT:-3002}/api" >/dev/null; then echo "ozon up"; break; fi
+              if [ "$i" = 30 ]; then echo "ozon did not come up"; pm2 logs ozon --lines 50 --nostream; exit 1; fi
+              sleep 2
+            done
             pm2 delete ozon-watchdog || true
             pm2 start "npx ts-node tools/watchdog.ts" --name ozon-watchdog
+            # Админка собирается после того, как сервис уже поднят
             cd ~/ozon/admin-panel
-            npm install 
+            npm ci
             npm run build
