@@ -64,8 +64,14 @@ jobs:
             # Ждём, пока поднимется: /api отвечает 200, иначе выкатка считается неудачной.
             # Старт Nest на магазине — 2–3 минуты (HNSW-индекс, SKU площадок); 26.10.2026 ждали
             # минуту, деплой «упал», сторож остался выключенным и админка не пересобралась.
+            # Адрес и порт — те же, что слушает ozon (APP_HOST/APP_PORT из .env): на .25 это 192.168.22.25,
+            # на 127.0.0.1 ozon не отвечает (26.10.2026 проверка стучалась туда, деплой падал, сторож оставался выключен)
+            APP_HOST=$(grep -E '^APP_HOST=' .env | tail -n 1 | cut -d= -f2- | tr -d "\"'" || true)
+            APP_PORT=$(grep -E '^APP_PORT=' .env | tail -n 1 | cut -d= -f2- | tr -d "\"'" || true)
+            API_URL="http://${APP_HOST:-127.0.0.1}:${APP_PORT:-3002}/api"
+            echo "checking $API_URL"
             for i in $(seq 1 100); do
-              if curl -sf -m 3 "http://127.0.0.1:${APP_PORT:-3002}/api" >/dev/null; then echo "ozon up"; break; fi
+              if curl -sf -m 3 "$API_URL" >/dev/null; then echo "ozon up"; break; fi
               if [ "$i" = 100 ]; then echo "ozon did not come up"; pm2 logs ozon --lines 50 --nostream; exit 1; fi
               sleep 3
             done
