@@ -19,6 +19,7 @@ import { WbCustomerService } from '../wb.customer/wb.customer.service';
 import { MpEventService } from '../mp-event/mp-event.service';
 import { MpDecisionRunnerService } from '../mp-decision/mp-decision.runner.service';
 import { WbCurrentPricesService } from '../wb.price/wb.current-prices.service';
+import { WbGoodsReturnReportService } from '../wb.api/wb.goods-return.report.service';
 
 const currentPricesGetAll = jest.fn().mockResolvedValue(new Map());
 
@@ -30,6 +31,8 @@ describe('WbOrderService', () => {
     const updateByCommissions = jest.fn();
     const emit = jest.fn();
     const getClaims = jest.fn().mockResolvedValue({ claims: [], total: 0 });
+    const goodsReturnRows = jest.fn().mockResolvedValue([]);
+    const findByPosting = jest.fn().mockResolvedValue(null);
     const mpRecord = jest.fn().mockResolvedValue(true);
     const mpFirstSeen = jest.fn().mockResolvedValue(null);
     const mpIsHandled = jest.fn().mockResolvedValue(false);
@@ -131,6 +134,7 @@ describe('WbOrderService', () => {
                         getTransaction,
                         updatePrim,
                         getByPosting,
+                        findByPosting,
                         getAttachedMarkCodesByScode,
                         getKmFullByKi,
                         findFboPodbposCandidates,
@@ -214,6 +218,7 @@ describe('WbOrderService', () => {
                     },
                 },
                 { provide: WbCurrentPricesService, useValue: { getAll: currentPricesGetAll } },
+                { provide: WbGoodsReturnReportService, useValue: { rows: goodsReturnRows } },
             ],
         }).compile();
         method.mockClear();
@@ -1154,6 +1159,71 @@ describe('WbOrderService', () => {
 
             expect(res).toEqual([]);
             expect(method).not.toHaveBeenCalled();
+        });
+
+        describe('отказники из отчёта «Возвраты и перемещения» (goods-return)', () => {
+            const row = (over: any = {}) => ({
+                shkId: 58496813970,
+                stickerId: '48672667474',
+                orderId: 5904970216,
+                srid: 'mp.aaa.r',
+                nmId: 1,
+                status: 'В пути в пвз',
+                returnType: 'Возврат товара, который приехал по МП, продавцу',
+                reason: '',
+                completedDt: null,
+                ...over,
+            });
+
+            beforeEach(() => {
+                goodsReturnRows.mockReset().mockResolvedValue([]);
+                findByPosting.mockReset().mockResolvedValue(null);
+            });
+
+            it('строка в пути → RETURN MovingToSeller по номеру задания (FBS), ключ — ШК строки', async () => {
+                goodsReturnRows.mockResolvedValue([row()]);
+                findByPosting.mockImplementation(async (p: string) => (p === '5904970216' ? ({} as any) : null));
+
+                const res = await service.listReturns();
+
+                expect(res).toEqual([
+                    expect.objectContaining({
+                        id: '58496813970',
+                        posting_number: '5904970216',
+                        schema: 'Fbs',
+                        visual: { status: expect.objectContaining({ sys_name: 'MovingToSeller' }) },
+                    }),
+                ]);
+            });
+
+            it('«Выдано» → ReceivedBySeller; «Отмена по задержке» → Cancelled; перемещение остатков — не возврат', async () => {
+                goodsReturnRows.mockResolvedValue([
+                    row({ shkId: 1, status: 'Выдано', completedDt: '2026-10-26T11:14:13' }),
+                    row({ shkId: 2, status: 'Отмена по задержке', returnType: 'Возврат брака' }),
+                    row({ shkId: 3, status: 'Готово', returnType: 'Перемещение остатков' }),
+                ]);
+                findByPosting.mockResolvedValue({} as any);
+
+                const states = (await service.listReturns()).map((r) => [r.id, r.visual.status.sys_name]);
+
+                expect(states).toEqual([
+                    ['1', 'ReceivedBySeller'],
+                    ['2', 'Cancelled'],
+                ]);
+            });
+
+            it('счёта по номеру задания нет → по srid (FBO); нет и его — номер задания как есть', async () => {
+                goodsReturnRows.mockResolvedValue([row()]);
+                findByPosting.mockImplementation(async (p: string) => (p === 'mp.aaa.r' ? ({} as any) : null));
+                expect((await service.listReturns())[0]).toEqual(
+                    expect.objectContaining({ posting_number: 'mp.aaa.r', schema: 'Fbo' }),
+                );
+
+                findByPosting.mockResolvedValue(null);
+                expect((await service.listReturns())[0]).toEqual(
+                    expect.objectContaining({ posting_number: '5904970216', schema: 'Fbs' }),
+                );
+            });
         });
 
         it('returnCounts всегда undefined: одно задание = одна единица, частичности нет', async () => {

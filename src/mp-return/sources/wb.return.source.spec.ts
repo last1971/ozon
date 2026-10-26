@@ -1,5 +1,6 @@
 import { BadGatewayException } from '@nestjs/common';
 import { WbGoodsReturnRow, WbReturnSource, toReturnLine } from './wb.return.source';
+import { WbGoodsReturnReportService } from '../../wb.api/wb.goods-return.report.service';
 
 // Паузы между отрезками отчёта в тестах не нужны.
 jest.mock('../../helpers/decorators/rate-limit.decorator', () => ({ RateLimit: () => () => undefined }));
@@ -39,7 +40,8 @@ describe('WbReturnSource', () => {
         const cards = { getWbCardByNmId: jest.fn((nmId: number) => (nmId === card.nmID ? card : null)) };
         const invoiceService = { findByPosting: jest.fn(async (p: string) => (invoices[p] ? ({} as any) : null)) };
         const config = { get: jest.fn(() => services) };
-        const source = new WbReturnSource(api as any, cards as any, invoiceService as any, config as any);
+        const reportService = new WbGoodsReturnReportService(api as any);
+        const source = new WbReturnSource(reportService, cards as any, invoiceService as any, config as any);
         return { source, api, invoiceService };
     };
 

@@ -1,3 +1,4 @@
+import { WbGoodsReturnRow, WB_RETURN_ISSUED } from '../wb.api/wb.goods-return.report.service';
 import { WbClaimDto } from '../wb.customer/dto/wb.claim.dto';
 import { RETURN_STATE } from '../mp-decision/mp-decision.types';
 
@@ -69,4 +70,27 @@ export function wbClaimState(claim: WbClaimDto, isArchive: boolean): string | nu
         default:
             return 'unknown';
     }
+}
+
+/** Строки отчёта «Возвраты и перемещения», которые возвратом к нам не являются. */
+const WB_GOODS_RETURN_NOT_A_RETURN = /перемещение/i;
+/** ВБ закрыл возврат, не довезя: товар остаётся у ВБ (заявочный класс — физики к нам нет). */
+const WB_GOODS_RETURN_CANCELLED = /^отмена/i;
+
+/**
+ * Строка отчёта «Возвраты и перемещения» (goods-return) → озоновский словарь состояний.
+ *
+ * Отчёт — ЕДИНСТВЕННЫЙ источник, где виден отказник ВБ, который ВБ везёт обратно нам
+ * (claims — только возвраты после выкупа). Замер 26.10.2026 (опт 110 + магазин 496
+ * доноров ` отмена WBFBO`): строка возврата к продавцу появляется В ДЕНЬ отмены
+ * (лаг −1…−2 дн у всех 142), едет 7–8 дней (макс 15). Статусы по пути:
+ * «Статус не определен» → «В пути в пвз» → «Готов к выдаче» → «Выдано».
+ *
+ * @returns null — строка не про возврат нам (перемещение остатков между складами ВБ).
+ */
+export function wbGoodsReturnState(row: WbGoodsReturnRow): string | null {
+    if (WB_GOODS_RETURN_NOT_A_RETURN.test(row.returnType ?? '')) return null;
+    if (row.status === WB_RETURN_ISSUED) return RETURN_STATE.RECEIVED_BY_SELLER;
+    if (WB_GOODS_RETURN_CANCELLED.test(row.status ?? '')) return 'Cancelled';
+    return 'MovingToSeller';
 }

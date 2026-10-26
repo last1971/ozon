@@ -5,11 +5,12 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 import { DateTime } from 'luxon';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { isMarkCodesEnabled } from '../helpers/mark-codes.helper';
-import { MpEventService, MpService } from '../mp-event/mp-event.service';
+import { MP_SERVICE_NAME, MpEventService, MpService } from '../mp-event/mp-event.service';
+import { GoodServiceEnum } from '../good/good.service.enum';
 import { Trade2006ChzService } from '../trade2006.chz/trade2006.chz.service';
 import { CLAIM_RETURN_STATES, LOST_RETURN_STATES, RETURN_STATE } from './mp-decision.types';
 import { NotifyTopic } from '../notify/notify.types';
-import { MP_ORDER_CANCELLATION_SUFFIX } from '../helpers/order.cancellation.constants';
+import { donorSuffixFor } from '../helpers/order.cancellation.constants';
 
 /**
  * Еженедельный отчёт «подвисшие коды» (Этап 5, перенесён в итерацию 5).
@@ -47,6 +48,12 @@ export class StuckCodesService {
     private static readonly WAIT_NO_RETURN_DAYS_DEFAULT = 10;
     /** Заявка есть, но склада не достигла — напоминаем, когда едет неприлично долго. */
     private static readonly WAIT_IN_TRANSIT_DAYS = 14;
+    /**
+     * ВБ: строки возврата в отчёте нет дольше порога → товар остался на складе ВБ, счёт в доноры WBFBO.
+     * Замер 26.10.2026: строка появляется в день отмены, поэтому 2 дня — это уже запас.
+     * Переопределяется `WB_CANCEL_WAIT_NO_RETURN_DAYS`.
+     */
+    private static readonly WB_WAIT_NO_RETURN_DAYS_DEFAULT = 2;
 
     constructor(
         @Inject(INVOICE_SERVICE) private invoiceService: IInvoice,
@@ -170,17 +177,72 @@ export class StuckCodesService {
      * Опоздавшая заявка счёт не сломает: возврат по помеченному счёту пропускается.
      */
     private async reportCancelWaits(): Promise<void> {
-        // ВБ ожиданий не пишет (отказник остаётся на складе ВБ — счёт сразу донор),
-        // но сервис в цикле, чтобы хардкода 'OZON' здесь не осталось: появись
-        // ожидание у другого маркетплейса — оно не потеряется.
-        const services: MpService[] = ['OZON', 'WB'];
-        const noReturnDays = this.configService.get<number>(
-            'CANCEL_WAIT_NO_RETURN_DAYS',
-            StuckCodesService.WAIT_NO_RETURN_DAYS_DEFAULT,
+        const { lines, total } = await this.collectCancelWaits(['OZON', 'WB']);
+        this.logger.log(`отменённых в ожидании возврата: ${total}, в письмо: ${lines.length}`);
+        if (!lines.length) return;
+
+        this.eventEmitter.emit(
+            'error.message',
+            `Отменённые без возврата: ${lines.length}`,
+            [
+                'Заказы, отменённые после отгрузки, по которым возврат не случился.',
+                'FBO Ozon и ВБ без заявки дольше порога — счёт уже переведён в доноры (товар на складе маркетплейса);',
+                'остальные счета не тронуты (ждут), товар где-то между покупателем и складом.',
+                '',
+                ...lines,
+            ].join('\n'),
+            NotifyTopic.MARKING,
         );
+    }
+
+    /**
+     * ВБ: порог «строки возврата нет» — два дня, ждать недельного отчёта нельзя: всё это
+     * время счёт не донор, и FBO-продажа со склада ВБ не найдёт его товар. Раз в час
+     * переводим созревшие ожидания в доноры; письмо — только о переведённых.
+     */
+    @Cron('0 20 * * * *', { name: 'wbCancelWaits' })
+    async resolveWbCancelWaits(): Promise<void> {
+        if (!this.configService.get<GoodServiceEnum[]>('SERVICES', []).includes(GoodServiceEnum.WB)) return;
+        try {
+            const { converted } = await this.collectCancelWaits(['WB']);
+            if (!converted.length) return;
+            this.eventEmitter.emit(
+                'error.message',
+                `ВБ: отменённые без возврата → доноры: ${converted.length}`,
+                [
+                    'Отменены после отгрузки, строки возврата к продавцу в отчёте ВБ нет дольше порога —',
+                    'товар остался на складе ВБ, счета переведены в доноры WBFBO.',
+                    '',
+                    ...converted,
+                ].join('\n'),
+                NotifyTopic.MARKING,
+            );
+        } catch (e) {
+            this.logger.error(`ВБ ожидания возврата: ${e.message}`);
+        }
+    }
+
+    private noReturnDays(svc: MpService): number {
+        return svc === 'WB'
+            ? this.configService.get<number>(
+                  'WB_CANCEL_WAIT_NO_RETURN_DAYS',
+                  StuckCodesService.WB_WAIT_NO_RETURN_DAYS_DEFAULT,
+              )
+            : this.configService.get<number>(
+                  'CANCEL_WAIT_NO_RETURN_DAYS',
+                  StuckCodesService.WAIT_NO_RETURN_DAYS_DEFAULT,
+              );
+    }
+
+    /** Разбор ожиданий CANCEL_WAIT по сервисам: строки письма, число ожиданий, переведённые в доноры. */
+    private async collectCancelWaits(
+        services: MpService[],
+    ): Promise<{ lines: string[]; total: number; converted: string[] }> {
         const lines: string[] = [];
+        const converted: string[] = [];
         let total = 0;
         for (const svc of services) {
+            const noReturnDays = this.noReturnDays(svc);
             const waits = await this.mpEvent.listUnhandled(svc, 'CANCEL_WAIT');
             total += waits.length;
             for (const wait of waits) {
@@ -228,22 +290,26 @@ export class StuckCodesService {
                     // Схема — по журналу отправлений: FBO-отмены видит только FBO-поток.
                     // Любая запись возврата, даже отклонённая заявка (товар остался у
                     // покупателя), — не наш случай: в доноры только при полной тишине.
+                    // ВБ: отказник без строки возврата в отчёте остался на складе ВБ — донор WBFBO
+                    // (тот же вывод, что у FBO Ozon: тишина дольше порога = товар на складе маркетплейса).
                     const isFbo =
-                        states.length === 0 &&
-                        (await this.mpEvent.listStatesForPosting(svc, 'POSTING_FBO', posting)).length > 0;
+                        svc === 'WB' ||
+                        (states.length === 0 &&
+                            (await this.mpEvent.listStatesForPosting(svc, 'POSTING_FBO', posting)).length > 0);
                     if (isFbo) {
-                        await this.invoiceService.updatePrim(posting, posting + MP_ORDER_CANCELLATION_SUFFIX.FBO, null);
+                        await this.invoiceService.updatePrim(posting, posting + donorSuffixFor(svc), null);
                         await this.mpEvent.markHandled({
                             service: svc,
                             kind: 'CANCEL_WAIT',
                             extId: wait.extId,
                             state: 'waiting',
                         });
-                        this.logger.log(`CANCEL_WAIT ${posting}: FBO без заявки возврата ${age} дн — счёт в доноры`);
-                        lines.push(
-                            `${posting} — отменён ${age} дн назад, заявки возврата нет: товар остался на складе Ozon, ` +
-                                `счёт №${match.invoice.number ?? '?'} (SCODE ${match.invoice.id}) переведён в доноры`,
-                        );
+                        this.logger.log(`CANCEL_WAIT ${posting}: без заявки возврата ${age} дн — счёт в доноры`);
+                        const line =
+                            `${posting} — отменён ${age} дн назад, заявки возврата нет: товар остался на складе ` +
+                            `${MP_SERVICE_NAME[svc]}, счёт №${match.invoice.number ?? '?'} (SCODE ${match.invoice.id}) переведён в доноры`;
+                        lines.push(line);
+                        converted.push(line);
                         continue;
                     }
                     lines.push(
@@ -256,22 +322,6 @@ export class StuckCodesService {
                 }
             }
         }
-        if (!total) return;
-
-        this.logger.log(`отменённых в ожидании возврата: ${total}, в письмо: ${lines.length}`);
-        if (!lines.length) return;
-
-        this.eventEmitter.emit(
-            'error.message',
-            `Отменённые без возврата: ${lines.length}`,
-            [
-                'Заказы, отменённые после отгрузки, по которым возврат не случился.',
-                'FBO без заявки дольше порога — счёт уже переведён в доноры (товар на складе Ozon);',
-                'остальные счета не тронуты (ждут), товар где-то между покупателем и складом.',
-                '',
-                ...lines,
-            ].join('\n'),
-            NotifyTopic.MARKING,
-        );
+        return { lines, total, converted };
     }
 }

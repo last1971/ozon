@@ -814,12 +814,19 @@ export class OrderService {
                 );
             }
         } else if (order.service === GoodServiceEnum.WB && isShippedToMarketplace(order)) {
-            // ВБ: отказник/отмена после отгрузки НЕ едет к нам — товар остаётся на
-            // складе ВБ и продаётся оттуда (решение владельца 17.08). Ждать записи
-            // возврата нечего: claims у ВБ — только возвраты после выкупа, по
-            // отказнику заявка не создаётся. Счёт сразу в доноры WBFBO-пула;
-            // коды остаются на нём (TT=3) и уедут миграцией при FBO-продаже.
-            if (invoice.status === 4) {
+            // ВБ: отказник после отгрузки едет НЕ только на склад ВБ. Замер 26.10.2026:
+            // 22–32 % доноров « отмена WBFBO» ВБ вёз обратно нам, а база тем временем
+            // отдавала их товар и КМ FBO-продаже (счёт 16838 / код 3124 / FBO 21165).
+            // Куда поедет товар, знает отчёт «Возвраты и перемещения»: строка к продавцу
+            // появляется в день отмены (lag −1 дн у всех 142). Поэтому — как у Ozon:
+            // счёт не трогаем, ждём запись возврата (listReturns ВБ читает отчёт);
+            // нет строки дольше порога (WB_CANCEL_WAIT_NO_RETURN_DAYS, 2 дня) —
+            // StuckCodesService переводит счёт в доноры WBFBO. До флага возвратов —
+            // прежний путь «донор сразу».
+            if (invoice.status === 4 && this.mpRunner.returnsEnabled()) {
+                await this.recordCancelWait(order.posting_number, transaction, 'WB');
+                this.logger.log(`WB order ${order.posting_number} отменён после отгрузки — ждём запись возврата`);
+            } else if (invoice.status === 4) {
                 await this.invoiceService.updatePrim(
                     order.posting_number,
                     order.posting_number + MP_ORDER_CANCELLATION_SUFFIX.WBFBO,

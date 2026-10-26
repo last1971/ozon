@@ -19,6 +19,7 @@ describe('StuckCodesService — еженедельный отчёт «подви
     let markCodesEnabled = true;
     /** undefined — берётся дефолт сервиса (10 дней). */
     let noReturnDays: number | undefined;
+    let services: string[] = ['ozon', 'wb'];
 
     const row = (over: any = {}) => ({
         ki: '0100400000013930215fajB',
@@ -36,6 +37,7 @@ describe('StuckCodesService — еженедельный отчёт «подви
     beforeEach(async () => {
         markCodesEnabled = true;
         noReturnDays = undefined;
+        services = ['ozon', 'wb'];
         [findStuckMarkCodes, findByPosting, updatePrim, emit, listUnhandled, listStatesForPosting, markHandled].forEach(
             (m) => m.mockReset(),
         );
@@ -53,6 +55,7 @@ describe('StuckCodesService — еженедельный отчёт «подви
                         get: (key: string, defaultValue?: any) => {
                             if (key === 'MARK_CODES_ENABLED') return markCodesEnabled;
                             if (key === 'CANCEL_WAIT_NO_RETURN_DAYS') return noReturnDays ?? defaultValue;
+                            if (key === 'SERVICES') return services;
                             return defaultValue;
                         },
                     },
@@ -276,6 +279,78 @@ describe('StuckCodesService — еженедельный отчёт «подви
 
             expect(markHandled).toHaveBeenCalled();
             expect(emit).not.toHaveBeenCalled();
+        });
+
+        describe('ВБ: отказник без строки возврата в отчёте → донор WBFBO (порог 2 дня, раз в час)', () => {
+            const wbWaits = (waits: any[]) =>
+                listUnhandled.mockImplementation((svc: string) => Promise.resolve(svc === 'WB' ? waits : []));
+            const wbWait = (ageDays: number) =>
+                wait({ extId: '5904970216', posting: '5904970216', firstSeen: new Date(Date.now() - ageDays * 864e5) });
+
+            it('строки возврата нет 3 дня → счёт в доноры « отмена WBFBO», ожидание закрыто, письмо о переведённых', async () => {
+                wbWaits([wbWait(3)]);
+                listStatesForPosting.mockResolvedValue([]);
+
+                await service.resolveWbCancelWaits();
+
+                expect(updatePrim).toHaveBeenCalledWith('5904970216', '5904970216 отмена WBFBO', null);
+                expect(markHandled).toHaveBeenCalledWith(
+                    expect.objectContaining({ service: 'WB', kind: 'CANCEL_WAIT', extId: '5904970216' }),
+                );
+                const [, subject, body] = emit.mock.calls[0];
+                expect(subject).toBe('ВБ: отменённые без возврата → доноры: 1');
+                expect(body).toContain('складе ВБ');
+            });
+
+            it('строка возврата есть («в пути к нам») → донора нет, часовой прогон молчит', async () => {
+                wbWaits([wbWait(3)]);
+                listStatesForPosting.mockResolvedValue(['MovingToSeller']);
+
+                await service.resolveWbCancelWaits();
+
+                expect(updatePrim).not.toHaveBeenCalled();
+                expect(markHandled).not.toHaveBeenCalled();
+                expect(emit).not.toHaveBeenCalled();
+            });
+
+            it('возврат ВБ закрыт без доставки (Cancelled) — заявочный класс: тишина дольше порога → донор', async () => {
+                wbWaits([wbWait(3)]);
+                listStatesForPosting.mockResolvedValue(['Cancelled']);
+
+                await service.resolveWbCancelWaits();
+
+                expect(updatePrim).toHaveBeenCalledWith('5904970216', '5904970216 отмена WBFBO', null);
+            });
+
+            it('моложе порога (1 день) → ждём, ничего не делаем', async () => {
+                wbWaits([wbWait(1)]);
+                listStatesForPosting.mockResolvedValue([]);
+
+                await service.resolveWbCancelWaits();
+
+                expect(updatePrim).not.toHaveBeenCalled();
+                expect(emit).not.toHaveBeenCalled();
+            });
+
+            it('ВБ не подключён (SERVICES) → к журналу не ходим', async () => {
+                services = ['ozon'];
+                wbWaits([wbWait(3)]);
+
+                await service.resolveWbCancelWaits();
+
+                expect(listUnhandled).not.toHaveBeenCalled();
+            });
+
+            it('недельный отчёт видит ожидания ВБ тем же порогом', async () => {
+                wbWaits([wbWait(3)]);
+                listStatesForPosting.mockResolvedValue([]);
+
+                await service.report();
+
+                expect(updatePrim).toHaveBeenCalledWith('5904970216', '5904970216 отмена WBFBO', null);
+                const call = emit.mock.calls.find((c) => String(c[1]).startsWith('Отменённые без возврата'));
+                expect(call[2]).toContain('переведён в доноры');
+            });
         });
 
         it('свежая отмена без заявки (моложе порога) → пока не шумим', async () => {

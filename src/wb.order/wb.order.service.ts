@@ -3,6 +3,7 @@ import { IOrderable } from '../interfaces/IOrderable';
 import { PostingDto } from '../posting/dto/posting.dto';
 import { InvoiceDto } from '../invoice/dto/invoice.dto';
 import { WbApiService } from '../wb.api/wb.api.service';
+import { WbGoodsReturnReportService } from '../wb.api/wb.goods-return.report.service';
 import { WbOrderDto } from './dto/wb.order.dto';
 import { WbOrderStatusDto } from './dto/wb.order.status.dto';
 import { DateTime } from 'luxon';
@@ -45,7 +46,7 @@ import { IReturnable } from '../interfaces/IReturnable';
 import { ReturnDto } from '../posting/dto/return.dto';
 import { WbCustomerService } from '../wb.customer/wb.customer.service';
 import { WbClaimDto } from '../wb.customer/dto/wb.claim.dto';
-import { wbClaimState, wbEventState, wbShipped } from './wb.status.helper';
+import { wbClaimState, wbGoodsReturnState, wbEventState, wbShipped } from './wb.status.helper';
 
 /** Событие наблюдателя ВБ: заказ + статусы, нормализованные в журнал. */
 interface WbOrderEvent {
@@ -78,6 +79,7 @@ export class WbOrderService implements IOrderable, ISalePriceFallback, IFboSales
         private readonly mpEvent: MpEventService,
         private readonly mpRunner: MpDecisionRunnerService,
         private readonly currentPrices: WbCurrentPricesService,
+        private readonly goodsReturnReport: WbGoodsReturnReportService,
     ) {
         this.postingDtos = new Map<string, PostingDto>();
     }
@@ -565,6 +567,46 @@ export class WbOrderService implements IOrderable, ISalePriceFallback, IFboSales
     }
 
     async listReturns(): Promise<ReturnDto[]> {
+        const [claims, goodsReturns] = await Promise.all([this.listClaimReturns(), this.listGoodsReturns()]);
+        return [...claims, ...goodsReturns];
+    }
+
+    /**
+     * Возвраты ОТКАЗНИКОВ — отчёт «Возвраты и перемещения» (goods-return): заявок по ним
+     * ВБ не создаёт, и до 26.10.2026 отказник считался оставшимся на складе ВБ (счёт сразу
+     * донор), хотя 22–32 % доноров ВБ везёт обратно нам. Строка отчёта → событие журнала
+     * RETURN в озоновском словаре (`wbGoodsReturnState`): отмена после отгрузки ждёт её
+     * (CANCEL_WAIT), «Выдано» = ReceivedBySeller → приём экраном возвратов. Ключ события —
+     * shkId строки (у заявок uuid — не пересекаются). Счёт: FBS по номеру задания, иначе FBO по srid.
+     */
+    private async listGoodsReturns(): Promise<ReturnDto[]> {
+        const rows = await this.goodsReturnReport.rows();
+        const res: ReturnDto[] = [];
+        for (const row of rows) {
+            const state = wbGoodsReturnState(row);
+            if (state === null) continue;
+            const orderId = String(row.orderId);
+            let posting = orderId;
+            let schema: 'Fbs' | 'Fbo' = 'Fbs';
+            if (!(await this.invoiceService.findByPosting(orderId, null))) {
+                if (row.srid && (await this.invoiceService.findByPosting(row.srid, null))) {
+                    posting = row.srid;
+                    schema = 'Fbo';
+                }
+            }
+            res.push({
+                id: String(row.shkId),
+                posting_number: posting,
+                schema,
+                order_number: orderId,
+                visual: { status: { id: row.shkId, sys_name: state, display_name: row.status } },
+            });
+        }
+        return res;
+    }
+
+    /** Возвраты после выкупа — заявки покупателей (claims). */
+    private async listClaimReturns(): Promise<ReturnDto[]> {
         const [active, archived] = await Promise.all([this.listClaims(false), this.listClaims(true)]);
         const claims = [...active, ...archived];
         if (!claims.length) return [];

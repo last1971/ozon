@@ -286,6 +286,18 @@ class EnvironmentVariables {
     )
     CANCEL_WAIT_NO_RETURN_DAYS: number;
 
+    /**
+     * ВБ: отменён после отгрузки, а строки возврата в отчёте «Возвраты и перемещения» нет —
+     * через столько дней счёт уходит в доноры WBFBO (товар остался на складе ВБ).
+     * По умолчанию 2: строка появляется в день отмены (замер 26.10.2026), запас — на лаг наблюдателя.
+     */
+    @IsOptional()
+    @IsNumber()
+    @Transform(({ obj }) =>
+        obj.WB_CANCEL_WAIT_NO_RETURN_DAYS === undefined ? undefined : Number(obj.WB_CANCEL_WAIT_NO_RETURN_DAYS),
+    )
+    WB_CANCEL_WAIT_NO_RETURN_DAYS: number;
+
     /** Сверка зависших FBO: сухой прогон — считает и печатает, ничего не подбирает. */
     @IsOptional()
     @IsBoolean()

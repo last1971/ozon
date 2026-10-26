@@ -610,11 +610,29 @@ describe('OrderService', () => {
             expect(mockInvoiceService.updatePrim).toHaveBeenCalledWith('456', '456 отмена FBO', mockTransaction);
         });
 
-        it('ВБ: отгруженная отмена → донор « отмена WBFBO» сразу, без CANCEL_WAIT (даже при включённых возвратах)', async () => {
-            // Отказник ВБ остаётся на складе ВБ (решение владельца 17.08): заявки
-            // возврата не будет, ждать нечего — чужой (озоновский) суффикс отдал бы
-            // партию донорскому пулу Ozon.
+        it('ВБ: отгруженная отмена при включённых возвратах → CANCEL_WAIT (WB), счёт не трогаем', async () => {
+            // Замер 26.10.2026: 22–32 % отказников ВБ везёт обратно нам — куда поедет товар,
+            // скажет строка отчёта «Возвраты и перемещения» (приходит записью возврата в день
+            // отмены). Донор сразу отдавал бы товар и КМ FBO-продаже, пока коробка едет к нам.
             mpReturnsEnabled.mockReturnValue(true);
+            const order = { posting_number: '9002', isFbo: false, service: GoodServiceEnum.WB, shipped: true } as any;
+            mockInvoiceService.getByPosting.mockResolvedValue({ id: 900, status: 4 });
+
+            await service.cancelOrder(order, mockTransaction);
+
+            expect(mockInvoiceService.updatePrim).not.toHaveBeenCalled();
+            expect(mpRecord).toHaveBeenCalledWith(
+                expect.objectContaining({ service: 'WB', kind: 'CANCEL_WAIT', extId: '9002', posting: '9002' }),
+                mockTransaction,
+            );
+            expect(mockInvoiceService.returnMarkCodesToStock).not.toHaveBeenCalled();
+            expect(detachAll).not.toHaveBeenCalled();
+            mpReturnsEnabled.mockReturnValue(false);
+        });
+
+        it('ВБ: отгруженная отмена при выключенных возвратах → прежний путь, донор « отмена WBFBO» сразу', async () => {
+            mpReturnsEnabled.mockReturnValue(false);
+            mpRecord.mockClear();
             const order = { posting_number: '9002', isFbo: false, service: GoodServiceEnum.WB, shipped: true } as any;
             mockInvoiceService.getByPosting.mockResolvedValue({ id: 900, status: 4 });
 
@@ -625,9 +643,6 @@ describe('OrderService', () => {
                 expect.objectContaining({ kind: 'CANCEL_WAIT' }),
                 expect.anything(),
             );
-            expect(mockInvoiceService.returnMarkCodesToStock).not.toHaveBeenCalled();
-            expect(detachAll).not.toHaveBeenCalled();
-            mpReturnsEnabled.mockReturnValue(false);
         });
 
         it('ВБ: отгруженная отмена при неожиданном статусе счёта → письмо, счёт не трогаем', async () => {
