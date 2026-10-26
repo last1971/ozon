@@ -91,6 +91,27 @@ export function pickThresholds(
     return [mopt, opt];
 }
 
+/**
+ * Дешёвая деталь поставщика — закупка за штуку ниже этого, руб. Розница у таких задрана постоянными расходами
+ * (резистор 0402 за 0,07 ₽ продаётся по 32–75 ₽), поэтому признак — закупка, а не розница.
+ */
+export const CHEAP_UNIT_COST_RUB = 1;
+
+/** Ступени дешёвой детали поставщика, шт: третья — от 1000 (владелец 26.10.2026). */
+export const CHEAP_THRESHOLDS = [10, 100, 1000];
+
+/**
+ * Количества ступеней для товара поставщика, у которого поставщик дал одну цену (своих ступеней нет): дешёвой
+ * детали (закупка до CHEAP_UNIT_COST_RUB) — CHEAP_THRESHOLDS, остальным пороги от розничной цены, как у наших товаров.
+ */
+export function supplierThresholds(retailRub: number, unitCostRub: number, table: TierDefaultRow[]): number[] {
+    if (unitCostRub < CHEAP_UNIT_COST_RUB) {
+        return [...CHEAP_THRESHOLDS];
+    }
+    const { mopt, opt } = defaultThresholds(retailRub, table);
+    return [mopt, opt];
+}
+
 export interface DroppedTierDto {
     quantity: number;
     price: number;
