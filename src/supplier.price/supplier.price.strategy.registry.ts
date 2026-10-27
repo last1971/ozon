@@ -4,7 +4,7 @@ import { ISupplierDelivery } from './strategies/i.supplier.delivery';
 import { ISupplierMarkup } from './strategies/i.supplier.markup';
 import { CbrPlusPercentCurrency } from './strategies/cbr.plus.percent.currency';
 import { CompelDeliveryCost } from './strategies/compel.delivery.cost';
-import { DefaultMarkup } from './strategies/default.markup';
+import { CompelMarkup } from './strategies/compel.markup';
 
 export interface SupplierPriceStrategies {
     currency: ISupplierCurrency;
@@ -13,21 +13,21 @@ export interface SupplierPriceStrategies {
 }
 
 /**
- * Набор кирпичей по alias поставщика. Новый поставщик — новая строка здесь и свои классы;
- * чужие наборы не меняются. Неизвестный alias — null, строка уходит в ошибки.
+ * Набор кирпичей по alias поставщика. Новый поставщик — новая строка здесь и свои классы (или общая
+ * DefaultMarkup); чужие наборы не меняются. Неизвестный alias — null, строка уходит в ошибки.
  */
 @Injectable()
 export class SupplierPriceStrategyRegistry {
     private readonly strategies: Map<string, SupplierPriceStrategies>;
 
-    constructor(defaultMarkup: DefaultMarkup) {
+    constructor(compelMarkup: CompelMarkup) {
         this.strategies = new Map<string, SupplierPriceStrategies>([
             [
                 'compel',
                 {
                     currency: new CbrPlusPercentCurrency(2),
                     delivery: new CompelDeliveryCost(),
-                    markup: defaultMarkup,
+                    markup: compelMarkup,
                 },
             ],
         ]);

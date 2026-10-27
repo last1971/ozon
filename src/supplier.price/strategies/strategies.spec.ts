@@ -1,6 +1,10 @@
 import { CbrPlusPercentCurrency } from './cbr.plus.percent.currency';
 import { RubAsIsCurrency } from './rub.as.is.currency';
 import { CompelDeliveryCost } from './compel.delivery.cost';
+import { CompelMarkup } from './compel.markup';
+import { ConfigService } from '@nestjs/config';
+import { PriceCalculationHelper } from '../../helpers/price/price.calculation.helper';
+import { SyliusPriceService } from '../../sylius.price/sylius.price.service';
 
 describe('кирпич валюты', () => {
     const rates = { USD: 80.54, CNY: 12.06 };
@@ -31,5 +35,50 @@ describe('кирпич доставки Компэла', () => {
         const d = new CompelDeliveryCost();
         expect(d.costRub(1.5, 'X')).toBe(0);
         expect(d.costRub(10000, 'Y')).toBe(0);
+    });
+});
+
+describe('кирпич наценки Компэла', () => {
+    // Сайт как на проде: налог 11 %, этикетки и упаковки нет
+    const sylius = {
+        getObtainCoeffs: () => ({
+            minMil: 0,
+            percMil: 0,
+            percEkv: 0,
+            sumObtain: 0,
+            sumLabel: 0,
+            sumPack: 0,
+            taxUnit: 11,
+        }),
+    } as unknown as SyliusPriceService;
+    const helper = { getDefaultPercents: () => ({ packing_price: 16 }) } as unknown as PriceCalculationHelper;
+    const markup = (env: Record<string, unknown> = {}) =>
+        new CompelMarkup(helper, sylius, { get: (key: string, def?: unknown) => env[key] ?? def } as ConfigService);
+
+    it('MS1242 (закупка 329,42 ₽): зачёркнутая +15 %, обычная +8 %, минимальная +4 %', () => {
+        expect(markup().apply('MS1242', 329.42)).toEqual({
+            old_price: 426, // ceil(329,42 × 1,15 / 0,89)
+            price: 400, // ceil(329,42 × 1,08 / 0,89)
+            min_price: 385, // ceil(329,42 × 1,04 / 0,89)
+            old_perc: 15,
+            perc: 8,
+            min_perc: 4,
+        });
+    });
+
+    it('дешёвая деталь (0,27 ₽): все три цены — страховка 10 ₽, ceil(10,27 / 0,89) = 12', () => {
+        const r = markup().apply('CHEAP', 0.27);
+        expect([r.min_price, r.price, r.old_price]).toEqual([12, 12, 12]);
+    });
+
+    it('цифры из настроек: COMPEL_MARKUP_PERC 10, страховка 0 — цена ровно по проценту', () => {
+        const r = markup({ COMPEL_MARKUP_PERC: '10', COMPEL_MIN_PROFIT_RUB: '0' }).apply('X', 0.27);
+        expect(r.price).toBe(1); // ceil(0,27 × 1,1 / 0,89)
+        expect(r.perc).toBe(10);
+    });
+
+    it('кривые настройки — ошибка при старте, не молча', () => {
+        expect(() => markup({ COMPEL_MIN_PERC: '9' })).toThrow('минимальная ≤ обычная ≤ зачёркнутая');
+        expect(() => markup({ COMPEL_MARKUP_PERC: 'abc' })).toThrow('должны быть числами');
     });
 });

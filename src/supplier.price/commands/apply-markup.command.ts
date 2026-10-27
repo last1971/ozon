@@ -15,8 +15,9 @@ import {
 /**
  * Кирпич наценки: закупка + доставка → цена/зачёркнутая/минимальная. Ступени поставщика считаются той же
  * наценкой каждая как партия от `quantity` штук, затем buildTiers отбрасывает ступени дороже обычной
- * цены или дорожающие с количеством — как у наших товаров. Поставщик дал одну цену — ступени свои, по правилу
- * наших товаров: пороги от розничной цены (SYLIUS_TIER_DEFAULTS); деталь с закупкой до 1 ₽ — 10/100/1000 шт.
+ * цены или дорожающие с количеством — как у наших товаров. Ниже первой ступени поставщика (или при одной цене)
+ * ступени свои, по правилу наших товаров: пороги от розничной цены (SYLIUS_TIER_DEFAULTS); деталь с закупкой
+ * до 1 ₽ — 10/100/1000 шт.
  */
 @Injectable()
 export class ApplyMarkupCommand implements ICommandAsync<ISupplierPriceContext> {
@@ -41,17 +42,23 @@ export class ApplyMarkupCommand implements ICommandAsync<ISupplierPriceContext> 
                 const main = markup.apply(code, unitCost);
                 // Ступень — одна продажа партии: закупка партии целиком, упаковка и этикетка один раз (как у наших
                 // товаров в buildPriceables), buildTiers потом делит на количество
+                // Свои пороги — только ниже первой ступени поставщика (Компэл даёт скидку от 7522 шт — до неё
+                // 10/100/1000 по закупке за штуку); ступени поставщика остаются как есть
                 const supplierTiers = item.tiersRub ?? [];
-                const parties: PartyPriceDto[] =
-                    supplierTiers.length > 0
-                        ? supplierTiers.map((t) => {
-                              const party = markup.apply(code, (t.priceRub + item.deliveryRub) * t.quantity);
-                              return { quantity: t.quantity, price: party.price, min_price: party.min_price };
-                          })
-                        : supplierThresholds(main.price, unitCost, this.tierDefaults).map((quantity) => {
-                              const party = markup.apply(code, unitCost * quantity);
-                              return { quantity, price: party.price, min_price: party.min_price };
-                          });
+                const firstSupplierQuantity = Math.min(...supplierTiers.map((t) => t.quantity));
+                const ownParties: PartyPriceDto[] = supplierThresholds(main.price, unitCost, this.tierDefaults)
+                    .filter((quantity) => quantity < firstSupplierQuantity)
+                    .map((quantity) => {
+                        const party = markup.apply(code, unitCost * quantity);
+                        return { quantity, price: party.price, min_price: party.min_price };
+                    });
+                const parties: PartyPriceDto[] = [
+                    ...ownParties,
+                    ...supplierTiers.map((t) => {
+                        const party = markup.apply(code, (t.priceRub + item.deliveryRub) * t.quantity);
+                        return { quantity: t.quantity, price: party.price, min_price: party.min_price };
+                    }),
+                ];
                 const { tiers, dropped } = buildTiers(Math.round(main.price * 100), parties);
                 if (dropped.length > 0) {
                     context.logger?.log(

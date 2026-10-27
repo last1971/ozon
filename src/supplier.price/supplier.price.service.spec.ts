@@ -2,7 +2,7 @@ import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { SupplierPriceService } from './supplier.price.service';
 import { SupplierPriceStrategyRegistry } from './supplier.price.strategy.registry';
-import { DefaultMarkup } from './strategies/default.markup';
+import { CompelMarkup } from './strategies/compel.markup';
 import { ValidateBatchCommand } from './commands/validate-batch.command';
 import { ConvertCurrencyCommand } from './commands/convert-currency.command';
 import { AddDeliveryCommand } from './commands/add-delivery.command';
@@ -41,7 +41,7 @@ describe('SupplierPriceService (цепочка цен поставщиков)', 
             providers: [
                 SupplierPriceService,
                 SupplierPriceStrategyRegistry,
-                DefaultMarkup,
+                CompelMarkup,
                 ValidateBatchCommand,
                 ConvertCurrencyCommand,
                 AddDeliveryCommand,
@@ -49,12 +49,13 @@ describe('SupplierPriceService (цепочка цен поставщиков)', 
                 BuildResponseCommand,
                 { provide: PriceCalculationHelper, useValue: helper },
                 { provide: SyliusPriceService, useValue: sylius },
+                { provide: ConfigService, useValue: config },
             ],
         }).compile();
         service = module.get(SupplierPriceService);
     });
 
-    it('1N4007 у Компэла: $0.0186 → рубли по ЦБ+2%, доставка 0, наценка как у наших (дешёвое — больше)', async () => {
+    it('1N4007 у Компэла: $0.0186 → рубли по ЦБ+2%, доставка 0, наценка Компэла 4/8/15 со страховкой 10 ₽', async () => {
         const { prices, errors } = await service.calculate({
             rates: RATES,
             items: [{ supplier: 'compel', code: '1N4007', price: 0.0186, currency: 'USD' }],
@@ -63,10 +64,8 @@ describe('SupplierPriceService (цепочка цен поставщиков)', 
         const p = prices[0];
         expect(p.incoming_price).toBeCloseTo(1.53, 2); // 0.0186 × 80.54 × 1.02
         expect(p.delivery).toBe(0);
-        // Цена больше нуля, минимальная ≤ обычная ≤ зачёркнутая, и на минимальной остаётся не меньше 20 ₽ прибыли
-        expect(p.min_price).toBeGreaterThan(0);
-        expect(p.price).toBeGreaterThanOrEqual(p.min_price);
-        expect(p.old_price).toBeGreaterThanOrEqual(p.price);
+        expect([p.min_perc, p.perc, p.old_perc]).toEqual([4, 8, 15]);
+        // Дешёвая деталь: все три цены упираются в страховку — на минимальной ровно не меньше 10 ₽ прибыли
         const priceable = {
             offer_id: '1N4007',
             incoming_price: p.incoming_price,
@@ -79,25 +78,25 @@ describe('SupplierPriceService (цепочка цен поставщиков)', 
             adv_perc: 0,
             sum_pack: 10,
         };
-        expect(
-            calculatePay(priceable, sylius.getObtainCoeffs(), p.min_price).pay - p.incoming_price,
-        ).toBeGreaterThanOrEqual(20);
-        expect(p.min_perc).toBeGreaterThan(100); // дешёвой детали процент большой (подбор под 20 ₽ прибыли)
+        const profit = (sum: number) => calculatePay(priceable, sylius.getObtainCoeffs(), sum).pay - p.incoming_price;
+        expect(profit(p.min_price)).toBeGreaterThanOrEqual(10);
+        expect(profit(p.min_price - 1)).toBeLessThan(10);
+        expect(p.price).toBe(p.min_price);
+        expect(p.old_price).toBe(p.min_price);
     });
 
-    it('STM32F103C8T6 у Компэла: $2.9 → процент меньше, чем у дешёвого', async () => {
+    it('STM32F103C8T6 у Компэла: $2.9 → цены ровно по процентам 4/8/15, страховка не мешает', async () => {
         const { prices } = await service.calculate({
             rates: RATES,
-            items: [
-                { supplier: 'compel', code: 'STM32F103C8T6', price: 2.9, currency: 'USD' },
-                { supplier: 'compel', code: '1N4007', price: 0.0186, currency: 'USD' },
-            ],
+            items: [{ supplier: 'compel', code: 'STM32F103C8T6', price: 2.9, currency: 'USD' }],
         });
-        const stm = prices.find((p) => p.code === 'STM32F103C8T6');
-        const diode = prices.find((p) => p.code === '1N4007');
-        expect(stm.incoming_price).toBeCloseTo(2.9 * 80.54 * 1.02, 2); // 238.24
-        expect(stm.min_perc).toBeLessThan(diode.min_perc);
-        expect(stm.price).toBeGreaterThan(stm.incoming_price);
+        const stm = prices[0];
+        const cost = 2.9 * 80.54 * 1.02; // 238.24
+        expect(stm.incoming_price).toBeCloseTo(cost, 2);
+        // Налог 6 %, этикетка 2 + упаковка 10 из коэффициентов теста
+        expect(stm.min_price).toBe(Math.ceil((cost * 1.04 + 12) / 0.94));
+        expect(stm.price).toBe(Math.ceil((cost * 1.08 + 12) / 0.94));
+        expect(stm.old_price).toBe(Math.ceil((cost * 1.15 + 12) / 0.94));
     });
 
     it('ступени поставщика: каждая считается той же наценкой, дорожающие отбрасываются', async () => {
@@ -118,9 +117,36 @@ describe('SupplierPriceService (цепочка цен поставщиков)', 
             ],
         });
         const tiers = prices[0].tiers;
-        expect(tiers.map((t) => t.quantity)).toEqual([100, 1000]);
+        // Закупка 0,82 ₽ — до первой ступени поставщика (100) встаёт своя 10 шт
+        expect(tiers.map((t) => t.quantity)).toEqual([10, 100, 1000]);
         expect(tiers[0].price).toBeLessThanOrEqual(prices[0].price);
         expect(tiers[1].price).toBeLessThanOrEqual(tiers[0].price);
+        expect(tiers[2].price).toBeLessThanOrEqual(tiers[1].price);
+    });
+
+    it('ступени поставщика только от большого количества: свои 10/100/1000 встают перед ними', async () => {
+        const { prices, errors } = await service.calculate({
+            rates: RATES,
+            items: [
+                {
+                    supplier: 'compel',
+                    code: 'CHEAP',
+                    price: 0.0033,
+                    currency: 'USD',
+                    tiers: [
+                        { quantity: 7522, price: 0.0031 },
+                        { quantity: 12832, price: 0.0029 },
+                    ],
+                },
+            ],
+        });
+        expect(errors).toEqual([]);
+        const p = prices[0];
+        expect(p.tiers.map((t) => t.quantity)).toEqual([10, 100, 1000, 7522, 12832]);
+        p.tiers.reduce((prev, t) => {
+            expect(t.price).toBeLessThanOrEqual(prev);
+            return t.price;
+        }, p.price);
     });
 
     it('одна цена у поставщика: ступени свои — закупка до 1 ₽ 10/100/1000, остальным по рознице (200–1000 ₽ → 3/10)', async () => {
