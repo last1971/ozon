@@ -20,7 +20,7 @@ import {
  * до 1 ₽ — 10/100/1000 шт.
  * Кратность (товар продаётся только пачками): цена и страховка прибыли считаются на пачку и делятся на штуки
  * (владелец 28.10.2026: CBB61 по 10 шт показывал 44 ₽ за штуку при 34,15 ₽ за штуку в пачке); свои ступени —
- * только больше пачки.
+ * от 3 и от 10 пачек (владелец 28.10.2026: IDC-10F по 180 шт был без скидок).
  */
 @Injectable()
 export class ApplyMarkupCommand implements ICommandAsync<ISupplierPriceContext> {
@@ -50,7 +50,12 @@ export class ApplyMarkupCommand implements ICommandAsync<ISupplierPriceContext> 
                 // 10/100/1000 по закупке за штуку); ступени поставщика остаются как есть
                 const supplierTiers = item.tiersRub ?? [];
                 const firstSupplierQuantity = Math.min(...supplierTiers.map((t) => t.quantity));
-                const ownParties: PartyPriceDto[] = supplierThresholds(main.price, unitCost, this.tierDefaults)
+                // Пачками: ступени от 3 и 10 пачек (ruelectronics даёт опт от 3 упаковок); поштучно — свои пороги
+                const thresholds =
+                    multiple > 1
+                        ? [3 * multiple, 10 * multiple]
+                        : supplierThresholds(main.price, unitCost, this.tierDefaults);
+                const ownParties: PartyPriceDto[] = thresholds
                     .filter((quantity) => quantity < firstSupplierQuantity && quantity > multiple)
                     .map((quantity) => {
                         const party = markup.apply(code, unitCost * quantity);

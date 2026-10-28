@@ -197,7 +197,9 @@ describe('SupplierPriceService (цепочка цен поставщиков)', 
         expect(ten.price).toBe(Math.ceil(whole.prices[0].price * 10) / 100);
         expect(ten.min_price).toBeLessThanOrEqual(ten.price);
         expect(ten.old_price).toBeGreaterThanOrEqual(ten.price);
-        expect(ten.tiers.every((t) => t.quantity > 10)).toBe(true);
+        expect(ten.tiers.map((t) => t.quantity)).toEqual([30, 100]);
+        expect(ten.tiers[0].price).toBeLessThan(ten.price);
+        expect(ten.tiers[1].price).toBeLessThan(ten.tiers[0].price);
     });
 
     it('ошибки по строкам, остальные считаются: неизвестный поставщик, нет курса, цена 0', async () => {
