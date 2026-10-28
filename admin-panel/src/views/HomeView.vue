@@ -13,6 +13,7 @@ import TnvedSync from "@/components/TnvedSync.vue";
 import Dict from "@/components/Dict.vue";
 import FboShortage from "@/components/FboShortage.vue";
 import MpReturns from "@/components/MpReturns.vue";
+import FboSupplyQr from "@/components/FboSupplyQr.vue";
 import OzonPromoSweep from "@/components/OzonPromoSweep.vue";
 import { postingStore } from "@/stores/postings";
 import { useRoute, useRouter } from "vue-router";
@@ -32,6 +33,7 @@ const groups = [
         { value: 'ozon-fbs-labels', title: 'OZON FBS этикетки' },
         { value: 'supply-wb-fbs', title: 'WB FBS поставка' },
         { value: 'fbo-shortage', title: 'Недобор FBO' },
+        { value: 'fbo-supply-qr', title: 'QR поставки FBO' },
     ] },
     { value: 'cards', title: 'Карточки', tabs: [
         { value: 'ozon-product', title: 'Добавить товар на Озон' },
@@ -136,6 +138,9 @@ function onScanSuccess(order: string) {
                 </v-tabs-window-item>
                 <v-tabs-window-item value="fbo-shortage">
                     <FboShortage class="pa-2"/>
+                </v-tabs-window-item>
+                <v-tabs-window-item value="fbo-supply-qr">
+                    <FboSupplyQr class="pa-2"/>
                 </v-tabs-window-item>
                 <v-tabs-window-item value="mp-returns">
                     <MpReturns class="pa-2"/>

@@ -14,6 +14,7 @@ import { VaultModule } from 'vault-module/lib/vault.module';
 import { PostingModule } from './posting/posting.module';
 import { InvoiceModule } from './invoice/invoice.module';
 import { MpReturnModule } from './mp-return/mp-return.module';
+import { SupplyQrModule } from './fbo-supply-qr/supply-qr.module';
 import { PriceModule } from './price/price.module';
 import { JobModule } from './job/job.module';
 import { GoodModule } from './good/good.module';
@@ -139,6 +140,7 @@ import JSONbig from 'json-bigint';
         PostingModule,
         InvoiceModule,
         MpReturnModule,
+        SupplyQrModule,
         PriceModule,
         GoodModule,
         OrderModule,

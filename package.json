@@ -46,6 +46,7 @@
     "https-proxy-agent": "^7.0.6",
     "jimp": "^1.6.0",
     "json-bigint": "^1.0.0",
+    "jszip": "^3.10.1",
     "nestjs-cacheable": "^1.0.0",
     "node-firebird": "^1.1.9",
     "nodemailer": "^6.9.15",
