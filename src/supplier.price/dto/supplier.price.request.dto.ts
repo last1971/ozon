@@ -54,6 +54,12 @@ export class SupplierPriceItemDto {
     @ValidateNested({ each: true })
     @Type(() => SupplierTierInDto)
     tiers?: SupplierTierInDto[];
+
+    @ApiPropertyOptional({ description: 'Кратность: продаётся только пачками по столько штук', example: 10 })
+    @IsOptional()
+    @IsInt()
+    @Min(1)
+    multiple?: number;
 }
 
 /**

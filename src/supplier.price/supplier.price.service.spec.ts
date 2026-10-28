@@ -175,6 +175,31 @@ describe('SupplierPriceService (цепочка цен поставщиков)', 
         expect(stm.tiers[0].price).toBeLessThanOrEqual(stm.price);
     });
 
+    it('кратность: цена и страховка на пачку, за штуку — как в ступени «от пачки»; свои ступени только больше пачки', async () => {
+        // CBB61 2 мкФ у ruelectronics: VIP 28,61 ₽, продаётся по 10 шт
+        const single = await service.calculate({
+            rates: RATES,
+            items: [{ supplier: 'ruelectronics', code: '100018', price: 28.61, currency: 'RUB' }],
+        });
+        const pack = await service.calculate({
+            rates: RATES,
+            items: [{ supplier: 'ruelectronics', code: '100018', price: 28.61, currency: 'RUB', multiple: 10 }],
+        });
+        // та же пачка как одна вещь за 286,10 ₽
+        const whole = await service.calculate({
+            rates: RATES,
+            items: [{ supplier: 'ruelectronics', code: '100018', price: 286.1, currency: 'RUB' }],
+        });
+        const one = single.prices[0];
+        const ten = pack.prices[0];
+        expect(pack.errors).toEqual([]);
+        expect(ten.price).toBeLessThan(one.price);
+        expect(ten.price).toBe(Math.ceil(whole.prices[0].price * 10) / 100);
+        expect(ten.min_price).toBeLessThanOrEqual(ten.price);
+        expect(ten.old_price).toBeGreaterThanOrEqual(ten.price);
+        expect(ten.tiers.every((t) => t.quantity > 10)).toBe(true);
+    });
+
     it('ошибки по строкам, остальные считаются: неизвестный поставщик, нет курса, цена 0', async () => {
         const { prices, errors } = await service.calculate({
             rates: RATES,

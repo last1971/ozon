@@ -18,6 +18,9 @@ import {
  * цены или дорожающие с количеством — как у наших товаров. Ниже первой ступени поставщика (или при одной цене)
  * ступени свои, по правилу наших товаров: пороги от розничной цены (SYLIUS_TIER_DEFAULTS); деталь с закупкой
  * до 1 ₽ — 10/100/1000 шт.
+ * Кратность (товар продаётся только пачками): цена и страховка прибыли считаются на пачку и делятся на штуки
+ * (владелец 28.10.2026: CBB61 по 10 шт показывал 44 ₽ за штуку при 34,15 ₽ за штуку в пачке); свои ступени —
+ * только больше пачки.
  */
 @Injectable()
 export class ApplyMarkupCommand implements ICommandAsync<ISupplierPriceContext> {
@@ -39,7 +42,8 @@ export class ApplyMarkupCommand implements ICommandAsync<ISupplierPriceContext> 
             const markup = this.registry.get(supplier).markup;
             try {
                 const unitCost = item.incomingRub + item.deliveryRub;
-                const main = markup.apply(code, unitCost);
+                const multiple = Math.max(1, Math.floor(item.input.multiple ?? 1));
+                const main = perUnit(markup.apply(code, unitCost * multiple), multiple);
                 // Ступень — одна продажа партии: закупка партии целиком, упаковка и этикетка один раз (как у наших
                 // товаров в buildPriceables), buildTiers потом делит на количество
                 // Свои пороги — только ниже первой ступени поставщика (Компэл даёт скидку от 7522 шт — до неё
@@ -47,7 +51,7 @@ export class ApplyMarkupCommand implements ICommandAsync<ISupplierPriceContext> 
                 const supplierTiers = item.tiersRub ?? [];
                 const firstSupplierQuantity = Math.min(...supplierTiers.map((t) => t.quantity));
                 const ownParties: PartyPriceDto[] = supplierThresholds(main.price, unitCost, this.tierDefaults)
-                    .filter((quantity) => quantity < firstSupplierQuantity)
+                    .filter((quantity) => quantity < firstSupplierQuantity && quantity > multiple)
                     .map((quantity) => {
                         const party = markup.apply(code, unitCost * quantity);
                         return { quantity, price: party.price, min_price: party.min_price };
@@ -79,6 +83,13 @@ export class ApplyMarkupCommand implements ICommandAsync<ISupplierPriceContext> 
         }
         return context;
     }
+}
+
+/** Цены пачки → за штуку, вверх до копейки; без кратности — как есть. */
+function perUnit<T extends { price: number; old_price: number; min_price: number }>(party: T, multiple: number): T {
+    if (multiple === 1) return party;
+    const unit = (value: number) => Math.ceil(Math.round((value / multiple) * 1e6) / 1e4) / 100;
+    return { ...party, price: unit(party.price), old_price: unit(party.old_price), min_price: unit(party.min_price) };
 }
 
 function round2(value: number): number {
