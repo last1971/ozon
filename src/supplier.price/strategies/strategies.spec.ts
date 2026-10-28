@@ -2,6 +2,8 @@ import { CbrPlusPercentCurrency } from './cbr.plus.percent.currency';
 import { RubAsIsCurrency } from './rub.as.is.currency';
 import { CompelDeliveryCost } from './compel.delivery.cost';
 import { CompelMarkup } from './compel.markup';
+import { RuelectronicsMarkup } from './ruelectronics.markup';
+import { RuelectronicsDeliveryCost } from './ruelectronics.delivery.cost';
 import { ConfigService } from '@nestjs/config';
 import { PriceCalculationHelper } from '../../helpers/price/price.calculation.helper';
 import { SyliusPriceService } from '../../sylius.price/sylius.price.service';
@@ -80,5 +82,23 @@ describe('кирпич наценки Компэла', () => {
     it('кривые настройки — ошибка при старте, не молча', () => {
         expect(() => markup({ COMPEL_MIN_PERC: '9' })).toThrow('минимальная ≤ обычная ≤ зачёркнутая');
         expect(() => markup({ COMPEL_MARKUP_PERC: 'abc' })).toThrow('должны быть числами');
+    });
+
+    it('ruelectronics — те же 15/8/4 от VIP-цены, но свои настройки: цифры Компэла его не трогают', () => {
+        const ruel = (env: Record<string, unknown> = {}) =>
+            new RuelectronicsMarkup(helper, sylius, {
+                get: (key: string, def?: unknown) => env[key] ?? def,
+            } as ConfigService);
+        // CBB61 2 мкФ 450 В, VIP 28,61 ₽ — те же цены, что дал бы Компэл
+        expect(ruel().apply('100018', 28.61)).toEqual(markup().apply('100018', 28.61));
+        expect(ruel({ COMPEL_MARKUP_PERC: '20' }).apply('X', 329.42).price).toBe(400);
+        expect(ruel({ RUELECTRONICS_MARKUP_PERC: '10' }).apply('X', 329.42).price).toBe(408); // ceil(329,42 × 1,1 / 0,89)
+        expect(() => ruel({ RUELECTRONICS_MIN_PERC: '9' })).toThrow('Наценка ruelectronics');
+    });
+});
+
+describe('кирпич доставки ruelectronics', () => {
+    it('пока 0', () => {
+        expect(new RuelectronicsDeliveryCost().costRub(28.61, '100018')).toBe(0);
     });
 });

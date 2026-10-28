@@ -6,6 +6,7 @@ import { SupplierPriceService } from './supplier.price.service';
 import { SupplierPriceStrategyRegistry } from './supplier.price.strategy.registry';
 import { DefaultMarkup } from './strategies/default.markup';
 import { CompelMarkup } from './strategies/compel.markup';
+import { RuelectronicsMarkup } from './strategies/ruelectronics.markup';
 import { ValidateBatchCommand } from './commands/validate-batch.command';
 import { ConvertCurrencyCommand } from './commands/convert-currency.command';
 import { AddDeliveryCommand } from './commands/add-delivery.command';
@@ -20,6 +21,7 @@ import { BuildResponseCommand } from './commands/build-response.command';
         SupplierPriceStrategyRegistry,
         DefaultMarkup,
         CompelMarkup,
+        RuelectronicsMarkup,
         ValidateBatchCommand,
         ConvertCurrencyCommand,
         AddDeliveryCommand,

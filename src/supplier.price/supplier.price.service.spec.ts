@@ -3,6 +3,7 @@ import { ConfigService } from '@nestjs/config';
 import { SupplierPriceService } from './supplier.price.service';
 import { SupplierPriceStrategyRegistry } from './supplier.price.strategy.registry';
 import { CompelMarkup } from './strategies/compel.markup';
+import { RuelectronicsMarkup } from './strategies/ruelectronics.markup';
 import { ValidateBatchCommand } from './commands/validate-batch.command';
 import { ConvertCurrencyCommand } from './commands/convert-currency.command';
 import { AddDeliveryCommand } from './commands/add-delivery.command';
@@ -42,6 +43,7 @@ describe('SupplierPriceService (цепочка цен поставщиков)', 
                 SupplierPriceService,
                 SupplierPriceStrategyRegistry,
                 CompelMarkup,
+                RuelectronicsMarkup,
                 ValidateBatchCommand,
                 ConvertCurrencyCommand,
                 AddDeliveryCommand,
