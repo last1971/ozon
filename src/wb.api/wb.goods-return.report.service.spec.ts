@@ -1,5 +1,5 @@
 import { BadGatewayException } from '@nestjs/common';
-import { WbGoodsReturnReportService } from './wb.goods-return.report.service';
+import { WbGoodsReturnReportService, wbReturnCompletedAt } from './wb.goods-return.report.service';
 
 jest.mock('../helpers/decorators/rate-limit.decorator', () => ({ RateLimit: () => () => undefined }));
 
@@ -16,6 +16,12 @@ const apiRow = (shkId: number) => ({
 });
 
 describe('WbGoodsReturnReportService', () => {
+    it('разбирает completedDt нового отчёта с пробелом как московское время', () => {
+        const row = { status: 'Выдано', completedDt: '2026-10-29 06:32:37' } as any;
+
+        expect(wbReturnCompletedAt(row)?.toISO()).toBe('2026-10-29T06:32:37.000+03:00');
+    });
+
     it('читает обе вкладки, листает ответ и приводит новые имена полей к общей модели', async () => {
         const api = {
             method: jest

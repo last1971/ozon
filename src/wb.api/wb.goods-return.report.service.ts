@@ -12,7 +12,7 @@ const PAGE_SIZE = 1000;
 const REPORT_STATUSES = ['active', 'archive'] as const;
 /** Статус «забрали с ПВЗ» — его и показывает список приёма. */
 export const WB_RETURN_ISSUED = 'Выдано';
-/** Даты отчёта без пояса — московские (`2026-10-09T09:37:11`). */
+/** Даты отчёта без пояса — московские; новая ручка возвращает `completedDt` с пробелом вместо `T`. */
 export const WB_ZONE = 'Europe/Moscow';
 
 export interface WbGoodsReturnRow {
@@ -119,5 +119,7 @@ export class WbGoodsReturnReportService {
 export function wbReturnCompletedAt(r: WbGoodsReturnRow): DateTime | null {
     if (r.status !== WB_RETURN_ISSUED || !r.completedDt) return null;
     const at = DateTime.fromISO(r.completedDt, { zone: WB_ZONE });
-    return at.isValid ? at : null;
+    if (at.isValid) return at;
+    const sqlDate = DateTime.fromSQL(r.completedDt, { zone: WB_ZONE });
+    return sqlDate.isValid ? sqlDate : null;
 }
