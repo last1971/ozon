@@ -2,7 +2,7 @@ import { BadGatewayException } from '@nestjs/common';
 import { WbGoodsReturnRow, WbReturnSource, toReturnLine } from './wb.return.source';
 import { WbGoodsReturnReportService } from '../../wb.api/wb.goods-return.report.service';
 
-// Паузы между отрезками отчёта в тестах не нужны.
+// Паузы между страницами отчёта в тестах не нужны.
 jest.mock('../../helpers/decorators/rate-limit.decorator', () => ({ RateLimit: () => () => undefined }));
 
 /** Строки отчёта кабинета опта 19.10.2026: «Выдано» и «В пути» (реле, заказ 5682378996). */
@@ -32,7 +32,14 @@ const card = { nmID: 1102521843, vendorCode: '531720', title: 'Динамик 8 
 
 describe('WbReturnSource', () => {
     const make = (
-        report: any = { report: [issued, onTheWay] },
+        report: any = {
+            count: 2,
+            report: [issued, onTheWay].map(({ status, reason, ...row }) => ({
+                ...row,
+                returnStatus: status,
+                returnReason: reason,
+            })),
+        },
         invoices: Record<string, boolean> = { '5925944066': true, '5682378996': true },
         services = ['ozon', 'wb'],
     ) => {
@@ -78,16 +85,18 @@ describe('WbReturnSource', () => {
         await expect(source.find({ kind: 'extId', value: '1' })).rejects.toThrow('ВБ: отчёт возвратов не прочитан');
     });
 
-    it('отчёт — три отрезка по 31 день подряд, одно чтение на список и скан (кэш)', async () => {
+    it('отчёт — active и archive за 93 дня, одно чтение на список и скан (кэш)', async () => {
         const { source, api } = make();
         await source.listReceived(new Date('2026-10-01'), new Date('2026-10-20'));
         await source.find({ kind: 'extId', value: '55601576448' });
-        expect(api.method).toHaveBeenCalledTimes(3);
-        const ranges = api.method.mock.calls.map((c: any[]) => c[2]);
-        for (const { dateFrom, dateTo } of ranges) {
-            expect((Date.parse(dateTo) - Date.parse(dateFrom)) / 864e5).toBe(30);
+        expect(api.method).toHaveBeenCalledTimes(2);
+        const params = api.method.mock.calls.map((c: any[]) => c[2]);
+        expect(params.map(({ status }) => status)).toEqual(['active', 'archive']);
+        for (const { dateFrom, dateTo, limit, offset } of params) {
+            expect((Date.parse(dateTo) - Date.parse(dateFrom)) / 864e5).toBe(92);
+            expect(limit).toBe(1000);
+            expect(offset).toBe(0);
         }
-        expect(Date.parse(ranges[0].dateFrom) - Date.parse(ranges[1].dateTo)).toBe(864e5);
     });
 
     it('список — только «Выдано» с датой забора в окне', async () => {
@@ -130,10 +139,10 @@ describe('WbReturnSource', () => {
         const { source, api } = make();
         const now = jest.spyOn(Date, 'now').mockReturnValue(Date.parse('2026-10-19T10:00:00Z'));
         expect(await source.find({ kind: 'extId', value: '99999999999' })).toEqual([]);
-        expect(api.method).toHaveBeenCalledTimes(3);
+        expect(api.method).toHaveBeenCalledTimes(2);
         now.mockReturnValue(Date.parse('2026-10-19T10:00:31Z'));
         await source.find({ kind: 'extId', value: '99999999999' });
-        expect(api.method).toHaveBeenCalledTimes(6);
+        expect(api.method).toHaveBeenCalledTimes(4);
         now.mockRestore();
     });
 

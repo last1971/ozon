@@ -5,11 +5,11 @@ import { RateLimit } from '../helpers/decorators/rate-limit.decorator';
 import { ReturnHistoryCache } from '../mp-return/sources/return-history.cache';
 
 /** Отчёт ВБ «Возвраты и перемещения»: одна строка — одна штука. */
-const REPORT_URL = 'https://seller-analytics-api.wildberries.ru/api/v1/analytics/goods-return';
-/** ВБ отдаёт не больше 31 дня за запрос и режет период по дате СОЗДАНИЯ возврата (orderDt), не по дате забора. */
-const CHUNK_DAYS = 31;
-/** Сколько отрезков от сегодня держим: забирают через 3–10 дней после заказа (19.10.2026), запас — три месяца. */
-const HISTORY_CHUNKS = 3;
+const REPORT_URL = 'https://seller-analytics-api.wildberries.ru/api/analytics/v1/item-returns';
+/** Историю держим 93 дня: новая версия отчёта принимает этот период одним запросом на статус. */
+const HISTORY_DAYS = 93;
+const PAGE_SIZE = 1000;
+const REPORT_STATUSES = ['active', 'archive'] as const;
 /** Статус «забрали с ПВЗ» — его и показывает список приёма. */
 export const WB_RETURN_ISSUED = 'Выдано';
 /** Даты отчёта без пояса — московские (`2026-10-09T09:37:11`). */
@@ -31,10 +31,15 @@ export interface WbGoodsReturnRow {
     completedDt: string | null;
 }
 
+interface WbGoodsReturnApiRow extends Omit<WbGoodsReturnRow, 'status' | 'reason'> {
+    returnStatus: string;
+    returnReason?: string | null;
+}
+
 /**
- * Отчёт возвратов ВБ целиком за HISTORY_CHUNKS отрезков, в памяти 5 минут.
+ * Отчёт возвратов ВБ за последние 93 дня, в памяти 5 минут.
  * ЕДИНСТВЕННЫЙ читатель отчёта: экран приёма (список и скан) и возвраты ВБ для
- * конвейера (listReturns) берут строки отсюда — один запрос в минуту на кабинет.
+ * конвейера (listReturns) берут строки отсюда — выборка и нормализация в одном месте.
  */
 @Injectable()
 export class WbGoodsReturnReportService {
@@ -53,23 +58,60 @@ export class WbGoodsReturnReportService {
 
     private async readHistory(): Promise<WbGoodsReturnRow[]> {
         const byShk = new Map<number, WbGoodsReturnRow>();
-        let to = DateTime.now().setZone(WB_ZONE).startOf('day');
-        for (let i = 0; i < HISTORY_CHUNKS; i++) {
-            const from = to.minus({ days: CHUNK_DAYS - 1 });
-            for (const row of await this.readChunk(from.toISODate(), to.toISODate())) byShk.set(row.shkId, row);
-            to = from.minus({ days: 1 });
+        const to = DateTime.now().setZone(WB_ZONE).startOf('day');
+        const from = to.minus({ days: HISTORY_DAYS - 1 });
+        for (const status of REPORT_STATUSES) {
+            for (const row of await this.readChunk(from.toISODate(), to.toISODate(), status)) {
+                byShk.set(row.shkId, row);
+            }
         }
         return [...byShk.values()];
     }
 
     @RateLimit(1000)
-    private async readChunk(dateFrom: string, dateTo: string): Promise<WbGoodsReturnRow[]> {
-        // WbApiService при ошибке не бросает, а отдаёт { status: 'NotOk' } — «не прочитали» ≠ «возвратов нет».
-        const res = await this.api.method(REPORT_URL, 'get', { dateFrom, dateTo }, true);
-        if (!Array.isArray(res?.report)) {
-            throw new BadGatewayException(`ВБ: отчёт возвратов не прочитан (${res?.error?.status ?? 'нет ответа'})`);
+    private async readChunk(
+        dateFrom: string,
+        dateTo: string,
+        status: (typeof REPORT_STATUSES)[number],
+    ): Promise<WbGoodsReturnRow[]> {
+        const rows: WbGoodsReturnRow[] = [];
+        let offset = 0;
+        while (true) {
+            const res = await this.api.method(
+                REPORT_URL,
+                'get',
+                { dateFrom, dateTo, status, limit: PAGE_SIZE, offset },
+                true,
+            );
+            // WB отвечает 204, когда в выбранном статусе и периоде нет возвратов.
+            if (res == null || res === '') return rows;
+            if (!Array.isArray(res?.report) || !Number.isInteger(res?.count)) {
+                throw new BadGatewayException(
+                    `ВБ: отчёт возвратов не прочитан (${res?.error?.status ?? 'нет ответа'})`,
+                );
+            }
+
+            const page = res.report as WbGoodsReturnApiRow[];
+            rows.push(...page.map((row) => this.toRow(row)));
+            offset += page.length;
+            if (!page.length || offset >= res.count) return rows;
         }
-        return res.report;
+    }
+
+    private toRow(row: WbGoodsReturnApiRow): WbGoodsReturnRow {
+        return {
+            shkId: row.shkId,
+            stickerId: row.stickerId,
+            orderId: row.orderId,
+            srid: row.srid,
+            nmId: row.nmId,
+            status: row.returnStatus,
+            returnType: row.returnType,
+            reason: row.returnReason ?? null,
+            orderDt: row.orderDt,
+            readyToReturnDt: row.readyToReturnDt,
+            completedDt: row.completedDt,
+        };
     }
 }
 
