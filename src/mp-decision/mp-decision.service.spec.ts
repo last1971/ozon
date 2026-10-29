@@ -387,7 +387,7 @@ describe('MpDecisionService — решающая таблица', () => {
             expect(decision.layer2[0]).toMatchObject({ actions: ['return-to-stock'], letter: true });
         });
 
-        it('возврат, TT=2 → ничего с кодом, письмо: откат только корректировкой УПД-2', () => {
+        it('возврат, TT=2 → ничего с кодом и без письма: код на балансе Ozon', () => {
             const decision = service.decide(
                 input({
                     kind: 'return',
@@ -395,7 +395,7 @@ describe('MpDecisionService — решающая таблица', () => {
                     codes: [code({ transferType: 2, status: 6, retireReason: 3 })],
                 }),
             );
-            expect(decision.layer2[0]).toMatchObject({ actions: [], letter: true });
+            expect(decision.layer2[0]).toMatchObject({ actions: [], letter: false });
         });
 
         it('возврат, код выведен по другой причине → ничего, письмо', () => {
