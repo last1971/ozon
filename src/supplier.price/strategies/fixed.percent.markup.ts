@@ -24,13 +24,19 @@ export class FixedPercentMarkup implements ISupplierMarkup {
         configService: ConfigService,
         prefix: string,
         label: string,
+        defaults: { min_perc: number; perc: number; old_perc: number; minProfitRub: number } = {
+            min_perc: 4,
+            perc: 8,
+            old_perc: 15,
+            minProfitRub: 10,
+        },
     ) {
         this.percents = {
-            min_perc: toNumber(configService.get(`${prefix}_MIN_PERC`, 4)),
-            perc: toNumber(configService.get(`${prefix}_MARKUP_PERC`, 8)),
-            old_perc: toNumber(configService.get(`${prefix}_OLD_PERC`, 15)),
+            min_perc: toNumber(configService.get(`${prefix}_MIN_PERC`, defaults.min_perc)),
+            perc: toNumber(configService.get(`${prefix}_MARKUP_PERC`, defaults.perc)),
+            old_perc: toNumber(configService.get(`${prefix}_OLD_PERC`, defaults.old_perc)),
         };
-        this.minProfitRub = toNumber(configService.get(`${prefix}_MIN_PROFIT_RUB`, 10));
+        this.minProfitRub = toNumber(configService.get(`${prefix}_MIN_PROFIT_RUB`, defaults.minProfitRub));
         const { min_perc, perc, old_perc } = this.percents;
         if (![min_perc, perc, old_perc, this.minProfitRub].every((v) => Number.isFinite(v) && v >= 0)) {
             throw new Error(`Наценка ${label}: ${prefix}_*_PERC и ${prefix}_MIN_PROFIT_RUB должны быть числами ≥ 0`);

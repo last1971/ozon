@@ -8,6 +8,8 @@ import { CompelMarkup } from './strategies/compel.markup';
 import { RubAsIsCurrency } from './strategies/rub.as.is.currency';
 import { RuelectronicsDeliveryCost } from './strategies/ruelectronics.delivery.cost';
 import { RuelectronicsMarkup } from './strategies/ruelectronics.markup';
+import { UnisvsDeliveryCost } from './strategies/unisvs.delivery.cost';
+import { UnisvsMarkup } from './strategies/unisvs.markup';
 
 export interface SupplierPriceStrategies {
     currency: ISupplierCurrency;
@@ -23,7 +25,7 @@ export interface SupplierPriceStrategies {
 export class SupplierPriceStrategyRegistry {
     private readonly strategies: Map<string, SupplierPriceStrategies>;
 
-    constructor(compelMarkup: CompelMarkup, ruelectronicsMarkup: RuelectronicsMarkup) {
+    constructor(compelMarkup: CompelMarkup, ruelectronicsMarkup: RuelectronicsMarkup, unisvsMarkup: UnisvsMarkup) {
         this.strategies = new Map<string, SupplierPriceStrategies>([
             [
                 'compel',
@@ -40,6 +42,14 @@ export class SupplierPriceStrategyRegistry {
                     currency: new RubAsIsCurrency(),
                     delivery: new RuelectronicsDeliveryCost(),
                     markup: ruelectronicsMarkup,
+                },
+            ],
+            [
+                'unisvs',
+                {
+                    currency: new RubAsIsCurrency(),
+                    delivery: new UnisvsDeliveryCost(),
+                    markup: unisvsMarkup,
                 },
             ],
         ]);

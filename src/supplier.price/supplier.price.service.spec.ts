@@ -4,6 +4,7 @@ import { SupplierPriceService } from './supplier.price.service';
 import { SupplierPriceStrategyRegistry } from './supplier.price.strategy.registry';
 import { CompelMarkup } from './strategies/compel.markup';
 import { RuelectronicsMarkup } from './strategies/ruelectronics.markup';
+import { UnisvsMarkup } from './strategies/unisvs.markup';
 import { ValidateBatchCommand } from './commands/validate-batch.command';
 import { ConvertCurrencyCommand } from './commands/convert-currency.command';
 import { AddDeliveryCommand } from './commands/add-delivery.command';
@@ -44,6 +45,7 @@ describe('SupplierPriceService (цепочка цен поставщиков)', 
                 SupplierPriceStrategyRegistry,
                 CompelMarkup,
                 RuelectronicsMarkup,
+                UnisvsMarkup,
                 ValidateBatchCommand,
                 ConvertCurrencyCommand,
                 AddDeliveryCommand,
@@ -85,6 +87,35 @@ describe('SupplierPriceService (цепочка цен поставщиков)', 
         expect(profit(p.min_price - 1)).toBeLessThan(10);
         expect(p.price).toBe(p.min_price);
         expect(p.old_price).toBe(p.min_price);
+    });
+
+    it('Uniservice: рубли без конвертации, 20/10/5 % и минимум прибыли 20 ₽', async () => {
+        const { prices, errors } = await service.calculate({
+            rates: RATES,
+            items: [{ supplier: 'unisvs', code: '111884', price: 94.59, currency: 'RUB' }],
+        });
+        expect(errors).toEqual([]);
+        expect(prices).toHaveLength(1);
+        const price = prices[0];
+        expect(price.incoming_price).toBe(94.59);
+        expect(price.delivery).toBe(0);
+        expect([price.old_perc, price.perc, price.min_perc]).toEqual([20, 10, 5]);
+        expect(price.old_price).toBeGreaterThanOrEqual(price.price);
+        expect(price.price).toBeGreaterThanOrEqual(price.min_price);
+        const priceable = {
+            offer_id: '111884',
+            incoming_price: price.incoming_price,
+            available_price: 0,
+            fbs_direct_flow_trans_max_amount: 0,
+            sales_percent: 0,
+            min_perc: 0,
+            perc: 0,
+            old_perc: 0,
+            adv_perc: 0,
+            sum_pack: 10,
+        };
+        const pay = calculatePay(priceable, sylius.getObtainCoeffs(), price.min_price);
+        expect(pay.pay - price.incoming_price).toBeGreaterThanOrEqual(20);
     });
 
     it('STM32F103C8T6 у Компэла: $2.9 → цены ровно по процентам 4/8/15, страховка не мешает', async () => {
