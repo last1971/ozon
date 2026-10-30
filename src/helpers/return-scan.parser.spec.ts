@@ -14,6 +14,11 @@ describe('parseReturnScan', () => {
         ['VOZ_FBS_27059326', { kind: 'barcode', value: 'VOZ_FBS_27059326' }],
         ['мщя_аиы_27059326', { kind: 'barcode', value: 'VOZ_FBS_27059326' }],
         ['62026013058-1', { kind: 'barcode', value: '62026013058-1' }],
+        // стикеры ВБ: barcode из API стикеров → partA+partB
+        ['*DPra4ocl', { kind: 'extId', value: '55748256391' }],
+        [' *DbahpmVT ', { kind: 'extId', value: '58898622053' }],
+        ['*DZ+0VYM5', { kind: 'extId', value: '58513970563' }],
+        ['*DZ/YWSh0', { kind: 'extId', value: '58516330792' }],
     ])('%s', (raw, expected) => {
         expect(parseReturnScan(raw)).toEqual(expected);
     });
