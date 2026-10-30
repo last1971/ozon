@@ -46,6 +46,23 @@ describe('extractKi', () => {
         expect(extractKi(raw)).toBe('0104711287492735215)M/1CtML//vOkRKWW(l');
     });
 
+    describe('скобки в серийнике (код 3668, 550618, 30.10.2026)', () => {
+        const KI86 = '0100400004388195215Bo5(86)hVXueWA)Xuwb';
+        const CRYPTO = 'Em3O1cHhcV6UFzN41Pc7SCmXqcGJCrxTGlt7auDXlhY=';
+
+        it('плоский скан не теряет «(86)»', () => {
+            expect(extractKi(KI86 + '91EE1292' + CRYPTO)).toBe(KI86);
+        });
+
+        it('скобочный скан снимает только маркеры КМ', () => {
+            expect(extractKi('(01)00400004388195(21)5Bo5(86)hVXueWA)Xuwb(91)EE12(92)' + CRYPTO)).toBe(KI86);
+        });
+
+        it('скобочный скан с GS', () => {
+            expect(extractKi('(01)00400004388195(21)5Bo5(86)hVXueWA)Xuwb\u001d(91)EE12\u001d(92)' + CRYPTO)).toBe(KI86);
+        });
+    });
+
     it('обрезает trim пробелы', () => {
         expect(extractKi('  ' + KI + '  ')).toBe(KI);
     });

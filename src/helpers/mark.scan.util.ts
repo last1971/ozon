@@ -21,8 +21,11 @@ export function extractKi(rawScan: string): string {
     if (!rawScan) throw new BadRequestException('Пустой код маркировки');
 
     // (1) скобочный формат сканера: (01)..(21)..(91).. -> плоский вид.
-    // Убираем только маркеры AI вида "(NN)", данные не трогаем.
-    let s = rawScan.trim().replace(/\((\d{2})\)/g, '$1');
+    // 2026-10-30 (changed): только у скана, начинающегося с "(01)", и только маркеры КМ
+    // (01)(21)(91)(92)(93) — скобки в серийнике законны («5Bo5(86)hV…» терял «(86)»).
+    // То же правило в Delphi: mark_scan_util.StripAiBrackets.
+    let s = rawScan.trim();
+    if (s.startsWith('(01)')) s = s.replace(/\((01|21|91|92|93)\)/g, '$1');
 
     // (2) разделитель GS / ALT_GS
     const sepIdx = [s.indexOf(GS), s.indexOf(ALT_GS)].filter((i) => i > 0).sort((a, b) => a - b)[0];
