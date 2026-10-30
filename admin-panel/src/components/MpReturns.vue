@@ -22,7 +22,7 @@ const isMarkScan = (text: string) => /^\(?01\)?\d{14}\(?21\)?/.test(text.trim())
 function scannedPieces(cards: ReturnCard[]): number {
     const codes = cards.filter((c) => c.marksRequired).flatMap((c) => c.codes);
     return store.markScans.reduce((sum, raw) => {
-        const code = codes.find((k) => raw.trim().startsWith(k.ki) || raw.replace(/\((\d{2})\)/g, '$1').startsWith(k.ki));
+        const code = codes.find((k) => raw.trim().startsWith(k.ki) || (raw.trim().startsWith('(01)') && raw.trim().replace(/\((01|21|91|92|93)\)/g, '$1').startsWith(k.ki)));
         return sum + (code?.quantity ?? 0);
     }, 0);
 }
