@@ -8,6 +8,7 @@ import { DefaultMarkup } from './strategies/default.markup';
 import { CompelMarkup } from './strategies/compel.markup';
 import { RuelectronicsMarkup } from './strategies/ruelectronics.markup';
 import { UnisvsMarkup } from './strategies/unisvs.markup';
+import { PromelecMarkup } from './strategies/promelec.markup';
 import { ValidateBatchCommand } from './commands/validate-batch.command';
 import { ConvertCurrencyCommand } from './commands/convert-currency.command';
 import { AddDeliveryCommand } from './commands/add-delivery.command';
@@ -24,6 +25,7 @@ import { BuildResponseCommand } from './commands/build-response.command';
         CompelMarkup,
         RuelectronicsMarkup,
         UnisvsMarkup,
+        PromelecMarkup,
         ValidateBatchCommand,
         ConvertCurrencyCommand,
         AddDeliveryCommand,

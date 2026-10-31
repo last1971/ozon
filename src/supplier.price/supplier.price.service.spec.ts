@@ -5,6 +5,7 @@ import { SupplierPriceStrategyRegistry } from './supplier.price.strategy.registr
 import { CompelMarkup } from './strategies/compel.markup';
 import { RuelectronicsMarkup } from './strategies/ruelectronics.markup';
 import { UnisvsMarkup } from './strategies/unisvs.markup';
+import { PromelecMarkup } from './strategies/promelec.markup';
 import { ValidateBatchCommand } from './commands/validate-batch.command';
 import { ConvertCurrencyCommand } from './commands/convert-currency.command';
 import { AddDeliveryCommand } from './commands/add-delivery.command';
@@ -46,6 +47,7 @@ describe('SupplierPriceService (цепочка цен поставщиков)', 
                 CompelMarkup,
                 RuelectronicsMarkup,
                 UnisvsMarkup,
+                PromelecMarkup,
                 ValidateBatchCommand,
                 ConvertCurrencyCommand,
                 AddDeliveryCommand,
@@ -87,6 +89,16 @@ describe('SupplierPriceService (цепочка цен поставщиков)', 
         expect(profit(p.min_price - 1)).toBeLessThan(10);
         expect(p.price).toBe(p.min_price);
         expect(p.old_price).toBe(p.min_price);
+    });
+
+    it('Promelec: закупка в рублях без конвертации, отдельная наценка 4/8/15 и страховка 10 ₽', async () => {
+        const { prices, errors } = await service.calculate({ rates: {}, items: [{ supplier: 'promelec', code: '350979', price: 493.7, currency: 'RUB' }] });
+        expect(errors).toEqual([]);
+        const p = prices[0];
+        expect(p.incoming_price).toBe(493.7);
+        expect(p.delivery).toBe(0);
+        expect([p.min_perc, p.perc, p.old_perc]).toEqual([4, 8, 15]);
+        expect(p.price).toBe(Math.ceil((493.7 * 1.08 + 12) / 0.94));
     });
 
     it('Uniservice: рубли без конвертации, 20/10/5 % и минимум прибыли 20 ₽', async () => {

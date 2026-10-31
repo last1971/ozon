@@ -10,6 +10,8 @@ import { RuelectronicsDeliveryCost } from './strategies/ruelectronics.delivery.c
 import { RuelectronicsMarkup } from './strategies/ruelectronics.markup';
 import { UnisvsDeliveryCost } from './strategies/unisvs.delivery.cost';
 import { UnisvsMarkup } from './strategies/unisvs.markup';
+import { PromelecMarkup } from './strategies/promelec.markup';
+import { PromelecDeliveryCost } from './strategies/promelec.delivery.cost';
 
 export interface SupplierPriceStrategies {
     currency: ISupplierCurrency;
@@ -25,8 +27,9 @@ export interface SupplierPriceStrategies {
 export class SupplierPriceStrategyRegistry {
     private readonly strategies: Map<string, SupplierPriceStrategies>;
 
-    constructor(compelMarkup: CompelMarkup, ruelectronicsMarkup: RuelectronicsMarkup, unisvsMarkup: UnisvsMarkup) {
+    constructor(compelMarkup: CompelMarkup, ruelectronicsMarkup: RuelectronicsMarkup, unisvsMarkup: UnisvsMarkup, promelecMarkup: PromelecMarkup) {
         this.strategies = new Map<string, SupplierPriceStrategies>([
+            ['promelec', { currency: new RubAsIsCurrency(), delivery: new PromelecDeliveryCost(), markup: promelecMarkup }],
             [
                 'compel',
                 {
