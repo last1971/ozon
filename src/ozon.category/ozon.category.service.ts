@@ -6,7 +6,7 @@ import { FirebirdPool } from 'ts-firebird';
 import { ProductService } from '../product/product.service';
 import { AIService } from '../ai/ai.service';
 import { Cache } from '@nestjs/cache-manager';
-import Excel from 'exceljs';
+import { OzonTariffService } from './tariff.service';
 import { HierarchicalNSW } from 'hnswlib-node';
 import * as fs from 'fs';
 import * as path from 'path';
@@ -37,6 +37,8 @@ export interface CommissionRange {
     min: number;
     max: number | null;
     rate: number;
+    minIncluded?: boolean;
+    maxIncluded?: boolean;
 }
 
 export interface SearchResult {
@@ -128,6 +130,7 @@ export class OzonCategoryService implements OnModuleInit {
         private buildProductJsonCommand: BuildProductJsonCommand,
         private submitProductCommand: SubmitProductCommand,
         private ozonApiService: OzonApiService,
+        private tariffService: OzonTariffService,
     ) {
         this.attrValuesLimit = this.configService.get<number>('ATTR_VALUES_LIMIT', 20);
     }
@@ -354,68 +357,8 @@ export class OzonCategoryService implements OnModuleInit {
         return { categories, types };
     }
 
-    async importCommissions(buffer: Buffer): Promise<{ updated: number }> {
-        this.logger.log('Loading XLSX...');
-        const workbook = new Excel.Workbook();
-        await workbook.xlsx.load(buffer as unknown as ArrayBuffer);
-
-        const ranges = [
-            { min: 0, max: 100 },
-            { min: 100, max: 300 },
-            { min: 300, max: 1500 },
-            { min: 1500, max: 5000 },
-            { min: 5000, max: 10000 },
-            { min: 10000, max: null },
-        ];
-        const fboCol = [3, 4, 5, 6, 7, 8],
-            fbsCol = [15, 16, 17, 18, 19, 20];
-        const commissions = new Map<string, { fbo: CommissionRange[]; fbs: CommissionRange[] }>();
-
-        workbook.worksheets[0].eachRow((row, num) => {
-            if (num === 1) return;
-            const name = row.getCell(2).value?.toString()?.trim()?.toLowerCase();
-            if (!name) return;
-            commissions.set(name, {
-                fbo: ranges.map((r, i) => ({ ...r, rate: this.parsePercent(row.getCell(fboCol[i]).value) })),
-                fbs: ranges.map((r, i) => ({ ...r, rate: this.parsePercent(row.getCell(fbsCol[i]).value) })),
-            });
-        });
-        this.logger.log(`Parsed ${commissions.size} commission entries from XLSX`);
-
-        const t = await this.pool.getTransaction();
-        const types = await t.query('SELECT TYPE_ID, TYPE_NAME FROM OZON_TYPES', [], false);
-
-        const updates: { typeId: number; fbo: string; fbs: string }[] = [];
-        for (const type of types) {
-            const c = commissions.get(type.TYPE_NAME?.toLowerCase());
-            if (c) {
-                updates.push({ typeId: type.TYPE_ID, fbo: JSON.stringify(c.fbo), fbs: JSON.stringify(c.fbs) });
-            }
-        }
-
-        this.logger.log(`Found ${updates.length} matches to update`);
-
-        // Batch по 100 UPDATE в одном EXECUTE BLOCK
-        const batchSize = 100;
-        for (let i = 0; i < updates.length; i += batchSize) {
-            const batch = updates.slice(i, i + batchSize);
-            let block = 'EXECUTE BLOCK AS BEGIN\n';
-            for (const u of batch) {
-                const fbo = u.fbo.replace(/'/g, "''");
-                const fbs = u.fbs.replace(/'/g, "''");
-                block += `UPDATE OZON_TYPES SET FBO_COMMISSIONS = '${fbo}', FBS_COMMISSIONS = '${fbs}' WHERE TYPE_ID = ${u.typeId};\n`;
-            }
-            block += 'END';
-            await t.execute(block, [], false);
-
-            if ((i + batchSize) % 1000 === 0 || i + batchSize >= updates.length) {
-                this.logger.log(`Progress: ${Math.min(i + batchSize, updates.length)}/${updates.length}`);
-            }
-        }
-
-        await t.commit(true);
-        this.logger.log(`Done! Updated ${updates.length} types with commissions`);
-        return { updated: updates.length };
+    async importCommissions(buffer: Buffer, filename: string) {
+        return this.tariffService.importCommissions(buffer, filename);
     }
 
     // ========== Commissions ==========
@@ -437,12 +380,13 @@ export class OzonCategoryService implements OnModuleInit {
             const fboStr = await readBlob(row.FBO_COMMISSIONS, transaction);
             const fbsStr = await readBlob(row.FBS_COMMISSIONS, transaction);
 
-            await t.commit(true);
-
-            return {
+            const commissions = {
                 fbo: fboStr.startsWith('[') ? JSON.parse(fboStr) : [],
                 fbs: fbsStr.startsWith('[') ? JSON.parse(fbsStr) : [],
             };
+            await t.commit(true);
+            // Отсутствующая комиссия не должна превращаться в ставку 0% у потребителей.
+            return commissions.fbo.length && commissions.fbs.length ? commissions : null;
         } catch (error) {
             await t.rollback(true);
             throw error;
@@ -452,7 +396,10 @@ export class OzonCategoryService implements OnModuleInit {
     async getCommissionForPrice(typeId: number, price: number, scheme: 'fbo' | 'fbs' = 'fbs'): Promise<number | null> {
         const c = await this.getCommissions(typeId);
         if (!c) return null;
-        const range = c[scheme].find((r) => price >= r.min && (r.max === null || price < r.max));
+        const range = c[scheme].find((r) =>
+            (r.minIncluded === false ? price > r.min : price >= r.min) &&
+            (r.max === null || (r.maxIncluded === true ? price <= r.max : price < r.max)),
+        );
         return range?.rate ?? null;
     }
 
@@ -543,12 +490,6 @@ export class OzonCategoryService implements OnModuleInit {
     }
 
     // ========== Utils ==========
-
-    private parsePercent(v: any): number {
-        if (v == null) return 0;
-        const n = typeof v === 'number' ? v : parseFloat(String(v).replace(/[,%]/g, '.'));
-        return isNaN(n) ? 0 : n > 1 ? n / 100 : n;
-    }
 
     // ========== WB Category Embeddings + HNSW ==========
 

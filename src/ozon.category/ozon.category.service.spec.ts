@@ -17,6 +17,7 @@ import { SubmitProductCommand } from './commands/submit-product.command';
 import { ValidateOfferIdCommand } from './commands/validate-offer-id.command';
 import { OzonApiService } from '../ozon.api/ozon.api.service';
 import { HierarchicalNSW } from 'hnswlib-node';
+import { OzonTariffService } from './tariff.service';
 
 describe('OzonCategoryService', () => {
     let service: OzonCategoryService;
@@ -42,6 +43,7 @@ describe('OzonCategoryService', () => {
         const module: TestingModule = await Test.createTestingModule({
             providers: [
                 OzonCategoryService,
+                { provide: OzonTariffService, useValue: { importCommissions: jest.fn() } },
                 {
                     provide: ProductService,
                     useValue: {

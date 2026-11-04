@@ -12,6 +12,7 @@ export type CronSetup = {
 };
 
 export const cronConfig: Record<string, CronSetup> = {
+    ozonTariffReminder: { production: true, development: false },
     testYandex: {
         production: false,
         development: {

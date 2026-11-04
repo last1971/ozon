@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import OzonTariffs from "@/components/OzonTariffs.vue";
 import Tariff from "@/components/Tariff.vue";
 import Articles from "@/components/Articles.vue";
 import Prices from "@/components/Prices.vue";
@@ -27,6 +28,7 @@ const groups = [
     { value: 'prices-group', title: 'Цены', tabs: [
         { value: 'prices', title: 'Цены' },
         { value: 'ozon-promo', title: 'Акции Ozon' },
+        { value: 'ozon-tariffs', title: 'Тарифы Ozon' },
     ] },
     { value: 'shipping', title: 'Отгрузки', tabs: [
         { value: 'scan-fbs', title: 'Скан FBS' },
@@ -107,6 +109,10 @@ function onScanSuccess(order: string) {
                     <Articles class="pa-2" />
                     <v-divider :thickness="5" />
                     <Prices class="pa-2" />
+                </v-tabs-window-item>
+
+                <v-tabs-window-item value="ozon-tariffs">
+                    <OzonTariffs class="pa-2"/>
                 </v-tabs-window-item>
 
                 <v-tabs-window-item value="ozon-promo">

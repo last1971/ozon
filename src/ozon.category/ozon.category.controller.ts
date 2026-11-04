@@ -1,9 +1,10 @@
-import { Body, Controller, Get, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { BadRequestException, Body, Controller, Get, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { ApiTags, ApiOperation, ApiConsumes, ApiBody, ApiQuery } from '@nestjs/swagger';
 import { OzonCategoryService, SearchResult, CommissionRange, CategoryAttributesResult } from './ozon.category.service';
 import { CreateProductInput } from './interfaces/product-create.context';
 import { AIService } from '../ai/ai.service';
+import { OzonTariffService } from './tariff.service';
 import { AIProviderName } from '../ai/interfaces';
 import { ImageStorageService } from '../image-storage/image-storage.service';
 
@@ -14,6 +15,7 @@ export class OzonCategoryController {
         private ozonCategoryService: OzonCategoryService,
         private aiService: AIService,
         private imageStorageService: ImageStorageService,
+        private tariffService: OzonTariffService,
     ) {}
 
     @Post('import-categories')
@@ -36,9 +38,25 @@ export class OzonCategoryController {
             },
         },
     })
-    @UseInterceptors(FileInterceptor('file'))
+    @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 20 * 1024 * 1024 } }))
     async importCommissions(@UploadedFile() file: Express.Multer.File) {
-        return this.ozonCategoryService.importCommissions(file.buffer);
+        if (!file) throw new BadRequestException('Выберите XLSX комиссий.');
+        return this.ozonCategoryService.importCommissions(file.buffer, file.originalname);
+    }
+
+    @Get('tariffs')
+    @ApiOperation({ summary: 'Текущие файлы тарифов Ozon' })
+    async tariffs() {
+        return this.tariffService.info();
+    }
+
+    @Post('import-logistics')
+    @ApiOperation({ summary: 'Загрузить XLSX логистики FBO/FBS' })
+    @ApiConsumes('multipart/form-data')
+    @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 20 * 1024 * 1024 } }))
+    async importLogistics(@UploadedFile() file: Express.Multer.File) {
+        if (!file) throw new BadRequestException('Выберите XLSX доставки.');
+        return this.tariffService.importLogistics(file.buffer, file.originalname);
     }
 
     @Post('generate-embeddings')

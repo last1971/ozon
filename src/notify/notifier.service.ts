@@ -49,7 +49,7 @@ export class NotifierService {
         this.live = config.get<Environment>('NODE_ENV') === Environment.Production;
     }
 
-    async notify(topic: NotifyTopic, message: NotifyMessage): Promise<boolean> {
+    async notify(topic: NotifyTopic, message: NotifyMessage, channels?: NotifyChannel[]): Promise<boolean> {
         const tagged: NotifyMessage = {
             ...message,
             subject: `${this.tag} ${message.subject}`,
@@ -67,6 +67,7 @@ export class NotifierService {
         }
         let delivered = false;
         for (const [channel, transport] of this.transports) {
+            if (channels && !channels.includes(channel)) continue;
             for (const target of await this.routes.targets(topic, channel)) {
                 if (!this.live) {
                     this.logger.log(`не прод, ${channel} пропущен: ${target} «${tagged.subject}»`);

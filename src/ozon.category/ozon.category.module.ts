@@ -1,4 +1,6 @@
 import { Module } from '@nestjs/common';
+import { OzonTariffService } from './tariff.service';
+import { NotifyModule } from '../notify/notify.module';
 import { OzonCategoryService } from './ozon.category.service';
 import { OzonCategoryController } from './ozon.category.controller';
 import { FirebirdModule } from '../firebird/firebird.module';
@@ -19,9 +21,10 @@ import { OzonApiModule } from '../ozon.api/ozon.api.module';
 import { ImageStorageModule } from '../image-storage/image-storage.module';
 
 @Module({
-    imports: [FirebirdModule, ProductModule, AIModule, AIProductModule, OzonApiModule, ImageStorageModule],
+    imports: [NotifyModule, FirebirdModule, ProductModule, AIModule, AIProductModule, OzonApiModule, ImageStorageModule],
     providers: [
         OzonCategoryService,
+        OzonTariffService,
         ValidateOfferIdCommand,
         GenerateNameCommand,
         FindCategoryCommand,
