@@ -1,3 +1,4 @@
+import { resolvePriceBase } from '../helpers/price/price.base';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ProductService } from '../product/product.service';
 import { PriceRequestDto } from './dto/price.request.dto';
@@ -100,6 +101,7 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                     min_perc: this.configService.get<number>('PERC_MIN', 15),
                     available_price: 0,
                 };
+                const base = resolvePriceBase(item.offer_id, goodQuantityCoeff(item), good, percent);
                 const productInfo = productsInfos.find((info) => info.sku === item.offer_id);
                 const warehouse = this.priceCalculationHelper.selectWarehouse(
                     productInfo?.fboCount || 0,
@@ -114,13 +116,9 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                     name: good?.name,
                     marketing_price: item.price.marketing_seller_price || 0,
                     marketing_seller_price: item.price.marketing_seller_price,
-                    incoming_price: good?.price == null ? null : good.price * goodQuantityCoeff(item),
-                    base_source: good?.base_source ?? 'none',
-                    available_price: good?.base_source
-                        ? good.base_source === 'market' && good.price > 0
-                            ? good.price * goodQuantityCoeff(item)
-                            : 0
-                        : percent.available_price,
+                    incoming_price: base.incoming_price,
+                    base_source: base.base_source,
+                    available_price: base.available_price,
                     min_price: item.price.min_price,
                     price: item.price.price,
                     old_price: item.price.old_price,
@@ -316,10 +314,8 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
         const fboRange = commissions.fbo.find((r) => r.min === 100 && r.max === 300);
         const fbsRange = commissions.fbs.find((r) => r.min === 100 && r.max === 300);
 
-        return {
-            fbo: fboRange?.rate ?? 0,
-            fbs: fbsRange?.rate ?? 0,
-        };
+        if (!fboRange || !fbsRange) return null;
+        return { fbo: fboRange.rate, fbs: fbsRange.rate };
     }
 
     /**

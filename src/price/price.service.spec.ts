@@ -187,30 +187,20 @@ describe('PriceService', () => {
     });
 
     it.each([
-        [20, 'market', 100, 100],
-        [20, 'remaining-lots', 100, 0],
-        [20, 'all-receipts', 100, 0],
-        [null, 'none', null, 0],
-    ])('index: база %s (%s) сохраняет источник, null и фасовку', async (base, source, incoming, market) => {
-        prices.mockResolvedValueOnce([{ code: 1, name: 'Товар', price: base, base_source: source }]);
-        getPerc.mockResolvedValueOnce([{ offer_id: '1', pieces: 5, available_price: 10 }]);
-        getPrices.mockResolvedValueOnce({
-            cursor: '',
-            items: [
-                {
-                    offer_id: '1-5',
-                    product_id: 1,
-                    price: {},
-                    commissions: {},
-                },
-            ],
-        });
+        [23.56, 'remaining-lots', 115, 115, 115, 'market'],
+        [23.56, 'remaining-lots', 0, 117.8, 0, 'remaining-lots'],
+        [23.56, 'all-receipts', 0, 117.8, 0, 'all-receipts'],
+        [null, 'none', 115, 115, 115, 'market'],
+        [null, 'none', 0, null, 0, 'none'],
+    ])('index: закупка %s (%s), рынок пачки %s → база %s', async (cost, source, market, incoming, available, resolvedSource) => {
+        prices.mockResolvedValueOnce([{ code: 1, name: 'Товар', price: cost, base_source: source, free_stock: 10 }]);
+        getPerc.mockResolvedValueOnce([
+            { offer_id: '1', pieces: 5, available_price: market },
+            { offer_id: '1', pieces: 1000, available_price: 19000 },
+        ]);
+        getPrices.mockResolvedValueOnce({ items: [{ offer_id: '1-5', price: { min_price: '100', price: '150', old_price: '200' }, commissions: { sales_percent_fbo: 10, sales_percent_fbs: 10, fbs_direct_flow_trans_max_amount: 20, fbs_direct_flow_trans_min_amount: 10 } }], cursor: '' });
         const result = await service.index({ limit: 1, visibility: ProductVisibility.VISIBLE });
-        expect(result.data[0]).toMatchObject({
-            incoming_price: incoming,
-            available_price: market,
-            base_source: source,
-        });
+        expect(result.data[0]).toMatchObject({ incoming_price: incoming, available_price: available, base_source: resolvedSource });
     });
 
     it('API экрана: без базы запрещает расчёт цены и прибыли', async () => {
@@ -611,6 +601,12 @@ describe('PriceService', () => {
             expect(result).toBeNull();
             expect(mockGetCommissions).toHaveBeenCalledWith(99999);
         });
+    });
+
+    it('getCommission не подставляет 0%, если в файле больше нет ожидаемого диапазона', async () => {
+        const category = (service as any).ozonCategoryService;
+        category.getCommissions.mockResolvedValue({ fbo: [{ min: 0, max: 500, rate: 0.2 }], fbs: [{ min: 0, max: 500, rate: 0.3 }] });
+        expect(await service.getCommission('1')).toBeNull();
     });
 
     describe('getTypeId', () => {

@@ -65,6 +65,7 @@ describe('Trade2006GoodService', () => {
                 },
             ],
         }),
+        getPriceBase: jest.fn(),
         getIncomingPrice: jest.fn().mockReturnValue(10.11),
         adjustPercents: jest.fn().mockReturnValue({
             min_perc: 10,
@@ -102,6 +103,10 @@ describe('Trade2006GoodService', () => {
             ],
         });
         mockPriceCalculationHelper.getIncomingPrice.mockReturnValue(10.11);
+        mockPriceCalculationHelper.getPriceBase.mockImplementation((product, goods, percents, prices) => ({
+            ...new PriceCalculationHelper(new ConfigService()).getPriceBase(product, goods, percents, prices),
+            incoming_price: mockPriceCalculationHelper.getIncomingPrice(product, goods, prices, percents),
+        }));
         mockPriceCalculationHelper.adjustPercents.mockReturnValue({
             min_perc: 10,
             perc: 20,
@@ -164,7 +169,9 @@ describe('Trade2006GoodService', () => {
     it('test prices', async () => {
         await service.prices(['1', '2']);
         const sql = query.mock.calls[0][0].replace(/\s+/g, ' ').trim().toUpperCase();
-        expect(sql).toContain('AVAILABLE_PRICE > 0');
+        expect(sql).not.toContain('OZON_PERC');
+        expect(sql).toContain('PM.PRICE > 0');
+        expect(sql).toContain('PM2.PRICE > 0');
         expect(sql).toContain('SUM(T.OST * T.PRICE) / NULLIF(SUM(T.OST), 0)');
         expect(sql).toContain('SUM(PM2.PRICE * PM2.QUAN) / NULLIF(SUM(PM2.QUAN), 0)');
         expect(sql).toContain('PM2.SHOPINCODE IS NOT NULL');
@@ -174,23 +181,13 @@ describe('Trade2006GoodService', () => {
         expect(query.mock.calls[0][2]).toBe(false);
     });
     it.each([
-        [120, 90, 70, 120, 'market'],
-        [0, 90, 70, 90, 'remaining-lots'],
-        [-1, null, 70, 70, 'all-receipts'],
-        [null, null, null, null, 'none'],
-        [0, 0, 0, null, 'none'],
-    ])('prices: рынок %s, остаток %s, приходы %s → %s (%s)', async (market, remaining, receipts, price, source) => {
-        query.mockResolvedValueOnce([
-            {
-                GOODSCODE: 1,
-                NAME: 'Товар',
-                FREE_STOCK: 5,
-                MARKET_PRICE: market,
-                REMAINING_PRICE: remaining,
-                RECEIPTS_PRICE: receipts,
-            },
-        ]);
-        expect(await service.prices(['1'])).toEqual([{ code: 1, name: 'Товар', price, base_source: source }]);
+        [90, 70, 90, 'remaining-lots'],
+        [null, 70, 70, 'all-receipts'],
+        [null, null, null, 'none'],
+        [0, 0, null, 'none'],
+    ])('prices: остаток %s, приходы %s → %s (%s), без рынка чужих фасовок', async (remaining, receipts, price, source) => {
+        query.mockResolvedValueOnce([{ GOODSCODE: 1, NAME: 'Товар', FREE_STOCK: 5, MARKET_PRICE: 19000, REMAINING_PRICE: remaining, RECEIPTS_PRICE: receipts }]);
+        expect(await service.prices(['1'])).toEqual([{ code: 1, name: 'Товар', price, base_source: source, free_stock: 5 }]);
     });
 
     it('prices: без свободного остатка сохраняет запрет расчёта при наличии базы', async () => {
@@ -203,7 +200,7 @@ describe('Trade2006GoodService', () => {
                 RECEIPTS_PRICE: 70,
             },
         ]);
-        expect(await service.prices(['1'])).toEqual([{ code: 1, name: undefined, price: null, base_source: 'market' }]);
+        expect(await service.prices(['1'])).toEqual([{ code: 1, name: undefined, price: null, base_source: 'remaining-lots', free_stock: 0 }]);
     });
 
     it.each(['shop', 'sklad'])('prices: приходы соответствуют складу %s', async (storage) => {
@@ -217,7 +214,7 @@ describe('Trade2006GoodService', () => {
     it('repriceForService: нет базы — не подбирает наценки, не считает и не отправляет даже с подстановкой', async () => {
         // Реальный helper: проверяем весь общий путь площадок, а не мок фильтрации.
         const helper = new PriceCalculationHelper(new ConfigService());
-        mockPriceCalculationHelper.getIncomingPrice.mockImplementation(helper.getIncomingPrice.bind(helper));
+        mockPriceCalculationHelper.getPriceBase.mockImplementation(helper.getPriceBase.bind(helper));
         mockPriceCalculationHelper.preparePricesContext.mockResolvedValue({
             goods: [{ code: 1, price: null, base_source: 'none' }],
             percents: [],
@@ -238,53 +235,33 @@ describe('Trade2006GoodService', () => {
         expect(await service.buildPriceables(priceUdateable, ['1'])).toEqual([]);
     });
 
-    it.each(['market', 'remaining-lots', 'all-receipts'])(
-        'фасовка: источник %s умножает базу на pieces один раз',
-        async (source) => {
-            const product = { ...getProductsWithCoeffsFirst, getSku: () => '1-5' };
-            const helper = new PriceCalculationHelper(new ConfigService());
-            mockPriceCalculationHelper.getIncomingPrice.mockImplementation(helper.getIncomingPrice.bind(helper));
-            mockPriceCalculationHelper.preparePricesContext.mockResolvedValue({
-                goods: [{ code: 1, price: 20, base_source: source }],
-                percents: [{ offer_id: '1', pieces: 5, available_price: 20, min_perc: 10, perc: 20, old_perc: 40 }],
-                products: [product],
-                codes: ['1'],
-            });
-            const report = await service.repriceForService(priceUdateable, ['1-5']);
-            expect(report.inputs[0]).toMatchObject({
-                incoming_price: 100,
-                base_source: source,
-                available_price: source === 'market' ? 100 : 0,
-            });
-            expect(report.sent).toHaveLength(1);
-            expect(updatePrices).toHaveBeenCalledWith(report.sent);
-        },
-    );
-
-    it('подбор наценок сохраняет заданную рыночную цену без умножения в БД и уважает ручную правку', async () => {
+    it.each([1, 5, 10, 100])('полный пересчёт: 501328, pieces=%s берёт цену своей пачки без второго умножения', async pieces => {
         const helper = new PriceCalculationHelper(new ConfigService());
-        mockPriceCalculationHelper.getIncomingPrice.mockImplementation(helper.getIncomingPrice.bind(helper));
+        mockPriceCalculationHelper.getPriceBase.mockImplementation(helper.getPriceBase.bind(helper));
+        const sku = pieces === 1 ? '501328' : `501328-${pieces}`;
         mockPriceCalculationHelper.preparePricesContext.mockResolvedValue({
-            goods: [{ code: 1, price: 20, base_source: 'market' }],
-            percents: [{ offer_id: '1', pieces: 5, available_price: 20 }],
-            products: [{ ...getProductsWithCoeffsFirst, getSku: () => '1-5' }],
-            codes: ['1'],
+            goods: [{ code: 501328, price: 23.56, base_source: 'remaining-lots', free_stock: 1000 }],
+            percents: [1, 5, 10, 100].map(n => ({ offer_id: '501328', pieces: n, available_price: 23 * n, min_perc: 10, perc: 20, old_perc: 40 })),
+            products: [{ ...getProductsWithCoeffsFirst, getSku: () => sku }], codes: ['501328'],
+        });
+        const report = await service.repriceForService(priceUdateable, [sku]);
+        expect(report.inputs[0]).toMatchObject({ incoming_price: 23 * pieces, available_price: 23 * pieces, base_source: 'market' });
+        expect(report.sent).toHaveLength(1);
+    });
+
+    it('подбор наценок: база своей фасовки есть без приходов; ручная рыночная правка не умножается', async () => {
+        const helper = new PriceCalculationHelper(new ConfigService());
+        mockPriceCalculationHelper.getPriceBase.mockImplementation(helper.getPriceBase.bind(helper));
+        mockPriceCalculationHelper.preparePricesContext.mockResolvedValue({
+            goods: [{ code: 1, price: null, base_source: 'none', free_stock: 5 }],
+            percents: [{ offer_id: '1', pieces: 5, available_price: 115 }],
+            products: [{ ...getProductsWithCoeffsFirst, getSku: () => '1-5' }], codes: ['1'],
         });
         const generated = await service.generatePercentsForService(null, ['1-5']);
-        expect(mockPriceCalculationHelper.adjustPercents).toHaveBeenLastCalledWith(
-            expect.objectContaining({ incoming_price: 100, available_price: 100 }),
-            null,
-        );
-        expect(generated[0].available_price).toBe(20);
-        const edited = await service.generatePercentsForService(
-            null,
-            ['1-5'],
-            new Map([['1-5', { available_price: 60 }]]),
-        );
-        expect(mockPriceCalculationHelper.adjustPercents).toHaveBeenLastCalledWith(
-            expect.objectContaining({ available_price: 60 }),
-            null,
-        );
+        expect(mockPriceCalculationHelper.adjustPercents).toHaveBeenLastCalledWith(expect.objectContaining({ incoming_price: 115, available_price: 115, base_source: 'market' }), null);
+        expect(generated[0].available_price).toBe(115);
+        const edited = await service.generatePercentsForService(null, ['1-5'], new Map([['1-5', { available_price: 60 }]]));
+        expect(mockPriceCalculationHelper.adjustPercents).toHaveBeenLastCalledWith(expect.objectContaining({ incoming_price: 60, available_price: 60 }), null);
         expect(edited[0].available_price).toBe(60);
     });
 
@@ -389,7 +366,7 @@ describe('Trade2006GoodService', () => {
     it('repriceForService: без входной цены не считаем и говорим почему — нет свободного остатка / нет на складе', async () => {
         mockPriceCalculationHelper.preparePricesContext.mockResolvedValueOnce({
             codes: ['1', '2'],
-            goods: [{ code: 1, name: 'ONE', price: null }],
+            goods: [{ code: 1, name: 'ONE', price: null, free_stock: 0 }],
             percents: [
                 { offer_id: '1', pieces: 1 },
                 { offer_id: '2', pieces: 1 },

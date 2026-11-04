@@ -1,3 +1,4 @@
+import { resolvePriceBase, ResolvedPriceBase } from './price.base';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { IProductCoeffsable } from '../../interfaces/i.product.coeffsable';
@@ -110,14 +111,24 @@ export class PriceCalculationHelper {
         return { codes, goods, percents, products };
     }
 
-    getIncomingPrice(product: IProductCoeffsable, goods: GoodPriceDto[], prices?: Map<string, UpdatePriceDto>): number {
-        const gCode = goodCode({ offer_id: product.getSku() });
-        const gCoeff = goodQuantityCoeff({ offer_id: product.getSku() });
-        const good = goods.find((g) => g.code.toString() === gCode);
-        // Явная подстановка не должна обходить отсутствие базы в Trade.
-        if (good?.base_source === 'none') return null;
-        const incoming_price = prices?.get(product.getSku())?.incoming_price;
-        return incoming_price ? incoming_price : good?.price == null ? null : good.price * gCoeff;
+    getPriceBase(
+        product: IProductCoeffsable,
+        goods: GoodPriceDto[],
+        percents: GoodPercentDto[] = [],
+        prices?: Map<string, UpdatePriceDto>,
+    ): ResolvedPriceBase {
+        const sku = product.getSku();
+        const code = goodCode({ offer_id: sku });
+        const pieces = goodQuantityCoeff({ offer_id: sku });
+        return resolvePriceBase(sku, pieces,
+            goods.find(g => String(g.code) === code),
+            percents.find(p => String(p.offer_id) === code && Number(p.pieces ?? 1) === pieces),
+            prices?.get(sku)?.incoming_price,
+        );
+    }
+
+    getIncomingPrice(product: IProductCoeffsable, goods: GoodPriceDto[], prices?: Map<string, UpdatePriceDto>, percents: GoodPercentDto[] = []): number {
+        return this.getPriceBase(product, goods, percents, prices).incoming_price;
     }
 
     getInitialPercents(incoming_price: number = 0): { min_perc: number; perc: number; old_perc: number } {

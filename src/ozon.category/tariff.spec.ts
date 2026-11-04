@@ -1,9 +1,25 @@
 import Excel from 'exceljs';
-import { parseCommissions, parseLogistics, parsePriceBand, sourceMetadata, matchCommissions } from './tariff.xlsx';
+import {
+    commissionTypesFromTree,
+    parseCommissions,
+    parseLogistics,
+    parsePriceBand,
+    sourceMetadata,
+    matchCommissions,
+} from './tariff.xlsx';
 import { OzonTariffService } from './tariff.service';
 import { OzonCategoryService } from './ozon.category.service';
 import { NotifierService } from '../notify/notifier.service';
 import { cronConfig } from '../cron.setup.provider/cron.setup';
+
+const currentTree = {
+    result: [
+        {
+            category_name: 'Автотовары',
+            children: [{ category_name: 'Автоаксессуары', children: [{ type_id: 1, type_name: 'Светоотражатель' }] }],
+        },
+    ],
+};
 
 const commissionName = 'Tablica_kategoriy_dlya_rascheta_voznagrazhdeniya_07102026_123.xlsx';
 const logisticsName = 'logistika-fbo-fbs-30102026_123 (1).xlsx';
@@ -89,6 +105,41 @@ describe('XLSX тарифов Ozon', () => {
     it('отклоняет непонятный диапазон', () => {
         expect(() => parsePriceBand('по новым правилам')).toThrow('Не понятен');
     });
+    it('один официальный ID в нескольких ветках дерева сохраняет пути и выбирает категорию строки', async () => {
+        const current = commissionTypesFromTree({
+            result: [
+                {
+                    category_name: 'Автотовары',
+                    children: [
+                        { category_name: 'Автоаксессуары', children: [{ type_id: 1, type_name: 'Светоотражатель' }] },
+                    ],
+                },
+                {
+                    category_name: 'Детские товары',
+                    children: [
+                        {
+                            category_name: 'Безопасность ребенка',
+                            children: [{ type_id: 1, type_name: 'Светоотражатель' }],
+                        },
+                    ],
+                },
+            ],
+        });
+        expect(current.get(1).CATEGORY_PATHS).toHaveLength(2);
+        const result = matchCommissions(
+            await parseCommissions(await commissions({ duplicate: true })),
+            [
+                {
+                    TYPE_ID: 1,
+                    TYPE_NAME: 'Светоотражатель',
+                    CATEGORY_PATH: 'Детские товары -> Безопасность ребенка -> Светоотражатель',
+                },
+            ],
+            current,
+        );
+        expect(result.updates[0].fbs[0].rate).toBe(0.52);
+    });
+
     it('сопоставляет одинаковые названия по категории', async () => {
         const rows = await parseCommissions(await commissions({ duplicate: true }));
         const { updates } = matchCommissions(rows, [
@@ -129,7 +180,7 @@ describe('XLSX тарифов Ozon', () => {
     });
     it('не принимает проценты вместо рублей за доставку', async () => {
         const w = new Excel.Workbook();
-        await w.xlsx.load(await logistics() as unknown as ArrayBuffer);
+        await w.xlsx.load((await logistics()) as unknown as ArrayBuffer);
         w.getWorksheet('Логистика РФ').getCell('E4').value = '21%';
         await expect(parseLogistics(Buffer.from(await w.xlsx.writeBuffer()))).rejects.toThrow('рублях');
     });
@@ -200,28 +251,128 @@ describe('Чтение комиссий без подстановки нуля',
 describe('Сохранение и напоминание тарифов Ozon', () => {
     const make = (env = 'development') => {
         const tx = {
-            query: jest
-                .fn()
-                .mockImplementation(async (sql: string) =>
-                    sql.includes('SELECT KIND FROM')
-                        ? [{ KIND: 'commissions' }]
-                        : [
-                              {
-                                  TYPE_ID: 1,
-                                  TYPE_NAME: 'Светоотражатель',
-                                  CATEGORY_PATH: 'Автотовары -> Автоаксессуары -> Светоотражатель',
-                              },
-                          ],
-                ),
+            query: jest.fn().mockImplementation(async (sql: string) =>
+                sql.includes('SELECT KIND FROM')
+                    ? [{ KIND: 'commissions' }]
+                    : [
+                          {
+                              TYPE_ID: 1,
+                              TYPE_NAME: 'Светоотражатель',
+                              CATEGORY_PATH: 'Автотовары -> Автоаксессуары -> Светоотражатель',
+                          },
+                      ],
+            ),
             execute: jest.fn().mockResolvedValue([]),
             commit: jest.fn().mockResolvedValue(undefined),
             rollback: jest.fn().mockResolvedValue(undefined),
         };
         const pool = { getTransaction: jest.fn().mockResolvedValue(tx) };
         const notifier = { notify: jest.fn().mockResolvedValue(true) };
-        const service = new OzonTariffService(pool as any, notifier as any, { get: () => env } as any);
-        return { tx, pool, notifier, service };
+        const api = { method: jest.fn().mockResolvedValue(currentTree) };
+        const service = new OzonTariffService(pool as any, notifier as any, { get: () => env } as any, api as any);
+        return { tx, pool, notifier, service, api };
     };
+    it('сопоставляет переименованный тип по официальному ID', async () => {
+        const { tx, service, api } = make();
+        tx.query.mockImplementation(async (sql) =>
+            sql.includes('SELECT KIND FROM')
+                ? [{ KIND: 'commissions' }]
+                : [{ TYPE_ID: 1, TYPE_NAME: 'Старое название', CATEGORY_PATH: 'Старый путь' }],
+        );
+        expect(await service.importCommissions(await commissions(), commissionName)).toMatchObject({
+            updated: 1,
+            missingCount: 0,
+            retiredCount: 0,
+        });
+        expect(api.method).toHaveBeenCalledWith('/v1/description-category/tree', {});
+    });
+
+    it('устаревший тип отключается явно, не получает случайную или нулевую ставку', async () => {
+        const { tx, service } = make();
+        tx.query.mockImplementation(async (sql) =>
+            sql.includes('SELECT KIND FROM')
+                ? [{ KIND: 'commissions' }]
+                : [
+                      {
+                          TYPE_ID: 1,
+                          TYPE_NAME: 'Светоотражатель',
+                          CATEGORY_PATH: 'Автотовары -> Автоаксессуары -> Светоотражатель',
+                      },
+                      { TYPE_ID: 99, TYPE_NAME: 'Удалённый тип', CATEGORY_PATH: '' },
+                  ],
+        );
+        expect(await service.importCommissions(await commissions(), commissionName)).toMatchObject({
+            updated: 1,
+            missingCount: 0,
+            retiredCount: 1,
+            retiredTypes: [{ id: 99, name: 'Удалённый тип' }],
+        });
+        expect(tx.execute.mock.calls.some(([sql]) => sql.includes('SET DISABLED = 1 WHERE TYPE_ID = 99'))).toBe(true);
+    });
+
+    it('импорт не включает ранее отключённый тип даже при наличии его ID в другой ветке Ozon', async () => {
+        const { tx, service, api } = make();
+        api.method.mockResolvedValue({
+            result: [
+                {
+                    category_name: 'Автотовары',
+                    children: [
+                        {
+                            category_name: 'Автоаксессуары',
+                            children: [
+                                { type_id: 1, type_name: 'Светоотражатель' },
+                                { type_id: 99, type_name: 'Светоотражатель' },
+                            ],
+                        },
+                    ],
+                },
+            ],
+        });
+        tx.query.mockImplementation(async (sql) =>
+            sql.includes('SELECT KIND FROM')
+                ? [{ KIND: 'commissions' }]
+                : [
+                      {
+                          TYPE_ID: 1,
+                          TYPE_NAME: 'Светоотражатель',
+                          CATEGORY_PATH: 'Автотовары -> Автоаксессуары -> Светоотражатель',
+                          DISABLED: 0,
+                      },
+                      { TYPE_ID: 99, TYPE_NAME: 'Светоотражатель', CATEGORY_PATH: 'Удалённая ветка', DISABLED: 1 },
+                  ],
+        );
+        expect(await service.importCommissions(await commissions(), commissionName)).toMatchObject({
+            updated: 1,
+            missingCount: 0,
+            retiredCount: 1,
+        });
+        expect(tx.execute.mock.calls.some(([sql]) => sql.includes('DISABLED = 0 WHERE TYPE_ID = 99'))).toBe(false);
+    });
+
+    it('отсутствующая ставка действующего типа блокирует весь импорт', async () => {
+        const { tx, service, api } = make();
+        api.method.mockResolvedValue({
+            result: [{ category_name: 'Автотовары', children: [{ type_id: 1, type_name: 'Новый тип без ставки' }] }],
+        });
+        tx.query.mockImplementation(async (sql) =>
+            sql.includes('SELECT KIND FROM')
+                ? [{ KIND: 'commissions' }]
+                : [{ TYPE_ID: 1, TYPE_NAME: 'Неизвестен файлу', CATEGORY_PATH: '' }],
+        );
+        await expect(service.importCommissions(await commissions(), commissionName)).rejects.toThrow(
+            'действующих типов',
+        );
+        expect(tx.execute.mock.calls.some(([sql]) => sql.includes('FBO_COMMISSIONS = NULL'))).toBe(false);
+        expect(tx.rollback).toHaveBeenCalledWith(true);
+    });
+
+    it('недоступное дерево Ozon не приводит к очистке комиссий', async () => {
+        const { pool, service, api } = make();
+        api.method.mockResolvedValue({ result: null });
+        await expect(service.importCommissions(await commissions(), commissionName)).rejects.toThrow('дерево');
+        expect(pool.getTransaction).not.toHaveBeenCalled();
+    });
+
     it('сохраняет комиссии и метаданные одним коммитом', async () => {
         const { tx, service } = make();
         const result = await service.importCommissions(await commissions(), commissionName);
@@ -238,7 +389,10 @@ describe('Сохранение и напоминание тарифов Ozon', (
         expect(pool.getTransaction).not.toHaveBeenCalled();
     });
     it('неоднозначный тип не приводит к удалению старых комиссий', async () => {
-        const { tx, service } = make();
+        const { tx, service, api } = make();
+        api.method.mockResolvedValue({
+            result: [{ category_name: 'Другая категория', children: [{ type_id: 1, type_name: 'Светоотражатель' }] }],
+        });
         tx.query.mockImplementation(async (sql) =>
             sql.includes('SELECT KIND FROM')
                 ? [{ KIND: 'commissions' }]

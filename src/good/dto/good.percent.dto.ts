@@ -32,7 +32,7 @@ export class GoodPercentDto implements IOfferIdable {
     @Type(() => Number)
     @Min(0)
     packing_price?: number;
-    @ApiProperty({ description: 'Рыночная цена', required: false })
+    @ApiProperty({ description: 'Рыночная цена всей фасовки PIECES, не цена за штуку', required: false })
     @IsOptional()
     @Type(() => Number)
     @Min(0)

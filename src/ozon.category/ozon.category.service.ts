@@ -368,7 +368,7 @@ export class OzonCategoryService implements OnModuleInit {
         const transaction = (t as any).transaction;
         try {
             const [row] = await t.query(
-                'SELECT FBO_COMMISSIONS, FBS_COMMISSIONS FROM OZON_TYPES WHERE TYPE_ID = ?',
+                'SELECT FBO_COMMISSIONS, FBS_COMMISSIONS FROM OZON_TYPES WHERE TYPE_ID = ? AND COALESCE(DISABLED, 0) = 0',
                 [typeId],
                 false,
             );

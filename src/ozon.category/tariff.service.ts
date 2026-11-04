@@ -1,3 +1,4 @@
+import { OzonApiService } from '../ozon.api/ozon.api.service';
 import { Inject, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
@@ -5,7 +6,13 @@ import { FirebirdPool } from 'ts-firebird';
 import { FIREBIRD } from '../firebird/firebird.module';
 import { NotifierService } from '../notify/notifier.service';
 import { NotifyTopic } from '../notify/notify.types';
-import { matchCommissions, parseCommissions, parseLogistics, sourceMetadata } from './tariff.xlsx';
+import {
+    commissionTypesFromTree,
+    matchCommissions,
+    parseCommissions,
+    parseLogistics,
+    sourceMetadata,
+} from './tariff.xlsx';
 
 const quote = (s: string) => `'${s.replace(/'/g, "''")}'`;
 const sqlNumber = (n: number | null) => (n === null ? 'NULL' : String(n));
@@ -18,6 +25,7 @@ export class OzonTariffService {
         @Inject(FIREBIRD) private readonly pool: FirebirdPool,
         private readonly notifier: NotifierService,
         private readonly config: ConfigService,
+        private readonly ozonApi: OzonApiService,
     ) {}
 
     private async transaction<T>(
@@ -72,25 +80,36 @@ export class OzonTariffService {
     async importCommissions(buffer: Buffer, filename: string) {
         const meta = sourceMetadata(buffer, filename);
         const rows = await parseCommissions(buffer);
+        const currentTypes = commissionTypesFromTree(await this.ozonApi.method('/v1/description-category/tree', {}));
         return this.transaction(async (t) => {
             await this.lock(t, 'commissions');
-            const types = await t.query('SELECT TYPE_ID, TYPE_NAME, CATEGORY_PATH FROM OZON_TYPES', [], false);
-            const { updates, missing } = matchCommissions(rows, types);
+            const types = await t.query(
+                'SELECT TYPE_ID, TYPE_NAME, CATEGORY_PATH, DISABLED FROM OZON_TYPES',
+                [],
+                false,
+            );
+            const { updates, missing, retired } = matchCommissions(rows, types, currentTypes);
             // Полная замена: типы, отсутствующие в новом файле, не должны сохранять ставки старого файла.
             await t.execute('UPDATE OZON_TYPES SET FBO_COMMISSIONS = NULL, FBS_COMMISSIONS = NULL', [], false);
             await this.blocks(
                 t,
                 updates.map(
                     (u) =>
-                        `UPDATE OZON_TYPES SET FBO_COMMISSIONS = ${quote(JSON.stringify(u.fbo))}, FBS_COMMISSIONS = ${quote(JSON.stringify(u.fbs))} WHERE TYPE_ID = ${Number(u.typeId)};`,
+                        `UPDATE OZON_TYPES SET FBO_COMMISSIONS = ${quote(JSON.stringify(u.fbo))}, FBS_COMMISSIONS = ${quote(JSON.stringify(u.fbs))}, DISABLED = 0 WHERE TYPE_ID = ${Number(u.typeId)};`,
                 ),
             );
-            await this.saveSource(t, 'commissions', meta, rows.length, updates.length, missing.length);
+            await this.blocks(
+                t,
+                retired.map((t) => `UPDATE OZON_TYPES SET DISABLED = 1 WHERE TYPE_ID = ${Number(t.id)};`),
+            );
+            await this.saveSource(t, 'commissions', meta, rows.length, updates.length, retired.length);
             return {
                 updated: updates.length,
                 rows: rows.length,
                 missingCount: missing.length,
                 missingTypes: missing,
+                retiredCount: retired.length,
+                retiredTypes: retired,
                 ...meta,
             };
         });
@@ -137,7 +156,7 @@ export class OzonTariffService {
                     uploadedAt: r.UPLOADED_AT || null,
                     rows: r.ROWS_COUNT || 0,
                     matchedCount: r.MATCHED_COUNT,
-                    missingCount: r.MISSING_COUNT,
+                    retiredCount: r.MISSING_COUNT,
                     stale: !fileDate || Date.now() - new Date(`${fileDate}T00:00:00+03:00`).getTime() > 7 * 86400_000,
                 };
             });

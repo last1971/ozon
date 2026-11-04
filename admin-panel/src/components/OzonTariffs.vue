@@ -11,7 +11,7 @@ type Source = {
     uploadedAt: string | null;
     rows: number;
     matchedCount: number | null;
-    missingCount: number | null;
+    retiredCount: number | null;
     stale: boolean;
 };
 const cards: { kind: Kind; title: string; endpoint: string }[] = [
@@ -57,7 +57,7 @@ async function upload(card: (typeof cards)[number]) {
             card.kind === 'commissions'
                 ? `Комиссии сохранены: ${data.updated} типов товаров из ${data.rows} строк файла.`
                 : `Доставка сохранена: ${data.routeRates} ставок по маршрутам, ${data.defaultRates} ставок по умолчанию.`;
-        missing.value = data.missingTypes || [];
+        missing.value = data.retiredTypes || [];
         files.value[card.kind] = null;
         try {
             await refresh();
@@ -85,7 +85,7 @@ onMounted(async () => {
         <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
         <v-alert v-if="result" type="success" class="mb-4">{{ result }}</v-alert>
         <v-alert v-if="missing.length" type="warning" class="mb-4">
-            У {{ missing.length }} типов товаров нет комиссии в новом файле. Прежние ставки для них удалены.
+            Исключено {{ missing.length }} типов: отключены в справочнике или отсутствуют в актуальном дереве Ozon.
             <details>
                 <summary>Показать типы товаров</summary>
                 <div v-for="item in missing" :key="item.id">{{ item.id }} — {{ item.name }}</div>
@@ -100,8 +100,8 @@ onMounted(async () => {
                     <p>Загружен: {{ when(source(card.kind)?.uploadedAt) }}</p>
                     <p>Сохранено строк: {{ source(card.kind)?.rows ?? 0 }}</p>
                     <p v-if="card.kind === 'commissions'">
-                        Типов с комиссией: {{ source(card.kind)?.matchedCount ?? '—' }}; без комиссии:
-                        {{ source(card.kind)?.missingCount ?? '—' }}
+                        Типов с комиссией: {{ source(card.kind)?.matchedCount ?? '—' }}; исключено устаревших:
+                        {{ source(card.kind)?.retiredCount ?? '—' }}
                     </p>
                     <v-alert v-if="source(card.kind)?.stale" type="warning" density="compact" class="my-3">
                         {{

@@ -227,31 +227,81 @@ export function sourceMetadata(buffer: Buffer, filename: string, now = new Date(
     };
 }
 
+export interface CommissionType {
+    TYPE_ID: number;
+    TYPE_NAME: string;
+    CATEGORY_PATH: string;
+    CATEGORY_PATHS?: string[];
+    DISABLED?: number;
+}
+
+/** Официальный ID связывает новое название типа со старым, без нечеткого поиска. */
+export function commissionTypesFromTree(tree: any): Map<number, CommissionType> {
+    if (!Array.isArray(tree?.result) || !tree.result.length)
+        fail('Не удалось получить актуальное дерево типов Ozon. Прежние тарифы сохранены.');
+    const types = new Map<number, CommissionType>();
+    const visit = (node: any, path: string[], disabled: boolean) => {
+        disabled = disabled || !!node.disabled;
+        if (node.type_id && !disabled) {
+            const type = {
+                TYPE_ID: Number(node.type_id),
+                TYPE_NAME: String(node.type_name || ''),
+                CATEGORY_PATH: [...path, String(node.type_name || '')].join(' -> '),
+            };
+            const existing = types.get(type.TYPE_ID);
+            if (!type.TYPE_NAME || (existing && normalize(existing.TYPE_NAME) !== normalize(type.TYPE_NAME)))
+                fail('Неоднозначное дерево типов Ozon. Прежние тарифы сохранены.');
+            const paths = [...new Set([...(existing?.CATEGORY_PATHS || []), type.CATEGORY_PATH])];
+            types.set(type.TYPE_ID, { ...type, CATEGORY_PATHS: paths });
+        }
+        for (const child of node.children || [])
+            visit(child, node.category_name ? [...path, node.category_name] : path, disabled);
+    };
+    for (const node of tree.result) visit(node, [], false);
+    if (!types.size) fail('В актуальном дереве Ozon нет действующих типов. Прежние тарифы сохранены.');
+    return types;
+}
+
 export function matchCommissions(
     rows: CommissionRow[],
-    types: { TYPE_ID: number; TYPE_NAME: string; CATEGORY_PATH: string }[],
+    types: CommissionType[],
+    currentTypes?: Map<number, CommissionType>,
 ) {
     const byName = new Map<string, CommissionRow[]>();
     for (const r of rows) byName.set(normalize(r.name), [...(byName.get(normalize(r.name)) || []), r]);
     const missing: { id: number; name: string }[] = [];
+    const retired: { id: number; name: string }[] = [];
     const updates: { typeId: number; fbo: CommissionBand[]; fbs: CommissionBand[] }[] = [];
-    for (const t of types) {
+    for (const original of types) {
+        const current = currentTypes?.get(Number(original.TYPE_ID));
+        if (currentTypes && (!current || original.DISABLED === 1)) {
+            retired.push({ id: original.TYPE_ID, name: original.TYPE_NAME });
+            continue;
+        }
+        // Название из свежего дерева; для более старого файла — историческое название того же ID.
+        const t = current && byName.has(normalize(current.TYPE_NAME)) ? current : original;
         const candidates = byName.get(normalize(t.TYPE_NAME || '')) || [];
         if (!candidates.length) {
-            missing.push({ id: t.TYPE_ID, name: t.TYPE_NAME });
+            missing.push({ id: t.TYPE_ID, name: current?.TYPE_NAME || t.TYPE_NAME });
             continue;
         }
         let chosen: CommissionRow;
         if (candidates.length === 1) chosen = candidates[0];
         else {
-            const path = (t.CATEGORY_PATH || '').split(/\s*->\s*/).map(normalize);
-            const matches = candidates.filter(
-                (r) =>
+            const matchesPath = (r: CommissionRow, value: string) => {
+                const path = (value || '').split(/\s*->\s*/).map(normalize);
+                return (
                     path.length >= 3 &&
                     path[0] === normalize(r.mainCategory) &&
-                    path[path.length - 2] === normalize(r.category),
+                    path[path.length - 2] === normalize(r.category)
+                );
+            };
+            const matches = candidates.filter((r) =>
+                (t.CATEGORY_PATHS || [t.CATEGORY_PATH]).some((path) => matchesPath(r, path)),
             );
-            if (matches.length === 1) chosen = matches[0];
+            const preferred = matches.filter((r) => matchesPath(r, original.CATEGORY_PATH));
+            if (preferred.length === 1) chosen = preferred[0];
+            else if (matches.length === 1) chosen = matches[0];
             else if (
                 candidates.every(
                     (r) => JSON.stringify([r.fbo, r.fbs]) === JSON.stringify([candidates[0].fbo, candidates[0].fbs]),
@@ -263,8 +313,12 @@ export function matchCommissions(
                     `Неоднозначная комиссия: тип ${t.TYPE_ID} «${t.TYPE_NAME}», путь «${t.CATEGORY_PATH}». Прежние тарифы сохранены.`,
                 );
         }
-        updates.push({ typeId: t.TYPE_ID, fbo: chosen.fbo, fbs: chosen.fbs });
+        updates.push({ typeId: original.TYPE_ID, fbo: chosen.fbo, fbs: chosen.fbs });
     }
+    if (currentTypes && missing.length)
+        fail(
+            `Нет комиссии для действующих типов Ozon: ${missing.map((t) => `${t.id} «${t.name}»`).join('; ')}. Прежние тарифы сохранены.`,
+        );
     if (!updates.length) fail('Ни один тип товара не сопоставлен. Прежние тарифы сохранены.');
-    return { updates, missing };
+    return { updates, missing, retired };
 }
