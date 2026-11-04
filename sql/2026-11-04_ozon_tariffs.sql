@@ -1,5 +1,8 @@
+SET SQL DIALECT 1;
+
 /* Этап 2. Выполнить на opt.fdb и magazin.fdb только по отдельному разрешению.
- * Firebird 2.5. Тарифы логистики общие для FBO/FBS: схема не является колонкой исходного XLSX.
+ * Firebird 2.5, SQL dialect 1/3. Клиентский dialect 1 не меняет dialect базы.
+ * INTEGER и NUMERIC(9,...) совместимы с существующими базами dialect 1. Тарифы логистики общие для FBO/FBS: схема не является колонкой исходного XLSX.
  * https://seller.ozon.ru/media/news/fbo-i-fbs-obnovim-tarify-na-logistiku-i-drugie-uslugi/
  * Комиссии остаются в OZON_TYPES.FBO_COMMISSIONS/FBS_COMMISSIONS.
  * Метаданные и тарифы каждого импорта заменяются одной транзакцией.
@@ -7,7 +10,7 @@
 CREATE TABLE OZON_TARIFF_SOURCE (
     KIND VARCHAR(20) NOT NULL,
     FILE_NAME VARCHAR(255),
-    FILE_DATE DATE,
+    FILE_DATE TIMESTAMP,
     UPLOADED_AT TIMESTAMP,
     FILE_HASH CHAR(64),
     ROWS_COUNT INTEGER,
@@ -20,17 +23,17 @@ INSERT INTO OZON_TARIFF_SOURCE (KIND) VALUES ('commissions');
 INSERT INTO OZON_TARIFF_SOURCE (KIND) VALUES ('logistics');
 
 CREATE TABLE OZON_LOGISTICS_TARIFF (
-    ID BIGINT NOT NULL,
-    VOLUME_FROM NUMERIC(12,3) NOT NULL,
-    VOLUME_TO NUMERIC(12,3),
+    ID INTEGER NOT NULL,
+    VOLUME_FROM NUMERIC(9,3) NOT NULL,
+    VOLUME_TO NUMERIC(9,3),
     ORIGIN_CLUSTER VARCHAR(120) CHARACTER SET UTF8 NOT NULL,
     DESTINATION_CLUSTER VARCHAR(120) CHARACTER SET UTF8 NOT NULL,
     IS_DEFAULT SMALLINT NOT NULL,
-    PRICE_FROM NUMERIC(15,2) NOT NULL,
+    PRICE_FROM NUMERIC(9,2) NOT NULL,
     PRICE_FROM_INCLUDED SMALLINT NOT NULL,
-    PRICE_TO NUMERIC(15,2),
+    PRICE_TO NUMERIC(9,2),
     PRICE_TO_INCLUDED SMALLINT NOT NULL,
-    AMOUNT NUMERIC(15,2) NOT NULL,
+    AMOUNT NUMERIC(9,2) NOT NULL,
     CONSTRAINT PK_OZON_LOGISTICS_TARIFF PRIMARY KEY (ID),
     CONSTRAINT UQ_OZON_LOGISTICS_TARIFF UNIQUE
         (IS_DEFAULT, ORIGIN_CLUSTER, DESTINATION_CLUSTER, VOLUME_FROM, PRICE_FROM),

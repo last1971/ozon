@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
-import axios from 'axios';
+import { isAxiosError } from 'axios';
+import axios from '@/axios.config';
 
 type Kind = 'commissions' | 'logistics';
 type Source = {
@@ -26,7 +27,7 @@ const missing = ref<{ id: number; name: string }[]>([]);
 const source = (kind: Kind) => sources.value.find((s) => s.kind === kind);
 const when = (value?: string | null) => (value ? new Date(value).toLocaleString('ru-RU') : '—');
 const errorText = (e: unknown) => {
-    if (axios.isAxiosError(e)) {
+    if (isAxiosError(e)) {
         const message = e.response?.data?.message;
         return Array.isArray(message)
             ? message.join('; ')
