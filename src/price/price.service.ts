@@ -111,11 +111,16 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                 return {
                     product_id: item.product_id,
                     offer_id: item.offer_id,
-                    name: good.name,
+                    name: good?.name,
                     marketing_price: item.price.marketing_seller_price || 0,
                     marketing_seller_price: item.price.marketing_seller_price,
-                    incoming_price: good.price * goodQuantityCoeff(item),
-                    available_price: percent.available_price,
+                    incoming_price: good?.price == null ? null : good.price * goodQuantityCoeff(item),
+                    base_source: good?.base_source ?? 'none',
+                    available_price: good?.base_source
+                        ? good.base_source === 'market' && good.price > 0
+                            ? good.price * goodQuantityCoeff(item)
+                            : 0
+                        : percent.available_price,
                     min_price: item.price.min_price,
                     price: item.price.price,
                     old_price: item.price.old_price,
@@ -327,6 +332,10 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
         typeId: string,
         useFbo = false,
     ): Promise<UpdatePriceDto> {
+        if (price.base_source === 'none') {
+            this.logger.warn(`${price.offer_id}: цену не считали — нет базы`);
+            return null;
+        }
         const result1 = calculatePrice(price, percents);
 
         // Проверка условия оптимизации

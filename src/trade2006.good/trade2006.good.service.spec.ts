@@ -163,12 +163,131 @@ describe('Trade2006GoodService', () => {
     });
     it('test prices', async () => {
         await service.prices(['1', '2']);
-        expect(query.mock.calls[0][0].replace(/\s+/g, ' ').trim().toUpperCase()).toEqual(
-            'SELECT G.GOODSCODE, N.NAME, CASE WHEN S.QUAN - COALESCE(R.RES, 0) > 0 THEN COALESCE( ( SELECT SUM(T.OST * T.PRICE) / NULLIF(SUM(T.OST), 0) FROM ( SELECT PM.PRICE, PM.QUAN - COALESCE((SELECT SUM(F.QUAN) FROM FIFO_T F WHERE F.PR_META_IN_ID = PM.ID), 0) AS OST FROM PR_META PM WHERE PM.GOODSCODE = G.GOODSCODE AND PM.SHOPINCODE IS NOT NULL AND COALESCE((SELECT SUM(F.QUAN) FROM FIFO_T F WHERE F.PR_META_IN_ID = PM.ID), 0) < PM.QUAN ) T ), (SELECT MAX(AVAILABLE_PRICE) FROM OZON_PERC WHERE GOODSCODE = G.GOODSCODE), (SELECT FIRST 1 PM2.PRICE FROM PR_META PM2 WHERE PM2.GOODSCODE = G.GOODSCODE AND PM2.SHOPINCODE IS NOT NULL ORDER BY PM2.DATA DESC), 1 ) ELSE NULL END AS PRIC FROM GOODS G JOIN NAME N ON G.NAMECODE = N.NAMECODE JOIN SHOPSKLAD S ON S.GOODSCODE = G.GOODSCODE LEFT JOIN ( SELECT GOODSCODE, SUM(QUANSHOP) + SUM(QUANSKLAD) AS RES FROM RESERVEDPOS GROUP BY GOODSCODE ) R ON R.GOODSCODE = G.GOODSCODE WHERE G.GOODSCODE IN (?,?)',
-        );
+        const sql = query.mock.calls[0][0].replace(/\s+/g, ' ').trim().toUpperCase();
+        expect(sql).toContain('AVAILABLE_PRICE > 0');
+        expect(sql).toContain('SUM(T.OST * T.PRICE) / NULLIF(SUM(T.OST), 0)');
+        expect(sql).toContain('SUM(PM2.PRICE * PM2.QUAN) / NULLIF(SUM(PM2.QUAN), 0)');
+        expect(sql).toContain('PM2.SHOPINCODE IS NOT NULL');
+        expect(sql).not.toContain('FIRST 1');
+        expect(sql).not.toContain('MAX(PM');
         expect(query.mock.calls[0][1]).toEqual(['1', '2']);
         expect(query.mock.calls[0][2]).toBe(false);
     });
+    it.each([
+        [120, 90, 70, 120, 'market'],
+        [0, 90, 70, 90, 'remaining-lots'],
+        [-1, null, 70, 70, 'all-receipts'],
+        [null, null, null, null, 'none'],
+        [0, 0, 0, null, 'none'],
+    ])('prices: рынок %s, остаток %s, приходы %s → %s (%s)', async (market, remaining, receipts, price, source) => {
+        query.mockResolvedValueOnce([
+            {
+                GOODSCODE: 1,
+                NAME: 'Товар',
+                FREE_STOCK: 5,
+                MARKET_PRICE: market,
+                REMAINING_PRICE: remaining,
+                RECEIPTS_PRICE: receipts,
+            },
+        ]);
+        expect(await service.prices(['1'])).toEqual([{ code: 1, name: 'Товар', price, base_source: source }]);
+    });
+
+    it('prices: без свободного остатка сохраняет запрет расчёта при наличии базы', async () => {
+        query.mockResolvedValueOnce([
+            {
+                GOODSCODE: 1,
+                FREE_STOCK: 0,
+                MARKET_PRICE: 120,
+                REMAINING_PRICE: 90,
+                RECEIPTS_PRICE: 70,
+            },
+        ]);
+        expect(await service.prices(['1'])).toEqual([{ code: 1, name: undefined, price: null, base_source: 'market' }]);
+    });
+
+    it.each(['shop', 'sklad'])('prices: приходы соответствуют складу %s', async (storage) => {
+        (service as any).storageTable = storage === 'shop' ? 'SHOPSKLAD' : 'SKLAD';
+        await service.prices(['1']);
+        const sql = query.mock.calls[0][0].toLowerCase();
+        expect(sql).toContain(`pm.${storage}incode is not null`);
+        expect(sql).toContain(`pm2.${storage}incode is not null`);
+    });
+
+    it('repriceForService: нет базы — не подбирает наценки, не считает и не отправляет даже с подстановкой', async () => {
+        // Реальный helper: проверяем весь общий путь площадок, а не мок фильтрации.
+        const helper = new PriceCalculationHelper(new ConfigService());
+        mockPriceCalculationHelper.getIncomingPrice.mockImplementation(helper.getIncomingPrice.bind(helper));
+        mockPriceCalculationHelper.preparePricesContext.mockResolvedValue({
+            goods: [{ code: 1, price: null, base_source: 'none' }],
+            percents: [],
+            products: [getProductsWithCoeffsFirst],
+            codes: ['1'],
+        });
+        const report = await service.repriceForService(
+            priceUdateable,
+            ['1'],
+            new Map([['1', { offer_id: '1', incoming_price: 100, currency_code: 'RUB' }]]),
+        );
+        expect(report.skipped).toEqual([{ offer_id: '1', reason: 'no-base' }]);
+        expect(report.sent).toEqual([]);
+        expect(report.inputs).toEqual([]);
+        expect(report.response).toBeNull();
+        expect(mockPriceCalculationHelper.adjustPercents).not.toHaveBeenCalled();
+        expect(updatePrices).not.toHaveBeenCalled();
+        expect(await service.buildPriceables(priceUdateable, ['1'])).toEqual([]);
+    });
+
+    it.each(['market', 'remaining-lots', 'all-receipts'])(
+        'фасовка: источник %s умножает базу на pieces один раз',
+        async (source) => {
+            const product = { ...getProductsWithCoeffsFirst, getSku: () => '1-5' };
+            const helper = new PriceCalculationHelper(new ConfigService());
+            mockPriceCalculationHelper.getIncomingPrice.mockImplementation(helper.getIncomingPrice.bind(helper));
+            mockPriceCalculationHelper.preparePricesContext.mockResolvedValue({
+                goods: [{ code: 1, price: 20, base_source: source }],
+                percents: [{ offer_id: '1', pieces: 5, available_price: 20, min_perc: 10, perc: 20, old_perc: 40 }],
+                products: [product],
+                codes: ['1'],
+            });
+            const report = await service.repriceForService(priceUdateable, ['1-5']);
+            expect(report.inputs[0]).toMatchObject({
+                incoming_price: 100,
+                base_source: source,
+                available_price: source === 'market' ? 100 : 0,
+            });
+            expect(report.sent).toHaveLength(1);
+            expect(updatePrices).toHaveBeenCalledWith(report.sent);
+        },
+    );
+
+    it('подбор наценок сохраняет заданную рыночную цену без умножения в БД и уважает ручную правку', async () => {
+        const helper = new PriceCalculationHelper(new ConfigService());
+        mockPriceCalculationHelper.getIncomingPrice.mockImplementation(helper.getIncomingPrice.bind(helper));
+        mockPriceCalculationHelper.preparePricesContext.mockResolvedValue({
+            goods: [{ code: 1, price: 20, base_source: 'market' }],
+            percents: [{ offer_id: '1', pieces: 5, available_price: 20 }],
+            products: [{ ...getProductsWithCoeffsFirst, getSku: () => '1-5' }],
+            codes: ['1'],
+        });
+        const generated = await service.generatePercentsForService(null, ['1-5']);
+        expect(mockPriceCalculationHelper.adjustPercents).toHaveBeenLastCalledWith(
+            expect.objectContaining({ incoming_price: 100, available_price: 100 }),
+            null,
+        );
+        expect(generated[0].available_price).toBe(20);
+        const edited = await service.generatePercentsForService(
+            null,
+            ['1-5'],
+            new Map([['1-5', { available_price: 60 }]]),
+        );
+        expect(mockPriceCalculationHelper.adjustPercents).toHaveBeenLastCalledWith(
+            expect.objectContaining({ available_price: 60 }),
+            null,
+        );
+        expect(edited[0].available_price).toBe(60);
+    });
+
     it('test getPerc', async () => {
         await service.getPerc(['3']);
         expect(query.mock.calls[0]).toEqual(['select * from ozon_perc where goodscode in (?)', ['3'], false]);

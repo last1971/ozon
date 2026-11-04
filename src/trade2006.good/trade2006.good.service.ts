@@ -102,29 +102,24 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                     `SELECT
                         g.goodscode,
                         n.name,
-                        CASE
-                            WHEN s.quan - COALESCE(r.res, 0) > 0 THEN COALESCE(
-                                (
-                                    SELECT SUM(t.ost * t.price) / NULLIF(SUM(t.ost), 0)
-                                    FROM (
-                                        SELECT
-                                            pm.price,
-                                            pm.quan - COALESCE((SELECT SUM(f.quan) FROM fifo_t f WHERE f.pr_meta_in_id = pm.id), 0) AS ost
-                                        FROM pr_meta pm
-                                        WHERE pm.goodscode = g.goodscode
-                                            AND pm.${inCode} IS NOT NULL
-                                            AND COALESCE((SELECT SUM(f.quan) FROM fifo_t f WHERE f.pr_meta_in_id = pm.id), 0) < pm.quan
-                                    ) t
-                                ),
-                                (SELECT MAX(AVAILABLE_PRICE) FROM OZON_PERC WHERE GOODSCODE = g.GOODSCODE),
-                                (SELECT FIRST 1 pm2.price
-                                    FROM pr_meta pm2
-                                    WHERE pm2.goodscode = g.goodscode AND pm2.${inCode} IS NOT NULL
-                                    ORDER BY pm2.data DESC),
-                                1
-                            )
-                            ELSE NULL
-                        END AS pric
+                        s.quan - COALESCE(r.res, 0) AS free_stock,
+                        (SELECT MAX(AVAILABLE_PRICE) FROM OZON_PERC
+                            WHERE GOODSCODE = g.GOODSCODE AND AVAILABLE_PRICE > 0) AS market_price,
+                        (
+                            SELECT SUM(t.ost * t.price) / NULLIF(SUM(t.ost), 0)
+                            FROM (
+                                SELECT pm.price,
+                                    pm.quan - COALESCE((SELECT SUM(f.quan) FROM fifo_t f WHERE f.pr_meta_in_id = pm.id), 0) AS ost
+                                FROM pr_meta pm
+                                WHERE pm.goodscode = g.goodscode
+                                    AND pm.${inCode} IS NOT NULL
+                                    AND COALESCE((SELECT SUM(f.quan) FROM fifo_t f WHERE f.pr_meta_in_id = pm.id), 0) < pm.quan
+                            ) t
+                        ) AS remaining_price,
+                        (SELECT SUM(pm2.price * pm2.quan) / NULLIF(SUM(pm2.quan), 0)
+                            FROM pr_meta pm2
+                            WHERE pm2.goodscode = g.goodscode AND pm2.${inCode} IS NOT NULL
+                                AND pm2.quan > 0) AS receipts_price
                     FROM goods g
                     JOIN name n ON g.namecode = n.namecode
                     JOIN ${this.storageTable} s ON s.goodscode = g.goodscode
@@ -138,13 +133,23 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                     false,
                 );
 
-                const batchResults = response.map(
-                    (good: any): GoodPriceDto => ({
+                const batchResults = response.map((good: any): GoodPriceDto => {
+                    // MAX относится только к рыночным ценам фасовок, а не к ценам приходов.
+                    const candidates = [
+                        { price: good.MARKET_PRICE, source: 'market' as const },
+                        { price: good.REMAINING_PRICE, source: 'remaining-lots' as const },
+                        { price: good.RECEIPTS_PRICE, source: 'all-receipts' as const },
+                    ];
+                    const base = candidates.find(
+                        (candidate) => Number.isFinite(Number(candidate.price)) && candidate.price > 0,
+                    );
+                    return {
                         code: good.GOODSCODE,
                         name: good.NAME,
-                        price: good.PRIC,
-                    }),
-                );
+                        price: good.FREE_STOCK > 0 && base ? Number(base.price) : null,
+                        base_source: base?.source ?? 'none',
+                    };
+                });
 
                 allResults.push(...batchResults);
             }
@@ -543,7 +548,8 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
             const incoming_price = this.priceCalculationHelper.getIncomingPrice(product, goods, known?.prices);
 
             // Пропускаем если нет закупочной цены
-            if (!incoming_price || incoming_price <= 0) {
+            if (!(incoming_price > 0)) {
+                this.logger.warn(`${sku}: цену не считали — нет базы или свободного остатка`);
                 continue;
             }
 
@@ -564,6 +570,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
             };
 
             const adv_perc = dto?.adv_perc ?? percent.adv_perc;
+            const baseSource = goods.find((g) => g.code.toString() === gCode)?.base_source;
             const available_price = dto?.available_price ?? percent.available_price;
             const packing_price = dto?.packing_price ?? percent.packing_price;
 
@@ -571,7 +578,14 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                 adv_perc,
                 fbs_direct_flow_trans_max_amount: product.getTransMaxAmount(),
                 incoming_price,
-                available_price,
+                available_price:
+                    dto?.available_price != null
+                        ? available_price
+                        : baseSource
+                          ? baseSource === 'market'
+                              ? incoming_price
+                              : 0
+                          : available_price,
                 offer_id: sku,
                 sales_percent: product.getSalesPercent(),
                 sum_pack: packing_price,
@@ -665,7 +679,8 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
 
     /**
      * Данные расчёта по артикулам площадки + кого пропустили и почему. Входная берётся из снимка склада
-     * (prices(): NULL, если свободного остатка нет) или из подложенных `prices`; не больше нуля — цену не считаем.
+     * (prices(): NULL, если нет базы или свободного остатка) или из подложенных `prices`.
+     * Признак «нет базы» запрещает расчёт и при подстановке входной цены.
      */
     private async collectPriceables(
         service: IPriceUpdateable | null,
@@ -699,11 +714,13 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
 
         for (const product of products) {
             const incoming_price = this.priceCalculationHelper.getIncomingPrice(product, goods, prices);
-            // Нет строки склада → undefined × фасовка = NaN; раньше NaN уходил в расчёт и на площадку
+            // Нет положительной базы/остатка — не рассчитываем и не отправляем цену.
             if (!(incoming_price > 0)) {
                 const gCode = goodCode({ offer_id: product.getSku() });
-                const inStock = goods.some((g) => g.code.toString() === gCode);
-                skipped.push({ offer_id: product.getSku(), reason: inStock ? 'no-free-stock' : 'not-in-stock' });
+                const good = goods.find((g) => g.code.toString() === gCode);
+                const reason = good?.base_source === 'none' ? 'no-base' : good ? 'no-free-stock' : 'not-in-stock';
+                skipped.push({ offer_id: product.getSku(), reason });
+                if (reason === 'no-base') this.logger.warn(`${product.getSku()}: цену не считали — нет базы`);
             } else {
                 const gCode = goodCode({ offer_id: product.getSku() });
                 const gCoeff = goodQuantityCoeff({ offer_id: product.getSku() });
@@ -718,11 +735,13 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                     available_price: 0,
                 };
 
+                const baseSource = goods.find((g) => g.code.toString() === gCode)?.base_source;
                 priceables.push({
+                    base_source: baseSource,
                     adv_perc,
                     fbs_direct_flow_trans_max_amount: product.getTransMaxAmount(),
                     incoming_price,
-                    available_price,
+                    available_price: baseSource ? (baseSource === 'market' ? incoming_price : 0) : available_price,
                     min_perc,
                     offer_id: product.getSku(),
                     old_perc,

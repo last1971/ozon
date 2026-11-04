@@ -16,6 +16,10 @@ export class FilterByIncomingPriceBelowCommand implements ICommandAsync<IGoodsPr
         const before = prices.length;
 
         context.ozonPrices = prices.filter((p) => {
+            if (p.base_source === 'none') {
+                context.logger?.log(`${p.offer_id}: цену не считали — нет базы`);
+                return false;
+            }
             const effectivePrice = this.getEffectiveIncomingPrice(p);
             return effectivePrice > 0 && effectivePrice < maxPrice;
         });

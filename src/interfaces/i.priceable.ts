@@ -1,5 +1,8 @@
+import { PriceBaseSource } from '../good/dto/good.price.dto';
+
 export interface IPriceable {
     offer_id: string;
+    base_source?: PriceBaseSource;
     incoming_price: number;
     available_price: number;
     fbs_direct_flow_trans_max_amount: number;

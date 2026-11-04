@@ -52,6 +52,22 @@ describe('LogPriceReportsCommand (журнал цен по товару)', () =>
         );
     });
 
+    it('нет базы: пишет понятную причину из отчёта', async () => {
+        await new LogPriceReportsCommand().execute({
+            skus: [],
+            priceReports: [
+                {
+                    service: GoodServiceEnum.OZON,
+                    inputs: [],
+                    sent: [],
+                    skipped: [{ offer_id: '1', reason: 'no-base' }],
+                    response: null,
+                },
+            ],
+        });
+        expect(log).toHaveBeenCalledWith('[цены ozon] 1: цену не считали — нет базы');
+    });
+
     it('принятое Озоном — обычной строкой', async () => {
         await new LogPriceReportsCommand().execute({
             skus: [],

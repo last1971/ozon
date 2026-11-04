@@ -1,3 +1,4 @@
+import { PriceController } from './price.controller';
 import { Test, TestingModule } from '@nestjs/testing';
 import { PriceService } from './price.service';
 import { ProductService } from '../product/product.service';
@@ -183,6 +184,46 @@ describe('PriceService', () => {
             tax_unit: 6,
             sum_label: 0,
         });
+    });
+
+    it.each([
+        [20, 'market', 100, 100],
+        [20, 'remaining-lots', 100, 0],
+        [20, 'all-receipts', 100, 0],
+        [null, 'none', null, 0],
+    ])('index: база %s (%s) сохраняет источник, null и фасовку', async (base, source, incoming, market) => {
+        prices.mockResolvedValueOnce([{ code: 1, name: 'Товар', price: base, base_source: source }]);
+        getPerc.mockResolvedValueOnce([{ offer_id: '1', pieces: 5, available_price: 10 }]);
+        getPrices.mockResolvedValueOnce({
+            cursor: '',
+            items: [
+                {
+                    offer_id: '1-5',
+                    product_id: 1,
+                    price: {},
+                    commissions: {},
+                },
+            ],
+        });
+        const result = await service.index({ limit: 1, visibility: ProductVisibility.VISIBLE });
+        expect(result.data[0]).toMatchObject({
+            incoming_price: incoming,
+            available_price: market,
+            base_source: source,
+        });
+    });
+
+    it('API экрана: без базы запрещает расчёт цены и прибыли', async () => {
+        const controller = new PriceController(service, null);
+        const price = { offer_id: '1', base_source: 'none' } as any;
+        await expect(controller.calculate({ price, percents: {} as any })).rejects.toThrow('нет базы');
+        await expect(controller.calculatePay({ price, percents: {} as any, sums: [100] })).rejects.toThrow('нет базы');
+    });
+
+    it('optimizeOzonPrice: без базы возвращает null', async () => {
+        expect(
+            await service.optimizeOzonPrice({ offer_id: '1', base_source: 'none' } as any, {} as any, '1'),
+        ).toBeNull();
     });
 
     it('test index', async () => {

@@ -1,4 +1,5 @@
 import {
+    BadRequestException,
     Body,
     Controller,
     Get,
@@ -135,6 +136,7 @@ export class PriceController {
     async calculate(
         @Body() body: { price: IPriceable; percents: ObtainCoeffsDto; typeId?: string },
     ): Promise<UpdatePriceDto> {
+        if (body.price.base_source === 'none') throw new BadRequestException('нет базы');
         if (body.typeId) {
             return this.service.optimizeOzonPrice(body.price, body.percents, body.typeId);
         }
@@ -177,6 +179,7 @@ export class PriceController {
     async calculatePay(
         @Body() body: { price: IPriceable; percents: ObtainCoeffsDto; sums: number[] },
     ): Promise<PayResultDto[]> {
+        if (body.price.base_source === 'none') throw new BadRequestException('нет базы');
         return body.sums.map((sum) => calculatePay(body.price, body.percents, sum));
     }
     @Post('discount')

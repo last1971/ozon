@@ -113,8 +113,11 @@ export class PriceCalculationHelper {
     getIncomingPrice(product: IProductCoeffsable, goods: GoodPriceDto[], prices?: Map<string, UpdatePriceDto>): number {
         const gCode = goodCode({ offer_id: product.getSku() });
         const gCoeff = goodQuantityCoeff({ offer_id: product.getSku() });
+        const good = goods.find((g) => g.code.toString() === gCode);
+        // Явная подстановка не должна обходить отсутствие базы в Trade.
+        if (good?.base_source === 'none') return null;
         const incoming_price = prices?.get(product.getSku())?.incoming_price;
-        return incoming_price ? incoming_price : goods.find((g) => g.code.toString() === gCode)?.price * gCoeff;
+        return incoming_price ? incoming_price : good?.price == null ? null : good.price * gCoeff;
     }
 
     getInitialPercents(incoming_price: number = 0): { min_perc: number; perc: number; old_perc: number } {

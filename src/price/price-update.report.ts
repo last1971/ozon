@@ -5,11 +5,12 @@ import { ObtainCoeffsDto } from '../helpers/dto/obtain.coeffs.dto';
 
 /**
  * Почему артикулу не считали цену.
+ * - `no-base` — нет положительной рыночной цены, цены остатка партий и средней цены приходов.
  * - `no-free-stock` — товар на складе есть, но свободного нет (всё в резерве или распродано): входная 0 законно,
  *   продавать нечего, ждать бесполезно.
  * - `not-in-stock` — товара нет в складской таблице совсем: приход ещё не дошёл до остатка, цену посчитать не из чего.
  */
-export type PriceSkipReason = 'no-free-stock' | 'not-in-stock';
+export type PriceSkipReason = 'no-free-stock' | 'not-in-stock' | 'no-base';
 
 export interface PriceSkip {
     offer_id: string;

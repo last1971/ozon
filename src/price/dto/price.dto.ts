@@ -1,3 +1,4 @@
+import { PriceBaseSource } from '../../good/dto/good.price.dto';
 import { ApiProperty } from '@nestjs/swagger';
 import { MarketingActionDto } from '../../helpers/price/buyer.price.helper';
 
@@ -13,7 +14,9 @@ export class PriceDto {
     @ApiProperty({ description: 'Цена расчета Озон' })
     marketing_seller_price: number;
     @ApiProperty({ description: 'Входящая цена' })
-    incoming_price: number;
+    incoming_price: number | null;
+    @ApiProperty({ description: 'Источник базы: market / remaining-lots / all-receipts / none', required: false })
+    base_source?: PriceBaseSource;
     @ApiProperty({ description: 'Рыночная цена' })
     available_price: number;
     @ApiProperty({ description: 'Мин цена' })

@@ -5,6 +5,7 @@ import { describeOzonResult, ozonResultsByOffer, ServicePriceReport } from '../p
 import { GoodServiceEnum } from '../../good/good.service.enum';
 
 const SKIP_TEXT = {
+    'no-base': 'нет базы',
     'no-free-stock': 'нет свободного остатка (всё в резерве или распродано)',
     'not-in-stock': 'товара нет на складе',
 };
@@ -39,6 +40,7 @@ export class LogPriceReportsCommand implements ICommandAsync<IGoodsProcessingCon
             const i = inputs.get(sent.offer_id);
             const took = i
                 ? `вх ${round(i.incoming_price)}` +
+                  (i.base_source ? `, источник базы ${i.base_source}` : '') +
                   (i.available_price > 0 ? ` (рыночная ${round(i.available_price)})` : '') +
                   `, наценки мин/норм/макс ${i.min_perc}/${i.perc}/${i.old_perc}, реклама ${i.adv_perc}, ` +
                   `упаковка ${i.sum_pack}, комиссия ${i.sales_percent}%, логистика до ${i.fbs_direct_flow_trans_max_amount}`

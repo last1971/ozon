@@ -85,6 +85,17 @@ describe('FilterByIncomingPriceBelowCommand', () => {
         expect(result.ozonPrices).toHaveLength(0);
     });
 
+    it('нет базы: пропускает товар до пересчёта и отправки, даже со старой рыночной ценой', async () => {
+        const log = jest.fn();
+        const context: IGoodsProcessingContext = {
+            skus: [],
+            logger: { log },
+            ozonPrices: [{ offer_id: '1', incoming_price: null, available_price: 50, base_source: 'none' } as PriceDto],
+        };
+        expect((await command.execute(context)).ozonPrices).toEqual([]);
+        expect(log).toHaveBeenCalledWith('1: цену не считали — нет базы');
+    });
+
     it('should handle empty ozonPrices', async () => {
         const context: IGoodsProcessingContext = {
             skus: [],
