@@ -4,6 +4,7 @@ import { JobProgress } from '../interfaces/i.job.context';
 export type JobStatus = 'running' | 'done' | 'failed';
 
 export class JobProgressDto implements JobProgress {
+    @ApiPropertyOptional({ description: 'Общий процент цепочки, 0–100' }) percent?: number;
     @ApiPropertyOptional({ description: 'Текущая фаза (команда цепочки)' }) phase?: string;
     @ApiProperty() done: number;
     @ApiPropertyOptional() total?: number;

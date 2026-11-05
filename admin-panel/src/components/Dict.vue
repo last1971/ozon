@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import JobProgress from "@/components/JobProgress.vue";
 import { dictStore, DICT_CATEGORIES_JOB, DICT_TNVED_JOB, type DictReport } from "@/stores/dict";
 import MarketplaceSelect from "@/components/MarketplaceSelect.vue";
 import { useJob } from "@/composable/useJob";
@@ -40,12 +41,6 @@ const jobs = [
 const running = (j: JobState | null) => j?.status === 'running';
 const marketOf = (j: { params?: Record<string, unknown>; market?: string }) => String(j.params?.market ?? j.market ?? '').toUpperCase();
 const whose = (j: { clientId?: string }) => (j.clientId && j.clientId === me ? 'моя' : 'с другого компьютера');
-const progressText = (j: JobState) => {
-    const p = j.progress;
-    const phase = p.phase ?? '…';
-    return p.total ? `${phase}: ${p.done} из ${p.total}` : p.done ? `${phase}: ${p.done}` : phase;
-};
-const progressPercent = (j: JobState) => (j.progress.total ? Math.round((j.progress.done / j.progress.total) * 100) : undefined);
 const reportText = (r: DictReport | undefined) => {
     if (!r) return 'готово';
     if (r.categories !== undefined) return `готово: предметов ${r.categories}`;
@@ -98,23 +93,15 @@ const statsOfMarket = computed(() => store.stats.find((s) => s.market === store.
         <template v-for="j in jobs" :key="j.label">
             <v-card v-if="j.box.job" class="mt-4" variant="tonal" :color="j.box.job.status === 'failed' ? 'error' : running(j.box.job) ? 'primary' : 'success'">
                 <v-card-text>
-                    <div class="d-flex align-center mb-2">
-                        <v-icon :icon="running(j.box.job) ? 'mdi-progress-clock' : j.box.job.status === 'failed' ? 'mdi-alert-circle' : 'mdi-check-circle'" class="me-2" />
-                        <span class="font-weight-medium">
-                            {{ marketOf(j.box.job) }} · {{ j.label }} · {{ whose(j.box.job) }} ·
-                            {{ running(j.box.job) ? progressText(j.box.job) : j.box.job.status === 'failed' ? `ошибка: ${j.box.job.error}` : reportText(j.box.job.result) }}
-                        </span>
-                    </div>
-                    <v-progress-linear v-if="running(j.box.job)" :model-value="progressPercent(j.box.job)" :indeterminate="progressPercent(j.box.job) === undefined" height="8" rounded />
-                    <div v-if="Object.keys(j.box.job.progress.counters).length" class="mt-2 text-body-2">
-                        <span v-for="(v, k) in j.box.job.progress.counters" :key="k" class="me-4">{{ k }}: {{ v }}</span>
-                    </div>
+                    <JobProgress :job="j.box.job" show-counters :done-text="reportText(j.box.job.result)">
+                        <template #title>{{ marketOf(j.box.job) }} · {{ j.label }} · {{ whose(j.box.job) }}</template>
+                    </JobProgress>
                 </v-card-text>
             </v-card>
             <div v-if="j.box.others.length" class="mt-2 text-body-2 text-medium-emphasis">
                 <div v-for="o in j.box.others" :key="o.id">
                     <v-icon :icon="o.status === 'running' ? 'mdi-progress-clock' : o.status === 'failed' ? 'mdi-alert-circle' : 'mdi-check'" size="small" class="me-1" />
-                    {{ marketOf(o) }} · {{ j.label }} · {{ whose(o) }} · {{ o.status === 'running' ? progressText(o) : o.status }} · {{ new Date(o.startedAt).toLocaleTimeString() }}
+                    {{ marketOf(o) }} · {{ j.label }} · {{ whose(o) }} · <JobProgress :job="o" inline :done-text="o.status" /> · {{ new Date(o.startedAt).toLocaleTimeString() }}
                 </div>
             </div>
         </template>

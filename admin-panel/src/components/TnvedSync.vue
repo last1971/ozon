@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import JobProgress from "@/components/JobProgress.vue";
 import { tnvedSyncStore, TNVED_SYNC_JOB, GTIN_SYNC_JOB, TNVED_MISSING_JOB, type TnvedSyncReport, type MissingTnvedReport } from "@/stores/tnvedSync";
 import MarketplaceSelect from "@/components/MarketplaceSelect.vue";
 import { useJob } from "@/composable/useJob";
@@ -34,17 +35,6 @@ const running = computed(() => job.value?.status === 'running');
 const report = computed(() => (job.value?.status === 'done' ? job.value.result ?? null : null));
 /** Записывать можно только после проверки того же маркетплейса, и только если есть что править. */
 const canWrite = computed(() => !!report.value && !report.value.apply && report.value.toFix.length > 0);
-
-const progressText = computed(() => {
-    const p = job.value?.progress;
-    if (!p) return '';
-    const phase = p.phase ?? '…';
-    return p.total ? `${phase}: ${p.done} из ${p.total}` : p.done ? `${phase}: ${p.done}` : phase;
-});
-const progressPercent = computed(() => {
-    const p = job.value?.progress;
-    return p?.total ? Math.round((p.done / p.total) * 100) : undefined;
-});
 
 const marketOf = (j: { params: Record<string, unknown> }) => String(j.params.market ?? '').toUpperCase();
 const whose = (j: { clientId?: string }) => (j.clientId && j.clientId === me ? 'моя' : 'с другого компьютера');
@@ -163,23 +153,9 @@ async function resetProgress() {
         <!-- Ход задачи -->
         <v-card v-if="job" class="mt-4" variant="tonal" :color="job.status === 'failed' ? 'error' : running ? 'primary' : 'success'">
             <v-card-text>
-                <div class="d-flex align-center mb-2">
-                    <v-icon :icon="running ? 'mdi-progress-clock' : job.status === 'failed' ? 'mdi-alert-circle' : 'mdi-check-circle'" class="me-2" />
-                    <span class="font-weight-medium">
-                        {{ isGtin ? 'GTIN' : 'ТН ВЭД' }} · {{ marketOf(job) }} · {{ job.params.apply ? 'запись' : 'проверка' }} · {{ whose(job) }}
-                        · {{ running ? progressText : job.status === 'failed' ? `ошибка: ${job.error}` : 'готово' }}
-                    </span>
-                </div>
-                <v-progress-linear
-                    v-if="running"
-                    :model-value="progressPercent"
-                    :indeterminate="progressPercent === undefined"
-                    height="8"
-                    rounded
-                />
-                <div v-if="Object.keys(job.progress.counters).length" class="mt-2 text-body-2">
-                    <span v-for="(v, k) in job.progress.counters" :key="k" class="me-4">{{ k }}: {{ v }}</span>
-                </div>
+                <JobProgress :job="job" show-counters>
+                    <template #title>{{ isGtin ? 'GTIN' : 'ТН ВЭД' }} · {{ marketOf(job) }} · {{ job.params.apply ? 'запись' : 'проверка' }} · {{ whose(job) }}</template>
+                </JobProgress>
             </v-card-text>
         </v-card>
 
@@ -327,16 +303,9 @@ async function resetProgress() {
         <!-- «Где у нас пусто»: карточки маркетплейса без ТН ВЭД у нас -->
         <v-card v-if="missingJob" class="mt-6" variant="tonal" :color="missingJob.status === 'failed' ? 'error' : missingRunning ? 'primary' : 'secondary'">
             <v-card-text>
-                <div class="d-flex align-center">
-                    <v-icon :icon="missingRunning ? 'mdi-progress-clock' : missingJob.status === 'failed' ? 'mdi-alert-circle' : 'mdi-database-search'" class="me-2" />
-                    <span class="font-weight-medium">
-                        {{ marketOf(missingJob) }} · где у нас пусто · {{ whose(missingJob) }} ·
-                        {{ missingRunning
-                            ? `${missingJob.progress.phase ?? ''} ${missingJob.progress.done}${missingJob.progress.total ? ' из ' + missingJob.progress.total : ''}`
-                            : missingJob.status === 'failed' ? `ошибка: ${missingJob.error}` : 'готово' }}
-                    </span>
-                </div>
-                <v-progress-linear v-if="missingRunning" indeterminate height="6" rounded class="mt-2" />
+                <JobProgress :job="missingJob" compact indeterminate done-icon="mdi-database-search">
+                    <template #title>{{ marketOf(missingJob) }} · где у нас пусто · {{ whose(missingJob) }}</template>
+                </JobProgress>
             </v-card-text>
         </v-card>
 

@@ -1,5 +1,6 @@
 /** Состояние фоновой задачи — как отдаёт GET /api/job/:id (см. src/job/job.state.dto.ts на бэке). */
 export interface JobProgress {
+    percent?: number;
     phase?: string;
     done: number;
     total?: number;

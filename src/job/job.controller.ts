@@ -30,8 +30,12 @@ export class JobController {
 
     @Post(':id/cancel')
     @HttpCode(200)
-    @ApiOperation({ summary: 'Отменить задачу: стоп между командами, статус failed, вид свободен для нового запуска' })
-    @ApiOkResponse({ type: JobStateDto, description: 'состояние после отмены; уже завершённая возвращается как есть' })
+    @ApiOperation({ summary: 'Отменить задачу; при наличии ресурсов завершение ждёт их освобождения' })
+    @ApiOkResponse({
+        type: JobStateDto,
+        description:
+            'Текущее состояние: остановка с cleanup может ещё выполняться. Во время COMMIT отмена не принимается.',
+    })
     @ApiNotFoundResponse({ description: 'задачи нет' })
     cancel(@Param('id') id: string): JobStateDto {
         const state = this.jobs.cancel(id);

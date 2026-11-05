@@ -2,6 +2,8 @@ import { ICommandAsync } from './i.command.acync';
 
 /** Ход задачи. Команды двигают done/total/counters сами, фазу пишет исполнитель (JobService). */
 export interface JobProgress {
+    /** Общий процент цепочки; задаёт JobService для команд с весами. */
+    percent?: number;
     phase?: string; // на какой команде сейчас: «база», «каталог», «сверка», «запись»…
     done: number; // сколько единиц текущей фазы сделано
     total?: number; // сколько всего в текущей фазе, если известно
@@ -18,6 +20,8 @@ export interface IJobContext {
 /** Команда, которая хочет быть фазой прогресса, объявляет её имя. Без phase — фаза не меняется. */
 export interface IJobCommand<T extends IJobContext> extends ICommandAsync<T> {
     readonly phase?: string;
+    /** Относительный вес фазы. Без весов сохраняется прежний прогресс по фазам. */
+    readonly weight?: number;
 }
 
 export const emptyProgress = (): JobProgress => ({ done: 0, counters: {} });

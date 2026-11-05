@@ -15,6 +15,10 @@ export interface JobRunOptions<T extends IJobContext, R> {
     result: (context: T) => R;
     /** Сколько задаче можно идти; дольше — считается зависшей и уходит в failed. По умолчанию час. */
     timeoutMs?: number;
+    /** Освободить ресурсы после остановки цепочки, до завершения задачи (например, откатить транзакцию). */
+    cleanup?: (context: T) => Promise<void>;
+    /** Короткий необратимый участок (COMMIT): отмена уже не может обещать откат. */
+    canCancel?: (context: T) => boolean;
 }
 
 /** Сколько живёт завершённая задача, пока её не подчистят */
@@ -25,7 +29,7 @@ const DEFAULT_TIMEOUT_MS = 60 * 60 * 1000;
 /** Идущая задача: контекст (чтобы поставить stopChain) и способ завершить её снаружи */
 interface ActiveJob {
     context: IJobContext;
-    fail: (error: string) => void;
+    cancel: (error: string) => void;
 }
 
 /**
@@ -73,10 +77,11 @@ export class JobService {
             progress: opts.context.progress,
             startedAt: new Date().toISOString(),
         };
+        const weighted = this.weightedProgress(opts.commands, state);
         this.states.set(state.id, state);
         this.logger.log(`[job] start ${state.kind} ${state.id} ${JSON.stringify(state.params)}`);
 
-        const chain = new CommandChainAsync<T>(opts.commands.map((c) => this.withPhase(c)));
+        const chain = new CommandChainAsync<T>(opts.commands.map((c, i) => this.withPhase(c, weighted, i)));
         const promise = new Promise<JobStateDto>((resolve) => {
             const finish = (apply: () => void) => {
                 if (state.status !== 'running') return; // уже завершили другим путём
@@ -91,31 +96,54 @@ export class JobService {
             };
             const fail = (error: string) =>
                 finish(() => {
+                    void state.progress.percent;
                     state.status = 'failed';
                     state.error = error;
                 });
 
+            let cancellation: string | undefined;
+            const cancel = (error: string) => {
+                if (opts.canCancel?.(opts.context) === false) return;
+                opts.context.stopChain = true;
+                cancellation = error;
+                // Старые задачи завершаются сразу; задачи с ресурсами сначала дожидаются их освобождения.
+                if (!opts.cleanup) fail(error);
+            };
             const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
             const timer = setTimeout(() => {
-                opts.context.stopChain = true;
-                fail(`не уложилась в ${Math.round(timeoutMs / 60000)} мин — остановлена как зависшая`);
+                cancel(`не уложилась в ${Math.round(timeoutMs / 60000)} мин — остановлена как зависшая`);
             }, timeoutMs);
             timer.unref?.();
-            this.active.set(state.id, { context: opts.context, fail });
+            this.active.set(state.id, { context: opts.context, cancel });
+            let cleaned = false;
+            const cleanup = async (ctx: T) => {
+                if (cleaned) return;
+                cleaned = true;
+                await opts.cleanup?.(ctx);
+            };
 
             // .catch обязателен: unhandled rejection роняет процесс, pm2 рестартует и стирает все задачи
             chain
                 .execute(opts.context)
-                .then((ctx) => {
-                    if (ctx.stopChain) return fail(`остановлена командой на фазе «${ctx.progress.phase ?? '?'}»`);
+                .then(async (ctx) => {
+                    if (opts.cleanup) await cleanup(ctx);
+                    if (ctx.stopChain)
+                        return fail(cancellation ?? `остановлена командой на фазе «${ctx.progress.phase ?? '?'}»`);
                     finish(() => {
                         state.result = opts.result(ctx);
                         state.status = 'done';
                     });
                 })
-                .catch((e) => {
+                .catch(async (e) => {
+                    try {
+                        if (opts.cleanup) await cleanup(opts.context);
+                    } catch (cleanupError) {
+                        e = new Error(
+                            `${e?.message ?? e}; освобождение ресурсов: ${cleanupError?.message ?? cleanupError}`,
+                        );
+                    }
                     this.logger.error(`[job] failed ${state.kind} ${state.id}`, e?.stack ?? String(e));
-                    fail(e?.message ?? String(e));
+                    fail(cancellation ?? e?.message ?? String(e));
                 });
         });
         this.promises.set(state.id, promise);
@@ -135,16 +163,15 @@ export class JobService {
     }
 
     /**
-     * Отменить: цепочке ставится stopChain (сработает между командами, текущую не прервёт),
-     * задача сразу failed — вид освобождается для нового запуска. Уже завершённую не трогает.
+     * Отменить: цепочке ставится stopChain. Старые задачи сразу failed; задачи с cleanup
+     * завершаются после остановки текущей команды и освобождения ресурсов. COMMIT может запретить отмену.
      */
     cancel(id: string): JobStateDto | null {
         const state = this.get(id);
         if (!state) return null;
         const job = this.active.get(id);
         if (job) {
-            job.context.stopChain = true;
-            job.fail('отменена');
+            job.cancel('отменена');
         }
         return state;
     }
@@ -163,7 +190,11 @@ export class JobService {
     }
 
     /** Обёртка команды: перед выполнением пишет её фазу в прогресс задачи. */
-    private withPhase<T extends IJobContext>(command: IJobCommand<T>): ICommandAsync<T> {
+    private withPhase<T extends IJobContext>(
+        command: IJobCommand<T>,
+        weighted?: { start: (index: number) => void; complete: () => void },
+        index = 0,
+    ): ICommandAsync<T> {
         return {
             execute: async (ctx: T) => {
                 if (command.phase) {
@@ -171,7 +202,54 @@ export class JobService {
                     ctx.progress.done = 0;
                     ctx.progress.total = undefined;
                 }
-                return command.execute(ctx);
+                weighted?.start(index);
+                const result = await command.execute(ctx);
+                if (!result.stopChain) weighted?.complete();
+                return result;
+            },
+        };
+    }
+
+    /** Считается при чтении DTO: команды по-прежнему меняют только done/total. */
+    private weightedProgress(commands: IJobCommand<IJobContext>[], state: JobStateDto) {
+        if (!commands.some((command) => command.weight !== undefined)) return undefined;
+        const weights = commands.map((command) => command.weight ?? 1);
+        const totalWeight = weights.reduce((sum, weight) => sum + weight, 0);
+        if (
+            weights.some((weight) => !Number.isFinite(weight) || weight < 0) ||
+            !Number.isFinite(totalWeight) ||
+            totalWeight <= 0
+        )
+            throw new Error('Вес фаз должен быть конечным, неотрицательным, с положительной суммой');
+        let completed = 0,
+            active = 0,
+            highest = 0;
+        Object.defineProperty(state.progress, 'percent', {
+            enumerable: true,
+            get: () => {
+                if (state.status === 'done') return 100;
+                if (state.status === 'failed') return highest;
+                const { done, total } = state.progress;
+                const fraction =
+                    Number.isFinite(done) && Number.isFinite(total) && total > 0
+                        ? Math.max(0, Math.min(1, done / total))
+                        : 0;
+                // 100 означает успешно завершённую задачу, а не последний отправленный SQL.
+                highest = Math.max(
+                    highest,
+                    Math.min(99, Math.floor((100 * (completed + active * fraction)) / totalWeight)),
+                );
+                return highest;
+            },
+        });
+        return {
+            start: (index: number) => {
+                active = weights[index];
+            },
+            complete: () => {
+                completed += active;
+                active = 0;
+                void state.progress.percent;
             },
         };
     }

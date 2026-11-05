@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import JobProgress from "@/components/JobProgress.vue";
 import { computed, onMounted, ref, watch } from "vue";
 import { useJob } from "@/composable/useJob";
 import { clientId } from "@/axios.config";
@@ -40,16 +41,6 @@ const canApply = computed(
         report.value.items.some((i) => i.steps.length),
 );
 
-const progressText = computed(() => {
-    const p = job.value?.progress;
-    if (!p) return '';
-    const phase = p.phase ?? '…';
-    return p.total ? `${phase}: ${p.done} из ${p.total}` : phase;
-});
-const progressPercent = computed(() => {
-    const p = job.value?.progress;
-    return p?.total ? Math.round((p.done / p.total) * 100) : undefined;
-});
 const whose = (j: { clientId?: string }) => (j.clientId && j.clientId === me ? 'моя' : 'с другого компьютера');
 
 const headers = [
@@ -94,16 +85,12 @@ async function applyAll() {
 
         <v-card v-if="job" class="mt-4" variant="tonal" :color="job.status === 'failed' ? 'error' : running ? 'primary' : 'success'">
             <v-card-text>
-                <div class="d-flex align-center mb-2">
-                    <v-icon :icon="running ? 'mdi-progress-clock' : job.status === 'failed' ? 'mdi-alert-circle' : 'mdi-check-circle'" class="me-2" />
-                    <span class="font-weight-medium">
+                <JobProgress :job="job" :show-count-without-total="false">
+                    <template #title>
                         {{ job.params.apply ? 'применение' : 'проверка' }}
                         <template v-if="reportGoal"> «{{ reportGoal.title }}»</template> · {{ whose(job) }}
-                        · {{ running ? progressText : job.status === 'failed' ? `ошибка: ${job.error}` : 'готово' }}
-                    </span>
-                </div>
-                <v-progress-linear v-if="running" :model-value="progressPercent"
-                                   :indeterminate="progressPercent === undefined" height="8" rounded />
+                    </template>
+                </JobProgress>
                 <div v-if="report" class="mt-2 text-body-2">
                     <span class="me-4">в акциях: {{ report.checked }}</span>
                     <span class="me-4"><b>отобрано: {{ report.selected }}</b></span>
