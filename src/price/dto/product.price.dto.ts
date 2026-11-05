@@ -6,11 +6,15 @@ export class ProductPriceDto {
         fbs_direct_flow_trans_min_amount: number;
         fbo_direct_flow_trans_max_amount: number;
         fbo_direct_flow_trans_min_amount: number;
+        fbs_deliv_to_customer_amount?: number;
+        fbo_deliv_to_customer_amount?: number;
+        fbs_first_mile_max_amount?: number;
         fbs_return_flow_amount?: number;
         fbo_return_flow_amount?: number;
         sales_percent_fbs: number;
         sales_percent_fbo: number;
     };
+    acquiring?: number;
     offer_id: string;
     price: {
         auto_action_enabled: boolean;

@@ -1,3 +1,4 @@
+import { OzonLogisticsModule } from './ozon.logistics.module';
 import { Module } from '@nestjs/common';
 import { PriceService } from './price.service';
 import { PriceController } from './price.controller';
@@ -37,6 +38,7 @@ import { VerifyOzonPricesCommand } from './commands/verify-ozon-prices.command';
 
 @Module({
     imports: [
+        OzonLogisticsModule,
         ProductModule,
         GoodModule,
         YandexPriceModule,
