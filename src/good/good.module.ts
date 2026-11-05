@@ -53,6 +53,7 @@ import { AVITO_GOOD_STORE } from '../interfaces/i.avito.good.store';
             inject: [FIREBIRD, ConfigService, EventEmitter2, CACHE_MANAGER, PriceCalculationHelper],
         },
         { provide: AVITO_GOOD_STORE, useExisting: GOOD_SERVICE },
+        { provide: Trade2006GoodService, useExisting: GOOD_SERVICE },
         ExtraGoodService,
         GoodsCountProcessor,
         LoadSnapshotCommand,
@@ -68,7 +69,7 @@ import { AVITO_GOOD_STORE } from '../interfaces/i.avito.good.store';
         PushZeroCountsCommand,
         RestoreCountsCommand,
     ],
-    exports: [GOOD_SERVICE, AVITO_GOOD_STORE, ExtraGoodService],
+    exports: [GOOD_SERVICE, Trade2006GoodService, AVITO_GOOD_STORE, ExtraGoodService],
     controllers: [GoodController],
 })
 export class GoodModule {}

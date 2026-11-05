@@ -80,6 +80,7 @@ import { VerifyOzonPricesCommand } from './commands/verify-ozon-prices.command';
     ],
     controllers: [PriceController],
     exports: [
+        OzonPricingService,
         PriceService,
         ExtraPriceService,
         ResetAvailablePriceCommand,

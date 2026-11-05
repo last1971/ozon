@@ -10,7 +10,24 @@ export class PlanSweepCommand implements IJobCommand<IPromoSweepContext> {
 
     async execute(context: IPromoSweepContext): Promise<IPromoSweepContext> {
         const goal = sweepGoal(context.goal);
-        context.plans = (context.states ?? []).map((s) => goal.plan(s));
+        context.plans = (context.states ?? []).map((s) => {
+            const error = context.pricingErrors?.get(s.offerId);
+            if (!error) return goal.plan(s);
+            return {
+                offerId: s.offerId,
+                productId: s.productId,
+                state: s,
+                target: s.minPrice,
+                percent: s.seller?.isActive ? s.seller.percent : 0,
+                floor: s.minPrice,
+                steps: [],
+                buyerBefore: s.buyerPrice,
+                buyerAfter: s.buyerPrice,
+                ok: false,
+                closest: false,
+                notes: [`Расчёт недоступен: ${error}`],
+            };
+        });
         return context;
     }
 }

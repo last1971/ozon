@@ -9,10 +9,14 @@ export const PROMO_SWEEP_JOB = 'ozon-promo-sweep';
 export interface IPromoSweepContext extends IJobContext {
     apply: boolean;
     goal: SweepGoalKind;
-    /** Все товары в акциях. */
+    /** Все товары кабинета. */
     checked?: number;
     /** Только те, кого берёт цель. */
     states?: PromoPriceState[];
+    /** Полный снимок до предварительного отбора по старой цене API. */
+    collectedStates?: PromoPriceState[];
+    /** Ошибки расчёта: показать в отчёте, не применять план по старому минимуму. */
+    pricingErrors?: Map<string, string>;
     plans?: PromoPricePlan[];
     results?: PromoPriceApplyResult[];
     report?: PromoSweepReport;

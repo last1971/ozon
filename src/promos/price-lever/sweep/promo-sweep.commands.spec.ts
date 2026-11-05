@@ -27,7 +27,7 @@ describe('сверка акций — команды цепочки', () => {
     });
 
     it('collect: оставляет только ниже min_price; без цены покупателя или min_price — мимо', async () => {
-        const allInActionsStates = jest
+        const allStates = jest
             .fn()
             .mockResolvedValue([
                 state(1),
@@ -35,13 +35,13 @@ describe('сверка акций — команды цепочки', () => {
                 state(3, { buyerPrice: 0 }),
                 state(4, { minPrice: 0 }),
             ]);
-        const c = await new CollectSweepCommand({ allInActionsStates } as any).execute(ctx());
+        const c = await new CollectSweepCommand({ allStates } as any).execute(ctx());
         expect(c.states?.map((s) => s.productId)).toEqual([1]);
         expect(c.progress.counters).toEqual({ checked: 4, selected: 1 });
     });
 
     it('collect «к минимальной»: в обе стороны от min_price, расхождение до рубля — мимо', async () => {
-        const allInActionsStates = jest
+        const allStates = jest
             .fn()
             .mockResolvedValue([
                 state(1),
@@ -49,15 +49,15 @@ describe('сверка акций — команды цепочки', () => {
                 state(3, { buyerPrice: 214 }),
                 state(4, { buyerPrice: 0 }),
             ]);
-        const c = await new CollectSweepCommand({ allInActionsStates } as any).execute(ctx({ goal: 'min' }));
+        const c = await new CollectSweepCommand({ allStates } as any).execute(ctx({ goal: 'min' }));
         expect(c.states?.map((s) => s.productId)).toEqual([1, 2]);
     });
 
     it('collect «к нормальной»: всё, что не равно price', async () => {
-        const allInActionsStates = jest
+        const allStates = jest
             .fn()
             .mockResolvedValue([state(1), state(2, { buyerPrice: 255 }), state(3, { buyerPrice: 237 })]);
-        const c = await new CollectSweepCommand({ allInActionsStates } as any).execute(ctx({ goal: 'normal' }));
+        const c = await new CollectSweepCommand({ allStates } as any).execute(ctx({ goal: 'normal' }));
         expect(c.states?.map((s) => s.productId)).toEqual([1, 3]);
     });
 

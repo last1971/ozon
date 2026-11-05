@@ -4,7 +4,7 @@ import { PromoPriceService } from '../promo-price.service';
 import { IPromoSweepContext } from './promo-sweep.context';
 import { sweepGoal } from './sweep-goal';
 
-/** Все товары в акциях → только те, кого берёт цель сверки. */
+/** Весь каталог; предварительный отбор уточняется после расчёта минимальной цены. */
 @Injectable()
 export class CollectSweepCommand implements IJobCommand<IPromoSweepContext> {
     readonly phase = 'сбор';
@@ -13,11 +13,12 @@ export class CollectSweepCommand implements IJobCommand<IPromoSweepContext> {
 
     async execute(context: IPromoSweepContext): Promise<IPromoSweepContext> {
         const goal = sweepGoal(context.goal);
-        const all = await this.promoPrice.allInActionsStates();
+        const all = await this.promoPrice.allStates();
+        context.collectedStates = all;
         context.checked = all.length;
         context.states = all.filter((s) => goal.selects(s));
         Object.assign(context.progress.counters, { checked: all.length, selected: context.states.length });
-        context.logger?.log(`сверка акций (${goal.title}): в акциях ${all.length}, отобрано ${context.states.length}`);
+        context.logger?.log(`сверка акций (${goal.title}): в кабинете ${all.length}, отобрано ${context.states.length}`);
         return context;
     }
 }

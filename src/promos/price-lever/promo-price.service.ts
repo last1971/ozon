@@ -80,6 +80,31 @@ export class PromoPriceService {
         return this.toStates(items, snapshot);
     }
 
+    /** Весь каталог кабинета, включая товары без участия в акциях. */
+    async allStates(): Promise<PromoPriceState[]> {
+        const offers = [...new Set(await this.productService.listAllOfferIds())];
+        if (!offers.length) return [];
+        const items: ProductPriceDto[] = [];
+        for (const part of chunk(offers, 1000)) {
+            const response = await this.productService.getPrices({
+                offer_id: part,
+                visibility: ProductVisibility.ALL,
+                limit: part.length,
+            });
+            const rows = response?.items;
+            const found = new Set(rows?.map((p) => p.offer_id));
+            if (
+                !Array.isArray(rows) ||
+                found.size !== rows.length ||
+                found.size !== part.length ||
+                part.some((id) => !found.has(id))
+            )
+                throw new Error('Неполный ответ цен Ozon: сверка всего каталога остановлена');
+            items.push(...rows);
+        }
+        return this.toStates(items, await this.snapshot());
+    }
+
     private toStates(items: ProductPriceDto[], snapshot: PromoSnapshot): PromoPriceState[] {
         const { ozon: ozonSlots, seller: sellerSlots } = snapshot;
         return items.map((item) => {

@@ -1,3 +1,4 @@
+import { EnrichWithPricingCommand } from './enrich-with-pricing.command';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { emptyProgress, IJobCommand } from '../../../interfaces/i.job.context';
@@ -13,7 +14,7 @@ import { IPromoSweepContext, PROMO_SWEEP_JOB } from './promo-sweep.context';
 import { SweepGoalKind } from './sweep-goal';
 
 /**
- * Сверка акций фоновой задачей: все товары в акциях → отбор по цели → план → (применение) → отчёт.
+ * Сверка акций фоновой задачей: весь каталог → расчёт минимума → отбор по цели → план → (применение) → отчёт.
  * Что отбирать и к чему вести — решает цель (sweep-goal.ts), цепочка одна на все цели.
  * Запуск руками (кнопка в админке) и кроном holdMin — тот же start.
  */
@@ -25,12 +26,13 @@ export class PromoSweepService {
     constructor(
         private readonly jobs: JobService,
         collect: CollectSweepCommand,
+        enrich: EnrichWithPricingCommand,
         plan: PlanSweepCommand,
         apply: ApplySweepCommand,
         report: BuildSweepReportCommand,
         notify: NotifySweepCommand,
     ) {
-        this.commands = [collect, plan, apply, report, notify];
+        this.commands = [collect, enrich, plan, apply, report, notify];
     }
 
     /**
