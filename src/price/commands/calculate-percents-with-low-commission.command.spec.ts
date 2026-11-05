@@ -58,6 +58,26 @@ describe('CalculatePercentsWithLowCommissionCommand', () => {
         expect(result.ozonPrices[0].old_perc).toBe(100);
     });
 
+    it.each(['fbo', 'fbs'] as const)('сохраняет долю и выбирает обратный тариф %s', async (warehouse) => {
+        priceService.getCommission.mockResolvedValue({ fbo: 0.2, fbs: 0.2 });
+        priceCalculationHelper.selectWarehouse.mockReturnValue(warehouse);
+        const price = {
+            offer_id: '123',
+            typeId: 1,
+            incoming_price: 100,
+            return_perc: 0.25,
+            return_flow_amount: 999,
+            fbs_return_flow_amount: 60,
+            fbo_return_flow_amount: 20,
+        } as PriceDto;
+        await command.execute({ skus: [], ozonPrices: [price] });
+        expect(priceCalculationHelper.adjustPercents.mock.calls[0][0]).toMatchObject({
+            return_perc: 0.25,
+            return_flow_amount: warehouse === 'fbo' ? 20 : 60,
+        });
+        expect(price.return_flow_amount).toBe(warehouse === 'fbo' ? 20 : 60);
+    });
+
     it('should skip items without typeId', async () => {
         const context: IGoodsProcessingContext = {
             skus: [],

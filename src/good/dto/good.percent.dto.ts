@@ -38,4 +38,7 @@ export class GoodPercentDto implements IOfferIdable {
     @Min(0)
     available_price?: number;
     pieces?: number;
+    /** Доля клиентских возвратов Ozon; изменяется только автоматическим пересчётом. */
+    return_perc?: number | null;
+    return_perc_at?: Date | null;
 }

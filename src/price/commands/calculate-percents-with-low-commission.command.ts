@@ -86,6 +86,8 @@ export class CalculatePercentsWithLowCommissionCommand implements ICommandAsync<
             const incomingPrice = price.available_price > 0 ? price.available_price : price.incoming_price;
             const initialPrice = {
                 adv_perc: price.adv_perc,
+                return_perc: price.return_perc ?? 0,
+                return_flow_amount: warehouse === 'fbo' ? price.fbo_return_flow_amount : price.fbs_return_flow_amount,
                 fbs_direct_flow_trans_max_amount: this.getFbsLogistics(price.volumeWeight),
                 incoming_price: incomingPrice,
                 available_price: price.available_price,
@@ -114,6 +116,7 @@ export class CalculatePercentsWithLowCommissionCommand implements ICommandAsync<
             price.perc = perc;
             price.old_perc = old_perc;
             price.sales_percent = newSalesPercent;
+            price.return_flow_amount = initialPrice.return_flow_amount;
             price.min_price = toNumber(calculatedPrice.min_price);
             price.price = toNumber(calculatedPrice.price);
             price.old_price = toNumber(calculatedPrice.old_price);

@@ -41,6 +41,11 @@ export class PriceDto {
     auto_action_enabled: boolean;
     @ApiProperty({ description: 'Стоимость упаковки' })
     sum_pack: number;
+    return_perc?: number;
+    return_flow_amount?: number;
+    /** Исходные тарифы нужны при выборе другой схемы в оптимизации комиссии. */
+    fbs_return_flow_amount?: number;
+    fbo_return_flow_amount?: number;
     @ApiProperty({ description: 'Остаток FBS', type: Number, example: 100 })
     fbsCount: number;
     @ApiProperty({ description: 'Остаток FBO', type: Number, example: 100 })

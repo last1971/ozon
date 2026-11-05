@@ -12,4 +12,7 @@ export interface IPriceable {
     old_perc: number;
     adv_perc: number;
     sum_pack: number;
+    /** Доля 0..1, только для Ozon. */
+    return_perc?: number;
+    return_flow_amount?: number;
 }

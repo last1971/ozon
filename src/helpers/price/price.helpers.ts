@@ -19,11 +19,24 @@ export const calculateCosts = (
     price: IPriceable,
     percents: ObtainCoeffsDto,
 ): { fixedCosts: number; dynamicCosts: number } => {
+    const returnPerc = price.return_perc ?? 0;
+    if (!Number.isFinite(returnPerc) || returnPerc < 0 || returnPerc > 1)
+        throw new Error('Некорректная доля возвратов Ozon');
+    let returnCosts = 0;
+    if (returnPerc > 0) {
+        const reverse = price.return_flow_amount;
+        const direct = price.fbs_direct_flow_trans_max_amount;
+        if (![reverse, direct].every((n) => Number.isFinite(n) && n >= 0)) {
+            throw new Error('Нет корректного тарифа прямой или обратной логистики Ozon');
+        }
+        returnCosts = returnPerc * (reverse + direct);
+    }
     const fixedCosts: number =
         toNumber(percents.sumObtain) +
         toNumber(percents.sumLabel) +
         toNumber(percents.sumPack ?? price.sum_pack) +
-        toNumber(price.fbs_direct_flow_trans_max_amount);
+        toNumber(price.fbs_direct_flow_trans_max_amount) +
+        returnCosts;
 
     const dynamicCosts: number =
         toNumber(price.sales_percent) +

@@ -1,3 +1,4 @@
+import { ozonReturnPriceFields } from '../helpers/price/ozon.return.perc';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { IGood } from '../interfaces/IGood';
 import { IPriceable } from '../interfaces/i.priceable';
@@ -181,6 +182,8 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                     min_perc: percent.PERC_MIN,
                     packing_price: percent.PACKING_PRICE ?? this.configService.get<number>('SUM_PACK', 10),
                     available_price: percent.AVAILABLE_PRICE,
+                    return_perc: percent.RETURN_PERC ?? null,
+                    return_perc_at: percent.RETURN_PERC_AT ?? null,
                 }));
 
                 allResults.push(...batchResults);
@@ -570,6 +573,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
             const packing_price = dto?.packing_price ?? percent.packing_price;
 
             const initialPrice = {
+                ...ozonReturnPriceFields(product, percent.return_perc),
                 adv_perc,
                 fbs_direct_flow_trans_max_amount: product.getTransMaxAmount(),
                 incoming_price,
@@ -685,7 +689,10 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         const missingSkus = skus.filter((sku) => {
             const gCode = goodCode({ offer_id: sku });
             const gCoeff = goodQuantityCoeff({ offer_id: sku });
-            return !percents.some((p) => p.offer_id.toString() === gCode && p.pieces === gCoeff);
+            return !percents.some(
+                (p) => p.offer_id.toString() === gCode && p.pieces === gCoeff &&
+                    !(p.return_perc_at != null && p.min_perc == null && p.perc == null && p.old_perc == null),
+            );
         });
         if (missingSkus.length > 0) {
             // Тот же снимок себестоимостей и наценок, что и у основного расчёта, без второго похода в базу
@@ -694,7 +701,15 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                 percents,
                 prices,
             });
-            percents.push(...newPercents);
+            // Строка с одной статистикой возвратов ещё не имеет наценок. Подбор остаётся прежним,
+            // а рассчитанные наценки заменяют именно эту строку, сохраняя её процент возвратов.
+            for (const percent of newPercents) {
+                const existing = percents.find(
+                    (p) => String(p.offer_id) === String(percent.offer_id) && p.pieces === percent.pieces,
+                );
+                if (existing) Object.assign(existing, percent);
+                else percents.push(percent);
+            }
         }
 
         const priceables: IPriceable[] = [];
@@ -710,7 +725,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
             } else {
                 const gCode = goodCode({ offer_id: product.getSku() });
                 const gCoeff = goodQuantityCoeff({ offer_id: product.getSku() });
-                const { min_perc, perc, old_perc, adv_perc, packing_price, available_price } = percents.find(
+                const { min_perc, perc, old_perc, adv_perc, packing_price, available_price, return_perc } = percents.find(
                     (p) => p.offer_id.toString() === gCode && p.pieces === gCoeff,
                 ) || {
                     adv_perc: 0,
@@ -722,6 +737,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                 };
 
                 priceables.push({
+                    ...ozonReturnPriceFields(product, return_perc),
                     base_source: base.base_source,
                     adv_perc,
                     fbs_direct_flow_trans_max_amount: product.getTransMaxAmount(),

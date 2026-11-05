@@ -1,3 +1,4 @@
+import { ozonReturnPriceFields } from '../helpers/price/ozon.return.perc';
 import { resolvePriceBase } from '../helpers/price/price.base';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { ProductService } from '../product/product.service';
@@ -103,14 +104,14 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                 };
                 const base = resolvePriceBase(item.offer_id, goodQuantityCoeff(item), good, percent);
                 const productInfo = productsInfos.find((info) => info.sku === item.offer_id);
-                const warehouse = this.priceCalculationHelper.selectWarehouse(
-                    productInfo?.fboCount || 0,
-                    productInfo?.fbsCount || 0,
-                    item.commissions.sales_percent_fbo,
-                    item.commissions.sales_percent_fbs,
+                const adapter = new OzonProductCoeffsAdapter(
+                    item, percDirectFlow, productInfo, this.priceCalculationHelper,
                 );
 
                 return {
+                    ...ozonReturnPriceFields(adapter, percent.return_perc),
+                    fbs_return_flow_amount: item.commissions.fbs_return_flow_amount,
+                    fbo_return_flow_amount: item.commissions.fbo_return_flow_amount,
                     product_id: item.product_id,
                     offer_id: item.offer_id,
                     name: good?.name,
@@ -122,16 +123,12 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                     min_price: item.price.min_price,
                     price: item.price.price,
                     old_price: item.price.old_price,
-                    min_perc: percent.min_perc,
-                    perc: percent.perc,
-                    old_perc: percent.old_perc,
-                    adv_perc: percent.adv_perc,
-                    sales_percent: this.priceCalculationHelper.getCommission(item.commissions, warehouse),
-                    fbs_direct_flow_trans_max_amount: this.priceCalculationHelper.calculateDelivery(
-                        item.commissions,
-                        warehouse,
-                        percDirectFlow,
-                    ),
+                    min_perc: percent.min_perc ?? this.configService.get<number>('PERC_MIN', 15),
+                    perc: percent.perc ?? this.configService.get<number>('PERC_NOR', 25),
+                    old_perc: percent.old_perc ?? this.configService.get<number>('PERC_MAX', 50),
+                    adv_perc: percent.adv_perc ?? 0,
+                    sales_percent: adapter.getSalesPercent(),
+                    fbs_direct_flow_trans_max_amount: adapter.getTransMaxAmount(),
                     auto_action_enabled: item.price.auto_action_enabled,
                     sum_pack: percent.packing_price,
                     fbsCount: productInfo?.fbsCount || 0,

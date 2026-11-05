@@ -1,3 +1,6 @@
+import type { IProductCoeffsable } from '../../interfaces/i.product.coeffsable';
+import type { IPriceable } from '../../interfaces/i.priceable';
+
 export interface OzonReturnCounts {
     /** Проданные единицы артикула; отмены уже исключены источником данных. */
     soldUnits: number;
@@ -22,4 +25,14 @@ export function calculateOzonReturnPerc({ soldUnits, paidReturnUnits }: OzonRetu
         throw new RangeError('Резервная доля возвратов должна быть от 0 до 1');
     }
     return soldUnits === 0 ? fallbackPerc : paidReturnUnits / soldUnits;
+}
+
+/** Общая передача статистики в расчёт: другие площадки не получают расходы Ozon. */
+export function ozonReturnPriceFields(
+    product: IProductCoeffsable,
+    returnPerc: number = 0,
+): Pick<IPriceable, 'return_perc' | 'return_flow_amount'> {
+    return product.getReturnFlowAmount
+        ? { return_perc: returnPerc ?? 0, return_flow_amount: product.getReturnFlowAmount() }
+        : {};
 }

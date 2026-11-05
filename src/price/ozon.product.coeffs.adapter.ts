@@ -33,6 +33,12 @@ export class OzonProductCoeffsAdapter implements IProductCoeffsable {
             : this.product.commissions.sales_percent_fbs;
     }
 
+    getReturnFlowAmount(): number | undefined {
+        return this.warehouse === 'fbo'
+            ? this.product.commissions.fbo_return_flow_amount
+            : this.product.commissions.fbs_return_flow_amount;
+    }
+
     getSku(): string {
         return this.product.offer_id;
     }
