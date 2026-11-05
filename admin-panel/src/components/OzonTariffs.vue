@@ -1,7 +1,9 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
-import { isAxiosError } from 'axios';
+import { computed, onMounted, ref, watch } from 'vue';
 import axios from '@/axios.config';
+import { useJob } from '@/composable/useJob';
+import type { JobState } from '@/contracts/job.state';
+import JobProgress from '@/components/JobProgress.vue';
 
 type Kind = 'commissions' | 'logistics';
 type Source = {
@@ -14,72 +16,84 @@ type Source = {
     retiredCount: number | null;
     stale: boolean;
 };
+type ImportResult = {
+    updated?: number;
+    rows: number;
+    routeRates?: number;
+    defaultRates?: number;
+    missingTypes?: { id: number; name: string }[];
+    retiredTypes?: { id: number; name: string }[];
+};
 const cards: { kind: Kind; title: string; endpoint: string }[] = [
     { kind: 'commissions', title: 'Комиссии FBO / FBS', endpoint: 'import-commissions' },
     { kind: 'logistics', title: 'Доставка FBO / FBS', endpoint: 'import-logistics' },
 ];
+const jobs = {
+    commissions: useJob<ImportResult>('ozon-tariffs-commissions'),
+    logistics: useJob<ImportResult>('ozon-tariffs-logistics'),
+};
 const sources = ref<Source[]>([]);
 const files = ref<Record<Kind, File | File[] | null>>({ commissions: null, logistics: null });
-const busy = ref(false);
-const error = ref('');
-const result = ref('');
-const missing = ref<{ id: number; name: string }[]>([]);
-const retired = ref<{ id: number; name: string }[]>([]);
+const uploading = ref(false);
+const readError = ref('');
+const busy = computed(() => uploading.value || Object.values(jobs).some((job) => job.box.job?.status === 'running'));
+const error = computed(
+    () =>
+        readError.value ||
+        Object.values(jobs)
+            .map((job) => job.box.error || (job.box.job?.status === 'failed' ? job.box.job.error : ''))
+            .find(Boolean),
+);
+const completed = computed(
+    () =>
+        Object.values(jobs)
+            .map((job) => job.box.job)
+            .filter((job): job is JobState<ImportResult> => job?.status === 'done')
+            .sort((a, b) => (b.finishedAt ?? '').localeCompare(a.finishedAt ?? ''))[0],
+);
+const result = computed(() => {
+    const job = completed.value;
+    if (!job?.result) return '';
+    return job.kind === 'ozon-tariffs-commissions'
+        ? `Комиссии сохранены: ${job.result.updated} типов товаров из ${job.result.rows} строк файла.`
+        : `Доставка сохранена: ${job.result.routeRates} ставок по маршрутам, ${job.result.defaultRates} ставок по умолчанию.`;
+});
+const missing = computed(() => completed.value?.result?.missingTypes ?? []);
+const retired = computed(() => completed.value?.result?.retiredTypes ?? []);
 const source = (kind: Kind) => sources.value.find((s) => s.kind === kind);
 const when = (value?: string | null) => (value ? new Date(value).toLocaleString('ru-RU') : '—');
-const errorText = (e: unknown) => {
-    if (isAxiosError(e)) {
-        const message = e.response?.data?.message;
-        return Array.isArray(message)
-            ? message.join('; ')
-            : typeof message === 'string'
-              ? message
-              : 'Не удалось выполнить запрос. Проверьте подключение.';
-    }
-    return 'Не удалось выполнить запрос.';
-};
 async function refresh() {
-    const { data } = await axios.get<Source[]>('/api/ozon-category/tariffs');
-    sources.value = data;
+    try {
+        sources.value = (await axios.get<Source[]>('/api/ozon-category/tariffs')).data;
+        readError.value = '';
+    } catch {
+        readError.value = 'Не удалось обновить сведения о тарифах.';
+    }
 }
 async function upload(card: (typeof cards)[number]) {
     const selected = files.value[card.kind];
     const file = Array.isArray(selected) ? selected[0] : selected;
     if (!file) return;
-    busy.value = true;
-    error.value = '';
-    result.value = '';
-    missing.value = [];
-    retired.value = [];
+    uploading.value = true;
+    readError.value = '';
     try {
         const form = new FormData();
         form.append('file', file);
-        const { data } = await axios.post(`/api/ozon-category/${card.endpoint}`, form);
-        result.value =
-            card.kind === 'commissions'
-                ? `Комиссии сохранены: ${data.updated} типов товаров из ${data.rows} строк файла.`
-                : `Доставка сохранена: ${data.routeRates} ставок по маршрутам, ${data.defaultRates} ставок по умолчанию.`;
-        missing.value = data.missingTypes || [];
-        retired.value = data.retiredTypes || [];
-        files.value[card.kind] = null;
-        try {
-            await refresh();
-        } catch (e) {
-            error.value = `Файл сохранён, но сведения на экране не обновились. ${errorText(e)}`;
-        }
-    } catch (e) {
-        error.value = errorText(e);
+        await jobs[card.kind].start(
+            async () => (await axios.post<JobState<ImportResult>>(`/api/ozon-category/${card.endpoint}`, form)).data,
+        );
+        if (!jobs[card.kind].box.error) files.value[card.kind] = null;
     } finally {
-        busy.value = false;
+        uploading.value = false;
     }
 }
-onMounted(async () => {
-    try {
-        await refresh();
-    } catch (e) {
-        error.value = errorText(e);
-    }
-});
+watch(
+    () => Object.values(jobs).map((job) => `${job.box.job?.id}:${job.box.job?.status}`),
+    (states, before) => {
+        if (states.some((state, i) => state.endsWith(':done') && state !== before?.[i])) void refresh();
+    },
+);
+onMounted(() => Promise.all([refresh(), jobs.commissions.attach(), jobs.logistics.attach()]));
 </script>
 
 <template>
@@ -105,6 +119,7 @@ onMounted(async () => {
             <v-col v-for="card in cards" :key="card.kind" cols="12" md="6">
                 <v-card variant="outlined" class="pa-4">
                     <h3 class="mb-3">{{ card.title }}</h3>
+                    <JobProgress v-if="jobs[card.kind].box.job" :job="jobs[card.kind].box.job!" />
                     <p>Файл: {{ source(card.kind)?.filename || 'не загружен' }}</p>
                     <p>Дата файла: {{ source(card.kind)?.fileDate || '—' }}</p>
                     <p>Загружен: {{ when(source(card.kind)?.uploadedAt) }}</p>
