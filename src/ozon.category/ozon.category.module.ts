@@ -37,6 +37,6 @@ import { ImageStorageModule } from '../image-storage/image-storage.module';
         SubmitProductCommand,
     ],
     controllers: [OzonCategoryController],
-    exports: [OzonCategoryService],
+    exports: [OzonCategoryService, OzonTariffService],
 })
 export class OzonCategoryModule {}

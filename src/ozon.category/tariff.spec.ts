@@ -483,3 +483,97 @@ describe('Сохранение и напоминание тарифов Ozon', (
         expect(mail.send).not.toHaveBeenCalled();
     });
 });
+
+
+describe('Чтение действующей логистики из Firebird', () => {
+    const make = () => {
+        let hash = 'v1';
+        let amount = 21;
+        const query = jest.fn(async (sql: string) =>
+            sql.includes('SELECT FILE_HASH')
+                ? [{ FILE_HASH: hash }]
+                : [
+                      {
+                          VOLUME_FROM: 0,
+                          VOLUME_TO: 1,
+                          ORIGIN_CLUSTER: 'Новосибирск ',
+                          DESTINATION_CLUSTER: 'Москва ',
+                          IS_DEFAULT: 0,
+                          PRICE_FROM: 0,
+                          PRICE_FROM_INCLUDED: 1,
+                          PRICE_TO: 300,
+                          PRICE_TO_INCLUDED: 1,
+                          AMOUNT: amount,
+                      },
+                  ],
+        );
+        const tx = { query, rollback: jest.fn().mockResolvedValue(undefined), commit: jest.fn(), execute: jest.fn() };
+        const pool = { getTransaction: jest.fn().mockResolvedValue(tx) };
+        const service = new OzonTariffService(pool as any, {} as any, {} as any, {} as any);
+        return {
+            service,
+            tx,
+            pool,
+            change: (revision: string, value = 21) => {
+                hash = revision;
+                amount = value;
+            },
+        };
+    };
+    it('округляет объём вверх до миллилитра, читает диапазон и завершает без записи', async () => {
+        const m = make();
+        const result = await m.service.logistics(0.20001);
+        expect(m.tx.query).toHaveBeenCalledWith(expect.stringContaining('VOLUME_FROM <= ?'), [0.201, 0.201], false);
+        expect(result).toMatchObject({
+            loaded: true,
+            revision: 'v1',
+            rows: [
+                {
+                    origin: 'Новосибирск',
+                    destination: 'Москва',
+                    amount: 21,
+                    band: { min: 0, max: 300, minIncluded: true, maxIncluded: true },
+                },
+            ],
+        });
+        const { ISOLATION_READ_COMMITTED_READ_ONLY } = await import('ts-firebird');
+        expect(m.pool.getTransaction).toHaveBeenCalledWith(ISOLATION_READ_COMMITTED_READ_ONLY);
+        expect(m.tx.rollback).toHaveBeenCalledWith(true);
+        expect(m.tx.commit).not.toHaveBeenCalled();
+        expect(m.tx.execute).not.toHaveBeenCalled();
+    });
+    it('кэш привязан к версии файла; новый импорт сразу меняет цену', async () => {
+        const m = make();
+        await m.service.logistics(0.2);
+        await m.service.logistics(0.2);
+        expect(m.tx.query.mock.calls.filter(([sql]) => sql.includes('VOLUME_FROM <= ?'))).toHaveLength(1);
+        m.change('v2', 50);
+        expect((await m.service.logistics(0.2)).rows[0].amount).toBe(50);
+        expect(m.tx.query.mock.calls.filter(([sql]) => sql.includes('VOLUME_FROM <= ?'))).toHaveLength(2);
+    });
+    it('импорт во время чтения не выдаёт смесь версий', async () => {
+        const m = make();
+        m.tx.query
+            .mockResolvedValueOnce([{ FILE_HASH: 'v1' }] as any)
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([{ FILE_HASH: 'v2' }] as any);
+        await expect(m.service.logistics(1)).rejects.toThrow('изменились');
+        expect(m.tx.rollback).toHaveBeenCalledWith(true);
+        expect((await m.service.logistics(1)).rows).toHaveLength(1);
+    });
+    it('нет импорта или таблицы — явный признак для API max; ошибка связи не маскируется', async () => {
+        const m = make();
+        m.change('');
+        expect(await m.service.logistics(1)).toEqual({ loaded: false, revision: null, rows: [] });
+        m.tx.query.mockRejectedValueOnce(new Error('Table unknown OZON_LOGISTICS_TARIFF'));
+        expect((await m.service.logistics(1)).loaded).toBe(false);
+        m.tx.query.mockRejectedValueOnce(new Error('connection lost'));
+        await expect(m.service.logistics(1)).rejects.toThrow('connection lost');
+        expect(m.tx.rollback).toHaveBeenCalledTimes(3);
+    });
+    it.each([0, -1, NaN, Infinity])('не читает тарифы для неверного объёма %s', async (volume) => {
+        const m = make();
+        await expect(m.service.logistics(volume)).rejects.toThrow('объём');
+        expect(m.pool.getTransaction).not.toHaveBeenCalled();
+    });
+});

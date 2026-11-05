@@ -2,7 +2,8 @@ import { OzonApiService } from '../ozon.api/ozon.api.service';
 import { Inject, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { ConfigService } from '@nestjs/config';
-import { FirebirdPool } from 'ts-firebird';
+import { FirebirdPool, ISOLATION_READ_COMMITTED_READ_ONLY } from 'ts-firebird';
+import type { LogisticsRow } from './tariff.xlsx';
 import { FIREBIRD } from '../firebird/firebird.module';
 import { NotifierService } from '../notify/notifier.service';
 import { NotifyTopic } from '../notify/notify.types';
@@ -20,6 +21,7 @@ type Kind = 'commissions' | 'logistics';
 
 @Injectable()
 export class OzonTariffService {
+    private readonly logisticsCache = new Map<string, LogisticsRow[]>();
     private readonly logger = new Logger(OzonTariffService.name);
     constructor(
         @Inject(FIREBIRD) private readonly pool: FirebirdPool,
@@ -133,6 +135,55 @@ export class OzonTariffService {
             await this.saveSource(t, 'logistics', meta, rows.length, null, null);
             return { rows: rows.length, routeRates: rows.length - defaultRates, defaultRates, ...meta };
         });
+    }
+
+    /** Только чтение: актуальная версия импорта и все ценовые ступени нужного объёма. */
+    async logistics(volume: number): Promise<{ loaded: boolean; revision: string | null; rows: LogisticsRow[] }> {
+        if (!Number.isFinite(volume) || volume <= 0) throw new Error('Нужен положительный объём в литрах');
+        // XLSX задаёт границы с шагом 0,001 л: 0–0,2, затем 0,201–0,4.
+        const rounded = Math.ceil(volume * 1000 - 1e-8) / 1000;
+        const t = await this.pool.getTransaction(ISOLATION_READ_COMMITTED_READ_ONLY);
+        try {
+            const metadata = () =>
+                t.query("SELECT FILE_HASH FROM OZON_TARIFF_SOURCE WHERE KIND = 'logistics'", [], false);
+            const source = await metadata();
+            const revision = source[0]?.FILE_HASH?.trim();
+            if (!revision) return { loaded: false, revision: null, rows: [] };
+            const key = `${revision}:${rounded}`;
+            let rows = this.logisticsCache.get(key);
+            if (!rows) {
+                const data = await t.query(
+                    'SELECT VOLUME_FROM, VOLUME_TO, ORIGIN_CLUSTER, DESTINATION_CLUSTER, IS_DEFAULT, PRICE_FROM, PRICE_FROM_INCLUDED, PRICE_TO, PRICE_TO_INCLUDED, AMOUNT FROM OZON_LOGISTICS_TARIFF WHERE VOLUME_FROM <= ? AND (VOLUME_TO IS NULL OR VOLUME_TO >= ?)',
+                    [rounded, rounded],
+                    false,
+                );
+                rows = data.map((r) => ({
+                    volumeFrom: r.VOLUME_FROM,
+                    volumeTo: r.VOLUME_TO,
+                    origin: r.ORIGIN_CLUSTER.trim(),
+                    destination: r.DESTINATION_CLUSTER.trim(),
+                    isDefault: r.IS_DEFAULT === 1,
+                    band: {
+                        min: r.PRICE_FROM,
+                        max: r.PRICE_TO,
+                        minIncluded: r.PRICE_FROM_INCLUDED === 1,
+                        maxIncluded: r.PRICE_TO_INCLUDED === 1,
+                    },
+                    amount: r.AMOUNT,
+                }));
+            }
+            if ((await metadata())[0]?.FILE_HASH?.trim() !== revision)
+                throw new Error('Тарифы изменились во время чтения; повторите расчёт');
+            if (this.logisticsCache.size > 1000) this.logisticsCache.clear();
+            this.logisticsCache.set(key, rows);
+            return { loaded: true, revision, rows };
+        } catch (e) {
+            if (/table unknown|relation.*not.*defined/i.test(e.message ?? ''))
+                return { loaded: false, revision: null, rows: [] };
+            throw e;
+        } finally {
+            await t.rollback(true);
+        }
     }
 
     async info() {

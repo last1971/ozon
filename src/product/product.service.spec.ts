@@ -546,3 +546,62 @@ describe('ProductService', () => {
         expect(result).toBeNull();
     });
 });
+
+
+describe('API направлений и складов Ozon', () => {
+    const make = () => {
+        const method = jest.fn();
+        const service: ProductService = Object.create(ProductService.prototype);
+        (service as any).ozonApiService = { method };
+        return { service, method };
+    };
+    it('финансовые поля FBS включаются только по явному запросу', async () => {
+        const { service, method } = make();
+        method.mockResolvedValue({ postings: [], has_next: false });
+        const filter = { since: new Date(), to: new Date(), statuses: ['delivered'] };
+        await service.orderList(filter, 100, '', true);
+        expect(method).toHaveBeenLastCalledWith('/v4/posting/fbs/list', {
+            filter,
+            limit: 100,
+            cursor: '',
+            with: { financial_data: true, analytics_data: true },
+        });
+        await service.orderList(filter);
+        expect(method).toHaveBeenLastCalledWith('/v4/posting/fbs/list', { filter, limit: 100, cursor: '' });
+    });
+    it('остатки: все страницы по курсору и все пачки артикулов, без повторов запросов', async () => {
+        const { service, method } = make();
+        method
+            .mockResolvedValueOnce({ products: [{ sku: 1 }], has_next: true, cursor: 'next' })
+            .mockResolvedValueOnce({ products: [{ sku: 2 }], has_next: false })
+            .mockResolvedValueOnce({ products: [{ sku: 3 }], has_next: false });
+        expect(await service.fboStocks([...Array.from({ length: 101 }, (_, i) => String(i)), '0'])).toHaveLength(3);
+        expect(method.mock.calls[0][1].offer_ids).toHaveLength(100);
+        expect(method.mock.calls[1][1].cursor).toBe('next');
+        expect(method.mock.calls[2][1]).toEqual({ offer_ids: ['100'], limit: 1000, cursor: '' });
+        expect(method.mock.calls.every(([path]) => path === '/v1/product/info/stocks-by-warehouse/fbo')).toBe(true);
+    });
+    it.each([
+        {},
+        { products: [], has_next: true },
+        { products: [], has_next: 'false' },
+        { products: [], has_next: true, cursor: 'same' },
+        { code: 8, message: 'Too Many Requests' },
+    ])('не принимает обрезанные остатки %j', async (response) => {
+        const { service, method } = make();
+        method.mockResolvedValue(response);
+        await expect(service.fboStocks(['1'])).rejects.toThrow();
+        expect(method.mock.calls.length).toBeLessThanOrEqual(2);
+    });
+    it('пустой список не вызывает API; справочник кластеров проверяется', async () => {
+        const { service, method } = make();
+        expect(await service.fboStocks([])).toEqual([]);
+        expect(method).not.toHaveBeenCalled();
+        method.mockResolvedValueOnce({ clusters: [] });
+        await expect(service.ozonClusters()).rejects.toThrow('справочника');
+        const clusters = [{ name: 'Москва', logistic_clusters: [] }];
+        method.mockResolvedValueOnce({ clusters });
+        expect(await service.ozonClusters()).toEqual(clusters);
+        expect(method).toHaveBeenLastCalledWith('/v1/cluster/list', { cluster_type: 'CLUSTER_TYPE_OZON' });
+    });
+});

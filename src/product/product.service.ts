@@ -154,11 +154,19 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
     }
 
     // v4 вместо v3 (v3 отключается 31.08.2026): ответ плоский, offset сломан — только cursor.
-    async orderList(filter: PostingsRequestDto, limit = 100, cursor = ''): Promise<PostingsDto> {
+    async orderList(filter: PostingsRequestDto, limit = 100, cursor = '', financialData = false): Promise<PostingsDto> {
         const endpoint = '/v4/posting/fbs/list';
         // v4 отдаёт цену объектом {amount, currency} вместо строки — приводим к прежнему виду
         return normalizePostingsPrices(
-            this.assertNoApiError(endpoint, await this.ozonApiService.method(endpoint, { filter, limit, cursor })),
+            this.assertNoApiError(
+                endpoint,
+                await this.ozonApiService.method(endpoint, {
+                    filter,
+                    limit,
+                    cursor,
+                    ...(financialData ? { with: { financial_data: true, analytics_data: true } } : {}),
+                }),
+            ),
         );
     }
     // v3 вместо v2 (v2 отключается 31.08.2026): ответ плоский, курсор вместо offset, limit ≤ 100.
@@ -186,6 +194,48 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
         const res = await this.ozonApiService.method('/v5/product/info/prices', options);
         return res || { items: [], cursor: '' };
     }
+    /** Остатки FBO по складам; читающий метод с курсорной пагинацией. */
+    async fboStocks(
+        offerIds: string[],
+    ): Promise<{ offer_id: string; sku: number; warehouse_id: number; present: number; reserved: number }[]> {
+        const all = [];
+        const endpoint = '/v1/product/info/stocks-by-warehouse/fbo';
+        for (const batch of chunk([...new Set(offerIds)], 100)) {
+            let cursor = '';
+            const seen = new Set<string>();
+            while (true) {
+                const response = this.assertNoApiError(
+                    endpoint,
+                    await this.ozonApiService.method(endpoint, {
+                        offer_ids: batch,
+                        limit: 1000,
+                        cursor,
+                    }),
+                );
+                if (!Array.isArray(response?.products) || typeof response.has_next !== 'boolean')
+                    throw new Error('Некорректный ответ остатков FBO');
+                all.push(...response.products);
+                if (!response.has_next) break;
+                if (!response.cursor || seen.has(response.cursor))
+                    throw new Error('Не продвигается курсор остатков FBO');
+                cursor = response.cursor;
+                seen.add(cursor);
+            }
+        }
+        return all;
+    }
+
+    async ozonClusters(): Promise<{ name: string; logistic_clusters: { warehouses: { warehouse_id: number }[] }[] }[]> {
+        const endpoint = '/v1/cluster/list';
+        const response = this.assertNoApiError(
+            endpoint,
+            await this.ozonApiService.method(endpoint, { cluster_type: 'CLUSTER_TYPE_OZON' }),
+        );
+        if (!Array.isArray(response?.clusters) || !response.clusters.length)
+            throw new Error('Нет справочника кластеров Ozon');
+        return response.clusters;
+    }
+
     async setPrice(prices: UpdatePricesDto): Promise<any> {
         const batchSize = 1000;
         const results = [];

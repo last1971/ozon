@@ -75,7 +75,7 @@ export class PostingFboService implements IOrderable, IFboSales, IFboReconcilabl
     }
 
     /** Отправления статуса за окно — без записи в журнал (её делает вызывающий). */
-    private async fetch(status: string, day: number): Promise<PostingDto[]> {
+    private async fetch(status: string, day: number, window?: { since: Date; to: Date }): Promise<PostingDto[]> {
         // У FBO фильтр по дате смены статуса мёртвый (обмерено: окна 1 ч, 24 ч, 72 ч и
         // заведомо пустое дают одни и те же записи), поэтому инкрементально сузить выборку
         // нечем — окно по дате СОЗДАНИЯ читается целиком каждый раз. Журнал здесь нужен
@@ -83,17 +83,19 @@ export class PostingFboService implements IOrderable, IFboSales, IFboReconcilabl
         // простоя. Поэтому берём то из двух начал, которое раньше.
         const byDefault = DateTime.now().minus({ day }).startOf('day');
         const byJournal = DateTime.fromJSDate(
-            await this.mpEvent.windowStart('OZON', 'POSTING_FBO', day, PostingFboService.OVERLAP_DAYS),
+            window?.since ??
+                (await this.mpEvent.windowStart('OZON', 'POSTING_FBO', day, PostingFboService.OVERLAP_DAYS)),
         );
         const filter = {
-            since: (byJournal < byDefault ? byJournal : byDefault).toJSDate(),
-            to: DateTime.now().endOf('day').toJSDate(),
+            since: window?.since ?? (byJournal < byDefault ? byJournal : byDefault).toJSDate(),
+            to: window?.to ?? DateTime.now().endOf('day').toJSDate(),
             statuses: [status],
         };
         const limit = 100; // предел v3 — 100, в v2 было 1000
         const all: PostingDto[] = [];
         let cursor = '';
         let hasMore = true;
+        const cursors = new Set<string>();
         // Пагинации здесь не было вовсе: с limit 1000 хватало одного запроса, но новый
         // предел 100 молча обрезал бы выборку (у магазина отмен за 90 дней больше 1000).
         while (hasMore) {
@@ -106,15 +108,25 @@ export class PostingFboService implements IOrderable, IFboSales, IFboReconcilabl
                     financial_data: true,
                 },
             });
+            if (window && (!Array.isArray(orders?.postings) || typeof orders.has_next !== 'boolean'))
+                throw new Error('Некорректная страница FBO для логистики');
             const postings = orders?.postings || [];
             all.push(...postings.map((order) => ({ ...order, isFbo: true })));
 
             // Тот же курсор в ответе = страница не сдвинулась, выходим, иначе вечный цикл.
             const nextCursor = orders?.cursor || '';
+            if (window && orders.has_next && (!nextCursor || cursors.has(nextCursor)))
+                throw new Error('Не продвигается курсор FBO для логистики');
+            cursors.add(nextCursor);
             hasMore = Boolean(orders?.has_next) && nextCursor !== '' && nextCursor !== cursor;
             cursor = nextCursor;
         }
         return all;
+    }
+
+    /** Существующий загрузчик с явным окном, без журнала и документов. */
+    async listForLogistics(since: Date, to: Date): Promise<PostingDto[]> {
+        return this.fetch('delivered', 90, { since, to });
     }
 
     /**

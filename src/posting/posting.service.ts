@@ -72,13 +72,13 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
      *               весь хвост, приходят только реально изменившиеся отправления.
      *               С итерации 4 начало окна поедет от `MAX(LAST_SEEN)` журнала.
      */
-    async list(status: string, day = 3, lcsdDay?: number): Promise<PostingDto[]> {
+    async list(status: string, day = 3, lcsdDay?: number, window?: { since: Date; to: Date }): Promise<PostingDto[]> {
         const filter: PostingsRequestDto = {
-            since: DateTime.now().minus({ day }).startOf('day').toJSDate(),
-            to: DateTime.now().endOf('day').toJSDate(),
+            since: window?.since ?? DateTime.now().minus({ day }).startOf('day').toJSDate(),
+            to: window?.to ?? DateTime.now().endOf('day').toJSDate(),
             statuses: [status],
         };
-        if (lcsdDay) {
+        if (lcsdDay && !window) {
             // Начало окна смены статуса даёт журнал: MAX(LAST_SEEN) по паре минус нахлёст.
             // Простой сервиса дольше нахлёста больше не съедает события молча — Ozon второй
             // раз их не покажет. Журнал пуст (холодный старт) → «сейчас минус lcsdDay».
@@ -92,8 +92,13 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         let allPostings: PostingDto[] = [];
         let cursor = '';
         let hasMore = true;
+        const cursors = new Set<string>();
         while (hasMore) {
-            const response = await this.productService.orderList(filter, limit, cursor);
+            const response = window
+                ? await this.productService.orderList(filter, limit, cursor, true)
+                : await this.productService.orderList(filter, limit, cursor);
+            if (window && (!Array.isArray(response?.postings) || typeof response.has_next !== 'boolean'))
+                throw new Error('Некорректная страница FBS для логистики');
             const postings = response?.postings || [];
 
             allPostings = allPostings.concat(postings);
@@ -101,12 +106,20 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
             // Курсор вместо offset: offset в v4 сломан — отдаёт первую страницу по кругу.
             // Тот же курсор в ответе = страница не сдвинулась, выходим, иначе вечный цикл.
             const nextCursor = response?.cursor || '';
+            if (window && response.has_next && (!nextCursor || cursors.has(nextCursor)))
+                throw new Error('Не продвигается курсор FBS для логистики');
+            cursors.add(nextCursor);
             hasMore = Boolean(response?.has_next) && nextCursor !== '' && nextCursor !== cursor;
             cursor = nextCursor;
         }
 
         return allPostings;
     }
+    /** Тот же загрузчик, явное окно и финансовые поля. Без записи журнала и действий над заказами. */
+    async listForLogistics(since: Date, to: Date): Promise<PostingDto[]> {
+        return this.list('delivered', 90, undefined, { since, to });
+    }
+
     async listAwaitingPackaging(): Promise<PostingDto[]> {
         return this.list('awaiting_packaging', 5);
     }
