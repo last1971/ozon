@@ -31,6 +31,7 @@ const handleSave = async () => {
 }
 
 
+// Сравниваем значения: getInd заменяет объект товара после каждого расчёта.
 watch(
     () => [
         props.value.old_perc,
@@ -40,7 +41,7 @@ watch(
         props.value.sum_pack,
         props.value.incoming_price,
         props.value.available_price,
-    ],
+    ].join('|'),
     debounce(async () => {
         await priceStore().getInd(props.ind);
     }, 2000),

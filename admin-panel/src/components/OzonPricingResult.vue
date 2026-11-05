@@ -34,10 +34,10 @@ const costLabels = {
 </script>
 
 <template>
-    <section class="my-4">
+    <section class="my-4" :aria-busy="Boolean(loading)">
         <h3 class="text-subtitle-1 mb-2">Расчётная цена Ozon (формула этапа 6)</h3>
-        <p v-if="loading" class="text-grey">Расчёт…</p>
-        <p v-else-if="result?.error" class="text-grey" role="status">{{ result.error }}</p>
+        <p v-if="loading" class="text-grey" role="status">{{ result ? 'Обновление…' : 'Расчёт…' }}</p>
+        <p v-if="result?.error" class="text-grey" role="status">{{ result.error }}</p>
         <template v-else-if="result">
             <p class="mb-2">База себестоимости: {{ sources[result.baseSource] }} — {{ money(result.base) }}</p>
             <v-table>
@@ -74,6 +74,6 @@ const costLabels = {
                 </v-row>
             </details>
         </template>
-        <p v-else class="text-grey">Расчёт ещё не загружен</p>
+        <p v-else-if="!loading" class="text-grey">Расчёт ещё не загружен</p>
     </section>
 </template>

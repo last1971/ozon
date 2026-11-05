@@ -15,7 +15,7 @@ const me = clientId();
 onMounted(() => Promise.all([categories.attach(), tnved.attach(), store.loadStats()]));
 
 // Задача закончилась — цифры в шапке устарели.
-watch(() => [categories.box.job?.status, tnved.box.job?.status], () => store.loadStats());
+watch([() => categories.box.job?.status, () => tnved.box.job?.status], () => store.loadStats());
 
 const MATCH: Record<string, string> = {
     exact: 'точное совпадение',

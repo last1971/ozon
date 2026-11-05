@@ -66,10 +66,24 @@ describe('Отдельный блок расчётных цен', () => {
         expect(wrapper.find('[role=status]').classes()).toContain('text-grey');
         expect(wrapper.find('details').exists()).toBe(false);
     });
-    it('при пересчёте скрывает устаревший результат', () => {
-        const wrapper = render(result(), true);
-        expect(wrapper.text()).toContain('Расчёт…');
+    it('при обновлении сохраняет прежнюю таблицу и заменяет её только после ответа', async () => {
+        const wrapper = render(result());
+        await wrapper.setProps({ loading: true });
+        expect(wrapper.find('[role=status]').text()).toBe('Обновление…');
+        expect(wrapper.attributes('aria-busy')).toBe('true');
+        expect(wrapper.find('table').exists()).toBe(true);
+        expect(wrapper.findAll('tbody tr')[0].findAll('td')[2].text()).toBe('229 ₽');
+        expect(wrapper.find('details').text()).toContain('Возвраты: 20 ₽');
+        await wrapper.setProps({ result: { ...result(), min: { ...result().min!, price: 250 } }, loading: false });
+        expect(wrapper.text()).not.toContain('Обновление…');
+        expect(wrapper.attributes('aria-busy')).toBe('false');
+        expect(wrapper.findAll('tbody tr')[0].findAll('td')[2].text()).toBe('250 ₽');
+    });
+    it('при первой загрузке без результата показывает «Расчёт…»', () => {
+        const wrapper = render(undefined, true);
+        expect(wrapper.find('[role=status]').text()).toBe('Расчёт…');
         expect(wrapper.find('table').exists()).toBe(false);
+        expect(wrapper.text()).not.toContain('Расчёт ещё не загружен');
     });
     it('не выдумывает мёртвую зону и нулевую текущую цену', () => {
         const wrapper = render({ ...result(), deadZoneFloor: undefined, current: null });
