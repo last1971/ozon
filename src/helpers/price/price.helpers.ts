@@ -1,3 +1,6 @@
+import { priceTaxDetails } from './price.tax';
+import { calculateOzonPrices, evaluateOzonPrice } from './ozon.pricing';
+import { ozonPricingInput } from './ozon.pricing.input';
 import { IPriceable } from '../../interfaces/i.priceable';
 import { ObtainCoeffsDto } from '../dto/obtain.coeffs.dto';
 import { toNumber } from 'lodash';
@@ -51,6 +54,15 @@ export const calculateCosts = (
  * Вычисляет сумму к оплате с учетом издержек
  */
 export const calculatePay = (price: IPriceable, percents: ObtainCoeffsDto, sum: number): PayResultDto => {
+    if (price.ozon) {
+        const input = ozonPricingInput(price, percents);
+        const result = evaluateOzonPrice(input, Number(sum));
+        return {
+            pay: input.base + result.profit,
+            netProfit: result.profit,
+            netProfitPercent: (result.profit / input.base) * 100,
+        };
+    }
     const { fixedCosts, dynamicCosts } = calculateCosts(price, percents);
     const mil = sum * (percents.percMil / 100);
     let ret =
@@ -85,6 +97,21 @@ export const calculatePrice = (
     auto_action = AutoAction.ENABLED,
     price_strategy_enabled = AutoAction.DISABLED,
 ): UpdatePriceDto => {
+    if (price.ozon) {
+        const result = calculateOzonPrices(ozonPricingInput(price, percents));
+        return {
+            auto_action_enabled: auto_action,
+            price_strategy_enabled,
+            currency_code: 'RUB',
+            offer_id: price.offer_id,
+            min_price: String(result.min.price),
+            price: String(result.normal.price),
+            old_price: String(result.max.price),
+            incoming_price: price.incoming_price,
+            available_price: price.available_price,
+            sum_pack: price.sum_pack,
+        };
+    }
     const calc = (percent: number, price: IPriceable): string => {
         if (percents.taxUnit === 0) {
             const calcPrice = findSellingPriceOSNO(percent, price, percents);
@@ -165,26 +192,6 @@ export const calculateOSNODetails = (
 ): { profitBeforeTax: number; profitTax: number; vatToPay: number } => {
     const { fixedCosts, dynamicCosts } = calculateCosts(price, percents);
 
-    const priceNoVAT = priceWithVAT / (1 + VAT_RATE / 100); // выручка без НДС
-    const fixedNoVAT = fixedCosts / (1 + VAT_RATE / 100);
-    const dynamicCost = priceWithVAT * (dynamicCosts / 100); // динамика с НДС
-    const dynamicNoVAT = dynamicCost / (1 + VAT_RATE / 100);
-    const incoming_price = toNumber(price.available_price) > 0 ? price.available_price : price.incoming_price;
-    const costNoVAT = incoming_price / (1 + VAT_RATE / 100); // себестоимость без НДС
-
-    // Расчет прибыли до налога на прибыль
-    const totalCostsNoVAT = fixedNoVAT + dynamicNoVAT + costNoVAT;
-    const profitBeforeTax = priceNoVAT - totalCostsNoVAT;
-
-    // Расчет налога на прибыль
-    const profitTax = profitBeforeTax * (PROFIT_TAX_RATE / 100);
-
-    // Расчет НДС
-    const fixedVAT = fixedCosts - fixedNoVAT;
-    const dynamicVAT = dynamicCost - dynamicNoVAT;
-    const inputVAT = incoming_price - costNoVAT + fixedVAT + dynamicVAT;
-    const outputVAT = priceWithVAT - priceNoVAT;
-    const vatToPay = Math.max(outputVAT - inputVAT, 0);
-
-    return { profitBeforeTax, profitTax, vatToPay };
+    const base = toNumber(price.available_price) > 0 ? price.available_price : price.incoming_price;
+    return priceTaxDetails(priceWithVAT, base, fixedCosts, dynamicCosts, VAT_RATE, PROFIT_TAX_RATE);
 };

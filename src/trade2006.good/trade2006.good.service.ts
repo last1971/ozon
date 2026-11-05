@@ -1,3 +1,4 @@
+import { completePricePercents } from '../helpers/price/price.percents';
 import { ozonReturnPriceFields } from '../helpers/price/ozon.return.perc';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { IGood } from '../interfaces/IGood';
@@ -685,32 +686,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
             this,
         );
 
-        // Генерируем проценты для SKU которых нет в БД (с нулевыми коэффициентами)
-        const missingSkus = skus.filter((sku) => {
-            const gCode = goodCode({ offer_id: sku });
-            const gCoeff = goodQuantityCoeff({ offer_id: sku });
-            return !percents.some(
-                (p) => p.offer_id.toString() === gCode && p.pieces === gCoeff &&
-                    !(p.return_perc_at != null && p.min_perc == null && p.perc == null && p.old_perc == null),
-            );
-        });
-        if (missingSkus.length > 0) {
-            // Тот же снимок себестоимостей и наценок, что и у основного расчёта, без второго похода в базу
-            const newPercents = await this.generatePercentsForService(null, missingSkus, undefined, {
-                goods,
-                percents,
-                prices,
-            });
-            // Строка с одной статистикой возвратов ещё не имеет наценок. Подбор остаётся прежним,
-            // а рассчитанные наценки заменяют именно эту строку, сохраняя её процент возвратов.
-            for (const percent of newPercents) {
-                const existing = percents.find(
-                    (p) => String(p.offer_id) === String(percent.offer_id) && p.pieces === percent.pieces,
-                );
-                if (existing) Object.assign(existing, percent);
-                else percents.push(percent);
-            }
-        }
+        await completePricePercents(skus, this, { goods, percents, prices });
 
         const priceables: IPriceable[] = [];
         const skipped: PriceSkip[] = [];
