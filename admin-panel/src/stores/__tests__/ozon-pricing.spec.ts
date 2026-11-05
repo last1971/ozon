@@ -63,7 +63,7 @@ describe('Загрузка расчёта Ozon в стор', () => {
         expect(axios.post).not.toHaveBeenCalled();
         expect(store.ozonPricingLoading['123-5']).toBe(false);
     });
-    it('getInd обновляет новый блок после старого расчёта', async () => {
+    it('getInd обновляет единый расчёт и не подменяет текущие цены', async () => {
         const store = priceStore();
         store.prices = [price()];
         vi.mocked(axios.post)
@@ -71,10 +71,11 @@ describe('Загрузка расчёта Ozon в стор', () => {
             .mockResolvedValueOnce({ data: [] });
         vi.mocked(axios.get).mockResolvedValue({ data: result() });
         await store.getInd(0);
-        expect(store.prices[0].min_price).toBe(229);
+        expect(store.prices[0].min_price).toBe(800);
+        expect(axios.post).not.toHaveBeenCalled();
         expect(store.ozonPricing['123-5'].current?.min).toBe(800);
         expect(axios.get).toHaveBeenCalledTimes(1);
-        expect(store.isLoadingPrice[0]).toBe(false);
+        expect(store.ozonPricingLoading['123-5']).toBe(false);
     });
     it('calculatePercents пересчитывает один раз с новыми наценками', async () => {
         const store = priceStore();
@@ -91,14 +92,41 @@ describe('Загрузка расчёта Ozon в стор', () => {
         });
         expect(store.ozonPricing['123-5'].min?.price).toBe(280);
     });
-    it('ошибка старого расчёта не блокирует новый блок и снимает индикатор загрузки', async () => {
+    it('сохранение настроек не запускает отправку цен', async () => {
         const store = priceStore();
         store.prices = [price()];
-        vi.mocked(axios.post).mockRejectedValue(new Error('old endpoint'));
-        vi.mocked(axios.get).mockResolvedValue({ data: result() });
-        await expect(store.getInd(0)).rejects.toThrow('old endpoint');
-        expect(store.ozonPricing['123-5'].min?.price).toBe(229);
-        expect(store.isLoadingPrice[0]).toBe(false);
+        vi.mocked(axios.post).mockResolvedValue({ data: null });
+        await store.saveSettings(0);
+        expect(axios.post).toHaveBeenCalledTimes(1);
+        expect(axios.post).toHaveBeenCalledWith(
+            '/api/good/percent',
+            {},
+            { params: expect.objectContaining({ offer_id: '123-5', packing_price: 3, available_price: 0 }) },
+        );
+        expect(axios.get).not.toHaveBeenCalled();
+        expect(store.savedSettings['123-5']).toBeTruthy();
+    });
+    it('первая загрузка передаёт сохранённые входы в расчёт и не вызывает старую выплату', async () => {
+        const store = priceStore();
+        vi.mocked(axios.get)
+            .mockResolvedValueOnce({ data: { data: [price()] } })
+            .mockResolvedValueOnce({ data: result() });
+        await store.get();
+        expect(axios.get).toHaveBeenLastCalledWith('/api/price/ozon-pricing/123-5', {
+            params: expect.objectContaining({ min_perc: 20, sum_pack: 3 }),
+        });
+        expect(axios.post).not.toHaveBeenCalled();
+    });
+    it('загрузка текущих цен сохраняет правки настроек', async () => {
+        const store = priceStore();
+        store.prices = [price()];
+        store.prices[0].perc = 50;
+        vi.mocked(axios.get)
+            .mockResolvedValueOnce({ data: { data: [{ ...price(), price: 777, perc: 40 }] } })
+            .mockResolvedValueOnce({ data: result() });
+        await store.reloadCurrent(0);
+        expect(store.prices[0]).toMatchObject({ price: 777, perc: 50 });
+        expect(axios.post).not.toHaveBeenCalled();
     });
     it('ошибка API заменяет устаревшую цену сообщением, фон не выбрасывает исключение', async () => {
         const store = priceStore();

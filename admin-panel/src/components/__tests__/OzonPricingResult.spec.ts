@@ -42,21 +42,32 @@ const render = (data?: OzonPricingResultDto, loading = false) =>
 describe('Отдельный блок расчётных цен', () => {
     it('показывает текущие и расчётные цены в отдельных колонках, три уровня и источник базы', () => {
         const wrapper = render(result());
-        expect(wrapper.text()).toContain('Расчётная цена Ozon (формула этапа 6)');
+        expect(wrapper.text()).toContain('Текущие и расчётные цены Ozon');
         expect(wrapper.findAll('th').map((th) => th.text())).toEqual([
             'Уровень',
+            'Задано',
+            'Применено',
             'Текущая Ozon',
             'Расчётная',
-            'Прибыль',
+            'Прибыль, ₽ / % от базы',
             'Схема',
             'Комиссия',
         ]);
         const rows = wrapper.findAll('tbody tr');
         expect(rows).toHaveLength(3);
-        expect(rows[0].findAll('td').map((td) => td.text())).toEqual(['Мин', '800 ₽', '229 ₽', '20,3 ₽', 'FBS', '20%']);
+        expect(rows[0].findAll('td').map((td) => td.text())).toEqual([
+            'Мин',
+            '—%',
+            '—%',
+            '800 ₽',
+            '229 ₽',
+            '20,3 ₽ / 20,3%',
+            'FBS',
+            '20%',
+        ]);
         expect(rows[2].text()).toContain('FBO');
         expect(wrapper.text()).toContain('База себестоимости: Остаточные партии — 100 ₽');
-        expect(wrapper.text()).toContain('≤ 300 ₽ или ≥ 650 ₽');
+        expect(wrapper.text()).toContain('Между 300 ₽ и 650 ₽');
         expect(wrapper.find('details').text()).toContain('Возвраты: 20 ₽');
     });
     it('ошибка скрывает таблицу и устаревшие цены', () => {
@@ -72,12 +83,12 @@ describe('Отдельный блок расчётных цен', () => {
         expect(wrapper.find('[role=status]').text()).toBe('Обновление…');
         expect(wrapper.attributes('aria-busy')).toBe('true');
         expect(wrapper.find('table').exists()).toBe(true);
-        expect(wrapper.findAll('tbody tr')[0].findAll('td')[2].text()).toBe('229 ₽');
+        expect(wrapper.findAll('tbody tr')[0].findAll('td')[4].text()).toBe('229 ₽');
         expect(wrapper.find('details').text()).toContain('Возвраты: 20 ₽');
         await wrapper.setProps({ result: { ...result(), min: { ...result().min!, price: 250 } }, loading: false });
         expect(wrapper.text()).not.toContain('Обновление…');
         expect(wrapper.attributes('aria-busy')).toBe('false');
-        expect(wrapper.findAll('tbody tr')[0].findAll('td')[2].text()).toBe('250 ₽');
+        expect(wrapper.findAll('tbody tr')[0].findAll('td')[4].text()).toBe('250 ₽');
     });
     it('при первой загрузке без результата показывает «Расчёт…»', () => {
         const wrapper = render(undefined, true);
@@ -88,7 +99,41 @@ describe('Отдельный блок расчётных цен', () => {
     it('не выдумывает мёртвую зону и нулевую текущую цену', () => {
         const wrapper = render({ ...result(), deadZoneFloor: undefined, current: null });
         expect(wrapper.text()).not.toContain('Мёртвая зона');
-        expect(wrapper.findAll('tbody tr')[0].findAll('td')[1].text()).toBe('—');
+        expect(wrapper.findAll('tbody tr')[0].findAll('td')[3].text()).toBe('—');
+    });
+    it('показывает заданные 5%, применённые 10%, источник расходов и причину отказа нижней ступени', () => {
+        const wrapper = render({
+            ...result(),
+            min: { ...result().min!, requestedMarkup: 5, appliedMarkup: 10, profitPercent: 10 },
+            limits: { minProfitRub: 15, minMarkupPercent: 10 },
+            lowerBand: { ceiling: 300, profit: 5.71, targetProfit: 17.16, eligible: false },
+            costSources: { firstMile: 'API Ozon', handling: 'Настройка сервера' },
+        });
+        expect(wrapper.text()).toContain('Минимум сервера: 15 ₽ прибыли и 10%');
+        expect(wrapper.findAll('tbody tr')[0].text()).toContain('5%');
+        expect(wrapper.findAll('tbody tr')[0].text()).toContain('10%');
+        expect(wrapper.text()).toContain('действует минимум сервера');
+        expect(wrapper.text()).toContain('При 300 ₽ прибыль 5,71 ₽, требуется 17,16 ₽');
+        expect(wrapper.text()).toContain('Ступень до 300 ₽ не обеспечивает');
+        expect(wrapper.find('details').text()).toContain('API Ozon');
+    });
+    it('ошибка расчёта не прячет поля для исправления процента и не показывает NaN', () => {
+        const wrapper = mount(OzonPricingResult, {
+            props: {
+                result: { ...result(), base: 0, min: null, normal: null, max: null, error: 'Некорректная наценка' },
+            },
+            slots: { markup: '<input aria-label="Процент" />' },
+            global: {
+                stubs: {
+                    VTable: { template: '<table><slot /></table>' },
+                    VRow: { template: '<div><slot /></div>' },
+                    VCol: { template: '<div><slot /></div>' },
+                },
+            },
+        });
+        expect(wrapper.findAll('input')).toHaveLength(3);
+        expect(wrapper.text()).toContain('Некорректная наценка');
+        expect(wrapper.text()).not.toContain('NaN');
     });
     it('без данных показывает состояние ожидания', () => {
         const wrapper = render();
