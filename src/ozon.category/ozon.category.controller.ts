@@ -1,6 +1,18 @@
-import { BadRequestException, Body, Controller, Get, Post, Query, UploadedFile, UseInterceptors } from '@nestjs/common';
+import { JobStateDto } from '../job/job.state.dto';
+import {
+    BadRequestException,
+    Body,
+    Controller,
+    Get,
+    Headers,
+    HttpCode,
+    Post,
+    Query,
+    UploadedFile,
+    UseInterceptors,
+} from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
-import { ApiTags, ApiOperation, ApiConsumes, ApiBody, ApiQuery } from '@nestjs/swagger';
+import { ApiTags, ApiOperation, ApiConsumes, ApiBody, ApiQuery, ApiAcceptedResponse } from '@nestjs/swagger';
 import { OzonCategoryService, SearchResult, CommissionRange, CategoryAttributesResult } from './ozon.category.service';
 import { CreateProductInput } from './interfaces/product-create.context';
 import { AIService } from '../ai/ai.service';
@@ -25,6 +37,8 @@ export class OzonCategoryController {
     }
 
     @Post('import-commissions')
+    @HttpCode(202)
+    @ApiAcceptedResponse({ type: JobStateDto, description: 'Импорт запущен; прогресс доступен через /api/job/:id' })
     @ApiOperation({ summary: 'Импорт комиссий из XLSX файла' })
     @ApiConsumes('multipart/form-data')
     @ApiBody({
@@ -39,9 +53,9 @@ export class OzonCategoryController {
         },
     })
     @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 20 * 1024 * 1024 } }))
-    async importCommissions(@UploadedFile() file: Express.Multer.File) {
+    async importCommissions(@UploadedFile() file: Express.Multer.File, @Headers('x-client-id') clientId?: string) {
         if (!file) throw new BadRequestException('Выберите XLSX комиссий.');
-        return this.ozonCategoryService.importCommissions(file.buffer, file.originalname);
+        return this.tariffService.startImport('commissions', file.buffer, file.originalname, clientId);
     }
 
     @Get('tariffs')
@@ -51,12 +65,14 @@ export class OzonCategoryController {
     }
 
     @Post('import-logistics')
+    @HttpCode(202)
+    @ApiAcceptedResponse({ type: JobStateDto, description: 'Импорт запущен; прогресс доступен через /api/job/:id' })
     @ApiOperation({ summary: 'Загрузить XLSX логистики FBO/FBS' })
     @ApiConsumes('multipart/form-data')
     @UseInterceptors(FileInterceptor('file', { limits: { fileSize: 20 * 1024 * 1024 } }))
-    async importLogistics(@UploadedFile() file: Express.Multer.File) {
+    async importLogistics(@UploadedFile() file: Express.Multer.File, @Headers('x-client-id') clientId?: string) {
         if (!file) throw new BadRequestException('Выберите XLSX доставки.');
-        return this.tariffService.importLogistics(file.buffer, file.originalname);
+        return this.tariffService.startImport('logistics', file.buffer, file.originalname, clientId);
     }
 
     @Post('generate-embeddings')

@@ -1,3 +1,5 @@
+import type { JobProgress } from '../interfaces/i.job.context';
+import { jobCheckpoint } from '../job/job.checkpoint';
 import { BadRequestException } from '@nestjs/common';
 import Excel from 'exceljs';
 import { createHash } from 'crypto';
@@ -71,7 +73,7 @@ function number(cell: Excel.Cell, percentage = false): number {
         fail(`Стоимость должна быть указана в рублях и копейках: ${cell.address}.`);
     return Number(n.toFixed(percentage ? 8 : 2));
 }
-async function load(buffer: Buffer): Promise<Excel.Workbook> {
+export async function readTariffWorkbook(buffer: Buffer): Promise<Excel.Workbook> {
     if (!buffer?.length || buffer.length > 20 * 1024 * 1024) fail('Нужен XLSX размером до 20 МБ.');
     try {
         const w = new Excel.Workbook();
@@ -113,15 +115,62 @@ function priceColumns(s: Excel.Worksheet, row: number, excluded: number[], schem
     return columns;
 }
 
-export async function parseCommissions(buffer: Buffer): Promise<CommissionRow[]> {
-    const w = await load(buffer);
-    const s = requiredSheet(w, 'Прайс РФ (БЗ)');
-    const h = header(s, ['Основная категория', 'Категория', 'Тип товара']);
-    const fbo = priceColumns(s, h.row, h.columns, 'fbo');
-    const fbs = priceColumns(s, h.row, h.columns, 'fbs');
+export interface CommissionLayout {
+    kind: 'commissions';
+    s: Excel.Worksheet;
+    h: ReturnType<typeof header>;
+    fbo: ReturnType<typeof priceColumns>;
+    fbs: ReturnType<typeof priceColumns>;
+}
+export interface LogisticsLayout {
+    kind: 'logistics';
+    s: Excel.Worksheet;
+    h: ReturnType<typeof header>;
+    prices: ReturnType<typeof priceColumns>;
+    isDefault: boolean;
+}
+export type TariffLayout = CommissionLayout | LogisticsLayout;
+
+/** Проверка листов, заголовков и ступеней отдельно от разбора строк. */
+export function validateTariffWorkbook(w: Excel.Workbook, kind: 'commissions' | 'logistics'): TariffLayout[] {
+    if (kind === 'commissions') {
+        const s = requiredSheet(w, 'Прайс РФ (БЗ)');
+        const h = header(s, ['Основная категория', 'Категория', 'Тип товара']);
+        return [
+            {
+                kind,
+                s,
+                h,
+                fbo: priceColumns(s, h.row, h.columns, 'fbo'),
+                fbs: priceColumns(s, h.row, h.columns, 'fbs'),
+            },
+        ];
+    }
+    return [
+        ['Логистика РФ', false],
+        ['Тарифы по умолчанию', true],
+    ].map(([name, isDefault]: [string, boolean]) => {
+        const s = requiredSheet(w, name);
+        const h = header(s, isDefault ? ['Объём товара'] : ['Объём товара', 'Кластер отправления', 'Кластер доставки']);
+        return { kind, s, h, isDefault, prices: priceColumns(s, h.row, h.columns) };
+    });
+}
+
+export async function parseCommissionRows(
+    layout: CommissionLayout,
+    progress?: JobProgress,
+    checkpoint: () => Promise<void> = jobCheckpoint,
+): Promise<CommissionRow[]> {
+    const { s, h, fbo, fbs } = layout;
+    if (progress) {
+        progress.done = 0;
+        progress.total = s.rowCount - h.row;
+    }
     const rows: CommissionRow[] = [];
     const keys = new Set<string>();
     for (let i = h.row + 1; i <= s.rowCount; i++) {
+        if (progress) progress.done = i - h.row - 1;
+        if ((i - h.row) % 100 === 0) await checkpoint();
         const r = s.getRow(i);
         if (!r.hasValues) continue;
         const [mainCategory, category, name] = h.columns.map((c) => text(r.getCell(c)));
@@ -138,7 +187,14 @@ export async function parseCommissions(buffer: Buffer): Promise<CommissionRow[]>
         });
     }
     if (!rows.length) fail('В файле нет комиссий.');
+    if (progress) progress.done = progress.total;
     return rows;
+}
+
+/** Совместимость существующих вызовов: тот же разбор, без второй реализации. */
+export async function parseCommissions(buffer: Buffer): Promise<CommissionRow[]> {
+    const [layout] = validateTariffWorkbook(await readTariffWorkbook(buffer), 'commissions');
+    return parseCommissionRows(layout as CommissionLayout);
 }
 
 function volume(label: string): { volumeFrom: number; volumeTo: number | null } {
@@ -150,20 +206,26 @@ function volume(label: string): { volumeFrom: number; volumeTo: number | null } 
     if (m) return { volumeFrom: n(m[1]), volumeTo: null };
     return fail(`Не понятен объём «${label}». Нужен объём в литрах.`);
 }
-export async function parseLogistics(buffer: Buffer): Promise<LogisticsRow[]> {
-    const w = await load(buffer);
+export async function parseLogisticsRows(
+    layouts: LogisticsLayout[],
+    progress?: JobProgress,
+    checkpoint: () => Promise<void> = jobCheckpoint,
+): Promise<LogisticsRow[]> {
+    if (progress) {
+        progress.done = 0;
+        progress.total = layouts.reduce((sum, layout) => sum + layout.s.rowCount - layout.h.row, 0);
+    }
     const result: LogisticsRow[] = [];
     const keys = new Set<string>();
-    for (const [name, isDefault] of [
-        ['Логистика РФ', false],
-        ['Тарифы по умолчанию', true],
-    ] as const) {
-        const s = requiredSheet(w, name);
-        const h = header(s, isDefault ? ['Объём товара'] : ['Объём товара', 'Кластер отправления', 'Кластер доставки']);
-        const prices = priceColumns(s, h.row, h.columns);
+    let processed = 0,
+        checkedGroups = 0;
+    for (const { s, h, prices, isDefault } of layouts) {
+        const name = s.name;
         const groups = new Map<string, { volumeFrom: number; volumeTo: number | null }[]>();
         let count = 0;
         for (let i = h.row + 1; i <= s.rowCount; i++) {
+            if (progress) progress.done = processed;
+            if (++processed % 100 === 0) await checkpoint();
             const r = s.getRow(i);
             if (!r.hasValues) continue;
             const v = volume(text(r.getCell(h.columns[0])));
@@ -182,6 +244,7 @@ export async function parseLogistics(buffer: Buffer): Promise<LogisticsRow[]> {
         }
         if (!count) fail(`Нет тарифов на листе «${name}».`);
         for (const intervals of groups.values()) {
+            if (++checkedGroups % 100 === 0) await checkpoint();
             intervals.sort((a, b) => a.volumeFrom - b.volumeFrom);
             if (intervals[0].volumeFrom !== 0 || intervals[intervals.length - 1].volumeTo !== null)
                 fail(`Неполные диапазоны объёма на листе «${name}».`);
@@ -200,7 +263,13 @@ export async function parseLogistics(buffer: Buffer): Promise<LogisticsRow[]> {
             });
         }
     }
+    if (progress) progress.done = progress.total;
     return result;
+}
+
+export async function parseLogistics(buffer: Buffer): Promise<LogisticsRow[]> {
+    const layouts = validateTariffWorkbook(await readTariffWorkbook(buffer), 'logistics');
+    return parseLogisticsRows(layouts as LogisticsLayout[]);
 }
 
 export function sourceMetadata(buffer: Buffer, filename: string, now = new Date()) {

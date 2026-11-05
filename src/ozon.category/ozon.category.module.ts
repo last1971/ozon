@@ -1,3 +1,10 @@
+import { JobModule } from '../job/job.module';
+import { TariffImportService } from './import/tariff-import.service';
+import { ReadTariffFileCommand } from './import/read-tariff-file.command';
+import { ValidateTariffFileCommand } from './import/validate-tariff-file.command';
+import { ParseTariffRowsCommand } from './import/parse-tariff-rows.command';
+import { WriteTariffsCommand } from './import/write-tariffs.command';
+import { SaveTariffDateCommand } from './import/save-tariff-date.command';
 import { Module } from '@nestjs/common';
 import { OzonTariffService } from './tariff.service';
 import { NotifyModule } from '../notify/notify.module';
@@ -21,10 +28,25 @@ import { OzonApiModule } from '../ozon.api/ozon.api.module';
 import { ImageStorageModule } from '../image-storage/image-storage.module';
 
 @Module({
-    imports: [NotifyModule, FirebirdModule, ProductModule, AIModule, AIProductModule, OzonApiModule, ImageStorageModule],
+    imports: [
+        JobModule,
+        NotifyModule,
+        FirebirdModule,
+        ProductModule,
+        AIModule,
+        AIProductModule,
+        OzonApiModule,
+        ImageStorageModule,
+    ],
     providers: [
         OzonCategoryService,
         OzonTariffService,
+        TariffImportService,
+        ReadTariffFileCommand,
+        ValidateTariffFileCommand,
+        ParseTariffRowsCommand,
+        WriteTariffsCommand,
+        SaveTariffDateCommand,
         ValidateOfferIdCommand,
         GenerateNameCommand,
         FindCategoryCommand,
