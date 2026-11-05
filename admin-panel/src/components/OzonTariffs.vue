@@ -24,6 +24,7 @@ const busy = ref(false);
 const error = ref('');
 const result = ref('');
 const missing = ref<{ id: number; name: string }[]>([]);
+const retired = ref<{ id: number; name: string }[]>([]);
 const source = (kind: Kind) => sources.value.find((s) => s.kind === kind);
 const when = (value?: string | null) => (value ? new Date(value).toLocaleString('ru-RU') : '—');
 const errorText = (e: unknown) => {
@@ -49,6 +50,7 @@ async function upload(card: (typeof cards)[number]) {
     error.value = '';
     result.value = '';
     missing.value = [];
+    retired.value = [];
     try {
         const form = new FormData();
         form.append('file', file);
@@ -57,7 +59,8 @@ async function upload(card: (typeof cards)[number]) {
             card.kind === 'commissions'
                 ? `Комиссии сохранены: ${data.updated} типов товаров из ${data.rows} строк файла.`
                 : `Доставка сохранена: ${data.routeRates} ставок по маршрутам, ${data.defaultRates} ставок по умолчанию.`;
-        missing.value = data.retiredTypes || [];
+        missing.value = data.missingTypes || [];
+        retired.value = data.retiredTypes || [];
         files.value[card.kind] = null;
         try {
             await refresh();
@@ -85,10 +88,17 @@ onMounted(async () => {
         <v-alert v-if="error" type="error" class="mb-4">{{ error }}</v-alert>
         <v-alert v-if="result" type="success" class="mb-4">{{ result }}</v-alert>
         <v-alert v-if="missing.length" type="warning" class="mb-4">
-            Исключено {{ missing.length }} типов: отключены в справочнике или отсутствуют в актуальном дереве Ozon.
+            Для {{ missing.length }} типов не определена комиссия. Таких товаров в вашем кабинете нет. Файл загружен.
             <details>
                 <summary>Показать типы товаров</summary>
                 <div v-for="item in missing" :key="item.id">{{ item.id }} — {{ item.name }}</div>
+            </details>
+        </v-alert>
+        <v-alert v-if="retired.length" type="warning" class="mb-4">
+            Исключено {{ retired.length }} типов: отключены в справочнике или отсутствуют в актуальном дереве Ozon.
+            <details>
+                <summary>Показать типы товаров</summary>
+                <div v-for="item in retired" :key="item.id">{{ item.id }} — {{ item.name }}</div>
             </details>
         </v-alert>
         <v-row>
@@ -134,8 +144,8 @@ onMounted(async () => {
             </v-col>
         </v-row>
         <p class="mt-4">
-            Новый файл полностью заменит прежние тарифы своего вида. Типы товаров, отсутствующие в файле комиссий,
-            останутся без комиссии. При ошибке проверки прежние данные сохранятся.
+            Новый файл полностью заменит прежние тарифы своего вида. Если нет комиссии для вашего товара, загрузка
+            остановится и прежние тарифы сохранятся. Для остальных типов без комиссии появится предупреждение.
         </p>
         <p>В этом разделе загружаются тарифы. Пересчёт и отправка цен отсюда не запускаются.</p>
     </div>

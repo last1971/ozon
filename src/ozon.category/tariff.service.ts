@@ -1,3 +1,4 @@
+import { ProductService } from '../product/product.service';
 import { OzonApiService } from '../ozon.api/ozon.api.service';
 import { Inject, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
@@ -28,6 +29,7 @@ export class OzonTariffService {
         private readonly notifier: NotifierService,
         private readonly config: ConfigService,
         private readonly ozonApi: OzonApiService,
+        private readonly products: ProductService,
     ) {}
 
     private async transaction<T>(
@@ -79,10 +81,46 @@ export class OzonTariffService {
         );
     }
 
+    /** Типы всех товаров кабинета, включая товары без остатка. Ошибка чтения не означает пустой каталог. */
+    private async catalogTypeIds(): Promise<Set<number>> {
+        try {
+            const offers = await this.products.listAllOfferIds();
+            if (!offers.length || new Set(offers).size !== offers.length || offers.some((offer) => !offer))
+                throw new Error('Пустой или неоднозначный список товаров');
+            const types = new Set<number>();
+            for (let i = 0; i < offers.length; i += 100) {
+                const batch = offers.slice(i, i + 100);
+                const cards = await this.products.infoList(batch);
+                const found = new Set(cards?.map((card) => card.sku));
+                if (
+                    !cards ||
+                    cards.length !== batch.length ||
+                    found.size !== batch.length ||
+                    batch.some((offer) => !found.has(offer))
+                )
+                    throw new Error('Получены не все карточки товаров');
+                for (const card of cards) {
+                    if (!Number.isSafeInteger(card.typeId) || card.typeId <= 0)
+                        throw new Error(`Не определён тип товара ${card.sku}`);
+                    types.add(card.typeId);
+                }
+            }
+            return types;
+        } catch (e) {
+            throw new ServiceUnavailableException(
+                'Не удалось проверить все товары кабинета. Прежние тарифы сохранены.',
+            );
+        }
+    }
+
     async importCommissions(buffer: Buffer, filename: string) {
         const meta = sourceMetadata(buffer, filename);
         const rows = await parseCommissions(buffer);
-        const currentTypes = commissionTypesFromTree(await this.ozonApi.method('/v1/description-category/tree', {}));
+        const [tree, requiredTypes] = await Promise.all([
+            this.ozonApi.method('/v1/description-category/tree', {}),
+            this.catalogTypeIds(),
+        ]);
+        const currentTypes = commissionTypesFromTree(tree);
         return this.transaction(async (t) => {
             await this.lock(t, 'commissions');
             const types = await t.query(
@@ -90,7 +128,7 @@ export class OzonTariffService {
                 [],
                 false,
             );
-            const { updates, missing, retired } = matchCommissions(rows, types, currentTypes);
+            const { updates, missing, retired } = matchCommissions(rows, types, currentTypes, requiredTypes);
             // Полная замена: типы, отсутствующие в новом файле, не должны сохранять ставки старого файла.
             await t.execute('UPDATE OZON_TYPES SET FBO_COMMISSIONS = NULL, FBS_COMMISSIONS = NULL', [], false);
             await this.blocks(

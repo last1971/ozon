@@ -269,8 +269,18 @@ describe('Сохранение и напоминание тарифов Ozon', (
         const pool = { getTransaction: jest.fn().mockResolvedValue(tx) };
         const notifier = { notify: jest.fn().mockResolvedValue(true) };
         const api = { method: jest.fn().mockResolvedValue(currentTree) };
-        const service = new OzonTariffService(pool as any, notifier as any, { get: () => env } as any, api as any);
-        return { tx, pool, notifier, service, api };
+        const products = {
+            listAllOfferIds: jest.fn().mockResolvedValue(['sku-1']),
+            infoList: jest.fn().mockResolvedValue([{ sku: 'sku-1', typeId: 1, fbsCount: 0, fboCount: 0 }]),
+        };
+        const service = new OzonTariffService(
+            pool as any,
+            notifier as any,
+            { get: () => env } as any,
+            api as any,
+            products as any,
+        );
+        return { tx, pool, notifier, service, api, products };
     };
     it('сопоставляет переименованный тип по официальному ID', async () => {
         const { tx, service, api } = make();
@@ -364,6 +374,188 @@ describe('Сохранение и напоминание тарифов Ozon', (
         );
         expect(tx.execute.mock.calls.some(([sql]) => sql.includes('FBO_COMMISSIONS = NULL'))).toBe(false);
         expect(tx.rollback).toHaveBeenCalledWith(true);
+    });
+
+    it('сохраняет файл и предупреждает о типе, которого нет среди товаров кабинета', async () => {
+        const m = make();
+        m.api.method.mockResolvedValue({
+            result: [
+                {
+                    category_name: 'Автотовары',
+                    children: [
+                        { type_id: 1, type_name: 'Светоотражатель' },
+                        { type_id: 2, type_name: 'Блинница электрическая' },
+                    ],
+                },
+            ],
+        });
+        m.tx.query.mockImplementation(async (sql) =>
+            sql.includes('SELECT KIND FROM')
+                ? [{ KIND: 'commissions' }]
+                : [
+                      {
+                          TYPE_ID: 1,
+                          TYPE_NAME: 'Светоотражатель',
+                          CATEGORY_PATH: 'Автотовары -> Автоаксессуары -> Светоотражатель',
+                      },
+                      { TYPE_ID: 2, TYPE_NAME: 'Блинница электрическая', CATEGORY_PATH: '' },
+                  ],
+        );
+        const result = await m.service.importCommissions(await commissions(), commissionName);
+        expect(result).toMatchObject({
+            updated: 1,
+            missingCount: 1,
+            missingTypes: [{ id: 2, name: 'Блинница электрическая' }],
+            retiredCount: 0,
+        });
+        expect(m.tx.commit).toHaveBeenCalledTimes(1);
+        expect(m.tx.rollback).not.toHaveBeenCalled();
+        // Старая ставка отсутствующего типа очищена; выдуманной ставки или отключения нет.
+        expect(m.tx.execute.mock.calls.some(([sql]) => sql.includes('FBO_COMMISSIONS = NULL'))).toBe(true);
+        expect(m.tx.execute.mock.calls.some(([sql]) => sql.includes('WHERE TYPE_ID = 2'))).toBe(false);
+
+        // Следующий импорт обязан проверить новый состав каталога, даже при нулевом остатке.
+        m.products.listAllOfferIds.mockResolvedValue(['sku-1', 'sku-2']);
+        m.products.infoList.mockResolvedValue([
+            { sku: 'sku-1', typeId: 1, fbsCount: 0, fboCount: 0 },
+            { sku: 'sku-2', typeId: 2, fbsCount: 0, fboCount: 0 },
+        ]);
+        m.tx.execute.mockClear();
+        m.tx.commit.mockClear();
+        await expect(m.service.importCommissions(await commissions(), commissionName)).rejects.toThrow(
+            '2 «Блинница электрическая»',
+        );
+        expect(m.products.listAllOfferIds).toHaveBeenCalledTimes(2);
+        expect(m.tx.execute.mock.calls.some(([sql]) => sql.includes('FBO_COMMISSIONS = NULL'))).toBe(false);
+        expect(m.tx.commit).not.toHaveBeenCalled();
+        expect(m.tx.rollback).toHaveBeenCalledWith(true);
+    });
+
+    it.each(['нет в справочнике', 'отключён', 'нет в дереве'])(
+        'тип своего товара %s — импорт заблокирован',
+        async (reason) => {
+            const m = make();
+            if (reason === 'нет в справочнике')
+                m.tx.query.mockImplementation(async (sql) =>
+                    sql.includes('SELECT KIND FROM') ? [{ KIND: 'commissions' }] : [],
+                );
+            if (reason === 'отключён')
+                m.tx.query.mockImplementation(async (sql) =>
+                    sql.includes('SELECT KIND FROM')
+                        ? [{ KIND: 'commissions' }]
+                        : [{ TYPE_ID: 1, TYPE_NAME: 'Светоотражатель', CATEGORY_PATH: '', DISABLED: 1 }],
+                );
+            if (reason === 'нет в дереве')
+                m.api.method.mockResolvedValue({ result: [{ type_id: 99, type_name: 'Другой тип' }] });
+            await expect(m.service.importCommissions(await commissions(), commissionName)).rejects.toThrow(
+                'типов товаров кабинета',
+            );
+            expect(m.tx.execute.mock.calls.some(([sql]) => sql.includes('FBO_COMMISSIONS = NULL'))).toBe(false);
+            expect(m.tx.commit).not.toHaveBeenCalled();
+            expect(m.tx.rollback).toHaveBeenCalledWith(true);
+        },
+    );
+
+    it.each([false, true])(
+        'неоднозначный тариф: предупреждение для чужого типа, ошибка для своего: %s',
+        async (own) => {
+            const m = make();
+            m.api.method.mockResolvedValue({
+                result: [
+                    ...currentTree.result,
+                    { category_name: 'Другой путь', children: [{ type_id: 2, type_name: 'Светоотражатель' }] },
+                ],
+            });
+            m.tx.query.mockImplementation(async (sql) =>
+                sql.includes('SELECT KIND FROM')
+                    ? [{ KIND: 'commissions' }]
+                    : [
+                          {
+                              TYPE_ID: 1,
+                              TYPE_NAME: 'Светоотражатель',
+                              CATEGORY_PATH: 'Автотовары -> Автоаксессуары -> Светоотражатель',
+                          },
+                          { TYPE_ID: 2, TYPE_NAME: 'Светоотражатель', CATEGORY_PATH: 'Другой путь' },
+                      ],
+            );
+            if (own) m.products.infoList.mockResolvedValue([{ sku: 'sku-1', typeId: 2, fbsCount: 0, fboCount: 0 }]);
+            const promise = m.service.importCommissions(await commissions({ duplicate: true }), commissionName);
+            if (own) {
+                await expect(promise).rejects.toThrow('Неоднозначная комиссия');
+                expect(m.tx.commit).not.toHaveBeenCalled();
+            } else {
+                expect(await promise).toMatchObject({
+                    updated: 1,
+                    missingCount: 1,
+                    missingTypes: [{ id: 2, name: 'Светоотражатель' }],
+                });
+                expect(m.tx.commit).toHaveBeenCalledWith(true);
+            }
+        },
+    );
+
+    it.each(
+        [
+            undefined,
+            [],
+            [{ sku: 'other', typeId: 1 }],
+            [{ sku: 'sku-1' }],
+            [{ sku: 'sku-1', typeId: 0 }],
+            [{ sku: 'sku-1', typeId: NaN }],
+            [
+                { sku: 'sku-1', typeId: 1 },
+                { sku: 'sku-1', typeId: 1 },
+            ],
+        ].map((cards) => [cards]),
+    )('неполные или некорректные карточки не разрешают замену тарифов: %j', async (cards) => {
+        const m = make();
+        m.products.infoList.mockResolvedValue(cards as any);
+        await expect(m.service.importCommissions(await commissions(), commissionName)).rejects.toThrow(
+            'Не удалось проверить все товары',
+        );
+        expect(m.pool.getTransaction).not.toHaveBeenCalled();
+    });
+
+    it.each([[], ['sku-1', 'sku-1'], ['']].map((offers) => [offers]))(
+        'пустой или неоднозначный список %j не считается отсутствием своих товаров',
+        async (offers) => {
+            const m = make();
+            m.products.listAllOfferIds.mockResolvedValue(offers);
+            await expect(m.service.importCommissions(await commissions(), commissionName)).rejects.toThrow(
+                'Не удалось проверить все товары',
+            );
+            expect(m.pool.getTransaction).not.toHaveBeenCalled();
+        },
+    );
+
+    it.each(['listAllOfferIds', 'infoList'] as const)('ошибка API %s сохраняет старые тарифы', async (method) => {
+        const m = make();
+        m.products[method].mockRejectedValue(new Error('API unavailable'));
+        await expect(m.service.importCommissions(await commissions(), commissionName)).rejects.toThrow(
+            'Прежние тарифы сохранены',
+        );
+        expect(m.pool.getTransaction).not.toHaveBeenCalled();
+    });
+
+    it('проверяет все карточки пачками 100/1, включая последний товар', async () => {
+        const m = make();
+        const offers = Array.from({ length: 101 }, (_, i) => `sku-${i}`);
+        m.products.listAllOfferIds.mockResolvedValue(offers);
+        m.products.infoList.mockImplementation(async (batch) =>
+            batch.map((sku) => ({ sku, typeId: 1, fbsCount: 0, fboCount: 0 })),
+        );
+        expect((await m.service.importCommissions(await commissions(), commissionName)).updated).toBe(1);
+        expect(m.products.infoList.mock.calls).toEqual([[offers.slice(0, 100)], [offers.slice(100)]]);
+        m.products.infoList.mockImplementation(async (batch) =>
+            batch.map((sku) => ({ sku, typeId: sku === 'sku-100' ? 2 : 1, fbsCount: 0, fboCount: 0 })),
+        );
+        m.tx.execute.mockClear();
+        m.tx.commit.mockClear();
+        await expect(m.service.importCommissions(await commissions(), commissionName)).rejects.toThrow(
+            'типов товаров кабинета: 2',
+        );
+        expect(m.tx.commit).not.toHaveBeenCalled();
+        expect(m.tx.execute.mock.calls.some(([sql]) => sql.includes('FBO_COMMISSIONS = NULL'))).toBe(false);
     });
 
     it('недоступное дерево Ozon не приводит к очистке комиссий', async () => {
@@ -484,7 +676,6 @@ describe('Сохранение и напоминание тарифов Ozon', (
     });
 });
 
-
 describe('Чтение действующей логистики из Firebird', () => {
     const make = () => {
         let hash = 'v1';
@@ -509,7 +700,7 @@ describe('Чтение действующей логистики из Firebird',
         );
         const tx = { query, rollback: jest.fn().mockResolvedValue(undefined), commit: jest.fn(), execute: jest.fn() };
         const pool = { getTransaction: jest.fn().mockResolvedValue(tx) };
-        const service = new OzonTariffService(pool as any, {} as any, {} as any, {} as any);
+        const service = new OzonTariffService(pool as any, {} as any, {} as any, {} as any, {} as any);
         return {
             service,
             tx,

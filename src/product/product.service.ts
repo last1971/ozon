@@ -57,22 +57,39 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
      */
     async listAllOfferIds(onPage?: (loaded: number) => void): Promise<string[]> {
         const offers: string[] = [];
+        const seenOffers = new Set<string>();
+        const seenCursors = new Set<string>();
         let lastId = '';
-        let loaded = 0;
+        let expectedTotal: number | undefined;
         for (let guard = 0; guard < 100; guard++) {
             const res: any = await this.list(lastId, 1000);
-            const items: any[] = res?.result?.items ?? [];
-            loaded += items.length;
-            onPage?.(loaded);
-            for (const it of items) {
-                const offer = String(it.offer_id ?? '');
-                if (offer) offers.push(offer);
+            if (!Array.isArray(res?.result?.items)) throw new Error('Не удалось получить полный каталог Ozon');
+            const { items, total } = res.result;
+            if (total != null) {
+                if (!Number.isSafeInteger(total) || total < 0 || (expectedTotal !== undefined && expectedTotal !== total))
+                    throw new Error('Количество товаров Ozon изменилось или некорректно; повторите загрузку');
+                expectedTotal = total;
             }
-            lastId = res?.result?.last_id ?? '';
-            if (!items.length || !lastId) break;
+            for (const item of items) {
+                const offer = String(item.offer_id ?? '');
+                if (!offer || seenOffers.has(offer)) throw new Error('Пустой или повторный артикул в каталоге Ozon');
+                seenOffers.add(offer);
+                offers.push(offer);
+            }
+            onPage?.(offers.length);
+            const next = res.result.last_id ?? '';
+            if (!items.length || !next) {
+                if (expectedTotal !== undefined && expectedTotal !== offers.length)
+                    throw new Error('Получен неполный каталог Ozon');
+                return offers;
+            }
+            if (seenCursors.has(next)) throw new Error('Повтор страницы каталога Ozon');
+            seenCursors.add(next);
+            lastId = next;
         }
-        return offers;
+        throw new Error('Превышен лимит страниц каталога Ozon; полный каталог не получен');
     }
+
     async infoList(offer_id: string[]): Promise<ProductInfoDto[]> {
         const res = await this.ozonApiService.method('/v3/product/info/list', { offer_id });
         return res?.items.map((item: any): ProductInfoDto => {

@@ -266,6 +266,7 @@ export function matchCommissions(
     rows: CommissionRow[],
     types: CommissionType[],
     currentTypes?: Map<number, CommissionType>,
+    requiredTypes?: ReadonlySet<number>,
 ) {
     const byName = new Map<string, CommissionRow[]>();
     for (const r of rows) byName.set(normalize(r.name), [...(byName.get(normalize(r.name)) || []), r]);
@@ -308,14 +309,30 @@ export function matchCommissions(
                 )
             )
                 chosen = candidates[0];
-            else
+            else if (requiredTypes && !requiredTypes.has(original.TYPE_ID)) {
+                missing.push({ id: original.TYPE_ID, name: current?.TYPE_NAME || t.TYPE_NAME });
+                continue;
+            } else
                 fail(
                     `Неоднозначная комиссия: тип ${t.TYPE_ID} «${t.TYPE_NAME}», путь «${t.CATEGORY_PATH}». Прежние тарифы сохранены.`,
                 );
         }
         updates.push({ typeId: original.TYPE_ID, fbo: chosen.fbo, fbs: chosen.fbs });
     }
-    if (currentTypes && missing.length)
+    if (requiredTypes) {
+        const matched = new Set(updates.map((update) => update.typeId));
+        const unavailable = [...requiredTypes].filter((id) => !matched.has(id));
+        if (unavailable.length)
+            fail(
+                `Нет комиссии для действующих типов товаров кабинета: ${unavailable
+                    .map((id) => {
+                        const name =
+                            currentTypes?.get(id)?.TYPE_NAME || types.find((type) => type.TYPE_ID === id)?.TYPE_NAME;
+                        return name ? `${id} «${name}»` : String(id);
+                    })
+                    .join('; ')}. Прежние тарифы сохранены.`,
+            );
+    } else if (currentTypes && missing.length)
         fail(
             `Нет комиссии для действующих типов Ozon: ${missing.map((t) => `${t.id} «${t.name}»`).join('; ')}. Прежние тарифы сохранены.`,
         );
