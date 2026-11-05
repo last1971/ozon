@@ -34,8 +34,20 @@ export function evaluateLine(
     if (!(cost > 0)) return { ...base, level: 'skip', reason: 'нет себестоимости' };
     if (!(line.pricePerUnit > 0)) return { ...base, level: 'skip', reason: 'нет цены продажи' };
 
-    const minPrice = Number(calculatePrice(priceable, coeffs).min_price);
-    const pay = calculatePay(priceable, coeffs, line.pricePerUnit);
+    let minPrice: number;
+    let pay: ReturnType<typeof calculatePay>;
+    try {
+        minPrice = Number(calculatePrice(priceable, coeffs).min_price);
+        pay = calculatePay(priceable, coeffs, line.pricePerUnit);
+    } catch (e) {
+        return {
+            ...base,
+            level: 'skip',
+            reason: `расчёт недоступен: ${e.message}`,
+            cost: round2(cost),
+            costSource: available > 0 ? 'доступная цена' : 'приход',
+        };
+    }
     const profitPerUnit = pay.netProfit ?? pay.pay - cost;
     const profitTotal = profitPerUnit * line.units;
 

@@ -1,8 +1,10 @@
+import type { OzonPricingContext } from '../../helpers/price/ozon.pricing';
 import { PriceBaseSource } from '../../good/dto/good.price.dto';
 import { ApiProperty } from '@nestjs/swagger';
 import { MarketingActionDto } from '../../helpers/price/buyer.price.helper';
 
 export class PriceDto {
+    ozon?: OzonPricingContext;
     @ApiProperty({ description: 'Код товара Озон' })
     product_id: number;
     @ApiProperty({ description: 'Наш код товара' })

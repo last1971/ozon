@@ -1,220 +1,75 @@
 import { CalculatePercentsWithLowCommissionCommand } from './calculate-percents-with-low-commission.command';
-import { IGoodsProcessingContext } from '../../interfaces/i.good.processing.context';
-import { PriceService } from '../price.service';
 import { PriceCalculationHelper } from '../../helpers/price/price.calculation.helper';
-import { PriceDto } from '../dto/price.dto';
+import { ConfigService } from '@nestjs/config';
+import { calculatePrice, calculatePay } from '../../helpers/price/price.helpers';
 
-jest.mock('../../helpers', () => ({
-    calculatePrice: jest.fn().mockReturnValue({
-        min_price: '200',
-        price: '250',
-        old_price: '300',
-    }),
-}));
-
-describe('CalculatePercentsWithLowCommissionCommand', () => {
-    let command: CalculatePercentsWithLowCommissionCommand;
-    let priceService: jest.Mocked<PriceService>;
-    let priceCalculationHelper: jest.Mocked<PriceCalculationHelper>;
-
-    beforeEach(() => {
-        priceService = {
-            getCommission: jest.fn(),
-            getObtainCoeffs: jest.fn().mockReturnValue({}),
-        } as any;
-        priceCalculationHelper = {
-            adjustPercents: jest.fn().mockReturnValue({ min_perc: 30, perc: 50, old_perc: 100 }),
-            selectWarehouse: jest.fn(() => 'fbs'),
-        } as any;
-        command = new CalculatePercentsWithLowCommissionCommand(priceService, priceCalculationHelper);
-    });
-
-    it('should calculate new percents with low commission', async () => {
-        priceService.getCommission.mockResolvedValue({ fbo: 0.2, fbs: 0.2 });
-
-        const context: IGoodsProcessingContext = {
-            skus: [],
-            ozonPrices: [
-                {
-                    offer_id: 'sku1',
-                    typeId: 123,
-                    fboCount: 10,
-                    fbsCount: 5,
-                    incoming_price: 100,
-                    available_price: 0,
-                    sum_pack: 10,
-                    adv_perc: 0,
-                    volumeWeight: 0.3,
-                } as PriceDto,
-            ],
-        };
-
-        const result = await command.execute(context);
-
-        expect(priceService.getCommission).toHaveBeenCalledWith('123');
-        expect(priceCalculationHelper.adjustPercents).toHaveBeenCalled();
-        expect(result.ozonPrices[0].min_perc).toBe(30);
-        expect(result.ozonPrices[0].perc).toBe(50);
-        expect(result.ozonPrices[0].old_perc).toBe(100);
-    });
-
-    it.each(['fbo', 'fbs'] as const)('сохраняет долю и выбирает обратный тариф %s', async (warehouse) => {
-        priceService.getCommission.mockResolvedValue({ fbo: 0.2, fbs: 0.2 });
-        priceCalculationHelper.selectWarehouse.mockReturnValue(warehouse);
-        const price = {
-            offer_id: '123',
+const make = () => {
+    const band = { min: 0, max: null, minIncluded: true, maxIncluded: false };
+    const ozon = {
+        schemes: [
+            {
+                scheme: 'fbs',
+                commissions: [{ ...band, rate: 0.2 }],
+                logistics: [{ ...band, amount: 70 }],
+                lastMile: 25,
+                firstMile: 10,
+                returnFlow: 60,
+            },
+        ],
+        acquiringRate: 0.01,
+        minProfitRub: 20,
+        minMarkupPercent: 10,
+        vatRate: 20,
+        profitTaxRate: 20,
+    };
+    const coeffs = { sumObtain: 5, sumLabel: 2, percMil: 99, minMil: 999, percEkv: 99, taxUnit: 6 };
+    const service: any = { withOzonPricing: jest.fn(async (p) => ({ ...p, ozon })), getObtainCoeffs: () => coeffs };
+    const helper = new PriceCalculationHelper(new ConfigService({ TAX_UNIT: 6, MIN_PROFIT_RUB: 20 }));
+    return { service, helper, coeffs, command: new CalculatePercentsWithLowCommissionCommand(service, helper) };
+};
+describe('Подбор наценок через единый расчёт Ozon', () => {
+    it('использует актуальную доставку 70, а не зашитый тариф 19.32; сохраняет возвраты', async () => {
+        const m = make();
+        const p: any = {
+            offer_id: '123-5',
             typeId: 1,
+            volumeWeight: 0.3,
             incoming_price: 100,
+            available_price: 0,
+            sum_pack: 10,
+            adv_perc: 0,
             return_perc: 0.25,
-            return_flow_amount: 999,
-            fbs_return_flow_amount: 60,
-            fbo_return_flow_amount: 20,
-        } as PriceDto;
-        await command.execute({ skus: [], ozonPrices: [price] });
-        expect(priceCalculationHelper.adjustPercents.mock.calls[0][0]).toMatchObject({
-            return_perc: 0.25,
-            return_flow_amount: warehouse === 'fbo' ? 20 : 60,
-        });
-        expect(price.return_flow_amount).toBe(warehouse === 'fbo' ? 20 : 60);
-    });
-
-    it('should skip items without typeId', async () => {
-        const context: IGoodsProcessingContext = {
-            skus: [],
-            ozonPrices: [{ offer_id: 'sku1', typeId: undefined } as PriceDto],
+            min_perc: 10,
+            perc: 20,
+            old_perc: 40,
         };
-
-        const result = await command.execute(context);
-
-        expect(priceService.getCommission).not.toHaveBeenCalled();
-        expect(result.ozonPrices[0].min_perc).toBeUndefined();
+        await m.command.execute({ skus: [], ozonPrices: [p] });
+        expect(m.service.withOzonPricing).toHaveBeenCalledTimes(1);
+        expect(p.ozon.schemes[0].logistics[0].amount).toBe(70);
+        expect(p.return_perc).toBe(0.25);
+        const common = calculatePrice(p, m.coeffs);
+        expect(p.min_price).toBe(Number(common.min_price));
+        expect(p.price).toBe(Number(common.price));
+        expect(p.old_price).toBe(Number(common.old_price));
+        expect(calculatePay(p, m.coeffs, p.min_price).netProfit).toBeGreaterThanOrEqual(20);
     });
-
-    it('should skip items when commission not found', async () => {
-        priceService.getCommission.mockResolvedValue(null);
-
-        const context: IGoodsProcessingContext = {
-            skus: [],
-            ozonPrices: [{ offer_id: 'sku1', typeId: 123 } as PriceDto],
-        };
-
-        const result = await command.execute(context);
-
-        expect(priceService.getCommission).toHaveBeenCalledWith('123');
-        expect(result.ozonPrices[0].min_perc).toBeUndefined();
+    it('без базы не рассчитывает и не меняет цену', async () => {
+        const m = make();
+        const p: any = { offer_id: '1', base_source: 'none', min_price: 100 };
+        await m.command.execute({ skus: [], ozonPrices: [p] });
+        expect(m.service.withOzonPricing).not.toHaveBeenCalled();
+        expect(p.min_price).toBe(100);
     });
-
-    it('should use lower commission (FBO) when FBO stock is sufficient', async () => {
-        priceService.getCommission.mockResolvedValue({ fbo: 0.15, fbs: 0.2 });
-        priceCalculationHelper.selectWarehouse.mockReturnValue('fbo');
-
-        const context: IGoodsProcessingContext = {
-            skus: [],
-            ozonPrices: [
-                {
-                    offer_id: 'sku1',
-                    typeId: 123,
-                    fboCount: 80,
-                    fbsCount: 20,
-                    incoming_price: 100,
-                    available_price: 0,
-                    sum_pack: 10,
-                    adv_perc: 0,
-                } as PriceDto,
-            ],
-        };
-
-        await command.execute(context);
-
-        const adjustPercentsCall = priceCalculationHelper.adjustPercents.mock.calls[0][0];
-        expect(adjustPercentsCall.sales_percent).toBe(15); // FBO is lower (0.15 < 0.2) and has sufficient stock
+    it('ошибка тарифов не подменяется прежней комиссией', async () => {
+        const m = make();
+        m.service.withOzonPricing.mockRejectedValue(new Error('Нет тарифов'));
+        const p: any = { offer_id: '1', incoming_price: 100, min_price: 200 };
+        await expect(m.command.execute({ skus: [], ozonPrices: [p] })).rejects.toThrow('Нет тарифов');
+        expect(p.min_price).toBe(200);
     });
-
-    it('should use lower commission (FBS) when FBS is lower and has sufficient stock', async () => {
-        priceService.getCommission.mockResolvedValue({ fbo: 0.25, fbs: 0.2 });
-
-        const context: IGoodsProcessingContext = {
-            skus: [],
-            ozonPrices: [
-                {
-                    offer_id: 'sku1',
-                    typeId: 123,
-                    fboCount: 5,
-                    fbsCount: 10,
-                    incoming_price: 100,
-                    available_price: 0,
-                    sum_pack: 10,
-                    adv_perc: 0,
-                } as PriceDto,
-            ],
-        };
-
-        await command.execute(context);
-
-        const adjustPercentsCall = priceCalculationHelper.adjustPercents.mock.calls[0][0];
-        expect(adjustPercentsCall.sales_percent).toBe(20); // FBS is lower (0.2 < 0.25)
-    });
-
-    it('should calculate FBS logistics based on volumeWeight', async () => {
-        priceService.getCommission.mockResolvedValue({ fbo: 0.2, fbs: 0.2 });
-
-        const context: IGoodsProcessingContext = {
-            skus: [],
-            ozonPrices: [
-                {
-                    offer_id: 'sku1',
-                    typeId: 123,
-                    fboCount: 10,
-                    fbsCount: 5,
-                    incoming_price: 100,
-                    available_price: 0,
-                    sum_pack: 10,
-                    adv_perc: 0,
-                    volumeWeight: 0.3, // 0.2-0.4 range = 19.32
-                } as PriceDto,
-            ],
-        };
-
-        await command.execute(context);
-
-        const adjustPercentsCall = priceCalculationHelper.adjustPercents.mock.calls[0][0];
-        expect(adjustPercentsCall.fbs_direct_flow_trans_max_amount).toBe(19.32);
-    });
-
-    it('should use default logistics for undefined volumeWeight', async () => {
-        priceService.getCommission.mockResolvedValue({ fbo: 0.2, fbs: 0.2 });
-
-        const context: IGoodsProcessingContext = {
-            skus: [],
-            ozonPrices: [
-                {
-                    offer_id: 'sku1',
-                    typeId: 123,
-                    fboCount: 10,
-                    fbsCount: 5,
-                    incoming_price: 100,
-                    available_price: 0,
-                    sum_pack: 10,
-                    adv_perc: 0,
-                    volumeWeight: undefined,
-                } as PriceDto,
-            ],
-        };
-
-        await command.execute(context);
-
-        const adjustPercentsCall = priceCalculationHelper.adjustPercents.mock.calls[0][0];
-        expect(adjustPercentsCall.fbs_direct_flow_trans_max_amount).toBe(17.28); // first tariff
-    });
-
-    it('should handle empty ozonPrices', async () => {
-        const context: IGoodsProcessingContext = {
-            skus: [],
-            ozonPrices: [],
-        };
-
-        const result = await command.execute(context);
-
-        expect(result.ozonPrices).toEqual([]);
+    it('пустой список не вызывает загрузку', async () => {
+        const m = make();
+        await m.command.execute({ skus: [] });
+        expect(m.service.withOzonPricing).not.toHaveBeenCalled();
     });
 });

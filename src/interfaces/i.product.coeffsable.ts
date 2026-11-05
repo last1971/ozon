@@ -1,4 +1,6 @@
+import type { OzonPricingContext } from '../helpers/price/ozon.pricing';
 export interface IProductCoeffsable {
+    getOzonPricing?(): OzonPricingContext;
     getSku(): string;
     getSalesPercent(): number;
     getTransMaxAmount(): number;

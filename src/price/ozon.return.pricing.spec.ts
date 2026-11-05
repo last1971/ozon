@@ -63,12 +63,32 @@ function setup(
     const t = { query: jest.fn().mockResolvedValue(rows), commit: jest.fn(), rollback: jest.fn() };
     const goods = new Trade2006GoodService({ getTransaction: async () => t } as any, config, null, null, helper);
     jest.spyOn(goods, 'prices').mockResolvedValue([{ code: 123, name: 'test', price: 20, free_stock: 10 }]);
-    const adapter = new OzonProductCoeffsAdapter(rawProduct, 1, info, helper);
+    const band = { min: 0, max: null, minIncluded: true, maxIncluded: false };
+    const pricing: any = {
+        schemes: [
+            {
+                scheme: 'fbs',
+                commissions: [{ ...band, rate: 0 }],
+                logistics: [{ ...band, amount: 100 }],
+                lastMile: 0,
+                firstMile: 0,
+                returnFlow: 60,
+            },
+        ],
+        acquiringRate: 0,
+        minProfitRub: 20,
+        minMarkupPercent: 10,
+        vatRate: 20,
+        profitTaxRate: 20,
+    };
+    const adapter = new OzonProductCoeffsAdapter(rawProduct, 1, info, helper, pricing);
     const products = {
         infoList: jest.fn().mockResolvedValue([info]),
         getPrices: jest.fn().mockResolvedValue({ items: [rawProduct], cursor: '' }),
     };
-    const service = new PriceService(products as any, goods, config, null, helper, null);
+    const service = new PriceService(products as any, goods, config, null, helper, null, {
+        load: async () => pricing,
+    } as any);
     const market = { getProductsWithCoeffs: async () => [adapter], getObtainCoeffs: () => coeffs } as any;
     return { goods, helper, market, service, t };
 }

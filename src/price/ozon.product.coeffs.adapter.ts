@@ -1,3 +1,4 @@
+import type { OzonPricingContext } from '../helpers/price/ozon.pricing';
 import { ProductInfoDto } from 'src/product/dto/product.info.dto';
 import { IProductCoeffsable } from '../interfaces/i.product.coeffsable';
 import { ProductPriceDto } from './dto/product.price.dto';
@@ -11,6 +12,7 @@ export class OzonProductCoeffsAdapter implements IProductCoeffsable {
         private percDirectFlow: number = 1,
         private productInfo: ProductInfoDto = null,
         private priceCalculationHelper: PriceCalculationHelper = null,
+        private pricing?: OzonPricingContext,
     ) {
         this.warehouse = this.priceCalculationHelper
             ? this.priceCalculationHelper.selectWarehouse(
@@ -22,6 +24,10 @@ export class OzonProductCoeffsAdapter implements IProductCoeffsable {
             : productInfo?.fboCount > productInfo?.fbsCount
               ? 'fbo'
               : 'fbs';
+    }
+
+    getOzonPricing(): OzonPricingContext {
+        return this.pricing;
     }
 
     getSalesPercent(): number {

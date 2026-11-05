@@ -1,3 +1,4 @@
+import { OzonPricingService } from './ozon.pricing.service';
 import { OzonLogisticsModule } from './ozon.logistics.module';
 import { Module } from '@nestjs/common';
 import { PriceService } from './price.service';
@@ -49,6 +50,7 @@ import { VerifyOzonPricesCommand } from './commands/verify-ozon-prices.command';
         OzonCategoryModule,
     ],
     providers: [
+        OzonPricingService,
         PriceService,
         ExtraPriceService,
         ResetAvailablePriceCommand,

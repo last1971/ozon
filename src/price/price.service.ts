@@ -1,3 +1,5 @@
+import { completePricePercents } from '../helpers/price/price.percents';
+import { OzonPricingService } from './ozon.pricing.service';
 import { ozonReturnPriceFields } from '../helpers/price/ozon.return.perc';
 import { resolvePriceBase } from '../helpers/price/price.base';
 import { Inject, Injectable, Logger } from '@nestjs/common';
@@ -36,6 +38,7 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
         private cacheManager: Cache,
         private priceCalculationHelper: PriceCalculationHelper,
         private ozonCategoryService: OzonCategoryService,
+        private readonly ozonPricing: OzonPricingService,
     ) {}
     /**
      * Преобразует значение НДС Озона (строка как доля) в число (проценты)
@@ -81,64 +84,74 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
     async index(request: PriceRequestDto): Promise<PriceResponseDto> {
         const infoListPromise = request.offer_id ? this.product.infoList(request.offer_id) : Promise.resolve([]);
         const [productsInfos, products] = await Promise.all([infoListPromise, this.product.getPrices(request)]);
+        if (!request.offer_id && products.items.length)
+            productsInfos.push(...(await this.product.infoList(products.items.map((item) => item.offer_id))));
         const codes = products.items.map((item) => goodCode(item));
         const [goods, percents] = await Promise.all([
             this.goodService.prices(codes, null),
             this.goodService.getPerc(codes, null),
         ]);
+        await completePricePercents(
+            products.items.map((item) => item.offer_id),
+            this.goodService,
+            { goods, percents },
+        );
         const percDirectFlow = 1 + this.configService.get<number>('PERC_DIRECT_FLOW', 0) / 100;
-        return {
-            last_id: products.cursor,
-            data: products.items.map((item) => {
-                const good = goods.find((g) => g.code.toString() === goodCode(item));
-                const percent: GoodPercentDto = percents.find(
-                    (p) => p.offer_id.toString() === goodCode(item) && p.pieces === goodQuantityCoeff(item),
-                ) || {
-                    offer_id: item.offer_id,
-                    pieces: goodQuantityCoeff(item),
-                    adv_perc: 0,
-                    old_perc: this.configService.get<number>('PERC_MAX', 50),
-                    perc: this.configService.get<number>('PERC_NOR', 25),
-                    min_perc: this.configService.get<number>('PERC_MIN', 15),
-                    available_price: 0,
-                };
-                const base = resolvePriceBase(item.offer_id, goodQuantityCoeff(item), good, percent);
-                const productInfo = productsInfos.find((info) => info.sku === item.offer_id);
-                const adapter = new OzonProductCoeffsAdapter(
-                    item, percDirectFlow, productInfo, this.priceCalculationHelper,
-                );
+        const data: PriceDto[] = [];
+        for (const item of products.items) {
+            const good = goods.find((g) => g.code.toString() === goodCode(item));
+            const percent: GoodPercentDto = percents.find(
+                (p) => p.offer_id.toString() === goodCode(item) && p.pieces === goodQuantityCoeff(item),
+            ) || {
+                offer_id: item.offer_id,
+                pieces: goodQuantityCoeff(item),
+                adv_perc: 0,
+                old_perc: this.configService.get<number>('PERC_MAX', 50),
+                perc: this.configService.get<number>('PERC_NOR', 25),
+                min_perc: this.configService.get<number>('PERC_MIN', 15),
+                available_price: 0,
+            };
+            const base = resolvePriceBase(item.offer_id, goodQuantityCoeff(item), good, percent);
+            const productInfo = productsInfos.find((info) => info.sku === item.offer_id);
+            const adapter = new OzonProductCoeffsAdapter(
+                item,
+                percDirectFlow,
+                productInfo,
+                this.priceCalculationHelper,
+                await this.ozonPricing.load(item, productInfo),
+            );
 
-                return {
-                    ...ozonReturnPriceFields(adapter, percent.return_perc),
-                    fbs_return_flow_amount: item.commissions.fbs_return_flow_amount,
-                    fbo_return_flow_amount: item.commissions.fbo_return_flow_amount,
-                    product_id: item.product_id,
-                    offer_id: item.offer_id,
-                    name: good?.name,
-                    marketing_price: item.price.marketing_seller_price || 0,
-                    marketing_seller_price: item.price.marketing_seller_price,
-                    incoming_price: base.incoming_price,
-                    base_source: base.base_source,
-                    available_price: base.available_price,
-                    min_price: item.price.min_price,
-                    price: item.price.price,
-                    old_price: item.price.old_price,
-                    min_perc: percent.min_perc ?? this.configService.get<number>('PERC_MIN', 15),
-                    perc: percent.perc ?? this.configService.get<number>('PERC_NOR', 25),
-                    old_perc: percent.old_perc ?? this.configService.get<number>('PERC_MAX', 50),
-                    adv_perc: percent.adv_perc ?? 0,
-                    sales_percent: adapter.getSalesPercent(),
-                    fbs_direct_flow_trans_max_amount: adapter.getTransMaxAmount(),
-                    auto_action_enabled: item.price.auto_action_enabled,
-                    sum_pack: percent.packing_price,
-                    fbsCount: productInfo?.fbsCount || 0,
-                    fboCount: productInfo?.fboCount || 0,
-                    typeId: productInfo?.typeId,
-                    volumeWeight: productInfo?.volumeWeight,
-                    marketing_actions: item.marketing_actions?.actions ?? [],
-                };
-            }),
-        };
+            data.push({
+                ...ozonReturnPriceFields(adapter, percent.return_perc),
+                fbs_return_flow_amount: item.commissions.fbs_return_flow_amount,
+                fbo_return_flow_amount: item.commissions.fbo_return_flow_amount,
+                product_id: item.product_id,
+                offer_id: item.offer_id,
+                name: good?.name,
+                marketing_price: item.price.marketing_seller_price || 0,
+                marketing_seller_price: item.price.marketing_seller_price,
+                incoming_price: base.incoming_price,
+                base_source: base.base_source,
+                available_price: base.available_price,
+                min_price: item.price.min_price,
+                price: item.price.price,
+                old_price: item.price.old_price,
+                min_perc: percent.min_perc ?? this.configService.get<number>('PERC_MIN', 15),
+                perc: percent.perc ?? this.configService.get<number>('PERC_NOR', 25),
+                old_perc: percent.old_perc ?? this.configService.get<number>('PERC_MAX', 50),
+                adv_perc: percent.adv_perc ?? 0,
+                sales_percent: adapter.getSalesPercent(),
+                fbs_direct_flow_trans_max_amount: adapter.getTransMaxAmount(),
+                auto_action_enabled: item.price.auto_action_enabled,
+                sum_pack: percent.packing_price ?? this.configService.get<number>('SUM_PACK', 10),
+                fbsCount: productInfo?.fbsCount || 0,
+                fboCount: productInfo?.fboCount || 0,
+                typeId: productInfo?.typeId,
+                volumeWeight: productInfo?.volumeWeight,
+                marketing_actions: item.marketing_actions?.actions ?? [],
+            });
+        }
+        return { last_id: products.cursor, data };
     }
     async update(prices: UpdatePricesDto): Promise<any> {
         return this.product.setPrice(prices);
@@ -190,7 +203,13 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
             for (const product of items) {
                 const productInfo = counts.find((info) => info.sku === product.offer_id);
                 allResults.push(
-                    new OzonProductCoeffsAdapter(product, percDirectFlow, productInfo, this.priceCalculationHelper),
+                    new OzonProductCoeffsAdapter(
+                        product,
+                        percDirectFlow,
+                        productInfo,
+                        this.priceCalculationHelper,
+                        await this.ozonPricing.load(product, productInfo),
+                    ),
                 );
             }
         });
@@ -315,57 +334,28 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
         return { fbo: fboRange.rate, fbs: fbsRange.rate };
     }
 
-    /**
-     * Оптимизирует цену Ozon с учётом порогов комиссии
-     * Если incoming_price < 150 и min_price > 300, пробует пересчитать с комиссией 100-300
-     */
+    /** Свежие ставки сервера для ручного расчёта; тарифам из браузера не доверяем. */
+    async withOzonPricing(price: IPriceable): Promise<IPriceable> {
+        const products = await this.getProductsWithCoeffs([price.offer_id]);
+        const product = products.find((p) => p.getSku() === price.offer_id);
+        const ozon = product?.getOzonPricing?.();
+        if (!ozon) throw new Error(`${price.offer_id}: нет тарифных ступеней Ozon`);
+        const statistics = await this.goodService.getPerc([goodCode(price)], null);
+        const own = statistics.find(
+            (p) => String(p.offer_id) === goodCode(price) && p.pieces === goodQuantityCoeff(price),
+        );
+        return { ...price, ...ozonReturnPriceFields(product, own?.return_perc ?? 0), ozon };
+    }
+
+    /** Совместимая точка входа: единый расчёт всех ступеней и схем с остатком. */
     async optimizeOzonPrice(
         price: IPriceable,
         percents: ObtainCoeffsDto,
         typeId: string,
         useFbo = false,
     ): Promise<UpdatePriceDto> {
-        if (price.base_source === 'none') {
-            this.logger.warn(`${price.offer_id}: цену не считали — нет базы`);
-            return null;
-        }
-        const result1 = calculatePrice(price, percents);
-
-        // Проверка условия оптимизации
-        const incomingPrice = toNumber(price.available_price) > 0 ? price.available_price : price.incoming_price;
-        if (incomingPrice >= 150 || toNumber(result1.min_price) <= 300) {
-            return result1;
-        }
-
-        // Получить комиссию 100-300 из Redis
-        const commission = await this.getCommission(typeId);
-        if (!commission) {
-            return result1;
-        }
-
-        // Выбрать FBS или FBO
-        const newSalesPercent = (useFbo ? commission.fbo : commission.fbs) * 100;
-
-        // Второй расчёт с новой комиссией
-        const priceWithNewCommission = { ...price, sales_percent: newSalesPercent };
-        const result2 = calculatePrice(priceWithNewCommission, percents);
-
-        // Проверить что result2.min_price <= 300, иначе комиссия 20% не применится
-        if (toNumber(result2.min_price) > 300) {
-            return result1;
-        }
-
-        // Сравнить прибыль
-        const profit1 = calculatePay(price, percents, toNumber(result1.min_price));
-        const profit2 = calculatePay(priceWithNewCommission, percents, toNumber(result2.min_price));
-
-        // Выбрать лучший вариант
-        if (profit2.pay > 0 && profit2.pay > profit1.pay) {
-            this.logger.debug(`Optimized price for ${price.offer_id}: ${result1.min_price} -> ${result2.min_price}`);
-            return result2;
-        }
-
-        return result1;
+        if (price.base_source === 'none') return null;
+        return calculatePrice(await this.withOzonPricing(price), percents);
     }
 
     /**

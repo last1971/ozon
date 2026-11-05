@@ -31,8 +31,12 @@ export function calculateOzonReturnPerc({ soldUnits, paidReturnUnits }: OzonRetu
 export function ozonReturnPriceFields(
     product: IProductCoeffsable,
     returnPerc: number = 0,
-): Pick<IPriceable, 'return_perc' | 'return_flow_amount'> {
+): Pick<IPriceable, 'return_perc' | 'return_flow_amount' | 'ozon'> {
     return product.getReturnFlowAmount
-        ? { return_perc: returnPerc ?? 0, return_flow_amount: product.getReturnFlowAmount() }
+        ? {
+              return_perc: returnPerc ?? 0,
+              return_flow_amount: product.getReturnFlowAmount(),
+              ...(product.getOzonPricing?.() ? { ozon: product.getOzonPricing() } : {}),
+          }
         : {};
 }

@@ -32,7 +32,7 @@ import { Response } from 'express';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { IPriceable } from '../interfaces/i.priceable';
 import { ObtainCoeffsDto } from '../helpers/dto/obtain.coeffs.dto';
-import { calculatePay, calculatePrice, PayResultDto } from '../helpers';
+import { calculatePay, PayResultDto } from '../helpers';
 import { WbCommissionDto } from '../wb.card/dto/wb.commission.dto';
 import { ExtraPriceService } from './extra.price.service';
 import { WbPriceService, WbBulkPriceReport } from '../wb.price/wb.price.service';
@@ -137,10 +137,7 @@ export class PriceController {
         @Body() body: { price: IPriceable; percents: ObtainCoeffsDto; typeId?: string },
     ): Promise<UpdatePriceDto> {
         if (body.price.base_source === 'none') throw new BadRequestException('нет базы');
-        if (body.typeId) {
-            return this.service.optimizeOzonPrice(body.price, body.percents, body.typeId);
-        }
-        return calculatePrice(body.price, body.percents);
+        return this.service.optimizeOzonPrice(body.price, body.percents, body.typeId);
     }
     @Post('calculate-pay')
     @ApiBody({
@@ -180,7 +177,8 @@ export class PriceController {
         @Body() body: { price: IPriceable; percents: ObtainCoeffsDto; sums: number[] },
     ): Promise<PayResultDto[]> {
         if (body.price.base_source === 'none') throw new BadRequestException('нет базы');
-        return body.sums.map((sum) => calculatePay(body.price, body.percents, sum));
+        const price = await this.service.withOzonPricing(body.price);
+        return body.sums.map((sum) => calculatePay(price, body.percents, sum));
     }
     @Post('discount')
     @ApiConsumes('multipart/form-data')
