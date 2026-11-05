@@ -2,6 +2,7 @@ import { Inject, Injectable, Logger } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import { FirebirdPool, FirebirdTransaction } from 'ts-firebird';
 import { FIREBIRD } from '../firebird/firebird.module';
+import { readBlob } from '../firebird/read-blob';
 import { AccrualCategory, AccrualDto } from '../posting/dto/accrual.dto';
 import {
     AccrualPart,
@@ -128,6 +129,36 @@ export class Trade2006AccrualService {
             if (!t) await transaction.rollback(true);
             throw e;
         }
+    }
+
+    /** Полные тела продаж и сторно за [from, to), включая уже разнесённые записи. Только чтение. */
+    async listBodies(from: string, to: string, t: FirebirdTransaction): Promise<AccrualDto[]> {
+        const rows = await t.query(
+            'SELECT ACCRUAL_ID, RAW,' +
+                ' CASE WHEN OCTET_LENGTH(RAW) <= 8191 THEN CAST(RAW AS VARCHAR(8191)) ELSE NULL END AS RAW_TEXT' +
+                ' FROM OZON_ACCRUAL' +
+                " WHERE CATEGORY = 'POSTING' AND IS_BODY = 1 AND ACCRUAL_DATE >= ? AND ACCRUAL_DATE < ?" +
+                ' ORDER BY ACCRUAL_DATE, ACCRUAL_ID',
+            [from, to],
+            false,
+        );
+        const result: AccrualDto[] = [];
+        for (const row of rows) {
+            // Малые JSON читаются вместе со строкой, без отдельного сетевого запроса на BLOB.
+            // Ограничение проверяется ДО CAST: большие записи читаем полностью общим readBlob.
+            const text = row.RAW_TEXT ?? (await readBlob(row.RAW, (t as any).transaction));
+            let accrual: AccrualDto;
+            try {
+                accrual = JSON.parse(text);
+            } catch {
+                throw new Error(`Не читается исходное начисление Ozon ${row.ACCRUAL_ID}`);
+            }
+            if (!accrual || String(accrual.accrual_id) !== String(row.ACCRUAL_ID)) {
+                throw new Error(`Не совпадает ID исходного начисления Ozon ${row.ACCRUAL_ID}`);
+            }
+            result.push(accrual);
+        }
+        return result;
     }
 
     /**

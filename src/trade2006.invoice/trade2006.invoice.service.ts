@@ -159,7 +159,11 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
      * Дублей «два счёта на один номер» на проде нет (0 из 2953 проверенных), но если
      * вдруг придут — точное совпадение приоритетнее переименованного.
      */
-    async findByPosting(posting: PostingDto | string, t: FirebirdTransaction = null): Promise<InvoiceMatchDto | null> {
+    async findByPosting(
+        posting: PostingDto | string,
+        t: FirebirdTransaction = null,
+        requireUnique = false,
+    ): Promise<InvoiceMatchDto | null> {
         const transaction = t ?? (await this.pool.getTransaction());
         // String() обязателен: Яндекс отдавал номер заказа ЧИСЛОМ, а числовой параметр
         // не матчит VARCHAR PRIM — «счёта нет» на существующем счёте и дубли создания.
@@ -169,7 +173,8 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             [postingNumber, postingNumber + ' '],
             !t,
         );
-        if (!rows.length) return null;
+        // Статистике нельзя брать произвольный счёт при дублях. Боевые вызовы сохраняют прежний выбор.
+        if (!rows.length || (requireUnique && rows.length !== 1)) return null;
         const invoices = InvoiceDto.map(rows);
         const exact = invoices.find((i) => (i.remark ?? '').trim() === postingNumber);
         const invoice = exact ?? invoices[0];

@@ -22,6 +22,8 @@ export class AccrualAmountDto {
 
 export class AccrualPostingProductDto {
     sku?: number;
+    /** Количество единиц артикула (пачек), не штук внутри фасовки. */
+    quantity?: number;
     /** Услуги доставки: уже вычтены из total_amount, это расшифровка. */
     delivery?: unknown;
     /** Расчёт продажи (seller_price, commission). Есть только у «тела». */
