@@ -1,3 +1,6 @@
+import { OzonPricingResultDto, OzonPricingPreviewDto } from './dto/ozon-pricing-result.dto';
+import { calculateOzonPrices, ozonDeadZoneFloor, OzonPriceEvaluation } from '../helpers/price/ozon.pricing';
+import { ozonPricingInput } from '../helpers/price/ozon.pricing.input';
 import { completePricePercents } from '../helpers/price/price.percents';
 import { OzonPricingService } from './ozon.pricing.service';
 import { ozonReturnPriceFields } from '../helpers/price/ozon.return.perc';
@@ -153,6 +156,85 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
         }
         return { last_id: products.cursor, data };
     }
+    /** Отдельный результат единой формулы; цены Ozon и наценки в БД не изменяются. */
+    async getOzonPricingResult(offerId: string, preview: OzonPricingPreviewDto = {}): Promise<OzonPricingResultDto> {
+        const empty = Object.assign(new OzonPricingResultDto(), { offerId });
+        try {
+            const code = goodCode({ offer_id: offerId });
+            const pieces = goodQuantityCoeff({ offer_id: offerId });
+            const [prices, infos, goods, percents] = await Promise.all([
+                this.product.getPrices({ offer_id: [offerId], visibility: ProductVisibility.ALL, limit: 1 }),
+                this.product.infoList([offerId]),
+                this.goodService.prices([code], null),
+                this.goodService.getPerc([code], null),
+            ]);
+            const product = prices?.items?.find((p) => p.offer_id === offerId);
+            const info = infos?.find((p) => p.sku === offerId);
+            if (!product || !info) throw new Error('Нет карточки Ozon');
+            await completePricePercents([offerId], this.goodService, { goods, percents });
+            const saved = percents.find((p) => String(p.offer_id) === code && Number(p.pieces ?? 1) === pieces);
+            if (!saved) throw new Error('Нет базы или наценок для расчёта');
+            const percent = { ...saved };
+            for (const key of ['min_perc', 'perc', 'old_perc', 'adv_perc', 'sum_pack', 'available_price'] as const) {
+                if (preview[key] === undefined) continue;
+                const value = Number(preview[key]);
+                if (!Number.isFinite(value) || value < 0) throw new Error(`Некорректное значение ${key}`);
+                percent[key === 'sum_pack' ? 'packing_price' : key] = value;
+            }
+            const base = resolvePriceBase(
+                offerId,
+                pieces,
+                goods.find((g) => String(g.code) === code),
+                percent,
+            );
+            if (base.base_source === 'none') throw new Error('Нет базы себестоимости');
+            const ozon = await this.ozonPricing.load(product, info);
+            const input = ozonPricingInput(
+                {
+                    ...base,
+                    ozon,
+                    offer_id: offerId,
+                    min_perc: percent.min_perc,
+                    perc: percent.perc,
+                    old_perc: percent.old_perc,
+                    adv_perc: percent.adv_perc ?? 0,
+                    sum_pack: percent.packing_price ?? Number(this.configService.get('SUM_PACK', 10)),
+                    return_perc: saved.return_perc ?? 0,
+                    sales_percent: 0,
+                    fbs_direct_flow_trans_max_amount: 0,
+                },
+                this.getObtainCoeffs(),
+            );
+            const result = calculateOzonPrices(input);
+            const level = (r: OzonPriceEvaluation) => ({
+                price: r.salePrice,
+                profit: r.profit,
+                scheme: r.scheme,
+                commissionRate: r.commissionBand.rate,
+            });
+            const { base: unusedBase, ...costs } = result.min.costs;
+            const current = (value: unknown) =>
+                value !== null && value !== undefined && Number.isFinite(Number(value)) ? Number(value) : null;
+            return {
+                offerId,
+                baseSource: base.base_source,
+                base: input.base,
+                min: level(result.min),
+                normal: level(result.normal),
+                max: level(result.max),
+                costs,
+                current: {
+                    min: current(product.price.min_price),
+                    normal: current(product.price.price),
+                    max: current(product.price.old_price),
+                },
+                deadZoneFloor: ozonDeadZoneFloor(input, result),
+            };
+        } catch (e) {
+            return { ...empty, error: e instanceof Error ? e.message : String(e) };
+        }
+    }
+
     async update(prices: UpdatePricesDto): Promise<any> {
         return this.product.setPrice(prices);
     }

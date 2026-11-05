@@ -10,7 +10,7 @@ import { goodCode, goodQuantityCoeff } from '../../../helpers';
 import { resolvePriceBase } from '../../../helpers/price/price.base';
 import { completePricePercents } from '../../../helpers/price/price.percents';
 import { ozonPricingInput } from '../../../helpers/price/ozon.pricing.input';
-import { calculateOzonPrices } from '../../../helpers/price/ozon.pricing';
+import { calculateOzonPrices, ozonDeadZoneFloor } from '../../../helpers/price/ozon.pricing';
 import { IPromoSweepContext } from './promo-sweep.context';
 import { sweepGoal } from './sweep-goal';
 
@@ -92,14 +92,9 @@ export class EnrichWithPricingCommand implements IJobCommand<IPromoSweepContext>
                         coeffs,
                     );
                     const result = calculateOzonPrices(input);
-                    const hasLowerBand = input.schemes.some((s) =>
-                        [...s.commissions, ...s.logistics].some((b) => b.max !== null && b.max <= 300),
-                    );
-                    const upper = result.min.candidates.filter(
-                        (c) => c.salePrice > 300 && (c.commissionBand.min >= 300 || c.logisticsBand.min >= 300),
-                    );
                     state.calcMinPrice = result.min.salePrice;
-                    if (hasLowerBand && upper.length) state.deadZoneFloor = Math.min(...upper.map((c) => c.salePrice));
+                    const floor = ozonDeadZoneFloor(input, result);
+                    if (floor !== undefined) state.deadZoneFloor = floor;
                 } catch (e) {
                     context.progress.counters.noBase++;
                     context.pricingErrors.set(state.offerId, e instanceof Error ? e.message : String(e));

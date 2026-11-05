@@ -5,6 +5,7 @@ import { tariffStore } from "@/stores/tariffStore";
 import type { PriceDto } from "@/contracts/price.dto";
 import type { ServiceResult } from '@/contracts/service.result';
 import type { PayResultDto } from '@/contracts/pay.result.dto';
+import type { OzonPricingResultDto } from '@/contracts/ozon-pricing-result.dto';
 
 
 // const url = import.meta.env.VITE_URL;
@@ -12,6 +13,10 @@ import type { PayResultDto } from '@/contracts/pay.result.dto';
 export const priceStore = defineStore("priceStore", {
     state: () => ({
         prices: [] as PriceDto[],
+        ozonPricing: {} as Record<string, OzonPricingResultDto>,
+        ozonPricingLoading: {} as Record<string, boolean>,
+        ozonPricingRequests: {} as Record<string, number>,
+        ozonPricingEpoch: 0,
         pays: [] as PayResultDto[][],
         isLoadingPrices: false,
         isLoadingPrice: [] as boolean[],
@@ -20,8 +25,53 @@ export const priceStore = defineStore("priceStore", {
         failMessage: '' as string,
     }),
     actions: {
+        async loadOzonPricing(offerId: string): Promise<void> {
+            const epoch = this.ozonPricingEpoch;
+            const request = (this.ozonPricingRequests[offerId] ?? 0) + 1;
+            this.ozonPricingRequests[offerId] = request;
+            this.ozonPricingLoading[offerId] = true;
+            const isCurrent = () => epoch === this.ozonPricingEpoch && request === this.ozonPricingRequests[offerId];
+            const price = this.prices.find((p) => p.offer_id === offerId);
+            const params = price
+                ? {
+                      min_perc: price.min_perc,
+                      perc: price.perc,
+                      old_perc: price.old_perc,
+                      adv_perc: price.adv_perc,
+                      sum_pack: price.sum_pack,
+                      available_price: price.available_price,
+                  }
+                : undefined;
+            try {
+                const { data } = await axios.get<OzonPricingResultDto>(
+                    `/api/price/ozon-pricing/${encodeURIComponent(offerId)}`,
+                    { params },
+                );
+                if (isCurrent()) this.ozonPricing[offerId] = data;
+            } catch (e: any) {
+                if (isCurrent())
+                    this.ozonPricing[offerId] = {
+                        offerId,
+                        baseSource: 'none',
+                        base: 0,
+                        min: null,
+                        normal: null,
+                        max: null,
+                        costs: null,
+                        current: null,
+                        error: e.response?.data?.message?.toString() || e.message || 'Не удалось получить расчёт Ozon',
+                    };
+            } finally {
+                if (isCurrent()) this.ozonPricingLoading[offerId] = false;
+            }
+        },
+
         async get(): Promise<void> {
             this.isLoadingPrices = true;
+            this.ozonPricingEpoch++;
+            this.ozonPricing = {};
+            this.ozonPricingLoading = {};
+            this.ozonPricingRequests = {};
             this.prices = [];
             this.pays = [];
             this.isLoadingPrice = [];
@@ -31,6 +81,7 @@ export const priceStore = defineStore("priceStore", {
             const prices: PriceDto[] = res.data.data;
             const { tariffs } = tariffStore();
             for (const price of prices) {
+                void this.loadOzonPricing(price.offer_id);
                 this.pays.push(
                     (await axios.post("/api/price/calculate-pay", {
                         price,
@@ -53,8 +104,9 @@ export const priceStore = defineStore("priceStore", {
         async getInd(index: number): Promise<void> {
             this.isLoadingPrice[index] = true;
             const price = this.prices[index];
-            const { tariffs } = tariffStore();
-            let res = await axios.post( "/api/price/calculate", {
+            try {
+                const { tariffs } = tariffStore();
+                let res = await axios.post('/api/price/calculate', {
                     price,
                     percents: {
                         minMil: tariffs.min_mil,
@@ -66,29 +118,33 @@ export const priceStore = defineStore("priceStore", {
                     },
                     typeId: price.typeId?.toString(),
                 });
-            const { min_price, price: newPrice, old_price } = res.data;
-            const updatedPrice = {
-                ...this.prices[index],
-                min_price,
-                price: newPrice,
-                old_price
-            };
-            this.prices[index] = updatedPrice;
-            res = await axios.post('/api/price/calculate-pay', {
-                price: updatedPrice,
-                percents: {
-                    minMil: tariffs.min_mil,
-                    percMil: tariffs.perc_mil,
-                    percEkv: tariffs.perc_ekv,
-                    sumObtain: tariffs.sum_obtain,
-                    sumLabel: tariffs.sum_label,
-                    taxUnit: tariffs.tax_unit,
-                },
-                sums: [price.marketing_seller_price, old_price, newPrice, min_price]
-            })
-            this.pays[index] = res.data;
-            this.isLoadingPrice[index] = false;
+                const { min_price, price: newPrice, old_price } = res.data;
+                const updatedPrice = {
+                    ...this.prices[index],
+                    min_price,
+                    price: newPrice,
+                    old_price,
+                };
+                this.prices[index] = updatedPrice;
+                res = await axios.post('/api/price/calculate-pay', {
+                    price: updatedPrice,
+                    percents: {
+                        minMil: tariffs.min_mil,
+                        percMil: tariffs.perc_mil,
+                        percEkv: tariffs.perc_ekv,
+                        sumObtain: tariffs.sum_obtain,
+                        sumLabel: tariffs.sum_label,
+                        taxUnit: tariffs.tax_unit,
+                    },
+                    sums: [price.marketing_seller_price, old_price, newPrice, min_price],
+                });
+                this.pays[index] = res.data;
+            } finally {
+                await this.loadOzonPricing(price.offer_id);
+                this.isLoadingPrice[index] = false;
+            }
         },
+
         async calculatePercents(index: number): Promise<void> {
             this.isLoadingPrice[index] = true;
             const price = this.prices[index];

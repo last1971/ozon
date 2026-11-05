@@ -38,7 +38,7 @@ export interface OzonPriceEvaluation {
     salePrice: number;
     profit: number;
     scheme: 'fbs' | 'fbo';
-    commissionBand: PriceBand;
+    commissionBand: PriceBand & { rate: number };
     logisticsBand: PriceBand;
     costs: {
         base: number;
@@ -240,4 +240,18 @@ export function calculateOzonPrices(input: OzonPricingInput) {
     const normal = solve(input.markups.normal, min.price);
     const max = solve(input.markups.max, normal.price);
     return { min, normal, max, baseSource: input.baseSource };
+}
+
+/** Граница для существующего планировщика акций с порогом 300 ₽. Без повторного расчёта цены. */
+export function ozonDeadZoneFloor(
+    input: Pick<OzonPricingInput, 'schemes'>,
+    result: ReturnType<typeof calculateOzonPrices>,
+): number | undefined {
+    const hasLowerBand = input.schemes.some((s) =>
+        [...s.commissions, ...s.logistics].some((b) => b.max !== null && b.max <= 300),
+    );
+    const upper = result.min.candidates.filter(
+        (c) => c.salePrice > 300 && (c.commissionBand.min >= 300 || c.logisticsBand.min >= 300),
+    );
+    return hasLowerBand && upper.length ? Math.min(...upper.map((c) => c.salePrice)) : undefined;
 }

@@ -7,12 +7,13 @@ import { debounce } from 'lodash';
 import { tariffStore } from '@/stores/tariffStore';
 import { useInfoSnackbar } from '@/composable/useInfoSnackbar'
 import PricePromo from '@/components/PricePromo.vue';
+import OzonPricingResult from '@/components/OzonPricingResult.vue';
 
 const { showSuccess, showError } = useInfoSnackbar()
 
 
 const props = defineProps<{ value: PriceDto; ind: number }>();
-const { pays, isLoadingPrice } = storeToRefs(priceStore());
+const { pays, isLoadingPrice, ozonPricing, ozonPricingLoading } = storeToRefs(priceStore());
 const { tariffs } = storeToRefs(tariffStore());
 const edit = ref(false);
 
@@ -31,14 +32,15 @@ const handleSave = async () => {
 
 
 watch(
-    () =>
-        props.value.old_perc +
-        props.value.min_perc +
-        props.value.perc +
-        props.value.adv_perc +
-        props.value.sum_pack +
-        props.value.incoming_price +
+    () => [
+        props.value.old_perc,
+        props.value.min_perc,
+        props.value.perc,
+        props.value.adv_perc,
+        props.value.sum_pack,
+        props.value.incoming_price,
         props.value.available_price,
+    ],
     debounce(async () => {
         await priceStore().getInd(props.ind);
     }, 2000),
@@ -102,6 +104,12 @@ const isSumZero = (index: number) => {
                             :loading="isLoadingPrice[props.ind]"
                         >
                             Сохранить
+                        </v-btn>
+                    </v-col>
+                    <v-col cols="3">
+                        <v-btn block prepend-icon="mdi-calculator" :loading="ozonPricingLoading[value.offer_id]"
+                            @click="priceStore().loadOzonPricing(value.offer_id)">
+                            Пересчитать
                         </v-btn>
                     </v-col>
                 </v-row>
@@ -215,6 +223,8 @@ const isSumZero = (index: number) => {
                 </tr>
             </tbody>
         </v-table>
+        <v-divider :thickness="3" />
+        <OzonPricingResult :result="ozonPricing[value.offer_id]" :loading="ozonPricingLoading[value.offer_id]" />
         <v-divider :thickness="3" />
         <PricePromo :offer-id="value.offer_id" />
     </div>

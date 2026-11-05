@@ -1,3 +1,4 @@
+import { OzonPricingResultDto, OzonPricingPreviewDto } from './dto/ozon-pricing-result.dto';
 import {
     BadRequestException,
     Body,
@@ -54,6 +55,16 @@ export class PriceController {
     async list(@Query() priceRequest: PriceRequestDto): Promise<PriceResponseDto> {
         return this.service.index(priceRequest);
     }
+    @Get('ozon-pricing/:offerId')
+    @ApiOperation({ summary: 'Результат единого расчёта Ozon без сохранения' })
+    @ApiOkResponse({ type: OzonPricingResultDto })
+    async ozonPricingResult(
+        @Param('offerId') offerId: string,
+        @Query() preview: OzonPricingPreviewDto,
+    ): Promise<OzonPricingResultDto> {
+        return this.service.getOzonPricingResult(offerId, preview);
+    }
+
     @ApiOkResponse({
         description: 'Получить настройки цен товаров',
         type: PricePresetDto,
