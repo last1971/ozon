@@ -240,4 +240,119 @@ describe('planPromoPrice — план цены через акции (без в�
     it('targetRubles: кривая цель — ошибка', () => {
         expect(() => targetRubles(state(), 'abc' as any)).toThrow('abc');
     });
+
+    // ── Этап 7: calcMinPrice и deadZoneFloor ─────────────────────────────────────
+
+    describe('calcMinPrice: Ozon-акция подстраивается под расчётный минимум OzonPricingService', () => {
+        it('calcMinPrice=228 (выше minPrice=213): пол и цена акции пересчитываются', () => {
+            // eff=228, floor=ceil(228/0.95)=240, need=240; elastic maxActionPrice=245 >= 240
+            const plan = planPromoPrice(state({ minPrice: 213, calcMinPrice: 228 }), 'min');
+            expect(plan.floor).toBe(240); // ceil(228/0.95)=240, а не 225 от minPrice=213
+            expect(plan.steps[0]).toEqual(
+                expect.objectContaining({ kind: 'ozon-set', to: 240 }),
+            );
+            expect(plan.buyerAfter).toBe(228); // round(240*0.95)=228 ≥ 228
+            expect(plan.ok).toBe(true);
+        });
+
+        it('calcMinPrice: лимит Ozon-акции ниже расчётного пола — переходим к нашей (правило 3→2)', () => {
+            // seller.isActive=false → percent=0, floor=eff=255 > maxActionPrice=245 → не добавляем
+            const s = state({
+                price: 300,
+                calcMinPrice: 255,
+                seller: seller({ isActive: false }),
+                ozonActions: [elastic({ participant: false, actionPrice: 0, maxActionPrice: 245 })],
+            });
+            const plan = planPromoPrice(s, 'min');
+            expect(plan.notes.join()).toContain('не добавляем');
+            // seller был кандидатом → добавляется в нашу акцию
+            expect(plan.steps).toEqual([
+                expect.objectContaining({ kind: 'percent', from: null }),
+            ]);
+            // round(300*0.85)=255 ≥ 255=calcMinPrice
+            expect(plan.buyerAfter).toBeGreaterThanOrEqual(255);
+            expect(plan.ok).toBe(true);
+        });
+    });
+
+    describe('calcMinPrice: наш процент подбирается под расчётный минимум (правило 2)', () => {
+        it('calcMinPrice=228, только наша акция: процент подбирается до расчётного минимума', () => {
+            // eff=228, pNeed=round((1-228/255)*100)=round(10.59)=11, pMax=floor(10.59)=10
+            // percent=max(5,11)=11 > pMax=10 → note, percent=10
+            const s = state({ minPrice: 213, calcMinPrice: 228, ozonActions: [] });
+            const plan = planPromoPrice(s, 'min');
+            expect(plan.percent).toBe(10);
+            expect(plan.notes.join()).toContain('уводит ниже дна');
+            // round(255*0.90)=round(229.5)=230 ≥ 228
+            expect(plan.buyerAfter).toBe(230);
+            expect(plan.ok).toBe(true);
+        });
+    });
+
+    describe('мёртвая зона: цена покупателю не должна попасть в (300; deadZoneFloor]', () => {
+        it('цель 320 в мёртвой зоне (300, 350] — поднимается до deadZoneFloor=350', () => {
+            const s = state({
+                price: 500,
+                minPrice: 280,
+                calcMinPrice: 280,
+                deadZoneFloor: 350,
+                ozonActions: [],
+            });
+            const plan = planPromoPrice(s, 320);
+            expect(plan.target).toBe(350);
+            expect(plan.notes.join()).toContain('мёртвой зоне');
+            // buyer = round(500*(1-30/100)) = 350 ≥ 350 = deadZoneFloor → не в зоне
+            expect(plan.buyerAfter).toBeGreaterThanOrEqual(350);
+            expect(plan.ok).toBe(true);
+        });
+
+        it('цель min=280 ≤ 300 при deadZoneFloor=350 — мёртвая зона не задета', () => {
+            const s = state({
+                price: 500,
+                minPrice: 280,
+                calcMinPrice: 280,
+                deadZoneFloor: 350,
+                ozonActions: [],
+            });
+            const plan = planPromoPrice(s, 'min');
+            // t=280 ≤ 300 → нет попадания в зону
+            expect(plan.target).toBe(280);
+            expect(plan.notes.join()).not.toContain('мёртвой зоне');
+        });
+
+        it('price < deadZoneFloor: выход из мёртвой зоны невозможен → ok:false', () => {
+            // price=330 < deadZoneFloor=400; calcMinPrice=320 попадает в зону
+            const s = state({
+                price: 330,
+                minPrice: 320,
+                calcMinPrice: 320,
+                deadZoneFloor: 400,
+                seller: null,
+                ozonActions: [],
+            });
+            const plan = planPromoPrice(s, 'min');
+            // t=320 > 300 && 320 < 400 → отмечаем зону, но deadZoneFloor=400 > price=330 → нельзя поднять
+            expect(plan.notes.join()).toContain('мёртвой зоне');
+            // buyerAfter=price=330 (нет акций), 330 в (300,400) → inDeadZone=true → ok:false
+            expect(plan.ok).toBe(false);
+        });
+
+        it('цена Ozon-акции даёт buyerAfter в (300, deadZoneFloor) → ok:false', () => {
+            // Ozon-акция с maxActionPrice=315, deadZoneFloor=350; buyer будет 315*0.95≈299 → ok
+            // Убедимся что граница включена: 300 < buyer < 350 → false
+            const s = state({
+                price: 400,
+                minPrice: 280,
+                calcMinPrice: 280,
+                deadZoneFloor: 350,
+                ozonActions: [elastic({ maxActionPrice: 320, actionPrice: 310 })],
+            });
+            // eff=280, floor=ceil(280/0.95)=295; need=ceil(280/0.95)=295
+            // elastic fits (320 >= 295): to=min(320,max(295,295))=295
+            // buyer=round(295*0.95)=round(280.25)=280 ≤ 300 → не в зоне
+            const plan = planPromoPrice(s, 'min');
+            expect(plan.buyerAfter).toBe(280);
+            expect(plan.ok).toBe(true);
+        });
+    });
 });

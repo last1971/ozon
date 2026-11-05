@@ -49,6 +49,16 @@ export interface PromoPriceState {
     buyerPriceCalc: number;
     seller: SellerSlot | null;
     ozonActions: OzonActionSlot[];
+    /**
+     * Минимальная прибыльная цена покупателю из расчёта OzonPricingService (этап 6).
+     * Если задана — используется как пол вместо minPrice (Ozon API).
+     */
+    calcMinPrice?: number;
+    /**
+     * Нижняя граница мёртвой зоны P300: цена покупателю должна быть ≤ 300 или ≥ deadZoneFloor.
+     * Задаётся, когда minPrice и calcMinPrice обеих ступеней разделены мёртвой зоной (300; P300].
+     */
+    deadZoneFloor?: number;
 }
 
 /** Шаг плана. from = null — товара там ещё нет (добавление). */

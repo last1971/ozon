@@ -45,9 +45,24 @@ export const planPromoPrice = (
     const notes: string[] = [];
     const steps: PromoPriceStep[] = [];
 
+    /** Эффективный пол: расчётный минимум этапа 6, иначе min_price из API Ozon. */
+    const eff = s.calcMinPrice ?? s.minPrice;
+
     const wanted = targetRubles(s, target);
-    const t = Math.min(s.price, Math.max(s.minPrice, wanted));
-    if (t !== wanted) notes.push(`цель ${wanted} вне коридора [${s.minPrice}, ${s.price}] — взята ${t}`);
+    let t = Math.min(s.price, Math.max(eff, wanted));
+    if (t !== wanted) notes.push(`цель ${wanted} вне коридора [${eff}, ${s.price}] — взята ${t}`);
+
+    // Мёртвая зона (300; P300]: цена покупателю должна быть ≤ 300 или ≥ deadZoneFloor.
+    if (s.deadZoneFloor && t > 300 && t < s.deadZoneFloor) {
+        if (s.deadZoneFloor <= s.price) {
+            notes.push(`цель ${t} в мёртвой зоне (300, ${s.deadZoneFloor}] — поднята до ${s.deadZoneFloor}`);
+            t = s.deadZoneFloor;
+        } else {
+            notes.push(
+                `цель ${t} в мёртвой зоне (300, ${s.deadZoneFloor}], price ${s.price} < ${s.deadZoneFloor} — выход невозможен`,
+            );
+        }
+    }
 
     const seller = s.seller;
     if (!seller && percentWanted)
@@ -57,7 +72,7 @@ export const planPromoPrice = (
         notes.push(`процент ${percentWanted} ниже минимума акции ${seller.minPercent} — взят ${seller.minPercent}`);
     }
 
-    const floor = ozonActionFloor(s.minPrice, percent);
+    const floor = ozonActionFloor(eff, percent);
     const need = Math.ceil(t / (1 - percent / 100));
     const kept: number[] = [];
 
@@ -96,7 +111,7 @@ export const planPromoPrice = (
 
     if (!kept.length && seller) {
         const pNeed = Math.round((1 - t / s.price) * 100);
-        const pMax = Math.floor((1 - s.minPrice / s.price) * 100 + 1e-9);
+        const pMax = Math.floor((1 - eff / s.price) * 100 + 1e-9);
         percent = Math.max(seller.minPercent, percentWanted ?? pNeed);
         if (percent > pMax) {
             if (pMax >= seller.minPercent) {
@@ -128,6 +143,8 @@ export const planPromoPrice = (
         : seller
           ? s.price * (1 - (percent + 1) / 100)
           : null;
+    // Мёртвая зона: итоговая цена покупателю не должна быть в (300; deadZoneFloor).
+    const inDeadZone = s.deadZoneFloor ? buyerAfter > 300 && buyerAfter < s.deadZoneFloor : false;
     return {
         offerId: s.offerId,
         productId: s.productId,
@@ -137,7 +154,7 @@ export const planPromoPrice = (
         steps,
         buyerBefore: s.buyerPrice,
         buyerAfter,
-        ok: buyerAfter >= s.minPrice,
+        ok: buyerAfter >= eff && !inDeadZone,
         closest: !steps.length && next !== null && buyerAfter > t && next < t,
         notes,
         state: s,
