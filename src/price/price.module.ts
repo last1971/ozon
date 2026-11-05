@@ -1,3 +1,7 @@
+import { JobModule } from '../job/job.module';
+import { PriceReviewController } from './price-review.controller';
+import { PriceReviewService } from './price-review.service';
+import { PreparePriceReviewCommand, SendPriceReviewCommand } from './price-review.commands';
 import { OzonPricingService } from './ozon.pricing.service';
 import { OzonLogisticsModule } from './ozon.logistics.module';
 import { Module } from '@nestjs/common';
@@ -39,6 +43,7 @@ import { VerifyOzonPricesCommand } from './commands/verify-ozon-prices.command';
 
 @Module({
     imports: [
+        JobModule,
         OzonLogisticsModule,
         ProductModule,
         GoodModule,
@@ -50,6 +55,7 @@ import { VerifyOzonPricesCommand } from './commands/verify-ozon-prices.command';
         OzonCategoryModule,
     ],
     providers: [
+        PriceReviewService, PreparePriceReviewCommand, SendPriceReviewCommand,
         OzonPricingService,
         PriceService,
         ExtraPriceService,
@@ -78,7 +84,7 @@ import { VerifyOzonPricesCommand } from './commands/verify-ozon-prices.command';
         LogPriceReportsCommand,
         VerifyOzonPricesCommand,
     ],
-    controllers: [PriceController],
+    controllers: [PriceController, PriceReviewController],
     exports: [
         OzonPricingService,
         PriceService,

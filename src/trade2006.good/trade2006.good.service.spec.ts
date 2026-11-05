@@ -296,6 +296,12 @@ describe('Trade2006GoodService', () => {
         ]);
     });
 
+    it('сохраняет явно заданные нулевые проценты и упаковку без подмены на NULL', async () => {
+        execute.mockClear();
+        await service.setPercents({ offer_id: '123', min_perc: 0, perc: 0, old_perc: 0, adv_perc: 0, packing_price: 0, available_price: 0 });
+        expect(execute.mock.calls[0][1]).toEqual([0, 0, 0, 0, 0, 0, '123', 1]);
+    });
+
     it('test getQuantities', async () => {
         const res = await service.getQuantities(['1']);
         expect(res).toEqual(new Map([['1', 1]]));

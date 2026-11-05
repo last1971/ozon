@@ -82,6 +82,54 @@ describe('Результат единой формулы для экрана ц�
         expect(m.goods.setPercents).not.toHaveBeenCalled();
         expect(m.products.setPrice).not.toHaveBeenCalled();
     });
+    it('объясняет ограничение процента и отказ нижней ступени той же формулой', async () => {
+        const m = setup();
+        m.context.minMarkupPercent = 40;
+        m.context.minProfitRub = 0;
+        const r = await m.service.getOzonPricingResult('123-5', { min_perc: 5 });
+        expect(r.min).toMatchObject({ requestedMarkup: 5, appliedMarkup: 40, targetProfit: 40 });
+        expect(r.limits).toEqual({ minProfitRub: 0, minMarkupPercent: 40 });
+        expect(r.lowerBand).toMatchObject({ ceiling: 300, eligible: true, targetProfit: 40 });
+        expect(r.costSources.commission).toBe('XLSX комиссий');
+        expect(r.costSources.firstMile).toBe('API Ozon');
+        m.context.minProfitRub = 100;
+        const higher = await m.service.getOzonPricingResult('123-5', { min_perc: 5 });
+        expect(higher.lowerBand.eligible).toBe(false);
+        expect(higher.lowerBand.profit).toBeLessThan(higher.lowerBand.targetProfit);
+        expect(higher.min.price).toBeGreaterThan(300);
+    });
+    it('прибыль текущей цены и расчётной берётся из одной функции', async () => {
+        const m = setup();
+        (m.product.price as any).marketing_seller_price = '229';
+        const r = await m.service.getOzonPricingResult('123-5');
+        expect(r.buyer.profit).toBeCloseTo(r.min.profit);
+        expect(r.buyer.profitPercent).toBeCloseTo(r.min.profitPercent);
+    });
+    it('ручные API игнорируют устаревшие расходы браузера и используют серверные', async () => {
+        const m = setup();
+        const p = {
+            offer_id: '123-5',
+            incoming_price: 100,
+            available_price: 0,
+            base_source: 'remaining-lots' as const,
+            ozon: m.context,
+            min_perc: 20,
+            perc: 40,
+            old_perc: 80,
+            adv_perc: 0,
+            sum_pack: 0,
+            return_perc: 0.25,
+            sales_percent: 0,
+            fbs_direct_flow_trans_max_amount: 0,
+        };
+        jest.spyOn(m.service, 'withOzonPricing').mockResolvedValue(p);
+        const stale = { ...m.service.getObtainCoeffs(), sumObtain: 55, percEkv: 99 };
+        const controller = new PriceController(m.service, null);
+        const pay = await controller.calculatePay({ price: p, percents: stale, sums: [229] });
+        expect(pay[0].netProfit).toBeCloseTo(20.3);
+        const calculated = await controller.calculate({ price: p, percents: stale });
+        expect(calculated.min_price).toBe('229');
+    });
     it('ручные входы меняют предварительный расчёт, но не сохранённые данные и не цены Ozon', async () => {
         const m = setup();
         const baseline = await m.service.getOzonPricingResult('123-5');

@@ -223,11 +223,11 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                 ' AVAILABLE_PRICE, GOODSCODE, PIECES)' +
                 'VALUES (?, ?, ?, ?, ?, ?, ?, ?) MATCHING (GOODSCODE, PIECES)',
             [
-                perc.min_perc || null,
-                perc.perc || null,
-                perc.old_perc || null,
-                perc.adv_perc || null,
-                perc.packing_price || null,
+                perc.min_perc ?? null,
+                perc.perc ?? null,
+                perc.old_perc ?? null,
+                perc.adv_perc ?? null,
+                perc.packing_price ?? null,
                 perc.available_price ?? 0,
                 goodCode(perc),
                 getPieces(perc),

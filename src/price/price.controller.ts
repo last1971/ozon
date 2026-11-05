@@ -189,7 +189,7 @@ export class PriceController {
     ): Promise<PayResultDto[]> {
         if (body.price.base_source === 'none') throw new BadRequestException('нет базы');
         const price = await this.service.withOzonPricing(body.price);
-        return body.sums.map((sum) => calculatePay(price, body.percents, sum));
+        return body.sums.map((sum) => calculatePay(price, this.service.getObtainCoeffs(), sum));
     }
     @Post('discount')
     @ApiConsumes('multipart/form-data')

@@ -1,5 +1,5 @@
 import { OzonPricingResultDto, OzonPricingPreviewDto } from './dto/ozon-pricing-result.dto';
-import { calculateOzonPrices, ozonDeadZoneFloor, OzonPriceEvaluation } from '../helpers/price/ozon.pricing';
+import { calculateOzonPrices, evaluateOzonPrice, ozonDeadZoneFloor, OzonPriceEvaluation } from '../helpers/price/ozon.pricing';
 import { ozonPricingInput } from '../helpers/price/ozon.pricing.input';
 import { completePricePercents } from '../helpers/price/price.percents';
 import { OzonPricingService } from './ozon.pricing.service';
@@ -206,22 +206,53 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                 this.getObtainCoeffs(),
             );
             const result = calculateOzonPrices(input);
-            const level = (r: OzonPriceEvaluation) => ({
+            const level = (r: OzonPriceEvaluation & { targetProfit: number }, requestedMarkup: number) => ({
                 price: r.salePrice,
                 profit: r.profit,
                 scheme: r.scheme,
                 commissionRate: r.commissionBand.rate,
+                profitPercent: r.profit / input.base * 100,
+                requestedMarkup,
+                appliedMarkup: r.targetProfit / input.base * 100,
+                targetProfit: r.targetProfit,
             });
             const { base: unusedBase, ...costs } = result.min.costs;
             const current = (value: unknown) =>
                 value !== null && value !== undefined && Number.isFinite(Number(value)) ? Number(value) : null;
+            const buyerPrice = current(product.price.marketing_seller_price);
+            let buyer: OzonPricingResultDto['buyer'];
+            if (buyerPrice !== null) {
+                const evaluated = evaluateOzonPrice(input, buyerPrice);
+                buyer = { price: buyerPrice, profit: evaluated.profit, profitPercent: evaluated.profit / input.base * 100 };
+            }
+            const hasLower = input.schemes.some(s => [...s.commissions, ...s.logistics].some(b => b.max === 300));
+            let lowerBand: OzonPricingResultDto['lowerBand'];
+            if (hasLower) {
+                let profit: number | null = null;
+                try { profit = evaluateOzonPrice(input, 300).profit; } catch { /* Нет общего тарифа на границе. */ }
+                lowerBand = { ceiling: 300, profit, targetProfit: result.min.targetProfit,
+                    eligible: result.min.candidates.some(c => c.salePrice <= 300) };
+            }
+            const scheme = input.schemes.find(s => s.scheme === result.min.scheme);
+            const delivery = scheme.logistics.find(b => b.min === result.min.logisticsBand.min && b.max === result.min.logisticsBand.max);
             return {
                 offerId,
+                limits: { minProfitRub: input.minProfitRub, minMarkupPercent: input.minMarkupPercent },
+                buyer, lowerBand,
+                costSources: {
+                    commission: 'XLSX комиссий',
+                    delivery: delivery?.source === 'api-average' || delivery?.source === 'api-max' ? 'API Ozon — резервный тариф' : 'XLSX логистики и история направлений',
+                    firstMile: 'API Ozon', lastMile: 'API Ozon', acquiring: 'API Ozon',
+                    advertising: 'Настройка товара', packing: 'Настройка товара',
+                    label: 'Настройка сервера', handling: 'Настройка сервера',
+                    returns: 'История возвратов и тарифы доставки',
+                    tax: 'Настройка сервера', vat: 'Настройка сервера', profitTax: 'Настройка сервера',
+                },
                 baseSource: base.base_source,
                 base: input.base,
-                min: level(result.min),
-                normal: level(result.normal),
-                max: level(result.max),
+                min: level(result.min, input.markups.min),
+                normal: level(result.normal, input.markups.normal),
+                max: level(result.max, input.markups.max),
                 costs,
                 current: {
                     min: current(product.price.min_price),
@@ -437,7 +468,7 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
         useFbo = false,
     ): Promise<UpdatePriceDto> {
         if (price.base_source === 'none') return null;
-        return calculatePrice(await this.withOzonPricing(price), percents);
+        return calculatePrice(await this.withOzonPricing(price), this.getObtainCoeffs());
     }
 
     /**

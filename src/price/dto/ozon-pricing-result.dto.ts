@@ -9,6 +9,10 @@ export interface OzonPricingLevelDto {
     scheme: 'fbs' | 'fbo';
     /** Доля, например 0.07 = 7%. */
     commissionRate: number;
+    profitPercent?: number;
+    requestedMarkup?: number;
+    appliedMarkup?: number;
+    targetProfit?: number;
 }
 
 export class OzonPricingResultDto {
@@ -20,6 +24,10 @@ export class OzonPricingResultDto {
     max: OzonPricingLevelDto | null = null;
     /** Отдельный снимок API, не заменяется расчётными ценами. */
     current: { min: number | null; normal: number | null; max: number | null } | null = null;
+    limits?: { minProfitRub: number; minMarkupPercent: number };
+    buyer?: { price: number; profit: number; profitPercent: number };
+    lowerBand?: { ceiling: number; profit: number | null; targetProfit: number; eligible: boolean };
+    costSources?: Record<string, string>;
     deadZoneFloor?: number;
     costs: Omit<OzonPriceEvaluation['costs'], 'base'> | null = null;
     error?: string;
