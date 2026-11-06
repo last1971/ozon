@@ -1,3 +1,5 @@
+import { MarketplaceLossModule } from '../marketplace-loss/marketplace-loss.module';
+import { WbLossService } from './returns/wb-loss.service';
 import { JobModule } from '../job/job.module';
 import { WbReturnPreviewController } from './returns/return-preview.controller';
 import { WbReturnPreviewService } from './returns/return-preview.service';
@@ -24,6 +26,7 @@ import { WbCurrentPricesModule } from '../wb.price/wb.current-prices.module';
     controllers: [WbReturnPreviewController],
     imports: [
         JobModule,
+        MarketplaceLossModule,
         WbApiModule,
         InvoiceModule,
         PostingFboModule,
@@ -35,6 +38,7 @@ import { WbCurrentPricesModule } from '../wb.price/wb.current-prices.module';
     ],
     providers: [
         WbReturnPreviewService,
+        WbLossService,
         LoadWbLossSalesCommand,
         LoadWbWriteOffsCommand,
         CalculateWbLossReportCommand,
@@ -45,6 +49,6 @@ import { WbCurrentPricesModule } from '../wb.price/wb.current-prices.module';
         SelectBestIdCommand,
         FetchInvoiceByRemarkCommand,
     ],
-    exports: [WbOrderService],
+    exports: [WbOrderService, WbLossService],
 })
 export class WbOrderModule {}
