@@ -1,3 +1,9 @@
+import { JobModule } from '../job/job.module';
+import { WbReturnPreviewController } from './returns/return-preview.controller';
+import { WbReturnPreviewService } from './returns/return-preview.service';
+import { LoadWbLossSalesCommand } from './returns/load-sales.command';
+import { LoadWbWriteOffsCommand } from './returns/load-write-offs.command';
+import { CalculateWbLossReportCommand } from './returns/calculate-loss-report.command';
 import { Module } from '@nestjs/common';
 import { WbOrderService } from './wb.order.service';
 import { WbApiModule } from '../wb.api/wb.api.module';
@@ -15,7 +21,9 @@ import { WbCustomerModule } from '../wb.customer/wb.customer.module';
 import { WbCurrentPricesModule } from '../wb.price/wb.current-prices.module';
 
 @Module({
+    controllers: [WbReturnPreviewController],
     imports: [
+        JobModule,
         WbApiModule,
         InvoiceModule,
         PostingFboModule,
@@ -26,6 +34,10 @@ import { WbCurrentPricesModule } from '../wb.price/wb.current-prices.module';
         WbCurrentPricesModule,
     ],
     providers: [
+        WbReturnPreviewService,
+        LoadWbLossSalesCommand,
+        LoadWbWriteOffsCommand,
+        CalculateWbLossReportCommand,
         WbOrderService,
         FetchSalesByStickerCommand,
         FetchOrdersByStickerCommand,

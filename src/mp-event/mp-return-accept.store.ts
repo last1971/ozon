@@ -1,5 +1,6 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { FirebirdPool, FirebirdTransaction } from 'ts-firebird';
+import { FirebirdPool, FirebirdTransaction, ISOLATION_READ_COMMITTED_READ_ONLY } from 'ts-firebird';
+import { RecordedWriteOff, lossDate } from '../helpers/price/marketplace.loss.stats';
 import { FIREBIRD } from '../firebird/firebird.module';
 import { readBlob } from '../firebird/read-blob';
 import { MpService } from './mp-event.service';
@@ -41,6 +42,47 @@ export type NewReturnAccept = Omit<ReturnAcceptRecord, 'id' | 'spisCode' | 'spis
 @Injectable()
 export class MpReturnAcceptStore {
     constructor(@Inject(FIREBIRD) private pool: FirebirdPool) {}
+
+    /** Только подтверждённые документы; отсутствие/расхождение документа не скрывается фильтром. */
+    async listRecordedWriteOffs(service: MpService, from: string, to: string): Promise<RecordedWriteOff[]> {
+        const start = lossDate(from),
+            end = lossDate(to);
+        if (start >= end) throw new Error('Пустой период списаний');
+        const t = await this.pool.getTransaction(ISOLATION_READ_COMMITTED_READ_ONLY);
+        try {
+            const rows = await t.query(
+                `SELECT A.ID, A.SERVICE, A.GOODSCODE, A.UNITS, A.PIECES, A.QUAN,
+                        A.SPIS_CODE, A.SPIS_SS, A.SPIS_AT,
+                        CASE WHEN A.SPIS_SS = 1 THEN
+                            (SELECT SUM(S.QUAN) FROM SPISSHOP S
+                             WHERE S.SPISSHOPCODE = A.SPIS_CODE AND S.GOODSCODE = A.GOODSCODE)
+                        ELSE
+                            (SELECT SUM(S.QUAN) FROM SPISSKLAD S
+                             WHERE S.SPISSKLADCODE = A.SPIS_CODE AND S.GOODSCODE = A.GOODSCODE)
+                        END AS DOC_QUAN
+                 FROM MP_RETURN_ACCEPT A
+                 WHERE A.SERVICE = ? AND A.DECISION = 'RETURN' AND A.SPIS_CODE IS NOT NULL
+                   AND A.SPIS_AT >= ? AND A.SPIS_AT < ?
+                 ORDER BY A.ID`,
+                [service, new Date(start), new Date(end)],
+                false,
+            );
+            return rows.map((r) => ({
+                id: r.ID,
+                service: String(r.SERVICE).trim(),
+                goodscode: String(r.GOODSCODE),
+                units: r.UNITS,
+                pieces: r.PIECES,
+                quan: r.QUAN,
+                spisCode: r.SPIS_CODE,
+                spisSs: r.SPIS_SS,
+                spisAt: r.SPIS_AT,
+                documentQuantity: r.DOC_QUAN ?? null,
+            }));
+        } finally {
+            await t.rollback(true);
+        }
+    }
 
     async findMany(service: MpService, extIds: string[], t: FirebirdTransaction = null): Promise<ReturnAcceptRecord[]> {
         if (!extIds.length) return [];
