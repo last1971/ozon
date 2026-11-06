@@ -1,3 +1,4 @@
+import { assertPricingWritesAllowed } from '../helpers/price/pricing-review-mode';
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { JobService } from '../job/job.service';
@@ -43,6 +44,7 @@ export class PriceReviewService {
         });
     }
     sendReview(token: string, clientId?: string) {
+        assertPricingWritesAllowed();
         this.cleanup();
         const review = this.reviews.get(token);
         if (!review) throw new BadRequestException('Предпросмотр устарел. Подготовьте цены заново.');

@@ -1,3 +1,4 @@
+import { assertPricingRequestAllowed } from '../helpers/price/pricing-review-mode';
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { VaultService } from 'vault-module/lib/vault.service';
@@ -26,6 +27,7 @@ export class YandexApiService {
 
     async method(name: string, method: string, options: any): Promise<any> {
         const yandexSeller = await this.vaultService.get('yandex-seller');
+        assertPricingRequestAllowed('yandex', name, method);
         let response: Observable<AxiosResponse>;
         const headers = {
             'Api-Key': yandexSeller.token as string,

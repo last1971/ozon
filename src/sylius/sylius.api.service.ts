@@ -1,3 +1,4 @@
+import { assertPricingRequestAllowed } from '../helpers/price/pricing-review-mode';
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { ConfigService } from '@nestjs/config';
@@ -19,6 +20,7 @@ export class SyliusApiService {
     ) {}
 
     async method<T = any>(path: string, method: HttpVerb = 'get', data?: any): Promise<T> {
+        assertPricingRequestAllowed('sylius', path, method);
         const url = this.buildUrl(path);
 
         let token = await this.getAccessToken(false);

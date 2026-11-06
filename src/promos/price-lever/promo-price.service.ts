@@ -1,3 +1,4 @@
+import { assertPricingWritesAllowed } from '../../helpers/price/pricing-review-mode';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { chunk } from 'lodash';
 import { buyerPrice, ozonPriceActions } from '../../helpers/price/buyer.price.helper';
@@ -139,6 +140,7 @@ export class PromoPriceService {
 
     /** Применить: состояние читается заново, план считается заново — плану из браузера не доверяем. По товару подряд. */
     async apply(offerIds: string[], target: PromoTarget, percent?: number): Promise<PromoPriceApplyResult[]> {
+        assertPricingWritesAllowed();
         const plans = await this.plans(offerIds, target, percent);
         const results: PromoPriceApplyResult[] = [];
         for (const plan of plans) results.push(await this.applier.apply(plan));

@@ -1,3 +1,4 @@
+import { assertPricingWritesAllowed } from '../../../helpers/price/pricing-review-mode';
 import { EnrichWithPricingCommand } from './enrich-with-pricing.command';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
@@ -46,6 +47,7 @@ export class PromoSweepService {
 
     /** apply=false — только отчёт; apply=true — выполнить планы. Та же задача уже идёт — вернётся она. */
     start(apply: boolean, goal: SweepGoalKind, clientId?: string): JobStateDto {
+        if (apply) assertPricingWritesAllowed();
         return this.jobs.run<IPromoSweepContext, PromoSweepReport>({
             kind: PROMO_SWEEP_JOB,
             params: { apply, goal },

@@ -1,3 +1,4 @@
+import { assertPricingWritesAllowed } from '../helpers/price/pricing-review-mode';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
 import { ObtainCoeffsDto } from '../helpers/dto/obtain.coeffs.dto';
@@ -182,6 +183,7 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
     }
 
     async updatePrices(updatePrices: UpdatePriceDto[]): Promise<any> {
+        assertPricingWritesAllowed();
         const skus = updatePrices.map((updatePrice) => updatePrice.offer_id);
         // const wbCards = await this.cardService.getCardsByVendorCodes(skus);
         const data = updatePrices.map((updatePrice) => {

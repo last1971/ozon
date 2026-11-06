@@ -1,5 +1,5 @@
 import { plainToInstance, Transform } from 'class-transformer';
-import { IsBoolean, IsEmail, IsEnum, IsIP, IsNumber, IsOptional, IsString, IsUrl, validateSync } from 'class-validator';
+import { IsBoolean, IsIn, IsEmail, IsEnum, IsIP, IsNumber, IsOptional, IsString, IsUrl, validateSync } from 'class-validator';
 import { GoodServiceEnum } from './good/good.service.enum';
 
 export enum Environment {
@@ -10,6 +10,10 @@ export enum Environment {
 }
 
 class EnvironmentVariables {
+    @IsOptional()
+    @IsIn(['true', 'false'])
+    PRICING_REVIEW_MODE?: string;
+
     @IsEnum(Environment)
     NODE_ENV: Environment = Environment.Development;
 

@@ -1,3 +1,4 @@
+import { assertPricingRequestAllowed } from '../helpers/price/pricing-review-mode';
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { catchError, firstValueFrom, map } from 'rxjs';
@@ -14,6 +15,7 @@ export class OzonApiService {
         private vaultService: VaultService,
     ) {}
     async method(name: string, options: any, httpMethod: 'post' | 'get' = 'post'): Promise<any> {
+        assertPricingRequestAllowed('ozon', name, httpMethod);
         const ozon = await this.vaultService.get('ozon');
 
         const headers = {
@@ -103,6 +105,7 @@ export class OzonApiService {
      * Низкоуровневый метод для сырых запросов к Ozon API через стандартный fetch
      */
     async rawFetch(endpoint: string, body: any, method: 'POST' | 'GET' = 'POST'): Promise<any> {
+        assertPricingRequestAllowed('ozon', endpoint, method);
         const ozon = await this.vaultService.get('ozon');
         const url = ozon.URL + endpoint;
         const headers: Record<string, string> = {

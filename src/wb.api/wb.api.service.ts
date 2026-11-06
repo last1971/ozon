@@ -1,3 +1,4 @@
+import { assertPricingRequestAllowed } from '../helpers/price/pricing-review-mode';
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { VaultService } from 'vault-module/lib/vault.service';
@@ -24,6 +25,7 @@ export class WbApiService {
     }
 
     async method(name: string, method: string, options: any, fullName = false): Promise<any> {
+        assertPricingRequestAllowed('wb', name, method);
         const wb = await this.vaultService.get('wildberries');
         const url = fullName ? name : (method === 'statistics' ? wb.STATISTICS_URL : wb.URL) + name;
         const headers = {

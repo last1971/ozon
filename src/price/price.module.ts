@@ -1,3 +1,4 @@
+import { PricingModeController } from './pricing-mode.controller';
 import { JobModule } from '../job/job.module';
 import { PriceReviewController } from './price-review.controller';
 import { PriceReviewService } from './price-review.service';
@@ -84,7 +85,7 @@ import { VerifyOzonPricesCommand } from './commands/verify-ozon-prices.command';
         LogPriceReportsCommand,
         VerifyOzonPricesCommand,
     ],
-    controllers: [PriceController, PriceReviewController],
+    controllers: [PriceController, PriceReviewController, PricingModeController],
     exports: [
         OzonPricingService,
         PriceService,

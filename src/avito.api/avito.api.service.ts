@@ -1,3 +1,4 @@
+import { assertPricingRequestAllowed } from '../helpers/price/pricing-review-mode';
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom, map } from 'rxjs';
@@ -29,6 +30,7 @@ export class AvitoApiService {
 
     // Public high-level method (axios-based)
     async request<T = any>(path: string, data?: any, method: HttpVerb = 'post'): Promise<T> {
+        assertPricingRequestAllowed('avito', path, method);
         const avito = (await this.vault.get('avito')) as unknown as AvitoVaultConfig;
         const url = this.buildUrl(avito.URL, path);
 
@@ -59,6 +61,7 @@ export class AvitoApiService {
         body?: any,
         method: 'GET' | 'POST' | 'PUT' | 'PATCH' | 'DELETE' = 'POST',
     ): Promise<T> {
+        assertPricingRequestAllowed('avito', path, method);
         const avito = (await this.vault.get('avito')) as unknown as AvitoVaultConfig;
         const url = this.buildUrl(avito.URL, path);
 
