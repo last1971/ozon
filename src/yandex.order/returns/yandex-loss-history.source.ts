@@ -4,9 +4,15 @@ import { LossPeriod } from '../../helpers/price/marketplace.loss.stats';
 import { YandexOrderDto } from '../dto/yandex.order.dto';
 import { jobCheckpoint } from '../../job/job.checkpoint';
 
+/**
+ * Источник предварительный (preliminary=true): API Яндекса отдаёт DELIVERED не более чем за ~30 дней,
+ * а возвраты не загружаются — returnedUnits всегда 0. Дефект считается по физическим списаниям
+ * из MP_RETURN_ACCEPT, которые LoadYandexWriteOffsCommand грузит отдельно и не зависят от этого источника.
+ */
 export class YandexLossHistorySource implements ILossHistorySource {
     readonly service = 'YANDEX';
-    readonly preliminary = false;
+    // Предварительный: API ограничен ~30 днями, возвраты не загружаются через этот источник.
+    readonly preliminary = true;
 
     constructor(
         private readonly orders: Pick<{ listOrders(params: Record<string, any>): Promise<YandexOrderDto[]> }, 'listOrders'>,
@@ -16,16 +22,12 @@ export class YandexLossHistorySource implements ILossHistorySource {
     async readPage(cursor: string): Promise<LossHistoryPage> {
         if (cursor !== this.period.from) throw new Error('Некорректный курсор Яндекс');
         const counts = new Map<string, LossCounts>();
-        const add = (offerId: string, units: number, kind: 'sold' | 'returned') => {
-            if (!counts.has(offerId)) counts.set(offerId, { offerId, soldUnits: 0, returnedUnits: 0 });
-            const row = counts.get(offerId);
-            if (kind === 'sold') row.soldUnits += units;
-            else row.returnedUnits += units;
-        };
+        const seenOrders = new Set<number | string>();
 
         const start = DateTime.fromISO(this.period.from, { zone: 'Europe/Moscow' });
         const end = DateTime.fromISO(this.period.to, { zone: 'Europe/Moscow' });
-        // Яндекс не принимает интервалы более 29 дней — разбиваем вручную.
+        // API принимает не более 29 дней за запрос. Загружаем окнами, но данные доступны только
+        // за ~30 последних дней — остаток периода вернёт пустые страницы. preliminary=true.
         const WINDOW = 29;
         let windowStart = start;
         while (windowStart < end) {
@@ -36,12 +38,18 @@ export class YandexLossHistorySource implements ILossHistorySource {
             const batch = await this.orders.listOrders({ status: 'DELIVERED', fromDate, toDate });
             if (!Array.isArray(batch)) throw new Error('Некорректный ответ заказов Яндекс');
             for (const order of batch) {
-                for (const item of order.items ?? []) {
+                if (!Array.isArray(order.items))
+                    throw new Error(`Заказ Яндекс ${order.id}: отсутствует массив позиций`);
+                if (seenOrders.has(order.id)) continue; // дубль окна — пропускаем
+                seenOrders.add(order.id);
+                for (const item of order.items) {
                     if (typeof item.offerId !== 'string' || !item.offerId.trim())
                         throw new Error(`Некорректный offerId в заказе Яндекс ${order.id}`);
                     if (!Number.isInteger(item.count) || item.count <= 0)
                         throw new Error(`Некорректное количество в заказе Яндекс ${order.id}`);
-                    add(item.offerId.trim(), item.count, 'sold');
+                    const key = item.offerId.trim();
+                    if (!counts.has(key)) counts.set(key, { offerId: key, soldUnits: 0, returnedUnits: 0 });
+                    counts.get(key).soldUnits += item.count;
                 }
             }
             windowStart = windowEnd;

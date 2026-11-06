@@ -80,7 +80,7 @@ describe('Сохранение статистики Яндекса через о
         // 2 строки: '123' (3 продажи, 0 списаний) и '123-4' (0 продаж, 1 списание)
         expect(done.result).toMatchObject({
             service: 'YANDEX',
-            preliminary: false,
+            preliminary: true,
             from: '2026-08-08',
             to: '2026-11-06',
             calculatedAt: now,
@@ -89,7 +89,7 @@ describe('Сохранение статистики Яндекса через о
         expect(store.replace).toHaveBeenCalledTimes(1);
         expect(store.replace.mock.calls[0][0]).toMatchObject({
             service: 'YANDEX',
-            preliminary: false,
+            preliminary: true,
         });
         const rows = store.replace.mock.calls[0][0].rows;
         expect(rows).toEqual(expect.arrayContaining([
@@ -138,6 +138,38 @@ describe('Сохранение статистики Яндекса через о
         listOrders.mockReset().mockResolvedValue([order(1, '', 1)]);
         expect((await run()).status).toBe('failed');
         expect(store.replace).not.toHaveBeenCalled();
+    });
+
+    it('заказ без массива items — ошибка без сохранения', async () => {
+        const { run, listOrders, store } = setup();
+        listOrders.mockReset().mockResolvedValue([{ id: 99, status: 'DELIVERED' }]);
+        const done = await run();
+        expect(done.status).toBe('failed');
+        expect(done.error).toMatch(/позиций/);
+        expect(store.replace).not.toHaveBeenCalled();
+    });
+
+    it('дубль заказа в разных окнах не удваивает продажи', async () => {
+        const { jobs, writeOffs, store } = setup();
+        const config = new ConfigService({ SERVICES: ['yandex'] });
+        // Возвращаем один и тот же заказ в двух разных окнах
+        const listOrders = jest
+            .fn()
+            .mockResolvedValueOnce([order(1, '456', 2)])
+            .mockResolvedValueOnce([order(1, '456', 2)])
+            .mockResolvedValue([]);
+        const service = new YandexLossService(
+            jobs,
+            config,
+            new LoadYandexLossSalesCommand({ listOrders } as any),
+            new LoadYandexWriteOffsCommand(writeOffs as any),
+            new CalculateYandexLossReportCommand(),
+            new SaveLossSnapshotCommand(store),
+        );
+        const done = await jobs.whenDone(service.start('c', now).id);
+        expect(done.status).toBe('done');
+        const rows = store.replace.mock.calls[0][0].rows;
+        expect(rows.find((r: any) => r.offerId === '456')?.soldUnits).toBe(2);
     });
 
     it('ошибка записи в БД — job завершается с ошибкой', async () => {
