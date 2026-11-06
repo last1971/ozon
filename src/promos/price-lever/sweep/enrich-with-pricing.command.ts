@@ -121,6 +121,7 @@ export class EnrichWithPricingCommand implements IJobCommand<IPromoSweepContext>
             this.goods.getPerc(codes, null),
         ]);
         if (!Array.isArray(prices?.items) || !Array.isArray(infos)) throw new Error('неполный ответ API Ozon');
+        await this.pricing.prepare(infos);
         return { products: prices.items, infos, goods, percents };
     }
 }

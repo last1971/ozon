@@ -1,3 +1,4 @@
+import { pricingWarning } from '../helpers/price/pricing-warnings';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
 import { ConfigService } from '@nestjs/config';
@@ -22,6 +23,7 @@ export interface OzonSchemeLogistics {
 export class OzonLogisticsService {
     private readonly logger = new Logger(OzonLogisticsService.name);
     private readonly pending = new Map<string, Promise<any>>();
+    private readonly stockFailures = new Map<string, { until: number; error: Error }>();
     constructor(
         private readonly routes: OzonRoutesService,
         private readonly tariffs: OzonTariffService,
@@ -48,6 +50,37 @@ export class OzonLogisticsService {
         return this.pending.get(key);
     }
 
+    /** Наполняет тот же кеш, который читает quote; запросы остаются в ProductService.fboStocks. */
+    async prepare(infos: ProductInfoDto[]): Promise<void> {
+        const offers: string[] = [];
+        for (const info of infos) {
+            if (!(info.fboCount > 0)) continue;
+            const cached = await this.cache.get(`${this.routes.cacheKey}:stocks:${encodeURIComponent(info.sku)}`);
+            const failed = this.stockFailures.get(info.sku);
+            if (failed && failed.until <= Date.now()) this.stockFailures.delete(info.sku);
+            if (cached == null && !(failed?.until > Date.now())) offers.push(info.sku);
+        }
+        if (!offers.length) return;
+        try {
+            const stocks = await this.products.fboStocks([...new Set(offers)]);
+            for (const offer of offers) {
+                await this.cache.set(
+                    `${this.routes.cacheKey}:stocks:${encodeURIComponent(offer)}`,
+                    stocks.filter((s) => s.offer_id === offer),
+                    300_000,
+                );
+                this.stockFailures.delete(offer);
+            }
+        } catch (error) {
+            // После отказа пачки не повторяем её отдельно для каждого товара.
+            for (const offer of offers) this.stockFailures.set(offer, { until: Date.now() + 30_000, error });
+        }
+    }
+
+    private warn(message: string, offer: string) {
+        pricingWarning(message, offer, (text) => this.logger.warn(text));
+    }
+
     async quote(product: ProductPriceDto, info: ProductInfoDto) {
         if (product.offer_id !== info.sku) throw new Error('Артикул цены не совпадает с карточкой');
         const minUnits = Number(this.config.get('OZON_LOGISTICS_MIN_UNITS', 1));
@@ -65,7 +98,7 @@ export class OzonLogisticsService {
             history = await this.routes.get();
         } catch (e) {
             historyError = 'Не удалось прочитать распределение направлений';
-            this.logger.warn(`${product.offer_id}: ${historyError}: ${e.message}`);
+            this.warn(`${historyError}: ${e.message}`, product.offer_id);
         }
         const tariff = await this.tariffs.logistics(info.volumeWeight ?? product.volume_weight);
         const acquiringAmount = money(product.acquiring, 'эквайринг');
@@ -80,6 +113,9 @@ export class OzonLogisticsService {
                 unavailable = historyError;
             if (scheme === 'fbo') {
                 try {
+                    const failure = this.stockFailures.get(info.sku);
+                    if (failure?.until > Date.now()) throw failure.error;
+                    this.stockFailures.delete(info.sku);
                     const stocks = await this.cached(`stocks:${encodeURIComponent(info.sku)}`, 300_000, () =>
                         this.products.fboStocks([info.sku]),
                     );
@@ -88,7 +124,7 @@ export class OzonLogisticsService {
                 } catch (e) {
                     origins = [];
                     unavailable = 'Не удалось определить склады FBO с остатком';
-                    this.logger.warn(`${info.sku}: ${unavailable}: ${e.message}`);
+                    this.warn(`${unavailable}: ${e.message}`, info.sku);
                 }
             }
             const directions = history ? selectOzonRoutes(history, scheme, info.sku, info.typeId, minUnits) : null;
@@ -103,7 +139,7 @@ export class OzonLogisticsService {
                 unavailable,
             );
             for (const warning of new Set(bands.map((b) => b.warning).filter(Boolean)))
-                this.logger.warn(`${info.sku}/${scheme}: ${warning}`);
+                this.warn(warning, `${info.sku}/${scheme}`);
             schemes[scheme] = {
                 bands,
                 historySource: directions?.scope ?? 'none',

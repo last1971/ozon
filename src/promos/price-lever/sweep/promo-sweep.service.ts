@@ -1,3 +1,5 @@
+import { withPricingWarnings, PricingWarning } from '../../../helpers/price/pricing-warnings';
+import { priceUpdateQueue } from '../../../helpers/price/price-update.queue';
 import { assertPricingWritesAllowed } from '../../../helpers/price/pricing-review-mode';
 import { EnrichWithPricingCommand } from './enrich-with-pricing.command';
 import { Injectable, Logger } from '@nestjs/common';
@@ -48,13 +50,19 @@ export class PromoSweepService {
     /** apply=false — только отчёт; apply=true — выполнить планы. Та же задача уже идёт — вернётся она. */
     start(apply: boolean, goal: SweepGoalKind, clientId?: string): JobStateDto {
         if (apply) assertPricingWritesAllowed();
+        const warnings = new Map<string, PricingWarning>();
         return this.jobs.run<IPromoSweepContext, PromoSweepReport>({
             kind: PROMO_SWEEP_JOB,
             params: { apply, goal },
             clientId,
             commands: this.commands,
+            execute: (run) => priceUpdateQueue.run(apply ? 'ozon' : undefined, () => withPricingWarnings(warnings, run)),
+            cleanup: async () => {},
             context: { apply, goal, progress: emptyProgress(), logger: this.logger },
-            result: (ctx) => ctx.report as PromoSweepReport,
+            result: (ctx) => {
+                for (const w of warnings.values()) this.logger.warn(`${w.message}: ${w.count}; примеры ${w.examples.join(', ')}`);
+                return ctx.report as PromoSweepReport;
+            },
         });
     }
 }

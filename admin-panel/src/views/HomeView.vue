@@ -2,6 +2,7 @@
 import OzonTariffs from "@/components/OzonTariffs.vue";
 import Tariff from "@/components/Tariff.vue";
 import Articles from "@/components/Articles.vue";
+import BulkPriceJob from "@/components/BulkPriceJob.vue";
 import Prices from "@/components/Prices.vue";
 import { computed, ref, watch } from "vue";
 import ScanFbs from "@/components/ScanFbs.vue";
@@ -104,6 +105,8 @@ function onScanSuccess(order: string) {
         <v-card-text>
             <v-tabs-window v-model="tab">
                 <v-tabs-window-item value="prices">
+                    <BulkPriceJob market="ozon" />
+                    <BulkPriceJob market="wb" />
                     <Tariff class="pa-2"/>
                     <v-divider :thickness="5" />
                     <Articles class="pa-2" />

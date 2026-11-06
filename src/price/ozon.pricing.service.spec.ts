@@ -21,6 +21,7 @@ const make = () => {
         returnFlow: 60,
     };
     const logistics = {
+        prepare: jest.fn().mockResolvedValue(undefined),
         quote: jest.fn().mockResolvedValue({ fbs: costs, fbo: { ...costs, firstMile: 0 }, acquiringRate: 0.01 }),
     };
     const config = new ConfigService({

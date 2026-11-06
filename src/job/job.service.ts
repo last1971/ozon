@@ -6,6 +6,8 @@ import { IJobCommand, IJobContext } from '../interfaces/i.job.context';
 import { JobStateDto } from './job.state.dto';
 
 export interface JobRunOptions<T extends IJobContext, R> {
+    /** Обёртка всей цепочки, например очередь записи кабинета; ошибки обрабатывает JobService. */
+    execute?: (run: () => Promise<T>) => Promise<T>;
     kind: string;
     params: Record<string, unknown>;
     clientId?: string;
@@ -123,8 +125,7 @@ export class JobService {
             };
 
             // .catch обязателен: unhandled rejection роняет процесс, pm2 рестартует и стирает все задачи
-            chain
-                .execute(opts.context)
+            (opts.execute ? opts.execute(() => chain.execute(opts.context)) : chain.execute(opts.context))
                 .then(async (ctx) => {
                     if (opts.cleanup) await cleanup(ctx);
                     if (ctx.stopChain)

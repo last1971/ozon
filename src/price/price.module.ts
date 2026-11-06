@@ -1,3 +1,4 @@
+import { BulkPriceJobModule } from './bulk/bulk-price-job.module';
 import { PricingModeController } from './pricing-mode.controller';
 import { JobModule } from '../job/job.module';
 import { PriceReviewController } from './price-review.controller';
@@ -44,6 +45,7 @@ import { VerifyOzonPricesCommand } from './commands/verify-ozon-prices.command';
 
 @Module({
     imports: [
+        BulkPriceJobModule,
         JobModule,
         OzonLogisticsModule,
         ProductModule,
@@ -56,7 +58,9 @@ import { VerifyOzonPricesCommand } from './commands/verify-ozon-prices.command';
         OzonCategoryModule,
     ],
     providers: [
-        PriceReviewService, PreparePriceReviewCommand, SendPriceReviewCommand,
+        PriceReviewService,
+        PreparePriceReviewCommand,
+        SendPriceReviewCommand,
         OzonPricingService,
         PriceService,
         ExtraPriceService,

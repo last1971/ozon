@@ -15,6 +15,10 @@ export class OzonPricingService {
         private readonly config: ConfigService,
     ) {}
 
+    async prepare(infos: ProductInfoDto[]) {
+        await this.logistics.prepare(infos);
+    }
+
     async load(product: ProductPriceDto, info: ProductInfoDto): Promise<OzonPricingContext> {
         if (!info || info.sku !== product.offer_id || !info.typeId)
             throw new Error(`${product.offer_id}: нет карточки или типа Ozon`);

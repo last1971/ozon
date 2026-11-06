@@ -1,3 +1,5 @@
+import { ozonDisplayPrice } from '../helpers/price/ozon.display-price';
+import { SerializePriceUpdate } from '../helpers/price/price-update.queue';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { OzonApiService } from '../ozon.api/ozon.api.service';
 import { ProductListResultDto } from './dto/product.list.result.dto';
@@ -253,14 +255,22 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
         return response.clusters;
     }
 
+    @SerializePriceUpdate('ozon')
     async setPrice(prices: UpdatePricesDto): Promise<any> {
         const batchSize = 1000;
         const results = [];
 
         for (const batch of chunk(prices.prices, batchSize)) {
-            const batchRequest: UpdatePricesDto = { prices: batch };
+            const batchRequest: UpdatePricesDto = { prices: batch.map((row) =>
+                row.price !== undefined && row.old_price !== undefined
+                    ? { ...row, old_price: String(ozonDisplayPrice(Number(row.price), Number(row.old_price))) }
+                    : row) };
             const result = await this.ozonApiService.method('/v1/product/import/prices', batchRequest);
-            results.push(...result.result);
+            if (!Array.isArray(result?.result)) {
+                const message = result?.error?.message || 'Ozon не вернул результат обновления';
+                results.push(...batch.map((row) => ({ offer_id: row.offer_id, updated: false,
+                    errors: [{ code: 'api_error', message: typeof message === 'string' ? message : JSON.stringify(message) }] })));
+            } else results.push(...result.result);
         }
 
         return { result: results };

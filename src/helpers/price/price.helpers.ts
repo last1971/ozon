@@ -1,3 +1,4 @@
+import { ozonDisplayPrice } from './ozon.display-price';
 import { priceTaxDetails } from './price.tax';
 import { calculateOzonPrices, evaluateOzonPrice } from './ozon.pricing';
 import { ozonPricingInput } from './ozon.pricing.input';
@@ -106,7 +107,7 @@ export const calculatePrice = (
             offer_id: price.offer_id,
             min_price: String(result.min.price),
             price: String(result.normal.price),
-            old_price: String(result.max.price),
+            old_price: String(ozonDisplayPrice(result.normal.price, result.max.price)),
             incoming_price: price.incoming_price,
             available_price: price.available_price,
             sum_pack: price.sum_pack,

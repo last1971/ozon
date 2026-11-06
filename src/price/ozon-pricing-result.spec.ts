@@ -56,7 +56,7 @@ function setup() {
         vatRate: 20,
         profitTaxRate: 20,
     };
-    const pricing = { load: jest.fn().mockResolvedValue(context) };
+    const pricing = { prepare: jest.fn().mockResolvedValue(undefined), load: jest.fn().mockResolvedValue(context) };
     const service = new PriceService(products as any, goods, config, null, helper, null, pricing as any);
     return { service, products, goods, good, percent, product, info, pricing, context };
 }

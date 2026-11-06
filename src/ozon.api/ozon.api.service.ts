@@ -1,7 +1,9 @@
+import { RateLimitRetryPolicy } from '../helpers/rate-limit.retry.policy';
+import { waitRateLimit } from '../helpers/decorators/rate-limit.decorator';
 import { assertPricingRequestAllowed } from '../helpers/price/pricing-review-mode';
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
-import { catchError, firstValueFrom, map } from 'rxjs';
+import { firstValueFrom, map } from 'rxjs';
 import { AxiosError } from 'axios';
 import { VaultService } from 'vault-module/lib/vault.service';
 import JSONbig from 'json-bigint';
@@ -24,47 +26,34 @@ export class OzonApiService {
             'Content-Type': 'application/json',
         };
 
-        return httpMethod === 'get'
-            ? firstValueFrom(
-                  this.httpService
-                      .get(ozon.URL + name, {
-                          params: options,
-                          headers,
-                      })
-                      //.pipe(map((res) => res.data))
-                      .pipe(
-                          map((res) => {
-                              // ЛОГИРУЕМ ОТВЕТ
-                              // this.logger.log(`[OZON API RESPONSE] ${res.data}`);
-                              return res.data;
-                          }),
-                          catchError(async (error: AxiosError) => {
-                              this.logger.error(error.message + ' ' + error?.response?.data['message']);
-                              return {
-                                  result: null,
-                                  error: { service_message: error.message, message: error?.response?.data['message'] },
-                              };
-                          }),
-                      ),
-              )
-            : firstValueFrom(
-                  this.httpService
-                      .post(ozon.URL + name, options, {
-                          headers,
-                      })
-                      .pipe(
-                          map((res) => {
-                              // ЛОГИРУЕМ ОТВЕТ
-                              // this.logger.log(`[OZON API RESPONSE] ${res.data}`);
-                              return res.data;
-                          }),
-                      )
-                      .pipe(
-                          catchError(async (error: AxiosError) => {
-                              return this.handleApiError(error, ozon.URL + name, 'POST', options, headers);
-                          }),
-                      ),
-              );
+        for (let attempt = 1; ; attempt++) {
+            await this.limit(name, String(ozon.CLIENT_ID));
+            try {
+                const request =
+                    httpMethod === 'get'
+                        ? this.httpService.get(ozon.URL + name, { params: options, headers })
+                        : this.httpService.post(ozon.URL + name, options, { headers });
+                return (await firstValueFrom(request)).data;
+            } catch (error) {
+                const wait = this.retryPolicy.decide(error.response, attempt);
+                if (wait === null)
+                    return this.handleApiError(error, ozon.URL + name, httpMethod.toUpperCase(), options, headers);
+                this.logger.warn(`Ozon: лимит ${name}, повтор через ${wait / 1000} с`);
+                await new Promise((resolve) => setTimeout(resolve, wait));
+            }
+        }
+    }
+
+    private readonly retryPolicy = new RateLimitRetryPolicy({
+        retryHeader: 'retry-after',
+        maxRetries: 2,
+        maxWaitMs: 30000,
+        defaultWaitMs: 5000,
+    });
+
+    private async limit(endpoint: string, client: string) {
+        if (endpoint === '/v1/product/info/stocks-by-warehouse/fbo')
+            await waitRateLimit(`ozon:${client}:${endpoint}`, 1000);
     }
 
     /** GET файла по готовой ссылке Озона (PDF этикетки) как Buffer. Ссылка публичная — ключи API не шлём. */
@@ -135,7 +124,23 @@ export class OzonApiService {
         // this.logger.log(`[OZON RAW FETCH BODY] ${JSON.stringify(body)}`);
         // this.logger.log(`[OZON RAW FETCH HEADERS] ${JSON.stringify(headers)}`);
 
-        const response = await fetch(fetchUrl, fetchOptions);
+        let response: Response;
+        for (let attempt = 1; ; attempt++) {
+            await this.limit(endpoint, String(ozon.CLIENT_ID));
+            response = await fetch(fetchUrl, fetchOptions);
+            const wait = this.retryPolicy.decide(
+                {
+                    status: response.status,
+                    headers: response.headers
+                        ? { 'retry-after': response.headers.get('retry-after') ?? undefined }
+                        : {},
+                },
+                attempt,
+            );
+            if (wait === null) break;
+            await response.text();
+            await new Promise((resolve) => setTimeout(resolve, wait));
+        }
         const text = await response.text();
         let data: any;
         try {

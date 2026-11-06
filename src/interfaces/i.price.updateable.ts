@@ -4,6 +4,8 @@ import { UpdatePriceDto } from '../price/dto/update.price.dto';
 import Excel from 'exceljs';
 
 export interface IPriceUpdateable {
+    readonly priceUpdateKey?: string;
+    startUpdateAllPrices?(clientId?: string): import('../job/job.state.dto').JobStateDto;
     getObtainCoeffs(): ObtainCoeffsDto;
     getProductsWithCoeffs(skus: string[]): Promise<IProductCoeffsable[]>;
     updatePrices(updatePrices: UpdatePriceDto[]): Promise<any>;

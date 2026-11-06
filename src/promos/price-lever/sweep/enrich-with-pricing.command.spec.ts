@@ -51,7 +51,7 @@ const make = () => {
         vatRate: 20,
         profitTaxRate: 20,
     };
-    const pricing = { load: jest.fn().mockResolvedValue(ozon) };
+    const pricing = { prepare: jest.fn().mockResolvedValue(undefined), load: jest.fn().mockResolvedValue(ozon) };
     const products = {
         getPrices: jest
             .fn()

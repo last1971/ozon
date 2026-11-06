@@ -1,3 +1,4 @@
+import { priceUpdateQueue } from '../helpers/price/price-update.queue';
 import { completePricePercents } from '../helpers/price/price.percents';
 import { ozonReturnPriceFields } from '../helpers/price/ozon.return.perc';
 import { Inject, Injectable, Logger } from '@nestjs/common';
@@ -656,11 +657,13 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         skus: string[],
         prices?: Map<string, UpdatePriceDto>,
     ): Promise<PriceUpdateReport> {
-        const { priceables, skipped } = await this.collectPriceables(service, skus, prices);
-        const coeffs = service.getObtainCoeffs();
-        const sent = priceables.map((priceData) => calculatePrice(priceData, coeffs));
-        const response = sent.length > 0 ? await service.updatePrices(sent) : null;
-        return { coeffs, inputs: priceables, sent, skipped, response };
+        return priceUpdateQueue.run(service.priceUpdateKey, async () => {
+            const { priceables, skipped } = await this.collectPriceables(service, skus, prices);
+            const coeffs = service.getObtainCoeffs();
+            const sent = priceables.map((priceData) => calculatePrice(priceData, coeffs));
+            const response = sent.length > 0 ? await service.updatePrices(sent) : null;
+            return { coeffs, inputs: priceables, sent, skipped, response };
+        });
     }
 
     async buildPriceables(

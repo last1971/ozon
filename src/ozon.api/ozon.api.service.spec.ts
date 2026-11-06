@@ -1,7 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { OzonApiService } from './ozon.api.service';
 import { HttpService } from '@nestjs/axios';
-import { of } from 'rxjs';
+import { of, throwError } from 'rxjs';
+import { clearRateLimitCache } from '../helpers/decorators/rate-limit.decorator';
 import { VaultService } from 'vault-module/lib/vault.service';
 
 describe('OzonApiService', () => {
@@ -123,5 +124,37 @@ describe('rawFetch', () => {
         expect(call[1].headers['Api-Key']).toBe('key');
         expect(call[1].headers['Content-Type']).toBe('application/json');
         expect(call[1].body).toBeUndefined();
+    });
+});
+
+describe('Ozon FBO: частота и повтор 429', () => {
+    const endpoint = '/v1/product/info/stocks-by-warehouse/fbo';
+    beforeEach(() => { jest.useFakeTimers(); clearRateLimitCache(); });
+    afterEach(() => { jest.useRealTimers(); clearRateLimitCache(); });
+    it('параллельные вызовы резервируют отдельные секунды; после 429 есть ограниченный повтор', async () => {
+        const stamps: number[] = [];
+        const post = jest.fn().mockImplementation(() => {
+            stamps.push(Date.now()); return of({ data: { products: [] } });
+        });
+        const api = new OzonApiService({ post } as any, { get: async () => ({ URL: 'url', CLIENT_ID: 'test' }) } as any);
+        const requests = Promise.all([api.method(endpoint, {}), api.method(endpoint, {}), api.method(endpoint, {})]);
+        await jest.advanceTimersByTimeAsync(2000); await requests;
+        expect(stamps[1] - stamps[0]).toBeGreaterThanOrEqual(1000);
+        expect(stamps[2] - stamps[1]).toBeGreaterThanOrEqual(1000);
+        post.mockImplementationOnce(() => throwError(() => ({ response: { status: 429, headers: { 'retry-after': '1' } } })));
+        const retried = api.method(endpoint, {});
+        await jest.advanceTimersByTimeAsync(2000);
+        await expect(retried).resolves.toEqual({ products: [] });
+        expect(post).toHaveBeenCalledTimes(5);
+    });
+    it('после двух повторов возвращает ошибку, 400 не повторяет', async () => {
+        const post = jest.fn().mockReturnValue(throwError(() => ({ message: 'limit', response: { status: 429, data: { message: 'limit' } } })));
+        const api = new OzonApiService({ post } as any, { get: async () => ({ URL: 'url' }) } as any);
+        const limited = api.method(endpoint, {});
+        await jest.advanceTimersByTimeAsync(12000);
+        expect((await limited).error).toBeDefined(); expect(post).toHaveBeenCalledTimes(3);
+        post.mockReturnValue(throwError(() => ({ message: 'bad', response: { status: 400, data: {} } })));
+        const bad = api.method('/other', {}); await bad;
+        expect(post).toHaveBeenCalledTimes(4);
     });
 });

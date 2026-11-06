@@ -46,30 +46,21 @@ export function RateLimit(intervalMs: number) {
         const cacheKey = `${target.constructor.name}.${propertyKey}`;
 
         descriptor.value = async function (...args: any[]) {
-            const now = Date.now();
-
-            // Check if blocked by 429 response
-            const blockedUntil = globalBlockedUntil.get(cacheKey) || 0;
-            if (now < blockedUntil) {
-                const blockWaitTime = blockedUntil - now;
-                await new Promise((resolve) => setTimeout(resolve, blockWaitTime));
-            }
-
-            // Check regular interval
-            const lastCall = globalLastCallTimes.get(cacheKey) || 0;
-            const timeSinceLastCall = Date.now() - lastCall;
-
-            if (timeSinceLastCall < intervalMs) {
-                const waitTime = intervalMs - timeSinceLastCall;
-                await new Promise((resolve) => setTimeout(resolve, waitTime));
-            }
-
-            globalLastCallTimes.set(cacheKey, Date.now());
+            await waitRateLimit(cacheKey, intervalMs);
             return originalMethod.apply(this, args);
         };
 
         return descriptor;
     };
+}
+
+/** Резервируем время до ожидания: параллельные вызовы не просыпаются все одновременно. */
+export async function waitRateLimit(key: string, intervalMs: number): Promise<void> {
+    const now = Date.now();
+    const previous = globalLastCallTimes.get(key);
+    const next = Math.max(now, globalBlockedUntil.get(key) || 0, previous === undefined ? now : previous + intervalMs);
+    globalLastCallTimes.set(key, next);
+    if (next > now) await new Promise((resolve) => setTimeout(resolve, next - now));
 }
 
 /**

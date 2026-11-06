@@ -1,3 +1,4 @@
+import { BulkPriceJobModule } from './bulk/bulk-price-job.module';
 import { OzonPricingService } from './ozon.pricing.service';
 import { PriceController } from './price.controller';
 import { Test, TestingModule } from '@nestjs/testing';
@@ -46,6 +47,7 @@ describe('PriceService', () => {
     const getPerc = jest.fn().mockResolvedValue([]);
     const setPrice = jest.fn().mockResolvedValue({ result: [] });
     const updatePriceForService = jest.fn().mockResolvedValue({ result: [] });
+    const repriceForService = jest.fn().mockResolvedValue({ inputs: [], sent: [], skipped: [], response: { result: [] } });
     const mockPriceCalculationHelper = {
         provide: PriceCalculationHelper,
         useValue: {
@@ -64,16 +66,17 @@ describe('PriceService', () => {
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
+            imports: [BulkPriceJobModule],
             providers: [
                 PriceService,
-                { provide: OzonPricingService, useValue: { load: async () => pricingContext } },
+                { provide: OzonPricingService, useValue: { prepare: async () => {}, load: async () => pricingContext } },
                 {
                     provide: ProductService,
                     useValue: { getPrices, setPrice, infoList: async () => [], skuList: ['sku1', 'sku2', 'sku3'] },
                 },
                 {
                     provide: GOOD_SERVICE,
-                    useValue: { prices, getPerc, updatePriceForService, generatePercentsForService: async () => [] },
+                    useValue: { prices, getPerc, updatePriceForService, repriceForService, generatePercentsForService: async () => [] },
                 },
                 { provide: Cache, useValue: { get: () => [], set: () => {} } },
                 {
@@ -321,12 +324,12 @@ describe('PriceService', () => {
                         commissions: { sales_percent_fbs: 1, fbs_direct_flow_trans_max_amount: 2 },
                     },
                 ],
-            })
-            .mockResolvedValueOnce({ items: [] });
-        await service.updateAllPrices();
-        expect(getPrices.mock.calls).toHaveLength(2);
+            });
+        const result = await service.updateAllPrices();
+        expect(result).toMatchObject({ total: 3, failed: 3 });
+        expect(getPrices.mock.calls).toHaveLength(1);
         expect(getPrices.mock.calls[0]).toEqual([{ cursor: '', limit: 1000, visibility: 'IN_SALE' }]);
-        expect(updatePriceForService.mock.calls).toHaveLength(1);
+        expect(repriceForService).toHaveBeenCalledWith(service, ['1', '2', '3']);
     });
     it('getObtainCoeffs', () => {
         expect(service.getObtainCoeffs()).toEqual({
@@ -362,9 +365,10 @@ describe('PriceService', () => {
         ]);
 
         const module: TestingModule = await Test.createTestingModule({
+            imports: [BulkPriceJobModule],
             providers: [
                 PriceService,
-                { provide: OzonPricingService, useValue: { load: async () => pricingContext } },
+                { provide: OzonPricingService, useValue: { prepare: async () => {}, load: async () => pricingContext } },
                 {
                     provide: ProductService,
                     useValue: {
@@ -376,7 +380,7 @@ describe('PriceService', () => {
                 },
                 {
                     provide: GOOD_SERVICE,
-                    useValue: { prices, getPerc, updatePriceForService, generatePercentsForService: async () => [] },
+                    useValue: { prices, getPerc, updatePriceForService, repriceForService, generatePercentsForService: async () => [] },
                 },
                 { provide: Cache, useValue: { get: () => [], set: () => {} } },
                 {
@@ -561,9 +565,10 @@ describe('PriceService', () => {
             });
 
             const module: TestingModule = await Test.createTestingModule({
+            imports: [BulkPriceJobModule],
                 providers: [
                     PriceService,
-                    { provide: OzonPricingService, useValue: { load: async () => pricingContext } },
+                    { provide: OzonPricingService, useValue: { prepare: async () => {}, load: async () => pricingContext } },
                     {
                         provide: ProductService,
                         useValue: {
@@ -621,9 +626,10 @@ describe('PriceService', () => {
             });
 
             const module: TestingModule = await Test.createTestingModule({
+            imports: [BulkPriceJobModule],
                 providers: [
                     PriceService,
-                    { provide: OzonPricingService, useValue: { load: async () => pricingContext } },
+                    { provide: OzonPricingService, useValue: { prepare: async () => {}, load: async () => pricingContext } },
                     {
                         provide: ProductService,
                         useValue: { getPrices, setPrice, infoList: async () => [], skuList: [] },
@@ -658,9 +664,10 @@ describe('PriceService', () => {
             const mockGetCommissions = jest.fn().mockResolvedValue(null);
 
             const module: TestingModule = await Test.createTestingModule({
+            imports: [BulkPriceJobModule],
                 providers: [
                     PriceService,
-                    { provide: OzonPricingService, useValue: { load: async () => pricingContext } },
+                    { provide: OzonPricingService, useValue: { prepare: async () => {}, load: async () => pricingContext } },
                     {
                         provide: ProductService,
                         useValue: { getPrices, setPrice, infoList: async () => [], skuList: [] },
@@ -706,9 +713,10 @@ describe('PriceService', () => {
             const mockCacheGet = jest.fn().mockResolvedValue('12345');
 
             const module: TestingModule = await Test.createTestingModule({
+            imports: [BulkPriceJobModule],
                 providers: [
                     PriceService,
-                    { provide: OzonPricingService, useValue: { load: async () => pricingContext } },
+                    { provide: OzonPricingService, useValue: { prepare: async () => {}, load: async () => pricingContext } },
                     { provide: ProductService, useValue: { getPrices, setPrice, skuList: [], infoList: jest.fn() } },
                     {
                         provide: GOOD_SERVICE,
@@ -742,9 +750,10 @@ describe('PriceService', () => {
             const mockInfoList = jest.fn().mockResolvedValue([{ sku: 'sku1', typeId: 67890 }]);
 
             const module: TestingModule = await Test.createTestingModule({
+            imports: [BulkPriceJobModule],
                 providers: [
                     PriceService,
-                    { provide: OzonPricingService, useValue: { load: async () => pricingContext } },
+                    { provide: OzonPricingService, useValue: { prepare: async () => {}, load: async () => pricingContext } },
                     { provide: ProductService, useValue: { getPrices, setPrice, skuList: [], infoList: mockInfoList } },
                     {
                         provide: GOOD_SERVICE,
@@ -778,9 +787,10 @@ describe('PriceService', () => {
             const mockInfoList = jest.fn().mockResolvedValue([]);
 
             const module: TestingModule = await Test.createTestingModule({
+            imports: [BulkPriceJobModule],
                 providers: [
                     PriceService,
-                    { provide: OzonPricingService, useValue: { load: async () => pricingContext } },
+                    { provide: OzonPricingService, useValue: { prepare: async () => {}, load: async () => pricingContext } },
                     { provide: ProductService, useValue: { getPrices, setPrice, skuList: [], infoList: mockInfoList } },
                     {
                         provide: GOOD_SERVICE,
@@ -835,9 +845,10 @@ describe('PriceService', () => {
             const mockCacheGet = jest.fn();
 
             const module: TestingModule = await Test.createTestingModule({
+            imports: [BulkPriceJobModule],
                 providers: [
                     PriceService,
-                    { provide: OzonPricingService, useValue: { load: async () => pricingContext } },
+                    { provide: OzonPricingService, useValue: { prepare: async () => {}, load: async () => pricingContext } },
                     {
                         provide: ProductService,
                         useValue: { getPrices, setPrice, infoList: async () => [], skuList: [] },
@@ -877,9 +888,10 @@ describe('PriceService', () => {
             const mockCacheGet = jest.fn().mockResolvedValue(null);
 
             const module: TestingModule = await Test.createTestingModule({
+            imports: [BulkPriceJobModule],
                 providers: [
                     PriceService,
-                    { provide: OzonPricingService, useValue: { load: async () => pricingContext } },
+                    { provide: OzonPricingService, useValue: { prepare: async () => {}, load: async () => pricingContext } },
                     {
                         provide: ProductService,
                         useValue: { getPrices, setPrice, infoList: async () => [], skuList: [] },
@@ -917,9 +929,10 @@ describe('PriceService', () => {
             const mockCacheGet = jest.fn().mockResolvedValue('{"fbs":0.2,"fbo":0.15}');
 
             const module: TestingModule = await Test.createTestingModule({
+            imports: [BulkPriceJobModule],
                 providers: [
                     PriceService,
-                    { provide: OzonPricingService, useValue: { load: async () => pricingContext } },
+                    { provide: OzonPricingService, useValue: { prepare: async () => {}, load: async () => pricingContext } },
                     {
                         provide: ProductService,
                         useValue: { getPrices, setPrice, infoList: async () => [], skuList: [] },

@@ -22,7 +22,7 @@ function storageKey(kind: string) {
  * Фоновая задача вида kind: старт, опрос GET /api/job/:id раз в 2 с пока running, подхват после F5
  * (id в localStorage, иначе своя по clientId из списка вида). Следующая длинная задача берёт тот же composable.
  */
-export function useJob<R = unknown>(kind: string) {
+export function useJob<R = unknown>(kind: string, options: { followLatest?: boolean } = {}) {
     if (!boxes.has(kind)) {
         boxes.set(kind, reactive({ job: null, others: [], error: '', timer: null }) as JobBox<unknown>);
     }
@@ -44,6 +44,10 @@ export function useJob<R = unknown>(kind: string) {
         try {
             const list = await axios.get<JobState[]>('/api/job', { params: { kind } });
             const me = clientId();
+            if (options.followLatest) {
+                box.job = (list.data[0] as JobState<R>) ?? null;
+                remember(box.job?.id ?? null);
+            }
             if (box.job) {
                 try {
                     const res = await axios.get<JobState<R>>(`/api/job/${box.job.id}`);

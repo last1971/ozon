@@ -210,3 +210,15 @@ describe('PriceController', () => {
         });
     });
 });
+
+describe('Массовая ручка цен: совместимость и фоновый запуск', () => {
+    it('по умолчанию ждёт итог; background=true отдаёт задачу с clientId', async () => {
+        const service = { updateAllPrices: jest.fn().mockResolvedValue({ accepted: 10 }),
+            startUpdateAllPrices: jest.fn().mockReturnValue({ id: 'job-1', status: 'running' }) };
+        const controller = new PriceController(null, { getService: () => service } as any);
+        await expect(controller.updatePrices(GoodServiceEnum.WB)).resolves.toEqual({ accepted: 10 });
+        await expect(controller.updatePrices(GoodServiceEnum.WB, 'true', 'browser')).resolves.toEqual({ id: 'job-1', status: 'running' });
+        expect(service.updateAllPrices).toHaveBeenCalledTimes(1);
+        expect(service.startUpdateAllPrices).toHaveBeenCalledWith('browser');
+    });
+});

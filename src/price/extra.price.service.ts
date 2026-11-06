@@ -155,8 +155,9 @@ export class ExtraPriceService {
     async updateAllPrices(): Promise<void> {
         const results = await Promise.all(
             this.getServices().map(async (service) => {
-                const errors = await service.updateAllPrices();
-                return { service: service.constructor.name, errors: errors || [] };
+                const report = await service.updateAllPrices();
+                const errors = report?.rows ? report.rows.filter((row) => row.status === 'error') : report || [];
+                return { service: service.constructor.name, errors };
             }),
         );
 

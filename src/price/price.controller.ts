@@ -1,3 +1,4 @@
+import { JobStateDto } from '../job/job.state.dto';
 import { OzonPricingResultDto, OzonPricingPreviewDto } from './dto/ozon-pricing-result.dto';
 import {
     BadRequestException,
@@ -5,6 +6,7 @@ import {
     Controller,
     Get,
     HttpException,
+    Headers,
     Param,
     Post,
     Query,
@@ -14,6 +16,8 @@ import {
 } from '@nestjs/common';
 import {
     ApiBody,
+    ApiExtraModels,
+    getSchemaPath,
     ApiConsumes,
     ApiOkResponse,
     ApiOperation,
@@ -94,17 +98,30 @@ export class PriceController {
         enum: GoodServiceEnum,
         example: GoodServiceEnum.OZON,
     })
+    @ApiExtraModels(JobStateDto)
     @ApiOkResponse({
-        description: 'Результат обновления всех цен',
-        schema: {
-            type: 'object',
-            properties: {
-                updated: { type: 'number', description: 'Количество обновленных цен' },
-            },
-        },
+        description: 'Итог по товарам; background=true — задача с прогрессом. Для WB «принято» означает приём задачи площадкой.',
+        schema: { oneOf: [
+            { $ref: getSchemaPath(JobStateDto) },
+            { type: 'object', properties: {
+                total: { type: 'number' }, accepted: { type: 'number' }, unchanged: { type: 'number' },
+                skipped: { type: 'number' }, failed: { type: 'number' },
+                rows: { type: 'array', items: { type: 'object', properties: {
+                    offer_id: { type: 'string' }, status: { type: 'string', enum: ['accepted', 'unchanged', 'skipped', 'error'] },
+                    reason: { type: 'string' },
+                } } },
+                warnings: { type: 'array', items: { type: 'object' } },
+            } },
+        ] },
     })
-    async updatePrices(@Param('service') service: GoodServiceEnum): Promise<any> {
+    @ApiQuery({ name: 'background', required: false, type: Boolean, description: 'Вернуть задачу сразу; прогресс GET /api/job/{id}' })
+    async updatePrices(
+        @Param('service') service: GoodServiceEnum,
+        @Query('background') background?: string,
+        @Headers('x-client-id') clientId?: string,
+    ): Promise<any> {
         const command = this.extraService.getService(service) || this.service;
+        if (background === 'true' && command.startUpdateAllPrices) return command.startUpdateAllPrices(clientId);
         return command.updateAllPrices();
     }
     @Post('calculate')

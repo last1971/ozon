@@ -1,3 +1,5 @@
+import { BulkPriceJobService } from './bulk/bulk-price-job.service';
+import { SerializePriceUpdate } from '../helpers/price/price-update.queue';
 import { OzonPricingResultDto, OzonPricingPreviewDto } from './dto/ozon-pricing-result.dto';
 import { calculateOzonPrices, evaluateOzonPrice, ozonDeadZoneFloor, OzonPriceEvaluation } from '../helpers/price/ozon.pricing';
 import { ozonPricingInput } from '../helpers/price/ozon.pricing.input';
@@ -33,6 +35,8 @@ import { OzonCategoryService } from '../ozon.category/ozon.category.service';
 
 @Injectable()
 export class PriceService implements IPriceUpdateable, IVatUpdateable {
+    readonly priceUpdateKey = 'ozon';
+    @Inject(BulkPriceJobService) private readonly bulk: BulkPriceJobService;
     private logger = new Logger(PriceService.name);
     constructor(
         private product: ProductService,
@@ -266,6 +270,7 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
         }
     }
 
+    @SerializePriceUpdate('ozon')
     async update(prices: UpdatePricesDto): Promise<any> {
         return this.product.setPrice(prices);
     }
@@ -277,23 +282,19 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
         return this.update(prices);
     }
     // @Cron('0 0 0 * * 0', { name: 'updateOzonPrices' })
-    async updateAllPrices(level = 0, cursor = '', visibility = ProductVisibility.IN_SALE, limit = 1000): Promise<any> {
-        const pricesForObtain = await this.product.getPrices({ limit, cursor, visibility });
-        let answer = [];
-        if (pricesForObtain.items.length > 0) {
-            const res = await this.goodService.updatePriceForService(
-                this,
-                pricesForObtain.items.map((p) => p.offer_id),
-            );
-            answer = res.result
-                .filter((update: any) => !update.updated)
-                .concat(await this.updateAllPrices(level + 1, pricesForObtain.cursor));
-        }
-        if (level === 0) {
-            this.logger.log('Update ozon prices was finished');
-            if (answer.length > 0) this.logger.error(answer);
-        }
-        return answer;
+    startUpdateAllPrices(clientId?: string) {
+        return this.bulk.start({ market: 'ozon',
+            page: async (cursor) => {
+                const page = await this.product.getPrices({ limit: 1000, cursor, visibility: ProductVisibility.IN_SALE });
+                if (!Array.isArray(page?.items)) throw new Error('Не удалось загрузить каталог Ozon');
+                return { offers: page.items.map((p) => p.offer_id), next: page.items.length ? page.cursor : undefined };
+            },
+            update: (offers) => this.goodService.repriceForService(this, offers),
+        }, clientId);
+    }
+
+    async updateAllPrices() {
+        return this.bulk.wait(this.startUpdateAllPrices().id);
     }
 
     getObtainCoeffs(): ObtainCoeffsDto {
@@ -313,6 +314,7 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
 
         await this.processPricesBatched(skus, async (items, skusBatch) => {
             const counts = await this.product.infoList(skusBatch);
+            await this.ozonPricing.prepare(counts);
             for (const product of items) {
                 const productInfo = counts.find((info) => info.sku === product.offer_id);
                 allResults.push(

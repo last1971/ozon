@@ -87,6 +87,7 @@ function setup(
         getPrices: jest.fn().mockResolvedValue({ items: [rawProduct], cursor: '' }),
     };
     const service = new PriceService(products as any, goods, config, null, helper, null, {
+        prepare: async () => {},
         load: async () => pricing,
     } as any);
     const market = { getProductsWithCoeffs: async () => [adapter], getObtainCoeffs: () => coeffs } as any;

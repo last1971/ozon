@@ -195,15 +195,23 @@ describe('ProductService', () => {
             },
         ]);
     });
+    it('исправляет только зачёркнутую цену; отказ API не теряется и не обрушает пачку', async () => {
+        const input = { offer_id: 'x', price: '950', old_price: '1000', min_price: '900', currency_code: 'RUB' };
+        method.mockResolvedValueOnce({ result: null, error: { message: 'rate limit' } });
+        const result = await service.setPrice({ prices: [input] });
+        expect(method).toHaveBeenLastCalledWith('/v1/product/import/prices', { prices: [{ ...input, old_price: '1001' }] });
+        expect(input.old_price).toBe('1000');
+        expect(result).toEqual({ result: [{ offer_id: 'x', updated: false, errors: [{ code: 'api_error', message: 'rate limit' }] }] });
+    });
     it('test setPrice', async () => {
         method.mockResolvedValue({ result: [{ updated: true }] });
         const result = await service.setPrice({
-            prices: [{ min_price: '1', price: '2', old_price: '3', offer_id: '4', currency_code: 'RUB' }],
+            prices: [{ min_price: '100', price: '200', old_price: '300', offer_id: '4', currency_code: 'RUB' }],
         });
         expect(method.mock.calls[0]).toEqual([
             '/v1/product/import/prices',
             {
-                prices: [{ min_price: '1', price: '2', old_price: '3', offer_id: '4', currency_code: 'RUB' }],
+                prices: [{ min_price: '100', price: '200', old_price: '300', offer_id: '4', currency_code: 'RUB' }],
             },
         ]);
         expect(result).toEqual({ result: [{ updated: true }] });

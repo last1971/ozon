@@ -34,3 +34,8 @@ describe('WbCurrentPricesService', () => {
         expect(method.mock.calls[1][2]).toEqual({ limit: 1000, offset: 1000 });
     });
 });
+
+it('ошибка API не считается пустым каталогом WB', async () => {
+    const method = jest.fn().mockResolvedValue({ error: { data: { errorText: 'limit exceeded' } } });
+    await expect(new WbCurrentPricesService({ method } as any).getAll()).rejects.toThrow('limit exceeded');
+});

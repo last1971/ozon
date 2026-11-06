@@ -1,3 +1,4 @@
+import { SerializePriceUpdate } from '../helpers/price/price-update.queue';
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { chunk as chunkArray } from 'lodash';
@@ -106,6 +107,7 @@ export class PromosService {
      * по каждой акции участник с ценой акции не выше нашего пола снимается,
      * кандидат с предельной ценой не ниже пола добавляется по предельной цене.
      */
+    @SerializePriceUpdate('ozon')
     async addRemoveProductToActions(ids: string[], chunkLimit: number = 100): Promise<AddRemoveProductToAction[]> {
         const result: AddRemoveProductToAction[] = [];
         const [actions, prices, percents] = await Promise.all([

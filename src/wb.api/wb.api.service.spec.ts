@@ -141,3 +141,26 @@ describe('WbApiService', () => {
         });
     });
 });
+
+describe('WB: точная классификация already set', () => {
+    const url = 'https://discounts-prices-api.wildberries.ru/api/v2/upload/task';
+    const make = (status: number, errorText: string) => {
+        const post = jest.fn().mockReturnValue(throwError(() => ({ message: 'HTTP error', response: { status, data: { error: true, errorText } } })));
+        const api = new WbApiService({ post } as any, { get: async () => ({}) } as any, new RateLimitRetryPolicy());
+        const logger = jest.spyOn((api as any).logger, 'error').mockImplementation(() => {});
+        return { api, post, logger };
+    };
+    it('400 already set на upload/task — вся пачка без изменений, без ERROR и повторов', async () => {
+        const m = make(400, 'Specified prices and discounts are already set');
+        const data = Array.from({ length: 22 }, (_, i) => ({ nmID: i + 1, price: 504, discount: 31 }));
+        await expect(m.api.method(url, 'post', { data }, true)).resolves.toEqual({ data: null, error: false, unchanged: true });
+        expect(m.post).toHaveBeenCalledTimes(1); expect(m.logger).not.toHaveBeenCalled();
+    });
+    it.each([[400, 'Invalid data format', url], [500, 'Specified prices and discounts are already set', url],
+        [400, 'Specified prices and discounts are already set', 'https://example.com/other']])(
+        'не скрывает другую ошибку %s %s %s', async (status, message, endpoint) => {
+            const m = make(status, message);
+            const result = await m.api.method(endpoint, 'post', {}, true);
+            expect(result.status).toBe('NotOk'); expect(m.logger).toHaveBeenCalled();
+        });
+});

@@ -32,7 +32,9 @@ export class WbCurrentPricesService {
                 { limit: WbCurrentPricesService.LIMIT, offset },
                 true,
             );
-            const goods = res?.data?.listGoods ?? [];
+            if (res?.error || !Array.isArray(res?.data?.listGoods))
+                throw new Error('WB не вернул текущие цены: ' + (res?.error?.data?.errorText || res?.errorText || 'некорректный ответ'));
+            const goods = res.data.listGoods;
             for (const g of goods) {
                 const price = Number(g.sizes?.[0]?.price ?? 0);
                 const discount = Number(g.discount ?? 0);

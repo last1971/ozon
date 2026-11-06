@@ -1,3 +1,5 @@
+import { BulkPriceJobService } from '../price/bulk/bulk-price-job.service';
+import { SerializePriceUpdate } from '../helpers/price/price-update.queue';
 import { assertPricingWritesAllowed } from '../helpers/price/pricing-review-mode';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
@@ -52,6 +54,8 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
     private static readonly VAT_CHARACTERISTIC_ID = 15001405;
     /** setMinPrices не трогает карточку, если база «до скидки» во столько раз и больше выше минимальной. */
     static readonly MAX_BASE_TO_MIN = 3;
+    readonly priceUpdateKey = 'wb';
+    @Inject(BulkPriceJobService) private readonly bulk: BulkPriceJobService;
     private logger = new Logger(WbPriceService.name);
     constructor(
         private configService: ConfigService,
@@ -171,73 +175,125 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
     }
 
     // @Cron('0 5 0 * * 0', { name: 'updateWbPrices' })
-    async updateAllPrices(level = 0, args = ''): Promise<any> {
-        const cards = await this.cardService.getGoodIds(args);
-        await this.goodService.updatePriceForService(this, Array.from(cards.goods.keys()));
-        if (cards.nextArgs) {
-            await this.updateAllPrices(level + 1, cards.nextArgs);
-        }
-        if (level === 0) {
-            this.logger.log('All Wb Prices was updated');
-        }
+    startUpdateAllPrices(clientId?: string) {
+        return this.bulk.start(
+            {
+                market: 'wb',
+                page: async (cursor) => {
+                    const page = await this.cardService.getGoodIds(cursor ? JSON.parse(cursor) : '');
+                    return {
+                        offers: [...page.goods.keys()],
+                        next: page.nextArgs ? JSON.stringify(page.nextArgs) : undefined,
+                    };
+                },
+                update: (offers) => this.goodService.repriceForService(this, offers),
+            },
+            clientId,
+        );
+    }
+    async updateAllPrices() {
+        return this.bulk.wait(this.startUpdateAllPrices().id);
     }
 
+    @SerializePriceUpdate('wb')
     async updatePrices(updatePrices: UpdatePriceDto[]): Promise<any> {
         assertPricingWritesAllowed();
         const skus = updatePrices.map((updatePrice) => updatePrice.offer_id);
-        // const wbCards = await this.cardService.getCardsByVendorCodes(skus);
         const data = updatePrices.map((updatePrice) => {
             const nmID = this.cardService.getNmID(updatePrice.offer_id);
             const base = parseInt(updatePrice.old_price);
             const minPrice = Number(updatePrice.min_price);
             return {
                 nmID: parseInt(nmID),
-                // find(wbCards, { vendorCode: updatePrice.offer_id }).nmID,
                 price: base,
                 // Правило владельца 23.10.2026: покупатель ВБ видит минимальную, база «до скидки» — витрина.
                 // Без минимальной — до price, как раньше.
                 discount: wbDiscountTo(base, minPrice > 0 ? minPrice : parseInt(updatePrice.price)),
             };
         });
-        /*
-        const prices = updatePrices.map(
-            (updatePrice): WbPriceUpdateDto => ({
-                nmId: find(wbCards, { vendorCode: updatePrice.offer_id }).nmID,
-                price: parseInt(updatePrice.old_price),
-            }),
-        );
-        const discounts = updatePrices.map(
-            (updatePrice): WbDiscountUpdateDto => ({
-                nm: find(wbCards, { vendorCode: updatePrice.offer_id }).nmID,
-                discount: Math.floor((1 - parseInt(updatePrice.price) / parseInt(updatePrice.old_price)) * 100),
-            }),
-        );
-        */
         const wbs = await this.goodService.getWbData(skus);
         wbs.forEach((wb) => {
             wb.minPrice = find(updatePrices, { offer_id: wb.id }).min_price;
         });
         await Promise.all(wbs.map((wb) => this.goodService.setWbData(wb, null)));
-        /*
-        return {
-            updatePrices: await this.updateWbPrice(prices),
-            updateDiscounts: await this.updateDiscounts(discounts),
-        };
-         */
-        return this.pushPriceTasks(data);
+        const response = await this.pushPriceTasks(data);
+        const remaining = data.map((task, index) => ({ nmID: task.nmID, offer_id: updatePrices[index].offer_id }));
+        response.results = response.results.map((row) => {
+            const index = remaining.findIndex((task) => Object.is(task.nmID, row.nmID));
+            const [match] = index >= 0 ? remaining.splice(index, 1) : [];
+            return { ...row, offer_id: match?.offer_id };
+        });
+        return response;
     }
 
     /**
      * Отправка задачи «цена + скидка» в ВБ (discounts-prices upload/task).
      * Единая точка вызова: используется и updatePrices, и массовыми ручками applyWb.
      */
-    private async pushPriceTasks(data: WbPriceTask[]): Promise<any> {
-        return this.api.method(
-            'https://discounts-prices-api.wildberries.ru/api/v2/upload/task',
-            'post',
-            { data },
-            true,
-        );
+    private async pushPriceTasks(
+        data: WbPriceTask[],
+        current?: Map<string, import('./wb.current-prices.service').WbCurrentPrice>,
+    ): Promise<any> {
+        if (!data.length) return { error: false, results: [], data: null };
+        const prices = current ?? (await this.currentPrices.getAll());
+        const byId = new Map([...prices.values()].map((p) => [p.nmID, p]));
+        const results: { nmID: number; status: 'accepted' | 'unchanged' | 'error'; message?: string }[] = [];
+        const pending: WbPriceTask[] = [];
+        for (const task of data) {
+            if (
+                !Number.isSafeInteger(task.nmID) ||
+                task.nmID <= 0 ||
+                !Number.isFinite(task.price) ||
+                task.price <= 0 ||
+                !Number.isInteger(task.discount) ||
+                task.discount < 0 ||
+                task.discount > 100
+            ) {
+                results.push({
+                    nmID: task.nmID,
+                    status: 'error',
+                    message: 'Нет карточки WB или некорректная цена/скидка',
+                });
+                continue;
+            }
+            const actual = byId.get(task.nmID);
+            if (actual?.price === task.price && actual?.discount === task.discount)
+                results.push({ nmID: task.nmID, status: 'unchanged' });
+            else pending.push(task);
+        }
+        const uploadIds: string[] = [];
+        for (const part of chunk(pending, 1000)) {
+            const response = await this.api.method(
+                'https://discounts-prices-api.wildberries.ru/api/v2/upload/task',
+                'post',
+                { data: part },
+                true,
+            );
+            const status = response?.unchanged
+                ? 'unchanged'
+                : response?.data?.id && !response?.error
+                  ? 'accepted'
+                  : 'error';
+            const message =
+                response?.error?.data?.errorText ||
+                response?.errorText ||
+                response?.error?.message ||
+                'WB не подтвердил приём задачи';
+            if (status === 'accepted') uploadIds.push(String(response.data.id));
+            results.push(
+                ...part.map((task) => ({
+                    nmID: task.nmID,
+                    status,
+                    ...(status === 'error' ? { message: String(message) } : {}),
+                })),
+            );
+        }
+        return {
+            error: results.some((r) => r.status === 'error'),
+            results,
+            uploadIds,
+            data: uploadIds.length ? { id: uploadIds.join(', ') } : null,
+        };
     }
 
     /**
@@ -245,6 +301,7 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
      * и одной задачей отправляет в ВБ. minPrice берётся из Firebird, базовая цена — из кабинета ВБ.
      * calcDiscount: вернуть процент, вернуть null — пропустить, бросить — записать в errors.
      */
+    @SerializePriceUpdate('wb')
     private async applyWb(
         articles: string[] | 'all',
         calcDiscount: (base: number, minPrice: number, currentDiscount: number) => number | null,
@@ -280,7 +337,7 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
                 errors.push(`${article}: ${error.message}`);
                 continue;
             }
-            if (discount === null) {
+            if (discount === null || discount === cur.discount) {
                 skipped.push(article);
                 continue;
             }
@@ -292,16 +349,23 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
 
         // ВБ принимает до 1000 товаров в задаче («все» по кабинету — больше)
         const uploadIds: string[] = [];
-        if (!dryRun) {
-            for (const part of chunk(data, 1000)) {
-                const res = await this.pushPriceTasks(part);
-                if (res?.data?.id) uploadIds.push(String(res.data.id));
+        if (!dryRun && data.length) {
+            const res = await this.pushPriceTasks(data, current);
+            uploadIds.push(...res.uploadIds);
+            for (const row of res.results) {
+                const article = [...current].find(([, p]) => p.nmID === row.nmID)?.[0] ?? String(row.nmID);
+                if (row.status === 'error') errors.push(`${article}: ${row.message}`);
+                if (row.status === 'unchanged') skipped.push(article);
+                if (row.status !== 'accepted') {
+                    const index = changes.findIndex((c) => c.article === article);
+                    if (index >= 0) changes.splice(index, 1);
+                }
             }
         }
         const uploadId = uploadIds.join(', ') || null;
         return {
             total: articles.length,
-            toUpdate: data.length,
+            toUpdate: changes.length,
             missing,
             skipped,
             errors,

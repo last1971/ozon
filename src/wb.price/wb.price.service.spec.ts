@@ -1,3 +1,4 @@
+import { BulkPriceJobModule } from '../price/bulk/bulk-price-job.module';
 import { Test, TestingModule } from '@nestjs/testing';
 import { WbPriceService } from './wb.price.service';
 import { ConfigService } from '@nestjs/config';
@@ -13,6 +14,7 @@ describe('WbPriceService', () => {
     const getWbData = jest.fn();
     const getGoodIds = jest.fn();
     const updatePriceForService = jest.fn();
+    const repriceForService = jest.fn().mockResolvedValue({ inputs: [], sent: [], skipped: [], response: { results: [] } });
     const method = jest.fn();
     const setWbData = jest.fn();
     const getNmID = jest.fn();
@@ -23,6 +25,7 @@ describe('WbPriceService', () => {
 
     beforeEach(async () => {
         const module: TestingModule = await Test.createTestingModule({
+            imports: [BulkPriceJobModule],
             providers: [
                 WbPriceService,
                 {
@@ -31,7 +34,7 @@ describe('WbPriceService', () => {
                 },
                 {
                     provide: GOOD_SERVICE,
-                    useValue: { getWbData, updatePriceForService, setWbData, updateWbCategory },
+                    useValue: { getWbData, updatePriceForService, repriceForService, setWbData, updateWbCategory },
                 },
                 {
                     provide: WbApiService,
@@ -49,7 +52,9 @@ describe('WbPriceService', () => {
             ],
         }).compile();
 
-        method.mockClear();
+        method.mockReset();
+        method.mockImplementation(async (name) => name.includes('list/goods/filter')
+            ? { data: { listGoods: [] } } : { data: { id: 'task-1' } });
         getWbData.mockClear();
         getWbCardAsync.mockClear();
         updateCards.mockClear();
@@ -84,7 +89,7 @@ describe('WbPriceService', () => {
             goods: new Map([[1, 2]]),
         });
         await service.updateAllPrices();
-        expect(updatePriceForService.mock.calls[0]).toEqual([service, [1]]);
+        expect(repriceForService).toHaveBeenCalledWith(service, [1]);
     });
 
     it('updateWbPrice', async () => {
@@ -113,8 +118,8 @@ describe('WbPriceService', () => {
             },
             null,
         ]);
-        expect(method.mock.calls).toHaveLength(1);
-        expect(method.mock.calls[0]).toEqual([
+        expect(method.mock.calls).toHaveLength(2);
+        expect(method.mock.calls[1]).toEqual([
             'https://discounts-prices-api.wildberries.ru/api/v2/upload/task',
             'post',
             { data: [{ discount: 66, nmID: 1, price: 3 }] },
@@ -128,7 +133,7 @@ describe('WbPriceService', () => {
         await service.updatePrices([
             { offer_id: '123', price: '2', old_price: '3', incoming_price: 0.5, currency_code: 'RUB' },
         ]);
-        expect(method.mock.calls[0][2]).toEqual({ data: [{ discount: 33, nmID: 1, price: 3 }] });
+        expect(method.mock.calls[1][2]).toEqual({ data: [{ discount: 33, nmID: 1, price: 3 }] });
     });
 
     it('updateWbSaleCoeffs', async () => {

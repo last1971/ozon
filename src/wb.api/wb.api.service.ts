@@ -38,6 +38,15 @@ export class WbApiService {
                 return (await firstValueFrom(this.send(url, method, options, headers))).data;
             } catch (e) {
                 const error = e as AxiosError<any>;
+                if (
+                    method === 'post' &&
+                    url === 'https://discounts-prices-api.wildberries.ru/api/v2/upload/task' &&
+                    error.response?.status === 400 &&
+                    error.response?.data?.errorText === 'Specified prices and discounts are already set'
+                ) {
+                    this.logger.log('ВБ: отправленные цены и скидки уже установлены');
+                    return { data: null, error: false, unchanged: true };
+                }
                 const wait = this.retryPolicy.decide(error.response, attempt);
                 if (wait === null) return this.failure(error);
                 this.logger.warn(
