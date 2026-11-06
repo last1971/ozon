@@ -1,51 +1,34 @@
 import { Inject, Injectable } from '@nestjs/common';
-import { FirebirdPool } from 'ts-firebird';
+import { FirebirdPool, ISOLATION_READ_COMMITTED_READ_ONLY } from 'ts-firebird';
 import { FIREBIRD } from '../firebird/firebird.module';
-import { OzonReturnValue, ozonReturnKey } from '../helpers/price/ozon.return.snapshot';
+import { LossStatsStore } from '../marketplace-loss/loss-stats.store';
+import { LossSnapshot, LossSaveHooks } from '../marketplace-loss/loss.contracts';
+import { lossOfferKey } from '../helpers/price/marketplace.loss.stats';
 
-/** Единственное место записи статистики. Наценки, рынок и упаковка не изменяются. */
+/** Адаптер Ozon: известные фасовки; запись наследуется из единого хранилища MP_LOSS_STATS. */
 @Injectable()
-export class OzonReturnStore {
-    constructor(@Inject(FIREBIRD) private readonly pool: FirebirdPool) {}
-
-    async save(values: readonly OzonReturnValue[], calculatedAt: Date, defaultPerc = 0): Promise<void> {
-        const validPerc = (n: number) => Number.isFinite(n) && n >= 0 && n <= 1;
-        if (!validPerc(defaultPerc) || !Number.isFinite(calculatedAt.getTime()))
-            throw new Error('Некорректный снимок возвратов');
-        const keys = new Set<string>();
-        for (const row of values) {
-            const key = ozonReturnKey(`${row.goodscode}-${row.pieces}`);
-            const id = `${key.goodscode}-${key.pieces}`;
-            if (!validPerc(row.returnPerc) || keys.has(id))
-                throw new Error('Некорректная или повторная строка возвратов');
-            keys.add(id);
-        }
-        if (!values.length) return;
-        const t = await this.pool.getTransaction();
+export class OzonReturnStore extends LossStatsStore {
+    constructor(@Inject(FIREBIRD) pool: FirebirdPool) {
+        super(pool);
+    }
+    async replace(snapshot: LossSnapshot, hooks?: LossSaveHooks): Promise<void> {
+        if (snapshot.service !== 'OZON' || !snapshot.rows.length) throw new Error('Нужен непустой снимок Ozon');
+        if (snapshot.rows.some((row) => row.appliedReturnRate == null))
+            throw new Error('Не выбран процент для цены Ozon');
+        return super.replace(snapshot, hooks);
+    }
+    async listKnownOffers(): Promise<string[]> {
+        const t = await this.pool.getTransaction(ISOLATION_READ_COMMITTED_READ_ONLY);
         try {
-            const newer = await t.query(
-                'SELECT FIRST 1 GOODSCODE FROM OZON_PERC WHERE RETURN_PERC_AT > ?',
-                [calculatedAt],
+            const rows = await t.query(
+                `SELECT GOODSCODE, PIECES FROM OZON_PERC
+                UNION SELECT GOODSCODE, PIECES FROM MP_LOSS_STATS WHERE SERVICE = 'OZON'`,
+                [],
                 false,
             );
-            if (newer.length) throw new Error('Уже сохранён более новый расчёт возвратов');
-            // У старых артикулов без истории в новом окне также снимаем устаревший процент.
-            await t.execute(
-                'UPDATE OZON_PERC SET RETURN_PERC = ?, RETURN_PERC_AT = ?',
-                [defaultPerc, calculatedAt],
-                false,
-            );
-            for (const row of values) {
-                await t.execute(
-                    'UPDATE OR INSERT INTO OZON_PERC (GOODSCODE, PIECES, RETURN_PERC, RETURN_PERC_AT) VALUES (?, ?, ?, ?) MATCHING (GOODSCODE, PIECES)',
-                    [row.goodscode, row.pieces, Number(row.returnPerc.toFixed(6)), calculatedAt],
-                    false,
-                );
-            }
-            await t.commit(true);
-        } catch (error) {
-            await t.rollback(true).catch(() => undefined);
-            throw error;
+            return rows.map((row) => lossOfferKey(`${row.GOODSCODE}-${row.PIECES}`));
+        } finally {
+            await t.rollback(true);
         }
     }
 }

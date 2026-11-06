@@ -1,14 +1,21 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
-import { DateTime } from 'luxon';
-import { chunk } from 'lodash';
+import { lossPeriod } from '../helpers/price/marketplace.loss.stats';
 import { ProductService } from '../product/product.service';
-import { ProductInfoDto } from '../product/dto/product.info.dto';
 import { OzonReturnPreviewService } from './ozon.return.preview.service';
 import { OzonReturnStore } from './ozon.return.store';
-import { buildOzonReturnSnapshot } from '../helpers/price/ozon.return.snapshot';
-import { ozonSkuOf } from '../helpers/price/ozon.accrual.normalizer';
+import { JobService } from '../job/job.service';
+import { emptyProgress } from '../interfaces/i.job.context';
+import { MpReturnAcceptStore } from '../mp-event/mp-return-accept.store';
+import {
+    LoadLossHistoryCommand,
+    LoadLossWriteOffsCommand,
+    CalculateLossReportCommand,
+    SaveLossSnapshotCommand,
+} from '../marketplace-loss/loss.commands';
+import { LoadOzonLossCatalogCommand, ApplyOzonReturnPolicyCommand, OzonLossContext } from './ozon.loss.commands';
+import { OzonLossHistorySource } from './ozon.loss-history.source';
 
 /** Организация суточного пересчёта: существующий каталог → готовый расчёт → атомарное сохранение. */
 @Injectable()
@@ -21,6 +28,8 @@ export class OzonReturnService {
         private readonly products: ProductService,
         private readonly previewService: OzonReturnPreviewService,
         private readonly store: OzonReturnStore,
+        private readonly writeOffs: MpReturnAcceptStore,
+        private readonly jobs: JobService,
     ) {}
 
     @Cron('0 38 5 * * *', { name: 'ozonReturnPerc', timeZone: 'Europe/Moscow' })
@@ -45,40 +54,42 @@ export class OzonReturnService {
         if (this.running) throw new Error('Пересчёт возвратов Ozon уже выполняется');
         this.running = true;
         try {
-            const end = DateTime.fromJSDate(now, { zone: 'Europe/Moscow' }).startOf('day');
-            if (!end.isValid) throw new Error('Некорректная дата пересчёта');
-            const from = end.minus({ days: 90 }).toISODate();
-            const to = end.toISODate();
-            const minSales = Number(this.config.get('OZON_RETURN_MIN_SALES', 1));
-            const defaultPerc = Number(this.config.get('OZON_RETURN_PERC_DEFAULT', 0));
-            // Проверка настроек до сетевых запросов и до любой записи.
-            buildOzonReturnSnapshot({ rows: [], issues: [] }, [], minSales, defaultPerc);
-            const offers = [...new Set(await this.products.listAllOfferIds())];
-            if (!offers.length) throw new Error('Пустой каталог Ozon; прежняя статистика сохранена');
-            const catalog: ProductInfoDto[] = [];
-            for (const batch of chunk(offers, 100)) catalog.push(...(await this.products.infoList(batch)));
-            const found = new Set(catalog.map((p) => p.sku));
-            if (
-                found.size !== catalog.length ||
-                found.size !== offers.length ||
-                offers.some((offer) => !found.has(offer))
-            ) {
-                throw new Error('Неполный или неоднозначный каталог Ozon; прежняя статистика сохранена');
-            }
-            const skuToOffer = new Map<string, string>();
-            for (const product of catalog) {
-                for (const value of [product.marketSku, product.cabinetSku]) {
-                    if (value == null) continue;
-                    const sku = ozonSkuOf(value);
-                    if (skuToOffer.has(sku) && skuToOffer.get(sku) !== product.sku)
-                        throw new Error(`Неоднозначный SKU Ozon: ${sku}`);
-                    skuToOffer.set(sku, product.sku);
-                }
-            }
-            const report = await this.previewService.preview(from, to, skuToOffer);
-            const values = buildOzonReturnSnapshot(report, catalog, minSales, defaultPerc);
-            await this.store.save(values, now, defaultPerc);
-            return { rows: values.length, from, to };
+            const { from, to } = lossPeriod(now);
+            const context: OzonLossContext = {
+                service: 'OZON',
+                preliminary: false,
+                period: { from, to },
+                calculatedAt: now,
+                minSales: Number(this.config.get('OZON_RETURN_MIN_SALES', 1)),
+                defaultPerc: Number(this.config.get('OZON_RETURN_PERC_DEFAULT', 0)),
+                catalog: [],
+                skuToOffer: new Map(),
+                knownOffers: [],
+                sales: [],
+                rows: [],
+                writeOffs: [],
+                progress: emptyProgress(),
+            };
+            const job = this.jobs.run<OzonLossContext, { rows: number; from: string; to: string }>({
+                kind: 'loss-recalculate:ozon',
+                params: { from, to },
+                context,
+                commands: [
+                    new LoadOzonLossCatalogCommand(this.products, this.store),
+                    new LoadLossHistoryCommand(new OzonLossHistorySource(this.previewService, context)),
+                    new LoadLossWriteOffsCommand(this.writeOffs),
+                    new CalculateLossReportCommand(),
+                    new ApplyOzonReturnPolicyCommand(),
+                    new SaveLossSnapshotCommand(this.store),
+                ],
+                canCancel: (c) => !c.committing,
+                // Транзакцией владеет store; JobService ждёт выхода команды и её rollback.
+                cleanup: async () => {},
+                result: (c) => ({ rows: c.rows.length, ...c.period }),
+            });
+            const done = await this.jobs.whenDone(job.id);
+            if (done.status !== 'done') throw new Error(done.error);
+            return done.result as { rows: number; from: string; to: string };
         } finally {
             this.running = false;
         }

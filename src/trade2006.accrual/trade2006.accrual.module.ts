@@ -1,3 +1,4 @@
+import { JobModule } from '../job/job.module';
 import { OzonReturnService } from './ozon.return.service';
 import { OzonReturnStore } from './ozon.return.store';
 import { Module } from '@nestjs/common';
@@ -10,7 +11,7 @@ import { Trade2006InvoiceModule } from '../trade2006.invoice/trade2006.invoice.m
 import { ProductModule } from '../product/product.module';
 
 @Module({
-    imports: [FirebirdModule, Trade2006InvoiceModule, ProductModule, MpEventModule],
+    imports: [JobModule, FirebirdModule, Trade2006InvoiceModule, ProductModule, MpEventModule],
     providers: [
         Trade2006AccrualService,
         AccrualWeekService,

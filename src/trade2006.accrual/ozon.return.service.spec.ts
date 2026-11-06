@@ -1,3 +1,4 @@
+import { JobService } from '../job/job.service';
 import { ConfigService } from '@nestjs/config';
 import { Logger } from '@nestjs/common';
 import { OzonReturnService } from './ozon.return.service';
@@ -15,14 +16,22 @@ const setup = (settings = {}) => {
             issues: [],
         }),
     };
-    const store = { save: jest.fn().mockResolvedValue(undefined) };
+    const store = { replace: jest.fn().mockResolvedValue(undefined), listKnownOffers: jest.fn().mockResolvedValue([]) };
+    const writeOffs = { listRecordedWriteOffs: jest.fn().mockResolvedValue([]) };
     const values = { NODE_ENV: 'production', SERVICES: ['ozon'], ...settings };
     const config = { get: (key, fallback) => values[key] ?? fallback } as ConfigService;
     return {
         products,
         preview,
         store,
-        service: new OzonReturnService(config, products as any, preview as any, store as any),
+        service: new OzonReturnService(
+            config,
+            products as any,
+            preview as any,
+            store as any,
+            writeOffs as any,
+            new JobService(),
+        ),
     };
 };
 describe('Ежедневный пересчёт возвратов', () => {
@@ -42,7 +51,22 @@ describe('Ежедневный пересчёт возвратов', () => {
                 ['11', '123'],
             ]),
         );
-        expect(store.save).toHaveBeenCalledWith([{ goodscode: '123', pieces: 1, returnPerc: 1 }], now, 0);
+        expect(store.replace).toHaveBeenCalledWith(
+            expect.objectContaining({
+                service: 'OZON',
+                calculatedAt: now,
+                rows: [
+                    expect.objectContaining({
+                        offerId: '123',
+                        soldUnits: 3,
+                        returnedUnits: 3,
+                        returnRate: 1,
+                        appliedReturnRate: 1,
+                    }),
+                ],
+            }),
+            expect.any(Object),
+        );
     });
     it('граница дня определяется по Москве', async () => {
         const { service, preview } = setup();
@@ -52,8 +76,8 @@ describe('Ежедневный пересчёт возвратов', () => {
     it('передаёт настройки малой истории и резерва', async () => {
         const { service, store } = setup({ OZON_RETURN_MIN_SALES: '5', OZON_RETURN_PERC_DEFAULT: '0.07' });
         await service.recalculate(now);
-        expect(store.save.mock.calls[0][0][0].returnPerc).toBe(0.07);
-        expect(store.save.mock.calls[0][2]).toBe(0.07);
+        expect(store.replace.mock.calls[0][0].rows[0].appliedReturnRate).toBe(0.07);
+        expect(store.replace.mock.calls[0][0].rows[0].returnRate).toBe(1);
     });
     it.each([{ NODE_ENV: 'development' }, { NODE_ENV: 'test' }, { SERVICES: ['wb'] }])(
         'не запускает запись для %j',
@@ -61,7 +85,7 @@ describe('Ежедневный пересчёт возвратов', () => {
             const { service, products, store } = setup(settings);
             await service.daily();
             expect(products.listAllOfferIds).not.toHaveBeenCalled();
-            expect(store.save).not.toHaveBeenCalled();
+            expect(store.replace).not.toHaveBeenCalled();
         },
     );
     it('задача зарегистрирована только в production, сохраняет часовой пояс декоратора', () => {
@@ -75,10 +99,14 @@ describe('Ежедневный пересчёт возвратов', () => {
         for (const failure of ['catalog', 'history', 'save']) {
             const { service, products, preview, store } = setup();
             const method =
-                failure === 'catalog' ? products.listAllOfferIds : failure === 'history' ? preview.preview : store.save;
+                failure === 'catalog'
+                    ? products.listAllOfferIds
+                    : failure === 'history'
+                      ? preview.preview
+                      : store.replace;
             method.mockRejectedValueOnce(new Error(failure));
             await expect(service.recalculate(now)).rejects.toThrow(failure);
-            if (failure !== 'save') expect(store.save).not.toHaveBeenCalled();
+            if (failure !== 'save') expect(store.replace).not.toHaveBeenCalled();
             await expect(service.recalculate(now)).resolves.toMatchObject({ rows: 1 });
         }
     });
@@ -97,10 +125,11 @@ describe('Ежедневный пересчёт возвратов', () => {
             }),
         );
         const first = service.recalculate(now);
+        while (!release) await new Promise<void>((resolve) => setImmediate(resolve));
         await expect(service.recalculate(now)).rejects.toThrow('уже выполняется');
         release(['123']);
         await first;
-        expect(store.save).toHaveBeenCalledTimes(1);
+        expect(store.replace).toHaveBeenCalledTimes(1);
     });
     it.each(['empty', 'missing', 'duplicate', 'conflict', 'issues', 'over100'])(
         'не сохраняет повреждённые данные: %s',
@@ -123,14 +152,14 @@ describe('Ежедневный пересчёт возвратов', () => {
                     issues: [],
                 });
             await expect(service.recalculate(now)).rejects.toThrow();
-            expect(store.save).not.toHaveBeenCalled();
+            expect(store.replace).not.toHaveBeenCalled();
         },
     );
     it('валидация настроек до сети и сохранения', async () => {
         const { service, products, store } = setup({ OZON_RETURN_MIN_SALES: 'bad' });
         await expect(service.recalculate(now)).rejects.toThrow();
         expect(products.listAllOfferIds).not.toHaveBeenCalled();
-        expect(store.save).not.toHaveBeenCalled();
+        expect(store.replace).not.toHaveBeenCalled();
     });
     it('читает каталог через существующий метод пачками по 100', async () => {
         const { service, products, store } = setup();
@@ -139,6 +168,6 @@ describe('Ежедневный пересчёт возвратов', () => {
         products.infoList.mockImplementation(async (batch) => batch.map((sku) => ({ sku, marketSku: Number(sku) })));
         await service.recalculate(now);
         expect(products.infoList.mock.calls.map(([batch]) => batch.length)).toEqual([100, 100, 5]);
-        expect(store.save.mock.calls[0][0]).toHaveLength(205);
+        expect(store.replace.mock.calls[0][0].rows).toHaveLength(205);
     });
 });
