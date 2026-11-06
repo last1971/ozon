@@ -27,6 +27,7 @@ const writes: [Parameters<typeof assertPricingRequestAllowed>[0], string, string
     ['ozon', '/v1/actions/discounts-task/decline', 'post'],
     ['wb', 'https://discounts-prices-api.wildberries.ru/api/v2/upload/task', 'post'],
     ['wb', '/public/api/v1/prices', 'post'],
+    ['wb', 'https://content-api.wildberries.ru/content/v2/cards/upload', 'post'],
     ['wb', '/public/api/v1/updateDiscounts', 'post'],
     ['wb', '/api/v1/calendar/promotions/upload', 'post'],
     ['yandex', 'businesses/123/offer-prices/updates', 'post'],

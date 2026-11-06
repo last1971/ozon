@@ -45,6 +45,7 @@ export function assertPricingRequestAllowed(platform: Platform, endpoint: string
         case 'wb':
             writes =
                 /^\/api\/v\d+\/(?:upload|calendar\/promotions\/upload)(?:\/|$)/.test(path) ||
+                /^\/content\/v\d+\/cards\/upload(?:\/add)?$/.test(path) ||
                 /^\/public\/api\/v\d+\/(?:prices|updatediscounts|revokediscounts)$/.test(path);
             break;
         case 'yandex':
