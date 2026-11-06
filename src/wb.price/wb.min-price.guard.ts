@@ -25,8 +25,8 @@ export class WbMinPriceGuard {
         private readonly events: EventEmitter2,
     ) {}
 
-    // Боевое время задаёт cron.setup.ts; :09/:24/… — мимо пятиминуток заказов и проверки прибыли.
-    @Cron('0 9/15 * * * *', { name: 'wbHoldMinPrices' })
+    // Боевое время задаёт cron.setup.ts: раз в час на 9-й минуте, отдельно от сверки Ozon.
+    @Cron('0 9 * * * *', { name: 'wbHoldMinPrices' })
     async run(): Promise<void> {
         if (this.running || !this.config.get<GoodServiceEnum[]>('SERVICES', []).includes(GoodServiceEnum.WB)) return;
         this.running = true;

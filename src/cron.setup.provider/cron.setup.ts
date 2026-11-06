@@ -288,7 +288,7 @@ export const cronConfig: Record<string, CronSetup> = {
         production: {
             enabled: true,
             settings: {
-                time: '0 9/15 * * * *',
+                time: '0 9 * * * *',
             },
         },
         development: false,
@@ -297,7 +297,7 @@ export const cronConfig: Record<string, CronSetup> = {
         production: {
             enabled: true,
             settings: {
-                time: '0 20/30 * * * *',
+                time: '0 20 * * * *',
             },
         },
         development: false,

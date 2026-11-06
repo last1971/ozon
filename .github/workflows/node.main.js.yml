@@ -60,7 +60,9 @@ jobs:
             npm ci
             npm run build
             test -f dist/main.js
-            pm2 restart ozon --update-env
+            # При переключении режима .env должен заменить старое значение, сохранённое PM2.
+            pricing_review_mode=$(node -e "const fs=require('fs'); const env=require('dotenv').parse(fs.readFileSync('.env')); process.stdout.write(env.PRICING_REVIEW_MODE || 'false')")
+            PRICING_REVIEW_MODE="$pricing_review_mode" pm2 restart ozon --update-env
             # Ждём, пока поднимется: /api отвечает 200, иначе выкатка считается неудачной.
             # Старт Nest на магазине — 2–3 минуты (HNSW-индекс, SKU площадок); 26.10.2026 ждали
             # минуту, деплой «упал», сторож остался выключенным и админка не пересобралась.
