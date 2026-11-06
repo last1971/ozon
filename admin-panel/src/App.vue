@@ -1,4 +1,5 @@
 <script setup lang="ts">
+  import PricingReviewBanner from "@/components/PricingReviewBanner.vue";
   import { RouterView } from 'vue-router'
   import InfoSnackbar from "@/components/InfoSnackbar.vue";
 </script>
@@ -7,6 +8,7 @@
     <v-app>
         <v-app-bar title="Admin Panel" elevation="3"></v-app-bar>
         <v-main class="ma-3">
+            <PricingReviewBanner />
             <router-view />
             <info-snackbar />
         </v-main>
