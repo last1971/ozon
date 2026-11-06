@@ -151,3 +151,20 @@ describe('Склады FBO', () => {
         expect(() => fboOrigins('123', [stock(10, -1)], clusters)).toThrow();
     });
 });
+
+describe('FBO: российские и зарубежные склады', () => {
+    it('учитывает Минск и Ереван вместе с российским остатком', () => {
+        const data = [
+            { name: 'Москва', id: 1, units: 3 },
+            { name: 'Беларусь', id: 23402539267000, units: 2 },
+            { name: 'Армения', id: 1020000407473000, units: 1 },
+        ];
+        expect(
+            fboOrigins(
+                '548394-4',
+                data.map((d) => ({ offer_id: '548394-4', sku: 10, warehouse_id: d.id, present: d.units, reserved: 0 })),
+                data.map((d) => ({ name: d.name, logistic_clusters: [{ warehouses: [{ warehouse_id: d.id }] }] })),
+            ),
+        ).toEqual(data.map((d) => ({ cluster: d.name, units: d.units })));
+    });
+});

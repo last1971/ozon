@@ -58,9 +58,12 @@ export class YandexPriceService implements IPriceUpdateable, IVatUpdateable, OnM
     }
 
     async updatePrices(updatePrices: UpdatePriceDto[]): Promise<any> {
+        const offerUpdate = await this.updateOfferPrices(updatePrices);
+        const incomingUpdate = await this.updateIncomingPrices(updatePrices);
         return {
-            offerUpdate: await this.updateOfferPrices(updatePrices),
-            incomingUpdate: await this.updateIncomingPrices(updatePrices),
+            offerUpdate,
+            incomingUpdate,
+            status: offerUpdate?.status === 'OK' && incomingUpdate.status === 'OK' ? 'OK' : 'NotOk',
         };
     }
 
@@ -77,9 +80,28 @@ export class YandexPriceService implements IPriceUpdateable, IVatUpdateable, OnM
             }),
         );
         const offerMappings = updates.map((offer) => ({ offer }));
-        return this.api.method(`businesses/${this.businessId}/offer-mappings/update`, 'post', {
-            offerMappings,
-        });
+        // Лимит метода offer-mappings/update — 100 товаров, в том числе при смене только цен.
+        const batches: { offerIds: string[]; response: any }[] = [];
+        for (const batch of chunk(offerMappings, 100)) {
+            const response = await this.api.method(`businesses/${this.businessId}/offer-mappings/update`, 'post', {
+                offerMappings: batch,
+            });
+            batches.push({ offerIds: batch.map((row) => row.offer.offerId), response });
+        }
+        const failed = batches.filter(
+            ({ response }) => response?.status !== 'OK' || response?.result?.results?.some((row) => row.errors?.length),
+        );
+        if (batches.length === 1 && !failed.length) return batches[0].response;
+        return {
+            status: failed.length ? 'NotOk' : 'OK',
+            batches,
+            result: { results: batches.flatMap(({ response }) => response?.result?.results ?? []) },
+            errors: failed.map(({ offerIds, response }) => ({
+                offerIds,
+                message: response?.error?.message || 'Яндекс не подтвердил обновление данных товаров',
+                response,
+            })),
+        };
     }
 
     async updateOfferPrices(prices: UpdatePriceDto[]): Promise<any> {

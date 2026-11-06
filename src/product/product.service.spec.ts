@@ -199,9 +199,13 @@ describe('ProductService', () => {
         const input = { offer_id: 'x', price: '950', old_price: '1000', min_price: '900', currency_code: 'RUB' };
         method.mockResolvedValueOnce({ result: null, error: { message: 'rate limit' } });
         const result = await service.setPrice({ prices: [input] });
-        expect(method).toHaveBeenLastCalledWith('/v1/product/import/prices', { prices: [{ ...input, old_price: '1001' }] });
+        expect(method).toHaveBeenLastCalledWith('/v1/product/import/prices', {
+            prices: [{ ...input, old_price: '1001' }],
+        });
         expect(input.old_price).toBe('1000');
-        expect(result).toEqual({ result: [{ offer_id: 'x', updated: false, errors: [{ code: 'api_error', message: 'rate limit' }] }] });
+        expect(result).toEqual({
+            result: [{ offer_id: 'x', updated: false, errors: [{ code: 'api_error', message: 'rate limit' }] }],
+        });
     });
     it('test setPrice', async () => {
         method.mockResolvedValue({ result: [{ updated: true }] });
@@ -244,7 +248,7 @@ describe('ProductService', () => {
         method.mockResolvedValueOnce({
             result: [
                 { offer_id: '1', updated: true, errors: [] },
-                { offer_id: '2', updated: false, errors: [{ code: 'TOO_MANY_REQUESTS', message: 'limit' }] },
+                { offer_id: '2', updated: false, errors: [{ code: 'PRICE_IS_NOT_SENT', message: 'нет цены' }] },
             ],
         });
         expect(
@@ -555,7 +559,6 @@ describe('ProductService', () => {
     });
 });
 
-
 describe('API направлений и складов Ozon', () => {
     const make = () => {
         const method = jest.fn();
@@ -608,8 +611,12 @@ describe('API направлений и складов Ozon', () => {
         method.mockResolvedValueOnce({ clusters: [] });
         await expect(service.ozonClusters()).rejects.toThrow('справочника');
         const clusters = [{ name: 'Москва', logistic_clusters: [] }];
-        method.mockResolvedValueOnce({ clusters });
-        expect(await service.ozonClusters()).toEqual(clusters);
-        expect(method).toHaveBeenLastCalledWith('/v1/cluster/list', { cluster_type: 'CLUSTER_TYPE_OZON' });
+        const cis = [{ name: 'Беларусь', logistic_clusters: [{ warehouses: [{ warehouse_id: 23402539267000 }] }] }];
+        method.mockResolvedValueOnce({ clusters }).mockResolvedValueOnce({ clusters: cis });
+        expect(await service.ozonClusters()).toEqual([...clusters, ...cis]);
+        expect(method).toHaveBeenCalledWith('/v1/cluster/list', { cluster_type: 'CLUSTER_TYPE_OZON' });
+        expect(method).toHaveBeenLastCalledWith('/v1/cluster/list', { cluster_type: 'CLUSTER_TYPE_CIS' });
+        method.mockResolvedValueOnce({ clusters }).mockResolvedValueOnce({ error: { message: 'CIS failed' } });
+        await expect(service.ozonClusters()).rejects.toThrow();
     });
 });

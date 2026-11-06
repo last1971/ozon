@@ -90,7 +90,7 @@ describe('Расходы Ozon для единого расчёта цены', ()
         expect(m.products.fboStocks).toHaveBeenCalledTimes(1);
         expect(m.products.ozonClusters).toHaveBeenCalledTimes(1);
         expect(m.cache.set).toHaveBeenCalledWith('test:opt:stocks:123-5', expect.any(Array), 300000);
-        expect(m.cache.set).toHaveBeenCalledWith('test:opt:clusters', expect.any(Array), 86400000);
+        expect(m.cache.set).toHaveBeenCalledWith('test:opt:clusters:ozon-cis', expect.any(Array), 86400000);
     });
     it('новый тариф применяется при прежнем распределении и остатках', async () => {
         const m = make();
@@ -173,7 +173,8 @@ describe('Расходы Ozon для единого расчёта цены', ()
 
 describe('Пакетная подготовка FBO', () => {
     it('несколько товаров загружаются одним вызовом, quote использует прежний кеш', async () => {
-        const m = make(); const second = { ...m.info, sku: 'other' };
+        const m = make();
+        const second = { ...m.info, sku: 'other' };
         m.products.fboStocks.mockResolvedValue([
             { offer_id: m.info.sku, sku: 1, warehouse_id: 9, present: 5, reserved: 1 },
             { offer_id: 'other', sku: 2, warehouse_id: 9, present: 1, reserved: 0 },
@@ -187,7 +188,8 @@ describe('Пакетная подготовка FBO', () => {
         expect(m.products.fboStocks).toHaveBeenCalledTimes(1);
     });
     it('отказ пачки не создаёт повторного запроса на каждый товар; остаётся резервный тариф', async () => {
-        const m = make(); m.products.fboStocks.mockRejectedValue(new Error('429'));
+        const m = make();
+        m.products.fboStocks.mockRejectedValue(new Error('429'));
         await m.service.prepare([m.info, { ...m.info, sku: 'other' }]);
         const quote = await m.service.quote(m.product, m.info);
         expect(quote.fbo.bands[0].amount).toBe(200);

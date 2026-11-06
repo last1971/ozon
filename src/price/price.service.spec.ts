@@ -341,6 +341,28 @@ describe('PriceService', () => {
             taxUnit: 6,
         });
     });
+    it('ручной расчёт находит снятый с продажи 546878 через ALL', async () => {
+        getPrices.mockImplementationOnce(async (filter) => ({
+            items:
+                filter.visibility === ProductVisibility.ALL ? [{ offer_id: '546878', price: {}, commissions: {} }] : [],
+        }));
+        const result = await service.withOzonPricing({ offer_id: '546878' } as any);
+        expect(result.ozon).toEqual(pricingContext);
+        expect(getPrices).toHaveBeenCalledWith(
+            expect.objectContaining({ offer_id: ['546878'], visibility: ProductVisibility.ALL }),
+        );
+    });
+    it('отсутствующий артикул не выдаёт за отсутствие тарифа', async () => {
+        getPrices.mockResolvedValueOnce({ items: [] });
+        await expect(service.withOzonPricing({ offer_id: 'unknown' } as any)).rejects.toThrow('Ozon не вернул товар');
+    });
+    it('отсутствие расчётных данных сообщает отдельно от отсутствия карточки', async () => {
+        jest.spyOn(service, 'getProductsWithCoeffs').mockResolvedValueOnce([
+            { getSku: () => '1', getOzonPricing: () => undefined } as any,
+        ]);
+        await expect(service.withOzonPricing({ offer_id: '1' } as any)).rejects.toThrow('нет данных расчёта');
+    });
+
     it('getProductsWithCoeffs', async () => {
         getPrices.mockResolvedValueOnce({
             items: [
@@ -421,7 +443,7 @@ describe('PriceService', () => {
         service = module.get<PriceService>(PriceService);
         const res = await service.getProductsWithCoeffs(['1']);
         expect(res[0]).toBeInstanceOf(OzonProductCoeffsAdapter);
-        expect(getPrices.mock.calls[0]).toEqual([{ limit: 1000, offer_id: ['1'], visibility: 'IN_SALE' }]);
+        expect(getPrices.mock.calls[0]).toEqual([{ limit: 1000, offer_id: ['1'], visibility: 'ALL' }]);
         expect(mockInfoList).toHaveBeenCalledWith(['1']);
     });
 

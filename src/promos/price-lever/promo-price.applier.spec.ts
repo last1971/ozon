@@ -12,7 +12,14 @@ describe('PromoPriceApplier — исполнение шагов плана', () 
     const remove = jest.fn();
     const calls: string[] = [];
 
-    const okUpdate = (over: any = {}) => ({ added: [], removed: [], unchanged: [], rejected: [], warnings: [], ...over });
+    const okUpdate = (over: any = {}) => ({
+        added: [],
+        removed: [],
+        unchanged: [],
+        rejected: [],
+        warnings: [],
+        ...over,
+    });
     /** 532100 живьём: выкинуть из эластичного (967/1256), наш 5 → 14 %. */
     const plan = (steps: PromoPriceStep[], over: Partial<PromoPricePlan> = {}): PromoPricePlan =>
         ({
@@ -70,7 +77,19 @@ describe('PromoPriceApplier — исполнение шагов плана', () 
         const module = await Test.createTestingModule({
             providers: [
                 PromoPriceApplier,
-                { provide: OzonPromosApi, useValue: { update } },
+                {
+                    provide: OzonPromosApi,
+                    useValue: {
+                        update,
+                        currentProduct: jest.fn(async (actionId, productId, participant) => ({
+                            id: productId,
+                            maxActionPrice: 1256,
+                            actionPrice: 967,
+                            stock: 2,
+                            participant,
+                        })),
+                    },
+                },
                 { provide: OzonSellerActionsApi, useValue: { setPercent } },
                 { provide: PromosService, useValue: { remove } },
             ],
@@ -150,6 +169,15 @@ describe('PromoPriceApplier — исполнение шагов плана', () 
         const set: PromoPriceStep = { kind: 'ozon-set', actionId: 1977747, title: 'Эластичный', from: 967, to: 1256 };
         res = await applier.apply(plan([set]));
         expect(res.results[0]).toEqual({ step: set, status: 'rejected', reason: 'timeout' });
+    });
+
+    it('ошибка свежих условий не отправляет ни цену, ни последующее повышение процента', async () => {
+        jest.spyOn(applier['api'], 'currentProduct').mockRejectedValueOnce(new Error('rate limit'));
+        const set: PromoPriceStep = { kind: 'ozon-set', actionId: 1977747, title: 'Эластичный', from: 967, to: 1256 };
+        const res = await applier.apply(plan([set, raise]));
+        expect(res.applied).toBe(false);
+        expect(res.results.every((r) => r.status === 'skipped')).toBe(true);
+        expect(calls).toEqual([]);
     });
 
     it('шагов нет — applied: true, в API не ходим', async () => {

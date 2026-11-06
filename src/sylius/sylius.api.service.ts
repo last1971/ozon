@@ -1,3 +1,4 @@
+import { SerialTaskQueue } from '../helpers/serial-task.queue';
 import { assertPricingRequestAllowed } from '../helpers/price/pricing-review-mode';
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
@@ -11,6 +12,7 @@ type HttpVerb = 'get' | 'post' | 'put' | 'patch' | 'delete';
 @Injectable()
 export class SyliusApiService {
     private readonly logger = new Logger(SyliusApiService.name);
+    private readonly stockWrites = new SerialTaskQueue();
     private accessToken: string | null = null;
     private accessTokenExpiresAt: number | null = null;
 
@@ -23,17 +25,41 @@ export class SyliusApiService {
         assertPricingRequestAllowed('sylius', path, method);
         const url = this.buildUrl(path);
 
+        const stockWrite = method === 'post' && path === '/api/v2/admin/stock/update';
+        const send = () => this.sendWithRetry<T>(url, method, data, stockWrite);
+        return stockWrite ? this.stockWrites.run(url, send) : send();
+    }
+
+    private async sendWithRetry<T>(url: string, method: HttpVerb, data: any, stockWrite: boolean): Promise<T> {
         let token = await this.getAccessToken(false);
-        try {
-            return await this.makeRequest<T>(url, method, data, token);
-        } catch (err) {
-            const axiosErr = err as AxiosError;
-            if (this.isUnauthorized(axiosErr)) {
-                token = await this.getAccessToken(true);
+        let refreshed = false;
+        let conflicts = 0;
+        for (;;) {
+            try {
                 return await this.makeRequest<T>(url, method, data, token);
+            } catch (err) {
+                const axiosErr = err as AxiosError<any>;
+                if (!refreshed && this.isUnauthorized(axiosErr)) {
+                    refreshed = true;
+                    token = await this.getAccessToken(true);
+                    continue;
+                }
+                // Подтверждённый отказ транзакции Sylius. Здесь задаются абсолютные остатки,
+                // поэтому повтор допустим; остальные 409 и сетевые сбои не повторяем.
+                if (
+                    stockWrite &&
+                    axiosErr.response?.status === 409 &&
+                    /optimistic lock on an entity failed/i.test(axiosErr.response?.data?.detail ?? '') &&
+                    conflicts < 2
+                ) {
+                    const delay = 250 * ++conflicts;
+                    this.logger.warn(`Sylius: конфликт записи остатков, повтор ${conflicts}/2 через ${delay} мс`);
+                    await new Promise((resolve) => setTimeout(resolve, delay));
+                    continue;
+                }
+                this.logger.error(formatAxiosError(axiosErr, { url, method, body: data }));
+                throw err;
             }
-            this.logger.error(formatAxiosError(axiosErr, { url, method, body: data }));
-            throw err;
         }
     }
 

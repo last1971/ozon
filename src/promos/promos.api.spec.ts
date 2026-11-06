@@ -181,3 +181,98 @@ describe('OzonPromosApi — контракт Seller API по акциям (v2, 1
         expect(method).toHaveBeenCalledWith('/v2/actions/products/deactivate', { action_id: 9, product_ids: [5, 6] });
     });
 });
+
+describe('Обновление условий и тип акции', () => {
+    it('ELASTIC_BOOSTING сразу отправляется без stock; другие акции сохраняют stock', async () => {
+        const method = jest
+            .fn()
+            .mockResolvedValueOnce({
+                result: [
+                    { id: 1, action_type: 'ELASTIC_BOOSTING' },
+                    { id: 2, action_type: 'DISCOUNT' },
+                ],
+            })
+            .mockResolvedValue({ active_product_ids: [7] });
+        const api = new OzonPromosApi({ method } as any);
+        await api.listActions();
+        await api.update(1, [{ productId: 7, actionPrice: 100, stock: 2 }]);
+        expect(method.mock.calls[1][1].products[0]).not.toHaveProperty('stock');
+        await api.update(2, [{ productId: 7, actionPrice: 100, stock: 2 }]);
+        expect(method.mock.calls[2][1].products[0]).toHaveProperty('stock', 2);
+    });
+    it('запоминает отказ stock у неизвестного типа, не повторяет ошибку для следующего товара', async () => {
+        const method = jest
+            .fn()
+            .mockResolvedValueOnce({ error: { message: 'stock not supported for this action' } })
+            .mockResolvedValue({ active_product_ids: [7] });
+        const api = new OzonPromosApi({ method } as any);
+        await api.update(1, [{ productId: 7, actionPrice: 100, stock: 2 }]);
+        await api.update(1, [{ productId: 8, actionPrice: 101, stock: 3 }]);
+        expect(method).toHaveBeenCalledTimes(3);
+        expect(method.mock.calls[2][1].products[0]).not.toHaveProperty('stock');
+    });
+    it('один снимок на акцию, обновление через минуту; ошибку чтения не кеширует', async () => {
+        jest.useFakeTimers();
+        try {
+            const api = new OzonPromosApi({} as any);
+            const list = jest.spyOn(api, 'listAll').mockResolvedValue([
+                { id: 7, price: 150, actionPrice: 100, maxActionPrice: 120, stock: 2, minStock: 0 },
+                { id: 8, price: 150, actionPrice: 100, maxActionPrice: 130, stock: 1, minStock: 0 },
+            ]);
+            const [a, b] = await Promise.all([api.currentProduct(1, 7, true), api.currentProduct(1, 8, true)]);
+            expect(a.maxActionPrice).toBe(120);
+            expect(b.maxActionPrice).toBe(130);
+            expect(list).toHaveBeenCalledTimes(1);
+            jest.advanceTimersByTime(60001);
+            list.mockRejectedValueOnce(new Error('429'));
+            await expect(api.currentProduct(1, 7, true)).rejects.toThrow('429');
+            expect((await api.currentProduct(1, 7, true)).maxActionPrice).toBe(120);
+            expect(list).toHaveBeenCalledTimes(3);
+        } finally {
+            jest.useRealTimers();
+        }
+    });
+    it('проверяет кандидатов, если участник исчез; мягкий отказ API не становится пустым списком', async () => {
+        const method = jest.fn().mockResolvedValue({ error: { message: 'rate limit' } });
+        const api = new OzonPromosApi({ method } as any);
+        await expect(api.currentProduct(1, 7, true)).rejects.toThrow('rate limit');
+        const list = jest
+            .spyOn(api, 'listAll')
+            .mockResolvedValueOnce([])
+            .mockResolvedValueOnce([{ id: 7, price: 150, actionPrice: 0, maxActionPrice: 120, stock: 2, minStock: 0 }]);
+        expect((await api.currentProduct(1, 7, true)).participant).toBe(false);
+        expect(list).toHaveBeenNthCalledWith(2, 'candidates', 1);
+    });
+});
+
+describe('Регрессия stock not supported: магазин 06.11.2026', () => {
+    it.each([
+        [1977747, 'ELASTIC_BOOSTING'],
+        [4469666, 'STOCK_DISCOUNT'],
+        [4465756, 'STOCK_DISCOUNT'],
+        [4470585, 'STOCK_DISCOUNT'],
+    ])('акция %s (%s): вся пачка отправляется без stock с первого запроса', async (id, action_type) => {
+        const method = jest
+            .fn()
+            .mockResolvedValueOnce({ result: [{ id, action_type }] })
+            .mockResolvedValue({ active_product_ids: [534963055, 534997398] });
+        const api = new OzonPromosApi({ method } as any);
+        await api.listActions();
+        const result = await api.update(id, [
+            { productId: 534963055, actionPrice: 1120, stock: 38 },
+            { productId: 534997398, actionPrice: 1766, stock: 30 },
+        ]);
+        expect(method).toHaveBeenCalledTimes(2);
+        expect(method.mock.calls[1]).toEqual([
+            '/v1/actions/products/update',
+            {
+                action_id: id,
+                products: [
+                    { product_id: 534963055, action_price: { amount: '1120', currency: 'RUB' } },
+                    { product_id: 534997398, action_price: { amount: '1766', currency: 'RUB' } },
+                ],
+            },
+        ]);
+        expect(result.added).toEqual([534963055, 534997398]);
+    });
+});

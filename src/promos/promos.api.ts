@@ -39,11 +39,19 @@ export type ActionProductsKind = 'products' | 'candidates';
 export class OzonPromosApi {
     static readonly PAGE_LIMIT = 100;
 
+    private readonly withoutStock = new Set<number>();
+    private readonly current = new Map<string, { until: number; rows: Promise<Map<number, ActionProduct>> }>();
+
     constructor(private readonly ozon: OzonApiService) {}
 
     async listActions(): Promise<Action[]> {
         const res = await this.ozon.method('/v1/actions', {}, 'get');
-        return res?.result ?? [];
+        const actions: Action[] = res?.result ?? [];
+        for (const action of actions) {
+            if (action.action_type === 'ELASTIC_BOOSTING' || action.action_type === 'STOCK_DISCOUNT')
+                this.withoutStock.add(action.id);
+        }
+        return actions;
     }
 
     /** Все участники или все кандидаты акции — страницами по last_id до конца. */
@@ -59,6 +67,36 @@ export class OzonPromosApi {
         return all;
     }
 
+    /** Короткий снимок на акцию, общий для товаров массового применения. Не кешируем ошибки. */
+    async currentProduct(
+        actionId: number,
+        productId: number,
+        participant: boolean,
+    ): Promise<(ActionProduct & { participant: boolean }) | null> {
+        const first: ActionProductsKind = participant ? 'products' : 'candidates';
+        for (const kind of [first, first === 'products' ? 'candidates' : 'products'] as ActionProductsKind[]) {
+            const key = `${actionId}:${kind}`;
+            let entry = this.current.get(key);
+            if (!entry || entry.until <= Date.now()) {
+                entry = { until: Infinity, rows: null };
+                const pending = entry;
+                entry.rows = this.listAll(kind, actionId)
+                    .then((rows) => {
+                        pending.until = Date.now() + 60_000;
+                        return new Map(rows.map((row) => [row.id, row]));
+                    })
+                    .catch((error) => {
+                        this.current.delete(key);
+                        throw error;
+                    });
+                this.current.set(key, entry);
+            }
+            const product = (await entry.rows).get(productId);
+            if (product) return { ...product, participant: kind === 'products' };
+        }
+        return null;
+    }
+
     async page(
         kind: ActionProductsKind,
         actionId: number,
@@ -67,8 +105,11 @@ export class OzonPromosApi {
         const body: Record<string, unknown> = { action_id: actionId, limit: OzonPromosApi.PAGE_LIMIT };
         if (lastId) body.last_id = lastId;
         const res: ApiProductsPage = await this.ozon.method(`/v2/actions/${kind}`, body);
+        const error = OzonPromosApi.errorText(res);
+        if (error) throw new Error(error);
+        if (!Array.isArray(res?.products)) throw new Error('Ozon не вернул список товаров акции');
         return {
-            products: (res?.products ?? []).map(OzonPromosApi.toProduct),
+            products: res.products.map(OzonPromosApi.toProduct),
             total: res?.total ?? 0,
             lastId: res?.last_id ?? '',
         };
@@ -80,9 +121,10 @@ export class OzonPromosApi {
      */
     async update(actionId: number, products: ActionProductUpdate[]): Promise<ActionUpdateResult> {
         if (!products.length) return { added: [], removed: [], unchanged: [], rejected: [], warnings: [] };
-        let res = await this.sendUpdate(actionId, products, true);
-        // «Эластичный бустинг» остаток не принимает: 400 «stock not supported for this action» (20.10.2026, 570341)
+        let res = await this.sendUpdate(actionId, products, !this.withoutStock.has(actionId));
+        // Для неизвестного типа запоминаем явный отказ stock и повторяем только без этого поля.
         if (/stock not supported/i.test(OzonPromosApi.errorText(res))) {
+            this.withoutStock.add(actionId);
             res = await this.sendUpdate(actionId, products, false);
         }
         // Ошибка Озона — не «пустой ответ»: каждый товар запроса в отказ с текстом Озона

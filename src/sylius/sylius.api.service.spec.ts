@@ -164,3 +164,77 @@ describe('SyliusApiService', () => {
         });
     });
 });
+
+describe('Sylius: конфликт записи остатков 409', () => {
+    const conflict = (status = 409, detail = 'The optimistic lock on an entity failed.') => ({
+        message: `Request failed with status code ${status}`,
+        response: { status, data: { detail } },
+    });
+    const make = () => {
+        const http = {
+            post: jest.fn().mockReturnValue(of({ data: { token: 'test-token' } })),
+            request: jest.fn(),
+            get: jest.fn(),
+        };
+        const service = new SyliusApiService(
+            http as any,
+            { get: (key, fallback) => (key === 'SYLIUS_URL' ? 'http://site' : fallback) } as any,
+        );
+        jest.spyOn(service['logger'], 'warn').mockImplementation(() => {});
+        const log = jest.spyOn(service['logger'], 'error').mockImplementation(() => {});
+        return { http, service, log };
+    };
+    beforeEach(() => jest.useFakeTimers());
+    afterEach(() => jest.useRealTimers());
+
+    it('ограниченный повтор конфликта; следующая запись ждёт и сохраняет более новое значение', async () => {
+        const { http, service } = make();
+        http.request.mockReturnValueOnce(throwError(() => conflict())).mockReturnValue(of({ data: { updated: 1 } }));
+        const first = service.method('/api/v2/admin/stock/update', 'post', { goods: { '123': 4 } });
+        const next = service.method('/api/v2/admin/stock/update', 'post', { goods: { '123': 2 } });
+        await jest.advanceTimersByTimeAsync(249);
+        expect(http.request).toHaveBeenCalledTimes(1);
+        await jest.advanceTimersByTimeAsync(1);
+        expect(await first).toEqual({ updated: 1 });
+        expect(await next).toEqual({ updated: 1 });
+        expect(http.request.mock.calls.map((c) => c[0].data.goods['123'])).toEqual([4, 4, 2]);
+    });
+    it('после двух повторов возвращает ошибку с адресом, ответом и артикулами; очередь освобождается', async () => {
+        const { http, service, log } = make();
+        const error = conflict();
+        http.request.mockReturnValue(throwError(() => error));
+        const result = service.method('/api/v2/admin/stock/update', 'post', { goods: { '547151': 2 } });
+        const assertion = expect(result).rejects.toBe(error);
+        await jest.advanceTimersByTimeAsync(750);
+        await assertion;
+        expect(http.request).toHaveBeenCalledTimes(3);
+        expect(log).toHaveBeenCalledWith(expect.stringMatching(/stock\/update.*409.*optimistic lock.*547151/));
+        http.request.mockReturnValue(of({ data: { updated: 1 } }));
+        expect(await service.method('/api/v2/admin/stock/update', 'post', { goods: { '547151': 0 } })).toEqual({
+            updated: 1,
+        });
+    });
+    it.each([
+        ['/api/v2/admin/stock/update', conflict(409, 'Another conflict')],
+        ['/api/v2/admin/stock/update', conflict(500)],
+        ['/api/v2/admin/other', conflict()],
+        ['/api/v2/admin/stock/update', { message: 'timeout', code: 'ETIMEDOUT' }],
+    ])('не повторяет неподтверждённый конфликт или сбой %s', async (path, error) => {
+        const { http, service } = make();
+        http.request.mockReturnValue(throwError(() => error));
+        await expect(service.method(path, 'post', { goods: { '123': 2 } })).rejects.toBe(error);
+        expect(http.request).toHaveBeenCalledTimes(1);
+    });
+    it('сохраняет обновление токена один раз и пишет причину ошибки повторного запроса', async () => {
+        const { http, service, log } = make();
+        http.request
+            .mockReturnValueOnce(throwError(() => conflict(401)))
+            .mockReturnValueOnce(throwError(() => conflict(400, 'bad goods')));
+        await expect(
+            service.method('/api/v2/admin/stock/update', 'post', { goods: { '123': 2 } }),
+        ).rejects.toMatchObject({ response: { status: 400 } });
+        expect(http.post).toHaveBeenCalledTimes(2);
+        expect(http.request).toHaveBeenCalledTimes(2);
+        expect(log).toHaveBeenCalledWith(expect.stringContaining('bad goods'));
+    });
+});

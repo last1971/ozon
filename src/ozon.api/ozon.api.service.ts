@@ -86,7 +86,11 @@ export class OzonApiService {
 
         return {
             result: null,
-            error: { service_message: error.message, message: responseData?.['message'] || responseData },
+            error: {
+                status: error.response?.status,
+                service_message: error.message,
+                message: responseData?.['message'] || responseData,
+            },
         };
     }
 

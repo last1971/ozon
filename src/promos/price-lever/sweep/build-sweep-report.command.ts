@@ -7,8 +7,9 @@ import { IPromoSweepContext } from './promo-sweep.context';
 @Injectable()
 export class BuildSweepReportCommand implements IJobCommand<IPromoSweepContext> {
     async execute(context: IPromoSweepContext): Promise<IPromoSweepContext> {
-        const plans = context.plans ?? [];
         const results = new Map((context.results ?? []).map((r) => [r.productId, r]));
+        // Перед отправкой план мог измениться вслед за лимитами Ozon.
+        const plans = (context.plans ?? []).map((p) => results.get(p.productId) ?? p);
         const has = (p: PromoPricePlan, kind: string) => p.steps.some((s) => s.kind === kind);
 
         const items: PromoSweepItem[] = plans.map((p) => {

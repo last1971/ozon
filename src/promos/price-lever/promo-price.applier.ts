@@ -1,3 +1,4 @@
+import { refreshPromoPlan } from './promo-price.refresh';
 import { Injectable, Logger } from '@nestjs/common';
 import { OzonPromosApi } from '../promos.api';
 import { PromosService } from '../promos.service';
@@ -25,6 +26,19 @@ export class PromoPriceApplier {
     ) {}
 
     async apply(plan: PromoPricePlan): Promise<PromoPriceApplyResult> {
+        try {
+            plan = await refreshPromoPlan(plan, this.api);
+        } catch (error) {
+            return {
+                ...plan,
+                applied: false,
+                results: plan.steps.map((step) => ({
+                    step,
+                    status: 'skipped',
+                    reason: `Не удалось проверить текущие условия акции: ${error.message}`,
+                })),
+            };
+        }
         const results: PromoStepResult[] = [];
         const ozonSteps = plan.steps.filter((s) => s.kind !== 'percent');
         const percentSteps = plan.steps.filter((s): s is Step<'percent'> => s.kind === 'percent');

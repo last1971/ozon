@@ -1,3 +1,4 @@
+import { OzonStockWriter } from './ozon-stock.writer';
 import { ozonDisplayPrice } from '../helpers/price/ozon.display-price';
 import { SerializePriceUpdate } from '../helpers/price/price-update.queue';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
@@ -68,7 +69,11 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
             if (!Array.isArray(res?.result?.items)) throw new Error('Не удалось получить полный каталог Ozon');
             const { items, total } = res.result;
             if (total != null) {
-                if (!Number.isSafeInteger(total) || total < 0 || (expectedTotal !== undefined && expectedTotal !== total))
+                if (
+                    !Number.isSafeInteger(total) ||
+                    total < 0 ||
+                    (expectedTotal !== undefined && expectedTotal !== total)
+                )
                     throw new Error('Количество товаров Ozon изменилось или некорректно; повторите загрузку');
                 expectedTotal = total;
             }
@@ -150,11 +155,14 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
         }
         return productCounts;
     }
+    private readonly stockWriter = new OzonStockWriter((stocks) =>
+        this.ozonApiService.method('/v2/products/stocks', { stocks }),
+    );
+
     async updateCount(stocks: ProductCodeStockDto[]): Promise<ProductCodeUpdateStockResultDto> {
-        return this.ozonApiService.method('/v2/products/stocks', {
-            stocks: stocks.map((stock) => ({ ...stock, warehouse_id: this.warehouseId })),
-        });
+        return this.stockWriter.update(stocks.map((stock) => ({ ...stock, warehouse_id: this.warehouseId })));
     }
+
     /**
      * Сбой ручки списка — исключение, а не пустой ответ.
      *
@@ -246,13 +254,17 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
 
     async ozonClusters(): Promise<{ name: string; logistic_clusters: { warehouses: { warehouse_id: number }[] }[] }[]> {
         const endpoint = '/v1/cluster/list';
-        const response = this.assertNoApiError(
-            endpoint,
-            await this.ozonApiService.method(endpoint, { cluster_type: 'CLUSTER_TYPE_OZON' }),
-        );
-        if (!Array.isArray(response?.clusters) || !response.clusters.length)
-            throw new Error('Нет справочника кластеров Ozon');
-        return response.clusters;
+        const clusters = [];
+        for (const clusterType of ['CLUSTER_TYPE_OZON', 'CLUSTER_TYPE_CIS']) {
+            const response = this.assertNoApiError(
+                endpoint,
+                await this.ozonApiService.method(endpoint, { cluster_type: clusterType }),
+            );
+            if (!Array.isArray(response?.clusters) || !response.clusters.length)
+                throw new Error(`Нет справочника кластеров Ozon: ${clusterType}`);
+            clusters.push(...response.clusters);
+        }
+        return clusters;
     }
 
     @SerializePriceUpdate('ozon')
@@ -304,7 +316,7 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
             const response = result?.result || [];
             // Обновлённым считаем только принятое Озоном; отказ (updated:false) — в лог с причиной
             totalUpdated += response.filter((r) => r.updated).length;
-            for (const refused of response.filter((r) => !r.updated)) {
+            for (const refused of response.filter((r) => !r.updated && !r.superseded)) {
                 const sent = chunk.find((c) => c.offer_id === refused.offer_id)?.stock;
                 const why = (refused.errors || [])
                     .map((e: any) => (typeof e === 'string' ? e : [e?.code, e?.message].filter(Boolean).join(' ')))

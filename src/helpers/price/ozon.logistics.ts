@@ -125,7 +125,7 @@ export function fboOrigins(
         const units = Math.max(0, row.present - row.reserved);
         if (!units) continue;
         const origin = warehouses.get(String(row.warehouse_id));
-        if (!origin) throw new Error('Не найден кластер склада с остатком');
+        if (!origin) throw new Error(`Не найден кластер склада ${row.warehouse_id} с остатком`);
         result.set(origin, (result.get(origin) ?? 0) + units);
     }
     return [...result].map(([cluster, units]) => ({ cluster, units }));

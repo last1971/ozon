@@ -23,7 +23,12 @@ export abstract class AbstractOfferService extends ICountUpdateable {
         super();
     }
     async updateCount(skus: StockDto[]): Promise<ResultDto> {
-        await this.yandexApi.method(`campaigns/${this.campaignId}/offers/stocks`, 'put', { skus });
+        if (!skus.length) return { isSuccess: true };
+        const result = await this.yandexApi.method(`campaigns/${this.campaignId}/offers/stocks`, 'put', { skus });
+        if (result?.status !== 'OK' || result?.error)
+            throw new Error(
+                `Яндекс не принял остатки: ${result?.error?.message || result?.error?.service_message || 'нет подтверждения'}`,
+            );
         return { isSuccess: true };
     }
     async index(page_token = '', limit = 100): Promise<GetCampaignOffersResultDto> {

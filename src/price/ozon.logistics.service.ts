@@ -119,12 +119,13 @@ export class OzonLogisticsService {
                     const stocks = await this.cached(`stocks:${encodeURIComponent(info.sku)}`, 300_000, () =>
                         this.products.fboStocks([info.sku]),
                     );
-                    const clusters = await this.cached('clusters', 86400_000, () => this.products.ozonClusters());
+                    const clusters = await this.cached('clusters:ozon-cis', 86400_000, () =>
+                        this.products.ozonClusters(),
+                    );
                     origins = fboOrigins(info.sku, stocks, clusters);
                 } catch (e) {
                     origins = [];
-                    unavailable = 'Не удалось определить склады FBO с остатком';
-                    this.warn(`${unavailable}: ${e.message}`, info.sku);
+                    unavailable = `Не удалось определить склады FBO с остатком: ${e.message}`;
                 }
             }
             const directions = history ? selectOzonRoutes(history, scheme, info.sku, info.typeId, minUnits) : null;

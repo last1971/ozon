@@ -1,9 +1,11 @@
+import { SerialTaskQueue } from '../helpers/serial-task.queue';
+import { RateLimitRetryPolicy } from '../helpers/rate-limit.retry.policy';
 import { assertPricingRequestAllowed } from '../helpers/price/pricing-review-mode';
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { VaultService } from 'vault-module/lib/vault.service';
-import { catchError, firstValueFrom, map, Observable } from 'rxjs';
-import { AxiosError, AxiosResponse } from 'axios';
+import { firstValueFrom } from 'rxjs';
+import { AxiosError } from 'axios';
 import { Agent } from 'https';
 
 @Injectable()
@@ -14,6 +16,13 @@ export class YandexApiService {
      * (с 11.10.2026 коннект к Яндексу временами 1–3 с — десятки пустых «Яндекс orders:» в день).
      */
     private static readonly httpsAgent = new Agent({ family: 4, keepAlive: true });
+    private readonly requests = new SerialTaskQueue();
+    private readonly retry = new RateLimitRetryPolicy({
+        retryHeader: 'retry-after',
+        maxRetries: 2,
+        maxWaitMs: 30000,
+        defaultWaitMs: 2000,
+    });
     private logger = new Logger(YandexApiService.name);
     constructor(
         private httpService: HttpService,
@@ -28,24 +37,33 @@ export class YandexApiService {
     async method(name: string, method: string, options: any): Promise<any> {
         const yandexSeller = await this.vaultService.get('yandex-seller');
         assertPricingRequestAllowed('yandex', name, method);
-        let response: Observable<AxiosResponse>;
-        const headers = {
-            'Api-Key': yandexSeller.token as string,
-        };
-        const httpsAgent = YandexApiService.httpsAgent;
-        switch (method) {
-            case 'post':
-                response = this.httpService.post(yandexSeller.url + name, options, { headers, httpsAgent });
-                break;
-            case 'put':
-                response = this.httpService.put(yandexSeller.url + name, options, { headers, httpsAgent });
-                break;
-            default:
-                response = this.httpService.get(yandexSeller.url + name, { headers, params: options, httpsAgent });
-        }
-        return firstValueFrom(
-            response.pipe(map((res) => res.data)).pipe(
-                catchError(async (error: AxiosError) => {
+        // Общий лимит кампании относится не только к записи остатков.
+        return this.requests.run(String(yandexSeller['electronica-company'] ?? yandexSeller.url), async () => {
+            for (let attempt = 1; ; attempt++) {
+                try {
+                    const headers = { 'Api-Key': yandexSeller.token as string };
+                    const httpsAgent = YandexApiService.httpsAgent;
+                    const url = yandexSeller.url + name;
+                    const response =
+                        method === 'post'
+                            ? this.httpService.post(url, options, { headers, httpsAgent })
+                            : method === 'put'
+                              ? this.httpService.put(url, options, { headers, httpsAgent })
+                              : this.httpService.get(url, { headers, params: options, httpsAgent });
+                    return (await firstValueFrom(response)).data;
+                } catch (cause) {
+                    const error = cause as AxiosError;
+                    const rateLimit =
+                        error.response?.status === 420 && /Hit rate limit/i.test(JSON.stringify(error.response.data));
+                    const wait = this.retry.decide(
+                        rateLimit ? { ...error.response, status: 429 } : error.response,
+                        attempt,
+                    );
+                    if (wait !== null) {
+                        this.logger.warn(`Яндекс: ограничение запросов ${name}, повтор через ${wait / 1000} с`);
+                        await new Promise((resolve) => setTimeout(resolve, wait));
+                        continue;
+                    }
                     // Яндекс отдаёт причину в `errors[] {code, message}`, а не в `message`:
                     // без разбора массива отказ по коду маркировки приходил как «undefined».
                     const data: any = error?.response?.data ?? {};
@@ -69,8 +87,8 @@ export class YandexApiService {
                             errors,
                         },
                     };
-                }),
-            ),
-        );
+                }
+            }
+        });
     }
 }

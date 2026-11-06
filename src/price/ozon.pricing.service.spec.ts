@@ -191,6 +191,6 @@ describe('Данные и потребители единого расчёта O
     it('нет контекста от API — оптимизация не возвращает цену по старым полям', async () => {
         const m = make();
         m.products.getPrices.mockResolvedValue({ items: [] });
-        await expect(m.priceService.withOzonPricing({ offer_id: 'missing' } as any)).rejects.toThrow('нет тарифных');
+        await expect(m.priceService.withOzonPricing({ offer_id: 'missing' } as any)).rejects.toThrow('Ozon не вернул товар');
     });
 });

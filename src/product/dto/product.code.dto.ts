@@ -13,8 +13,10 @@ export class ProductCodeStockDto extends ProductCodeDto {
 }
 
 export class ProductCodeUpdateStockDto extends ProductCodeDto {
+    warehouse_id?: number;
     updated: boolean;
-    errors: string[];
+    errors: (string | { code?: string; message?: string })[];
+    superseded?: boolean;
 }
 
 export class ProductCodeUpdateStockResultDto {

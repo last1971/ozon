@@ -26,6 +26,36 @@ describe('сверка акций — команды цепочки', () => {
         ...over,
     });
 
+    it('отчёт отражает пересчитанный при применении план, а не первоначальную цену', async () => {
+        const original = {
+            offerId: '1',
+            productId: 1,
+            state: state(1),
+            target: 213,
+            buyerBefore: 200,
+            buyerAfter: 214,
+            percent: 7,
+            floor: 213,
+            steps: [{ kind: 'ozon-set', actionId: 5, title: 'Акция', from: 200, to: 214 }],
+            notes: [],
+            ok: true,
+            closest: false,
+        } as PromoPricePlan;
+        const changed = {
+            ...original,
+            buyerAfter: 255,
+            steps: [{ kind: 'ozon-remove', actionId: 5, title: 'Акция', from: 200, reason: 'свежий лимит ниже пола' }],
+            notes: ['План пересчитан'],
+            results: [],
+            applied: true,
+        } as any;
+        const result = await new BuildSweepReportCommand().execute(
+            ctx({ apply: true, plans: [original], results: [changed] }),
+        );
+        expect(result.report).toMatchObject({ keptInOzon: 0, removedFromOzon: 1 });
+        expect(result.report.items[0]).toMatchObject({ buyerAfter: 255, steps: changed.steps, notes: changed.notes });
+    });
+
     it('collect: оставляет только ниже min_price; без цены покупателя или min_price — мимо', async () => {
         const allStates = jest
             .fn()

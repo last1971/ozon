@@ -7,7 +7,7 @@ import { completePricePercents } from '../helpers/price/price.percents';
 import { OzonPricingService } from './ozon.pricing.service';
 import { ozonReturnPriceFields } from '../helpers/price/ozon.return.perc';
 import { resolvePriceBase } from '../helpers/price/price.base';
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { BadRequestException, Inject, Injectable, Logger } from '@nestjs/common';
 import { ProductService } from '../product/product.service';
 import { PriceRequestDto } from './dto/price.request.dto';
 import { PricePresetDto } from './dto/price.preset.dto';
@@ -341,7 +341,7 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
             const response = await this.product.getPrices({
                 offer_id: skusBatch,
                 limit: batchSize,
-                visibility: ProductVisibility.IN_SALE,
+                visibility: ProductVisibility.ALL,
             });
 
             if (!response?.items) {
@@ -453,8 +453,9 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
     async withOzonPricing(price: IPriceable): Promise<IPriceable> {
         const products = await this.getProductsWithCoeffs([price.offer_id]);
         const product = products.find((p) => p.getSku() === price.offer_id);
-        const ozon = product?.getOzonPricing?.();
-        if (!ozon) throw new Error(`${price.offer_id}: нет тарифных ступеней Ozon`);
+        if (!product) throw new BadRequestException(`${price.offer_id}: Ozon не вернул товар по этому артикулу`);
+        const ozon = product.getOzonPricing?.();
+        if (!ozon) throw new BadRequestException(`${price.offer_id}: для товара нет данных расчёта Ozon`);
         const statistics = await this.goodService.getPerc([goodCode(price)], null);
         const own = statistics.find(
             (p) => String(p.offer_id) === goodCode(price) && p.pieces === goodQuantityCoeff(price),

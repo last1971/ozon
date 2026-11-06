@@ -23,7 +23,7 @@ describe('YandexOfferService', () => {
             ],
         }).compile();
 
-        method.mockClear();
+        method.mockReset().mockResolvedValue({ status: 'OK' });
         service = module.get<YandexOfferService>(YandexOfferService);
     });
 
@@ -84,4 +84,12 @@ describe('YandexOfferService', () => {
         const res = await service.updateGoodCounts(new Map([['999', 5]]));
         expect(res).toEqual(1);
     });
+});
+
+it('остатки не считаются обновлёнными после отказа Яндекса', async () => {
+    const api = { method: jest.fn().mockResolvedValue({ status: 'NotOk', error: { message: 'Hit rate limit' } }) };
+    const service = new YandexOfferService(api as any, null, null);
+    await expect(service.updateGoodCounts(new Map([['1', 5]]))).rejects.toThrow('Hit rate limit');
+    await expect(service.updateGoodCounts(new Map())).resolves.toBe(0);
+    expect(api.method).toHaveBeenCalledTimes(1);
 });

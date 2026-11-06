@@ -55,7 +55,7 @@ describe('YandexPriceService', () => {
             ],
         }).compile();
 
-        method.mockClear();
+        method.mockReset().mockResolvedValue({ status: 'OK' });
         getSkus.mockClear();
         index.mockClear();
         service = module.get<YandexPriceService>(YandexPriceService);
@@ -105,6 +105,46 @@ describe('YandexPriceService', () => {
                 ],
             },
         ]);
+    });
+
+    it.each([100, 101, 133, 201])('offer-mappings: %i товаров пачками не больше 100, без потерь', async (count) => {
+        const prices = Array.from({ length: count }, (_, i) => ({ ...updatePrice, offer_id: String(i) }));
+        const result = await service.updateIncomingPrices(prices);
+        expect(result.status).toBe('OK');
+        expect(method).toHaveBeenCalledTimes(Math.ceil(count / 100));
+        expect(method.mock.calls.every((c) => c[2].offerMappings.length <= 100)).toBe(true);
+        expect(method.mock.calls.flatMap((c) => c[2].offerMappings.map((m) => m.offer.offerId))).toEqual(
+            prices.map((p) => p.offer_id),
+        );
+    });
+    it('пустой список — без запроса', async () => {
+        expect((await service.updateIncomingPrices([])).status).toBe('OK');
+        expect(method).not.toHaveBeenCalled();
+    });
+    it('отказ второй пачки не скрывает успех первой и содержит затронутые артикулы', async () => {
+        const prices = Array.from({ length: 133 }, (_, i) => ({ ...updatePrice, offer_id: String(i) }));
+        method
+            .mockResolvedValueOnce({ status: 'OK' })
+            .mockResolvedValueOnce({ status: 'NotOk', error: { message: 'rate limit' } });
+        const result = await service.updateIncomingPrices(prices);
+        expect(result.status).toBe('NotOk');
+        expect(result.batches[0].response.status).toBe('OK');
+        expect(result.errors[0].offerIds).toEqual(prices.slice(100).map((p) => p.offer_id));
+    });
+    it('ошибки отдельных товаров при HTTP 200 тоже не считаются успехом', async () => {
+        method.mockResolvedValueOnce({
+            status: 'OK',
+            result: { results: [{ offerId: '1', errors: [{ code: 'INVALID' }] }] },
+        });
+        const result = await service.updateIncomingPrices([updatePrice]);
+        expect(result.status).toBe('NotOk');
+        expect(result.result.results[0].offerId).toBe('1');
+    });
+    it('updatePrices сообщает отказ вспомогательных цен, даже если основные приняты', async () => {
+        method.mockResolvedValueOnce({ status: 'OK' }).mockResolvedValueOnce({ status: 'NotOk' });
+        const result = await service.updatePrices([updatePrice]);
+        expect(result.offerUpdate.status).toBe('OK');
+        expect(result.status).toBe('NotOk');
     });
 
     it('updateOfferPrices', async () => {
