@@ -1,18 +1,24 @@
-import { Injectable } from '@nestjs/common';
+import { Inject, Injectable } from '@nestjs/common';
+import { FirebirdPool } from 'ts-firebird';
+import { FIREBIRD } from '../../firebird/firebird.module';
 import { IJobCommand } from '../../interfaces/i.job.context';
 import { LoadLossHistoryCommand } from '../../marketplace-loss/loss.commands';
 import { LossContext } from '../../marketplace-loss/loss.contracts';
-import { YandexOrderService } from '../yandex.order.service';
-import { YandexLossHistorySource } from './yandex-loss-history.source';
+import { ConfigService } from '@nestjs/config';
+import { YandexFirebirdSalesSource } from './yandex-loss-history.source';
 
-/** Строит источник из периода контекста — Яндекс делит 90 дней на 29-дневные окна. */
+/** Загружает продажи из Firebird-инвойсов (STATUS=4, покупатель YANDEX_BUYER_ID). 90 дней, полные данные. */
 @Injectable()
 export class LoadYandexLossSalesCommand implements IJobCommand<LossContext> {
     readonly phase = 'Продажи и возвраты';
     readonly weight = 70;
-    constructor(private readonly orders: YandexOrderService) {}
+    constructor(
+        @Inject(FIREBIRD) private readonly pool: FirebirdPool,
+        private readonly config: ConfigService,
+    ) {}
     async execute<T extends LossContext>(ctx: T): Promise<T> {
-        const source = new YandexLossHistorySource(this.orders, ctx.period);
+        const buyerId = this.config.get<number>('YANDEX_BUYER_ID', 24465);
+        const source = new YandexFirebirdSalesSource(this.pool, buyerId, ctx.period);
         return new LoadLossHistoryCommand(source).execute(ctx);
     }
 }

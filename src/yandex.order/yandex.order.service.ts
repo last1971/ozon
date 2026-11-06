@@ -125,7 +125,8 @@ export class YandexOrderService implements IOrderable, IMarkSubmittable, OnModul
             if (YandexOrderService.isNotOk(res)) {
                 throw new Error(`Яндекс orders: ${YandexOrderService.errorText(res)}`);
             }
-            orders.push(...(res.orders || []));
+            if (!Array.isArray(res.orders)) throw new Error(`Яндекс orders: некорректный формат ответа`);
+            orders.push(...res.orders);
             pageToken = res.paging?.nextPageToken || undefined;
         } while (pageToken);
         return orders;
