@@ -350,30 +350,63 @@ export class MpEventService {
     async findRows(
         service: MpService,
         kind: MpKind,
-        by: { posting?: string; extId?: string; payloadContains?: string },
+        by: { posting?: string; postings?: string[]; extId?: string; payloadContains?: string },
         t: FirebirdTransaction = null,
     ): Promise<MpEventRowDto[]> {
+        if (by.postings) {
+            const postings = [...new Set(by.postings)];
+            if (postings.some((value) => typeof value !== 'string' || !value))
+                throw new Error('Некорректное отправление');
+            if (!postings.length) return [];
+            return this.withTransaction(t, async (transaction) => {
+                const result: MpEventRowDto[] = [];
+                for (let i = 0; i < postings.length; i += 100) {
+                    const part = postings.slice(i, i + 100);
+                    result.push(
+                        ...(await this.findRowsWithFilter(
+                            service,
+                            kind,
+                            `POSTING IN (${part.map(() => '?').join(',')})`,
+                            part,
+                            transaction,
+                        )),
+                    );
+                }
+                return result;
+            });
+        }
         const [where, value] = by.posting
             ? ['POSTING = ?', by.posting]
             : by.extId
               ? ['EXT_ID = ?', by.extId]
               : ['PAYLOAD CONTAINING ?', by.payloadContains];
         if (!value) return [];
-        return this.withTransaction(t, async (transaction) => {
-            const rows = await transaction.query(
-                'SELECT EXT_ID, STATE, POSTING, FIRST_SEEN, PAYLOAD FROM MP_EVENT' +
-                    ` WHERE SERVICE = ? AND KIND = ? AND ${where} ORDER BY FIRST_SEEN DESC`,
-                [service, kind, value],
-                false,
-            );
-            return this.toRows(rows, transaction);
-        });
+        return this.withTransaction(t, (transaction) =>
+            this.findRowsWithFilter(service, kind, where, [value], transaction),
+        );
+    }
+
+    private async findRowsWithFilter(
+        service: MpService,
+        kind: MpKind,
+        where: string,
+        values: unknown[],
+        transaction: FirebirdTransaction,
+    ): Promise<MpEventRowDto[]> {
+        const rows = await transaction.query(
+            'SELECT EXT_ID, STATE, POSTING, FIRST_SEEN, PAYLOAD,' +
+                ' CASE WHEN OCTET_LENGTH(PAYLOAD) <= 8191 THEN CAST(PAYLOAD AS VARCHAR(8191)) ELSE NULL END AS PAYLOAD_TEXT FROM MP_EVENT' +
+                ` WHERE SERVICE = ? AND KIND = ? AND ${where} ORDER BY FIRST_SEEN DESC`,
+            [service, kind, ...values],
+            false,
+        );
+        return this.toRows(rows, transaction);
     }
 
     private async toRows(rows: any[], transaction: FirebirdTransaction): Promise<MpEventRowDto[]> {
         const result: MpEventRowDto[] = [];
         for (const r of rows) {
-            const text = await readBlob(r.PAYLOAD, (transaction as any).transaction);
+            const text = r.PAYLOAD_TEXT ?? (await readBlob(r.PAYLOAD, (transaction as any).transaction));
             let payload: unknown = null;
             try {
                 payload = text ? JSON.parse(text) : null;

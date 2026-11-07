@@ -6,6 +6,7 @@ export interface WbFinancialContext extends IJobContext {
     from: Date | string;
     to: Date | string;
     cursor: number;
+    reportPeriod?: 'weekly' | 'daily';
     dateFrom?: string;
     dateTo?: string;
     raw: Record<string, unknown>[];

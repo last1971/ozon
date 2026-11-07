@@ -5,8 +5,11 @@ import type { OzonPricingInput } from './ozon.pricing';
 /** Один переход от общего контракта площадок к входу чистого расчёта Ozon. */
 export function ozonPricingInput(price: IPriceable, coeffs: ObtainCoeffsDto): OzonPricingInput {
     if (!price.ozon) throw new Error('Нет тарифных ступеней Ozon');
+    if (price.ozon.lossStatistics && !price.lossCosts)
+        throw new Error('Не переданы проверенные расходы на потери Ozon');
     return {
         ...price.ozon,
+        lossCosts: price.lossCosts,
         base: Number(price.available_price) > 0 ? Number(price.available_price) : Number(price.incoming_price),
         baseSource: price.base_source,
         markups: { min: Number(price.min_perc), normal: Number(price.perc), max: Number(price.old_perc) },

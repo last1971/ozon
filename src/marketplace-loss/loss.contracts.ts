@@ -1,3 +1,4 @@
+import type { LossExpenseTotals } from './loss-expenses';
 import type { IJobContext } from '../interfaces/i.job.context';
 import type { LossPeriod, MarketplaceLossRow, RecordedWriteOff } from '../helpers/price/marketplace.loss.stats';
 
@@ -46,6 +47,7 @@ export interface LossContext extends IJobContext {
     excludedGoods?: LossExclusion[];
     writeOffs: RecordedWriteOff[];
     rows: MarketplaceLossRow[];
+    expenses?: Map<string, LossExpenseTotals>;
 }
 export interface LossSnapshot {
     service: string;

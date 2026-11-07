@@ -1,3 +1,8 @@
+import {
+    PrepareWbLossFinancialCommand,
+    ReconcileWbLossExpensesCommand,
+    WbLossFinancialCommands,
+} from './returns/wb-loss-financial.commands';
 import { WbFinancialReportService } from './finance/financial-report.service';
 import { WbFinancialReportReader } from './finance/financial-report.reader';
 import {
@@ -51,6 +56,9 @@ import { WbCurrentPricesModule } from '../wb.price/wb.current-prices.module';
         NormalizeWbFinancialReportCommand,
         WbReturnPreviewService,
         WbLossService,
+        PrepareWbLossFinancialCommand,
+        ReconcileWbLossExpensesCommand,
+        WbLossFinancialCommands,
         LoadWbLossSalesCommand,
         LoadWbWriteOffsCommand,
         CalculateWbLossReportCommand,

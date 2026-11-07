@@ -1,3 +1,4 @@
+import { OzonLossFinancialCommands, OzonLossExpenseContext } from './ozon.loss.expense.commands';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
@@ -13,6 +14,7 @@ import {
     LoadLossWriteOffsCommand,
     CalculateLossReportCommand,
     SaveLossSnapshotCommand,
+    ApplyLossExpensesCommand,
 } from '../marketplace-loss/loss.commands';
 import { LoadOzonLossCatalogCommand, ApplyOzonReturnPolicyCommand, OzonLossContext } from './ozon.loss.commands';
 import { OzonLossHistorySource } from './ozon.loss-history.source';
@@ -30,6 +32,7 @@ export class OzonReturnService {
         private readonly store: OzonReturnStore,
         private readonly writeOffs: MpReturnAcceptStore,
         private readonly jobs: JobService,
+        private readonly financials: OzonLossFinancialCommands,
     ) {}
 
     @Cron('0 38 5 * * *', { name: 'ozonReturnPerc', timeZone: 'Europe/Moscow' })
@@ -55,7 +58,7 @@ export class OzonReturnService {
         this.running = true;
         try {
             const { from, to } = lossPeriod(now);
-            const context: OzonLossContext = {
+            const context: OzonLossExpenseContext = {
                 service: 'OZON',
                 preliminary: false,
                 period: { from, to },
@@ -70,7 +73,7 @@ export class OzonReturnService {
                 writeOffs: [],
                 progress: emptyProgress(),
             };
-            const job = this.jobs.run<OzonLossContext, { rows: number; from: string; to: string }>({
+            const job = this.jobs.run<OzonLossExpenseContext, { rows: number; from: string; to: string }>({
                 kind: 'loss-recalculate:ozon',
                 params: { from, to },
                 context,
@@ -78,8 +81,11 @@ export class OzonReturnService {
                     new LoadOzonLossCatalogCommand(this.products, this.store),
                     new LoadLossHistoryCommand(new OzonLossHistorySource(this.previewService, context)),
                     new LoadLossWriteOffsCommand(this.writeOffs),
+                    ...this.financials.loading,
                     new CalculateLossReportCommand(),
                     new ApplyOzonReturnPolicyCommand(),
+                    this.financials.calculate,
+                    new ApplyLossExpensesCommand(),
                     new SaveLossSnapshotCommand(this.store),
                 ],
                 canCancel: (c) => !c.committing,

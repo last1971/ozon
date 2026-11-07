@@ -32,7 +32,9 @@ const make = () => {
         SUM_LABEL: 2,
         SUM_PACK: 10,
     });
-    const loader = new OzonPricingService(categories as any, logistics as any, config);
+    const loader = new OzonPricingService(categories as any, logistics as any, config, {
+        load: async () => new Map(),
+    } as any);
     const info: any = { sku: '123-5', typeId: 8, fbsCount: 10, fboCount: 0, volumeWeight: 0.3 };
     const product: any = {
         offer_id: '123-5',
@@ -191,6 +193,8 @@ describe('Данные и потребители единого расчёта O
     it('нет контекста от API — оптимизация не возвращает цену по старым полям', async () => {
         const m = make();
         m.products.getPrices.mockResolvedValue({ items: [] });
-        await expect(m.priceService.withOzonPricing({ offer_id: 'missing' } as any)).rejects.toThrow('Ozon не вернул товар');
+        await expect(m.priceService.withOzonPricing({ offer_id: 'missing' } as any)).rejects.toThrow(
+            'Ozon не вернул товар',
+        );
     });
 });

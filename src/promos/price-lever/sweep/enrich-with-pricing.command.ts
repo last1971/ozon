@@ -1,3 +1,4 @@
+import { lossPriceFields } from '../../../helpers/price/marketplace.loss.input';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { chunk } from 'lodash';
@@ -78,6 +79,11 @@ export class EnrichWithPricingCommand implements IJobCommand<IPromoSweepContext>
                     const input = ozonPricingInput(
                         {
                             ...base,
+                            ...lossPriceFields(
+                                ozon.lossStatistics,
+                                data.goods.find((g) => String(g.code) === code),
+                                pieces,
+                            ),
                             ozon,
                             offer_id: state.offerId,
                             min_perc: percent.min_perc,

@@ -1,3 +1,4 @@
+import { validateLossExpenses } from './loss-expenses';
 import { Inject, Injectable } from '@nestjs/common';
 import { FirebirdPool, ISOLATION_REPEATABLE_READ, ISOLATION_READ_COMMITTED_READ_ONLY } from 'ts-firebird';
 import { DateTime } from 'luxon';
@@ -68,6 +69,9 @@ export class LossStatsStore implements ILossStatsStore {
                 applied,
             ];
         });
+        const expenses = snapshot.rows.map((row) =>
+            row.expenses === undefined ? undefined : validateLossExpenses(row.expenses),
+        );
         await hooks.checkpoint?.(0, rows.length);
         const t = await this.pool.getTransaction();
         try {
@@ -88,6 +92,21 @@ export class LossStatsStore implements ILossStatsStore {
                     rows[i],
                     false,
                 );
+                if (expenses[i]) {
+                    const e = expenses[i];
+                    await t.execute(
+                        'UPDATE MP_LOSS_STATS SET LOSS_COSTS_VERSION = 1, RETURN_COST_MODE = ?, RETURN_DELIVERY_RUB = ?, CANCEL_DELIVERY_RUB = ?, SELLER_RETURN_RUB = ?, DEFECT_COMP_RUB = ? WHERE SERVICE = ? AND GOODSCODE = ? AND PIECES = ?',
+                        [
+                            e.paidReturnDelivery === undefined ? 'TARIFF' : 'ACTUAL',
+                            e.paidReturnDelivery ?? null,
+                            e.cancellationDelivery,
+                            e.sellerReturnDelivery,
+                            e.confirmedDefectCompensation,
+                            ...rows[i].slice(0, 3),
+                        ],
+                        false,
+                    );
+                }
                 if ((i + 1) % 50 === 0) await hooks.checkpoint?.(i + 1, rows.length);
             }
             await t.execute(
@@ -127,6 +146,18 @@ export class LossStatsStore implements ILossStatsStore {
                         : null,
                 rows: rows.map(
                     (row): StoredLossRow => ({
+                        ...(row.LOSS_COSTS_VERSION === 1
+                            ? {
+                                  expenses: validateLossExpenses({
+                                      ...(row.RETURN_COST_MODE === 'TARIFF'
+                                          ? {}
+                                          : { paidReturnDelivery: row.RETURN_DELIVERY_RUB }),
+                                      cancellationDelivery: row.CANCEL_DELIVERY_RUB,
+                                      sellerReturnDelivery: row.SELLER_RETURN_RUB,
+                                      confirmedDefectCompensation: row.DEFECT_COMP_RUB,
+                                  }),
+                              }
+                            : {}),
                         offerId: lossOfferKey(`${row.GOODSCODE}-${row.PIECES}`),
                         soldUnits: row.SOLD_UNITS,
                         returnedUnits: row.RETURNED_UNITS,

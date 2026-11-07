@@ -1,3 +1,4 @@
+import { LossPricingService } from '../marketplace-loss/loss-pricing.service';
 import { BulkPriceJobModule } from '../price/bulk/bulk-price-job.module';
 import { Test, TestingModule } from '@nestjs/testing';
 import { WbPriceService } from './wb.price.service';
@@ -14,7 +15,9 @@ describe('WbPriceService', () => {
     const getWbData = jest.fn();
     const getGoodIds = jest.fn();
     const updatePriceForService = jest.fn();
-    const repriceForService = jest.fn().mockResolvedValue({ inputs: [], sent: [], skipped: [], response: { results: [] } });
+    const repriceForService = jest
+        .fn()
+        .mockResolvedValue({ inputs: [], sent: [], skipped: [], response: { results: [] } });
     const method = jest.fn();
     const setWbData = jest.fn();
     const getNmID = jest.fn();
@@ -28,6 +31,7 @@ describe('WbPriceService', () => {
             imports: [BulkPriceJobModule],
             providers: [
                 WbPriceService,
+                { provide: LossPricingService, useValue: { load: async () => new Map() } },
                 {
                     provide: ConfigService,
                     useValue: { get: () => 0 },
@@ -53,8 +57,9 @@ describe('WbPriceService', () => {
         }).compile();
 
         method.mockReset();
-        method.mockImplementation(async (name) => name.includes('list/goods/filter')
-            ? { data: { listGoods: [] } } : { data: { id: 'task-1' } });
+        method.mockImplementation(async (name) =>
+            name.includes('list/goods/filter') ? { data: { listGoods: [] } } : { data: { id: 'task-1' } },
+        );
         getWbData.mockClear();
         getWbCardAsync.mockClear();
         updateCards.mockClear();

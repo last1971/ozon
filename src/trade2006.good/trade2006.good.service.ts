@@ -1,3 +1,5 @@
+import { productLossPriceFields } from '../helpers/price/marketplace.loss.input';
+import { calculateMarketplaceLossCosts } from '../helpers/price/marketplace.loss.costs';
 import { priceUpdateQueue } from '../helpers/price/price-update.queue';
 import { completePricePercents } from '../helpers/price/price.percents';
 import { ozonReturnPriceFields } from '../helpers/price/ozon.return.perc';
@@ -571,7 +573,13 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                 available_price: 0,
             };
 
-            const effectivePercent = { ...percent, ...dto, available_price: dto?.available_price ?? percent.available_price, offer_id: gCode, pieces: gCoeff };
+            const effectivePercent = {
+                ...percent,
+                ...dto,
+                available_price: dto?.available_price ?? percent.available_price,
+                offer_id: gCode,
+                pieces: gCoeff,
+            };
             const base = this.priceCalculationHelper.getPriceBase(product, goods, [effectivePercent], known?.prices);
             const incoming_price = base.incoming_price;
             if (!(incoming_price > 0)) {
@@ -584,6 +592,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
 
             const initialPrice = {
                 ...ozonReturnPriceFields(product, percent.return_perc),
+                ...productLossPriceFields(product, goods),
                 adv_perc,
                 fbs_direct_flow_trans_max_amount: product.getTransMaxAmount(),
                 incoming_price,
@@ -597,6 +606,12 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                 old_perc: 0,
             };
 
+            try {
+                calculateMarketplaceLossCosts(initialPrice.lossCosts, 0);
+            } catch (error) {
+                this.logger.warn(`${sku}: ${error.message}`);
+                continue;
+            }
             const { min_perc, perc, old_perc } = this.priceCalculationHelper.adjustPercents(initialPrice, service);
 
             results.push({
@@ -679,7 +694,10 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         skus: string[],
         prices?: Map<string, UpdatePriceDto>,
     ): Promise<IPriceable[]> {
-        return (await this.collectPriceables(service, skus, prices)).priceables;
+        const { priceables, skipped } = await this.collectPriceables(service, skus, prices);
+        const unknownLoss = skipped.find((row) => row.reason === 'loss-data');
+        if (skus.length === 1 && unknownLoss) throw new Error(`${unknownLoss.offer_id}: ${unknownLoss.message}`);
+        return priceables;
     }
 
     /**
@@ -712,18 +730,25 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
             } else {
                 const gCode = goodCode({ offer_id: product.getSku() });
                 const gCoeff = goodQuantityCoeff({ offer_id: product.getSku() });
-                const { min_perc, perc, old_perc, adv_perc, packing_price, available_price, return_perc } = percents.find(
-                    (p) => p.offer_id.toString() === gCode && p.pieces === gCoeff,
-                ) || {
-                    adv_perc: 0,
-                    old_perc: this.configService.get<number>('PERC_MAX', 50),
-                    perc: this.configService.get<number>('PERC_NOR', 25),
-                    min_perc: this.configService.get<number>('PERC_MIN', 15),
-                    packing_price: this.configService.get<number>('SUM_PACK', 10),
-                    available_price: 0,
-                };
+                const { min_perc, perc, old_perc, adv_perc, packing_price, available_price, return_perc } =
+                    percents.find((p) => p.offer_id.toString() === gCode && p.pieces === gCoeff) || {
+                        adv_perc: 0,
+                        old_perc: this.configService.get<number>('PERC_MAX', 50),
+                        perc: this.configService.get<number>('PERC_NOR', 25),
+                        min_perc: this.configService.get<number>('PERC_MIN', 15),
+                        packing_price: this.configService.get<number>('SUM_PACK', 10),
+                        available_price: 0,
+                    };
 
+                const losses = productLossPriceFields(product, goods);
+                try {
+                    calculateMarketplaceLossCosts(losses.lossCosts, 0);
+                } catch (error) {
+                    skipped.push({ offer_id: product.getSku(), reason: 'loss-data', message: error.message });
+                    continue;
+                }
                 priceables.push({
+                    ...losses,
                     ...ozonReturnPriceFields(product, return_perc),
                     base_source: base.base_source,
                     adv_perc,

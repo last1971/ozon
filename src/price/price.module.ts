@@ -1,3 +1,4 @@
+import { MarketplaceLossModule } from '../marketplace-loss/marketplace-loss.module';
 import { BulkPriceJobModule } from './bulk/bulk-price-job.module';
 import { PricingModeController } from './pricing-mode.controller';
 import { JobModule } from '../job/job.module';
@@ -45,6 +46,7 @@ import { VerifyOzonPricesCommand } from './commands/verify-ozon-prices.command';
 
 @Module({
     imports: [
+        MarketplaceLossModule,
         BulkPriceJobModule,
         JobModule,
         OzonLogisticsModule,

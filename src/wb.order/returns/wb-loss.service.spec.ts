@@ -1,3 +1,4 @@
+import { WbLossFinancialCommands } from './wb-loss-financial.commands';
 import { Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { Test } from '@nestjs/testing';
@@ -64,6 +65,7 @@ function setup(rows: unknown[] = ['S1', 'S2', 'S3', 'R1', 'R2', 'R3'].map((id) =
         new LoadWbWriteOffsCommand(writeOffs as any),
         new CalculateWbLossReportCommand(),
         new SaveLossSnapshotCommand(store),
+        { loading: [], apply: { execute: async (ctx) => ctx } } as any,
     );
     const run = (date = now) => jobs.whenDone(service.start('client', date).id);
     return { jobs, orders, writeOffs, store, config, service, run };
@@ -325,6 +327,7 @@ describe('Сохранение статистики ВБ через общие �
             imports: [JobModule, MarketplaceLossModule],
             providers: [
                 WbLossService,
+                { provide: WbLossFinancialCommands, useValue: { loading: [], apply: { execute: async (ctx) => ctx } } },
                 LoadWbLossSalesCommand,
                 LoadWbWriteOffsCommand,
                 CalculateWbLossReportCommand,

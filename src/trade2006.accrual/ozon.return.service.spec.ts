@@ -31,6 +31,15 @@ const setup = (settings = {}) => {
             store as any,
             writeOffs as any,
             new JobService(),
+            {
+                loading: [],
+                calculate: {
+                    execute: async (ctx) => {
+                        ctx.expenses = new Map();
+                        return ctx;
+                    },
+                },
+            } as any,
         ),
     };
 };

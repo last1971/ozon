@@ -1,3 +1,10 @@
+import {
+    LoadOzonLossFinancialsCommand,
+    ReadOzonLossFeesCommand,
+    ResolveOzonLossExpensesCommand,
+    CalculateOzonLossExpensesCommand,
+    OzonLossFinancialCommands,
+} from './ozon.loss.expense.commands';
 import { JobModule } from '../job/job.module';
 import { OzonReturnService } from './ozon.return.service';
 import { OzonReturnStore } from './ozon.return.store';
@@ -18,6 +25,11 @@ import { ProductModule } from '../product/product.module';
         OzonReturnPreviewService,
         OzonReturnStore,
         OzonReturnService,
+        LoadOzonLossFinancialsCommand,
+        ReadOzonLossFeesCommand,
+        ResolveOzonLossExpensesCommand,
+        OzonLossFinancialCommands,
+        CalculateOzonLossExpensesCommand,
     ],
     exports: [Trade2006AccrualService, AccrualWeekService, OzonReturnPreviewService],
 })

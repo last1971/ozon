@@ -10,11 +10,12 @@ import { ObtainCoeffsDto } from '../helpers/dto/obtain.coeffs.dto';
  *   продавать нечего, ждать бесполезно.
  * - `not-in-stock` — товара нет в складской таблице совсем: приход ещё не дошёл до остатка, цену посчитать не из чего.
  */
-export type PriceSkipReason = 'no-free-stock' | 'not-in-stock' | 'no-base';
+export type PriceSkipReason = 'no-free-stock' | 'not-in-stock' | 'no-base' | 'loss-data';
 
 export interface PriceSkip {
     offer_id: string;
     reason: PriceSkipReason;
+    message?: string;
 }
 
 /** Итог пересчёта цен одной площадки: из чего считали, что отправили, что ответила площадка, кого пропустили. */

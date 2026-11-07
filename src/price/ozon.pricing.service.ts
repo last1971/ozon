@@ -1,3 +1,4 @@
+import { LossPricingService, LossPricingStatistics } from '../marketplace-loss/loss-pricing.service';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OzonCategoryService } from '../ozon.category/ozon.category.service';
@@ -9,14 +10,23 @@ import { OzonPricingContext, OzonPriceScheme } from '../helpers/price/ozon.prici
 /** Собирает актуальные входы. Выбор цены и формула прибыли остаются чистыми функциями. */
 @Injectable()
 export class OzonPricingService {
+    private readonly lossSnapshots = new WeakMap<ProductInfoDto, LossPricingStatistics | undefined>();
     constructor(
         private readonly categories: OzonCategoryService,
         private readonly logistics: OzonLogisticsService,
         private readonly config: ConfigService,
+        private readonly losses: LossPricingService,
     ) {}
 
     async prepare(infos: ProductInfoDto[]) {
-        await this.logistics.prepare(infos);
+        const [, statistics] = await Promise.all([
+            this.logistics.prepare(infos),
+            this.losses.load(
+                'OZON',
+                infos.map((info) => info.sku),
+            ),
+        ]);
+        for (const info of infos) this.lossSnapshots.set(info, statistics.get(info.sku));
     }
 
     async load(product: ProductPriceDto, info: ProductInfoDto): Promise<OzonPricingContext> {
@@ -43,7 +53,11 @@ export class OzonPricingService {
                 returnFlow: costs.returnFlow,
             });
         }
+        const statistics = this.lossSnapshots.has(info)
+            ? this.lossSnapshots.get(info)
+            : (await this.losses.load('OZON', [product.offer_id])).get(product.offer_id);
         return {
+            ...(statistics ? { lossStatistics: statistics } : {}),
             schemes,
             acquiringRate: quote.acquiringRate,
             minProfitRub: Number(this.config.get('MIN_PROFIT_RUB', 20)),

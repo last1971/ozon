@@ -1,7 +1,7 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { IJobCommand } from '../interfaces/i.job.context';
 import { jobCheckpoint } from '../job/job.checkpoint';
-import { MarketplaceLossAccumulator } from '../helpers/price/marketplace.loss.stats';
+import { MarketplaceLossAccumulator, calculateLossRates } from '../helpers/price/marketplace.loss.stats';
 import {
     ILossHistorySource,
     ILossWriteOffSource,
@@ -141,6 +141,36 @@ export class SaveLossSnapshotCommand implements IJobCommand<SaveLossContext> {
                 ctx.committing = true;
             },
         });
+        return ctx;
+    }
+}
+
+/** Присоединяет проверенные суммы; товар с расходами без продаж также не теряется. */
+@Injectable()
+export class ApplyLossExpensesCommand implements IJobCommand<LossContext> {
+    readonly phase = 'Расходы на потери';
+    readonly weight = 10;
+    async execute<T extends LossContext>(ctx: T): Promise<T> {
+        if (!ctx.expenses) throw new Error('Не загружены расходы площадки');
+        const rows = new Map(ctx.rows.map((row) => [row.offerId, row]));
+        const excluded = new Set((ctx.excludedGoods ?? []).map((row) => row.goodscode));
+        ctx.progress.total = ctx.expenses.size;
+        for (const [offerId, expenses] of ctx.expenses) {
+            if (!excluded.has(offerId.split('-')[0])) {
+                const row = rows.get(offerId) ?? {
+                    offerId,
+                    soldUnits: 0,
+                    returnedUnits: 0,
+                    writtenOffUnits: 0,
+                    ...calculateLossRates({ soldUnits: 0, returnedUnits: 0, writtenOffUnits: 0 }),
+                };
+                row.expenses = expenses;
+                rows.set(offerId, row);
+            }
+            if (++ctx.progress.done % 100 === 0) await jobCheckpoint(ctx);
+        }
+        ctx.rows = [...rows.values()];
+        await jobCheckpoint(ctx);
         return ctx;
     }
 }

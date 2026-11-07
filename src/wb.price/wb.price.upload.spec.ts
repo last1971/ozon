@@ -4,7 +4,15 @@ const make = () => {
     const method = jest.fn().mockResolvedValue({ data: { id: 123 }, error: false });
     const cards = { getNmID: jest.fn((offer) => (offer === 'a' ? '1' : offer === 'b' ? '2' : undefined)) };
     const goods = { getWbData: jest.fn().mockResolvedValue([]), setWbData: jest.fn() };
-    const service = new WbPriceService(null, goods as any, { method } as any, cards as any, null, { getAll } as any);
+    const service = new WbPriceService(
+        null,
+        goods as any,
+        { method } as any,
+        cards as any,
+        null,
+        { getAll } as any,
+        { load: async () => new Map() } as any,
+    );
     return { service, method, getAll, goods };
 };
 const row = (offer_id: string, price = '500') => ({

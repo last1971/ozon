@@ -12,6 +12,8 @@ export class ValidateWbFinancialReportCommand implements IJobCommand<WbFinancial
     readonly phase = 'Проверка периода';
     readonly weight = 5;
     async execute(ctx: WbFinancialContext) {
+        if (ctx.reportPeriod !== undefined && !['weekly', 'daily'].includes(ctx.reportPeriod))
+            throw new Error('ВБ: неверная периодичность отчёта');
         const date = (v: Date | string) =>
             v instanceof Date
                 ? DateTime.fromJSDate(v).setZone('Europe/Moscow')

@@ -1,3 +1,4 @@
+import { LossPricingService } from '../marketplace-loss/loss-pricing.service';
 import { BulkPriceJobService } from '../price/bulk/bulk-price-job.service';
 import { SerializePriceUpdate } from '../helpers/price/price-update.queue';
 import { assertPricingWritesAllowed } from '../helpers/price/pricing-review-mode';
@@ -64,6 +65,7 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
         private cardService: WbCardService,
         private cardWriter: WbCardWriter,
         private currentPrices: WbCurrentPricesService,
+        private readonly losses: LossPricingService,
     ) {}
     async checkVatForAll(
         expectedVat: number,
@@ -169,8 +171,14 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
     }
 
     async getProductsWithCoeffs(skus: string[]): Promise<IProductCoeffsable[]> {
-        return (await this.goodService.getWbData(skus)).map(
-            (wbData) => new WbPriceCoeffsAdapter(wbData, this.configService.get<number>('WB_EXT_PERC', 0)),
+        const [data, losses] = await Promise.all([this.goodService.getWbData(skus), this.losses.load('WB', skus)]);
+        return data.map(
+            (wbData) =>
+                new WbPriceCoeffsAdapter(
+                    wbData,
+                    this.configService.get<number>('WB_EXT_PERC', 0),
+                    losses.get(wbData.id),
+                ),
         );
     }
 

@@ -1,3 +1,5 @@
+import { WbLossFinancialCommands } from './wb-loss-financial.commands';
+import { WbLossFinancialContext } from './wb-loss-financial.context';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { JobService } from '../../job/job.service';
@@ -16,7 +18,7 @@ export interface WbLossResult {
     rows: number;
 }
 
-/** Сохраняет статистику ВБ общими командами; расчёт цен к ней ещё не подключён. */
+/** Одна job: история, документы, финансовая сверка, общие проценты/расходы и атомарная запись. */
 @Injectable()
 export class WbLossService {
     constructor(
@@ -26,16 +28,24 @@ export class WbLossService {
         private readonly writeOffs: LoadWbWriteOffsCommand,
         private readonly calculate: CalculateWbLossReportCommand,
         private readonly save: SaveLossSnapshotCommand,
+        private readonly financial: WbLossFinancialCommands,
     ) {}
 
     start(clientId?: string, now = new Date()) {
         const context = createWbLossContext(this.config, now);
-        return this.jobs.run<SaveLossContext, WbLossResult>({
+        return this.jobs.run<WbLossFinancialContext, WbLossResult>({
             kind: 'loss-recalculate:wb',
             params: { ...context.period },
             clientId,
             context,
-            commands: [this.sales, this.writeOffs, this.calculate, this.save],
+            commands: [
+                this.sales,
+                this.writeOffs,
+                ...this.financial.loading,
+                this.calculate,
+                this.financial.apply,
+                this.save,
+            ],
             canCancel: (c) => !c.committing,
             // Транзакцией владеет хранилище; при отмене ждём завершения команды и отката.
             cleanup: async () => {},
@@ -45,6 +55,7 @@ export class WbLossService {
                 ...c.period,
                 calculatedAt: c.calculatedAt,
                 rows: c.rows.length,
+                ...(c.financialIssues ? { financialIssues: c.financialIssues } : {}),
             }),
         });
     }

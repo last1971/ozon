@@ -1,3 +1,4 @@
+import { calculateMarketplaceLossCosts } from './marketplace.loss.costs';
 import { ozonDisplayPrice } from './ozon.display-price';
 import { priceTaxDetails } from './price.tax';
 import { calculateOzonPrices, evaluateOzonPrice } from './ozon.pricing';
@@ -27,7 +28,7 @@ export const calculateCosts = (
     if (!Number.isFinite(returnPerc) || returnPerc < 0 || returnPerc > 1)
         throw new Error('Некорректная доля возвратов Ozon');
     let returnCosts = 0;
-    if (returnPerc > 0) {
+    if (returnPerc > 0 && price.lossCosts?.paidReturnDelivery === undefined) {
         const reverse = price.return_flow_amount;
         const direct = price.fbs_direct_flow_trans_max_amount;
         if (![reverse, direct].every((n) => Number.isFinite(n) && n >= 0)) {
@@ -40,7 +41,7 @@ export const calculateCosts = (
         toNumber(percents.sumLabel) +
         toNumber(percents.sumPack ?? price.sum_pack) +
         toNumber(price.fbs_direct_flow_trans_max_amount) +
-        returnCosts;
+        calculateMarketplaceLossCosts(price.lossCosts, returnCosts).total;
 
     const dynamicCosts: number =
         toNumber(price.sales_percent) +

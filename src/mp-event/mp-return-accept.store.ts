@@ -51,7 +51,7 @@ export class MpReturnAcceptStore {
         const t = await this.pool.getTransaction(ISOLATION_READ_COMMITTED_READ_ONLY);
         try {
             const rows = await t.query(
-                `SELECT A.ID, A.SERVICE, A.GOODSCODE, A.UNITS, A.PIECES, A.QUAN,
+                `SELECT A.ID, A.EXT_ID, A.POSTING, A.SERVICE, A.GOODSCODE, A.UNITS, A.PIECES, A.QUAN,
                         A.SPIS_CODE, A.SPIS_SS, A.SPIS_AT,
                         CASE WHEN A.SPIS_SS = 1 THEN
                             (SELECT SUM(S.QUAN) FROM SPISSHOP S
@@ -69,6 +69,8 @@ export class MpReturnAcceptStore {
             );
             return rows.map((r) => ({
                 id: r.ID,
+                extId: r.EXT_ID == null ? undefined : String(r.EXT_ID).trim(),
+                posting: r.POSTING == null ? null : String(r.POSTING).trim(),
                 service: String(r.SERVICE).trim(),
                 goodscode: String(r.GOODSCODE),
                 units: r.UNITS,

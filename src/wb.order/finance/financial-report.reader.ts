@@ -18,7 +18,7 @@ export class WbFinancialReportReader {
                 dateTo: ctx.dateTo,
                 rrdId: ctx.cursor,
                 limit: 100000,
-                period: 'weekly',
+                period: ctx.reportPeriod ?? 'weekly',
             },
             true,
         );

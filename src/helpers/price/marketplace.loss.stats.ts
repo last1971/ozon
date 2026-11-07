@@ -1,3 +1,4 @@
+import type { LossExpenseTotals } from '../../marketplace-loss/loss-expenses';
 import type { LossOperation, LossCounts } from '../../marketplace-loss/loss.contracts';
 import { DateTime } from 'luxon';
 import { calculateOzonReturnPerc } from './ozon.return.perc';
@@ -9,6 +10,8 @@ export interface LossPeriod {
 }
 export interface RecordedWriteOff {
     id: number;
+    extId?: string;
+    posting?: string | null;
     service: string;
     goodscode: string;
     pieces: number;
@@ -29,6 +32,7 @@ export interface MarketplaceLossRow {
     warnings: string[];
     /** Доля после политики площадки; собственная статистика остаётся в returnRate. */
     appliedReturnRate?: number | null;
+    expenses?: LossExpenseTotals;
 }
 
 /** 90 завершённых дней по Москве — одинаковое окно продаж, возвратов и списаний. */
@@ -150,6 +154,18 @@ export class MarketplaceLossAccumulator {
         if (this.documents.has(document)) throw new Error(`Повтор документа списания ${row.spisCode}`);
         this.documents.add(document);
         this.writeOffs.set(row.id, row);
+    }
+
+    /** Те же исправленные операции и то же окно для финансовой сверки; алгоритм дедупликации общий. */
+    operationsInPeriod(): ReadonlyArray<Pick<LossOperation, 'offerId' | 'kind' | 'units' | 'orderId'>> {
+        return [...this.sales.values()]
+            .filter((sale) => sale.at >= this.from && sale.at < this.to)
+            .map((sale) => ({
+                offerId: sale.offerId,
+                kind: sale.kind === 'S' ? 'sale' : 'return',
+                units: sale.units,
+                orderId: sale.srid,
+            }));
     }
 
     result(): MarketplaceLossRow[] {

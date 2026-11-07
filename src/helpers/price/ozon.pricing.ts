@@ -1,3 +1,4 @@
+import { calculateMarketplaceLossCosts, MarketplaceLossCostsInput } from './marketplace.loss.costs';
 import type { PriceBaseSource } from '../../good/dto/good.price.dto';
 import type { PriceBand } from '../../ozon.category/tariff.xlsx';
 import { priceInBand } from './ozon.logistics';
@@ -13,6 +14,7 @@ export interface OzonPriceScheme {
 }
 /** Ставки — доли, наценки и налоги — проценты. Только данные, без запросов. */
 export interface OzonPricingContext {
+    lossStatistics?: Omit<MarketplaceLossCostsInput, 'purchaseCost'>;
     schemes: OzonPriceScheme[];
     acquiringRate: number;
     minProfitRub: number;
@@ -22,6 +24,7 @@ export interface OzonPricingContext {
 }
 export interface OzonPricingInput extends OzonPricingContext {
     base: number;
+    lossCosts?: MarketplaceLossCostsInput;
     baseSource?: PriceBaseSource;
     markups: { min: number; normal: number; max: number };
     advertisingPercent: number;
@@ -52,6 +55,10 @@ export interface OzonPriceEvaluation {
         label: number;
         handling: number;
         returns: number;
+        cancellations?: number;
+        sellerReturns?: number;
+        defects?: number;
+        defectCompensation?: number;
         tax: number;
         vat: number;
         profitTax: number;
@@ -117,7 +124,19 @@ function evaluateScheme(
     const commission = scheme.commissions.find((b) => priceInBand(salePrice, b));
     const delivery = scheme.logistics.find((b) => priceInBand(salePrice, b));
     if (!commission || !delivery) return null;
+    const losses = calculateMarketplaceLossCosts(
+        input.lossCosts,
+        input.returnRate * (delivery.amount + scheme.returnFlow),
+    );
     const costs = {
+        ...(input.lossCosts
+            ? {
+                  cancellations: losses.cancellations,
+                  sellerReturns: losses.sellerReturns,
+                  defects: losses.defects,
+                  defectCompensation: losses.defectCompensation,
+              }
+            : {}),
         base: input.base,
         commission: salePrice * commission.rate,
         delivery: delivery.amount,
@@ -128,19 +147,13 @@ function evaluateScheme(
         packing: input.packing,
         label: input.label,
         handling: input.handling,
-        returns: input.returnRate * (delivery.amount + scheme.returnFlow),
+        returns: losses.returns,
         tax: (salePrice * input.taxPercent) / 100,
         vat: 0,
         profitTax: 0,
     };
     const fixed =
-        costs.delivery +
-        costs.lastMile +
-        costs.firstMile +
-        costs.packing +
-        costs.label +
-        costs.handling +
-        costs.returns;
+        costs.delivery + costs.lastMile + costs.firstMile + costs.packing + costs.label + costs.handling + losses.total;
     const dynamic = commission.rate * 100 + input.acquiringRate * 100 + input.advertisingPercent + input.taxPercent;
     let profit = salePrice - input.base - fixed - (salePrice * dynamic) / 100;
     if (input.taxPercent === 0) {

@@ -8,7 +8,7 @@ export interface OzonSaleLine {
 }
 
 /** Одна проверка идентичности начисления для чтения и обработки перепроведений. */
-function uniqueAccruals(accruals: readonly AccrualDto[]): AccrualDto[] {
+export function uniqueAccruals(accruals: readonly AccrualDto[]): AccrualDto[] {
     const seen = new Map<string, string>();
     return accruals.filter((accrual) => {
         const id = String(accrual.accrual_id ?? '');

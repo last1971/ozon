@@ -1,3 +1,4 @@
+import { jobCheckpoint } from '../job/job.checkpoint';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import { FirebirdPool, FirebirdTransaction } from 'ts-firebird';
@@ -133,17 +134,42 @@ export class Trade2006AccrualService {
 
     /** Полные тела продаж и сторно за [from, to), включая уже разнесённые записи. Только чтение. */
     async listBodies(from: string, to: string, t: FirebirdTransaction): Promise<AccrualDto[]> {
+        return this.listRaw(from, to, t, true);
+    }
+
+    /** Тот же журнал/чтение JSON, включая уже загруженные расходы; нового загрузчика нет. */
+    async listLossAccruals(
+        from: string,
+        to: string,
+        t: FirebirdTransaction,
+        progress?: (done: number, total: number) => Promise<void>,
+    ): Promise<AccrualDto[]> {
+        return this.listRaw(from, to, t, false, progress);
+    }
+
+    private async listRaw(
+        from: string,
+        to: string,
+        t: FirebirdTransaction,
+        bodiesOnly: boolean,
+        progress?: (done: number, total: number) => Promise<void>,
+    ): Promise<AccrualDto[]> {
         const rows = await t.query(
             'SELECT ACCRUAL_ID, RAW,' +
                 ' CASE WHEN OCTET_LENGTH(RAW) <= 8191 THEN CAST(RAW AS VARCHAR(8191)) ELSE NULL END AS RAW_TEXT' +
                 ' FROM OZON_ACCRUAL' +
-                " WHERE CATEGORY = 'POSTING' AND IS_BODY = 1 AND ACCRUAL_DATE >= ? AND ACCRUAL_DATE < ?" +
+                (bodiesOnly ? " WHERE CATEGORY = 'POSTING' AND IS_BODY = 1" : ' WHERE 1 = 1') +
+                ' AND ACCRUAL_DATE >= ? AND ACCRUAL_DATE < ?' +
                 ' ORDER BY ACCRUAL_DATE, ACCRUAL_ID',
             [from, to],
             false,
         );
         const result: AccrualDto[] = [];
         for (const row of rows) {
+            if (result.length % 250 === 0) {
+                await jobCheckpoint();
+                await progress?.(result.length, rows.length);
+            }
             // Малые JSON читаются вместе со строкой, без отдельного сетевого запроса на BLOB.
             // Ограничение проверяется ДО CAST: большие записи читаем полностью общим readBlob.
             const text = row.RAW_TEXT ?? (await readBlob(row.RAW, (t as any).transaction));
@@ -158,6 +184,7 @@ export class Trade2006AccrualService {
             }
             result.push(accrual);
         }
+        await progress?.(result.length, rows.length);
         return result;
     }
 

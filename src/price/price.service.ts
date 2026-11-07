@@ -1,7 +1,13 @@
+import { lossPriceFields, productLossPriceFields } from '../helpers/price/marketplace.loss.input';
 import { BulkPriceJobService } from './bulk/bulk-price-job.service';
 import { SerializePriceUpdate } from '../helpers/price/price-update.queue';
 import { OzonPricingResultDto, OzonPricingPreviewDto } from './dto/ozon-pricing-result.dto';
-import { calculateOzonPrices, evaluateOzonPrice, ozonDeadZoneFloor, OzonPriceEvaluation } from '../helpers/price/ozon.pricing';
+import {
+    calculateOzonPrices,
+    evaluateOzonPrice,
+    ozonDeadZoneFloor,
+    OzonPriceEvaluation,
+} from '../helpers/price/ozon.pricing';
 import { ozonPricingInput } from '../helpers/price/ozon.pricing.input';
 import { completePricePercents } from '../helpers/price/price.percents';
 import { OzonPricingService } from './ozon.pricing.service';
@@ -103,6 +109,7 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
             this.goodService,
             { goods, percents },
         );
+        await this.ozonPricing.prepare(productsInfos);
         const percDirectFlow = 1 + this.configService.get<number>('PERC_DIRECT_FLOW', 0) / 100;
         const data: PriceDto[] = [];
         for (const item of products.items) {
@@ -130,6 +137,7 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
 
             data.push({
                 ...ozonReturnPriceFields(adapter, percent.return_perc),
+                ...productLossPriceFields(adapter, goods),
                 fbs_return_flow_amount: item.commissions.fbs_return_flow_amount,
                 fbo_return_flow_amount: item.commissions.fbo_return_flow_amount,
                 product_id: item.product_id,
@@ -192,10 +200,16 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                 percent,
             );
             if (base.base_source === 'none') throw new Error('Нет базы себестоимости');
+            await this.ozonPricing.prepare([info]);
             const ozon = await this.ozonPricing.load(product, info);
             const input = ozonPricingInput(
                 {
                     ...base,
+                    ...lossPriceFields(
+                        ozon.lossStatistics,
+                        goods.find((g) => String(g.code) === code),
+                        pieces,
+                    ),
                     ozon,
                     offer_id: offerId,
                     min_perc: percent.min_perc,
@@ -215,9 +229,9 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                 profit: r.profit,
                 scheme: r.scheme,
                 commissionRate: r.commissionBand.rate,
-                profitPercent: r.profit / input.base * 100,
+                profitPercent: (r.profit / input.base) * 100,
                 requestedMarkup,
-                appliedMarkup: r.targetProfit / input.base * 100,
+                appliedMarkup: (r.targetProfit / input.base) * 100,
                 targetProfit: r.targetProfit,
             });
             const { base: unusedBase, ...costs } = result.min.costs;
@@ -227,30 +241,54 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
             let buyer: OzonPricingResultDto['buyer'];
             if (buyerPrice !== null) {
                 const evaluated = evaluateOzonPrice(input, buyerPrice);
-                buyer = { price: buyerPrice, profit: evaluated.profit, profitPercent: evaluated.profit / input.base * 100 };
+                buyer = {
+                    price: buyerPrice,
+                    profit: evaluated.profit,
+                    profitPercent: (evaluated.profit / input.base) * 100,
+                };
             }
-            const hasLower = input.schemes.some(s => [...s.commissions, ...s.logistics].some(b => b.max === 300));
+            const hasLower = input.schemes.some((s) => [...s.commissions, ...s.logistics].some((b) => b.max === 300));
             let lowerBand: OzonPricingResultDto['lowerBand'];
             if (hasLower) {
                 let profit: number | null = null;
-                try { profit = evaluateOzonPrice(input, 300).profit; } catch { /* Нет общего тарифа на границе. */ }
-                lowerBand = { ceiling: 300, profit, targetProfit: result.min.targetProfit,
-                    eligible: result.min.candidates.some(c => c.salePrice <= 300) };
+                try {
+                    profit = evaluateOzonPrice(input, 300).profit;
+                } catch {
+                    /* Нет общего тарифа на границе. */
+                }
+                lowerBand = {
+                    ceiling: 300,
+                    profit,
+                    targetProfit: result.min.targetProfit,
+                    eligible: result.min.candidates.some((c) => c.salePrice <= 300),
+                };
             }
-            const scheme = input.schemes.find(s => s.scheme === result.min.scheme);
-            const delivery = scheme.logistics.find(b => b.min === result.min.logisticsBand.min && b.max === result.min.logisticsBand.max);
+            const scheme = input.schemes.find((s) => s.scheme === result.min.scheme);
+            const delivery = scheme.logistics.find(
+                (b) => b.min === result.min.logisticsBand.min && b.max === result.min.logisticsBand.max,
+            );
             return {
                 offerId,
                 limits: { minProfitRub: input.minProfitRub, minMarkupPercent: input.minMarkupPercent },
-                buyer, lowerBand,
+                buyer,
+                lowerBand,
                 costSources: {
                     commission: 'XLSX комиссий',
-                    delivery: delivery?.source === 'api-average' || delivery?.source === 'api-max' ? 'API Ozon — резервный тариф' : 'XLSX логистики и история направлений',
-                    firstMile: 'API Ozon', lastMile: 'API Ozon', acquiring: 'API Ozon',
-                    advertising: 'Настройка товара', packing: 'Настройка товара',
-                    label: 'Настройка сервера', handling: 'Настройка сервера',
+                    delivery:
+                        delivery?.source === 'api-average' || delivery?.source === 'api-max'
+                            ? 'API Ozon — резервный тариф'
+                            : 'XLSX логистики и история направлений',
+                    firstMile: 'API Ozon',
+                    lastMile: 'API Ozon',
+                    acquiring: 'API Ozon',
+                    advertising: 'Настройка товара',
+                    packing: 'Настройка товара',
+                    label: 'Настройка сервера',
+                    handling: 'Настройка сервера',
                     returns: 'История возвратов и тарифы доставки',
-                    tax: 'Настройка сервера', vat: 'Настройка сервера', profitTax: 'Настройка сервера',
+                    tax: 'Настройка сервера',
+                    vat: 'Настройка сервера',
+                    profitTax: 'Настройка сервера',
                 },
                 baseSource: base.base_source,
                 base: input.base,
@@ -283,14 +321,25 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
     }
     // @Cron('0 0 0 * * 0', { name: 'updateOzonPrices' })
     startUpdateAllPrices(clientId?: string) {
-        return this.bulk.start({ market: 'ozon',
-            page: async (cursor) => {
-                const page = await this.product.getPrices({ limit: 1000, cursor, visibility: ProductVisibility.IN_SALE });
-                if (!Array.isArray(page?.items)) throw new Error('Не удалось загрузить каталог Ozon');
-                return { offers: page.items.map((p) => p.offer_id), next: page.items.length ? page.cursor : undefined };
+        return this.bulk.start(
+            {
+                market: 'ozon',
+                page: async (cursor) => {
+                    const page = await this.product.getPrices({
+                        limit: 1000,
+                        cursor,
+                        visibility: ProductVisibility.IN_SALE,
+                    });
+                    if (!Array.isArray(page?.items)) throw new Error('Не удалось загрузить каталог Ozon');
+                    return {
+                        offers: page.items.map((p) => p.offer_id),
+                        next: page.items.length ? page.cursor : undefined,
+                    };
+                },
+                update: (offers) => this.goodService.repriceForService(this, offers),
             },
-            update: (offers) => this.goodService.repriceForService(this, offers),
-        }, clientId);
+            clientId,
+        );
     }
 
     async updateAllPrices() {
@@ -460,7 +509,15 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
         const own = statistics.find(
             (p) => String(p.offer_id) === goodCode(price) && p.pieces === goodQuantityCoeff(price),
         );
-        return { ...price, ...ozonReturnPriceFields(product, own?.return_perc ?? 0), ozon };
+        // Данные потерь из браузера не принимаем; закупку читаем только с сервера.
+        const lossGoods = ozon.lossStatistics ? await this.goodService.prices([goodCode(price)], null) : [];
+        return {
+            ...price,
+            lossCosts: undefined,
+            ...productLossPriceFields(product, lossGoods),
+            ...ozonReturnPriceFields(product, own?.return_perc ?? 0),
+            ozon,
+        };
     }
 
     /** Совместимая точка входа: единый расчёт всех ступеней и схем с остатком. */

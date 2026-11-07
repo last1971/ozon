@@ -6,7 +6,7 @@ import { BulkPriceContext, BulkPriceRow } from './bulk-price.context';
 import { ozonResultsByOffer, PriceUpdateReport } from '../price-update.report';
 
 function rowsFor(offers: string[], report: PriceUpdateReport, market: string): BulkPriceRow[] {
-    const skipped = new Map(report.skipped.map((r) => [r.offer_id, r.reason]));
+    const skipped = new Map(report.skipped.map((r) => [r.offer_id, r.message ?? r.reason]));
     const ozon = ozonResultsByOffer(report.response);
     const wb = new Map<string, any>((report.response?.results ?? []).map((r) => [r.offer_id, r]));
     return offers.map((offer_id): BulkPriceRow => {
