@@ -13,12 +13,16 @@ export class CollectSweepCommand implements IJobCommand<IPromoSweepContext> {
 
     async execute(context: IPromoSweepContext): Promise<IPromoSweepContext> {
         const goal = sweepGoal(context.goal);
-        const all = await this.promoPrice.allStates();
+        const all = context.offerIds
+            ? await this.promoPrice.allStates(context.offerIds)
+            : await this.promoPrice.allStates();
         context.collectedStates = all;
         context.checked = all.length;
         context.states = all.filter((s) => goal.selects(s));
         Object.assign(context.progress.counters, { checked: all.length, selected: context.states.length });
-        context.logger?.log(`сверка акций (${goal.title}): в кабинете ${all.length}, отобрано ${context.states.length}`);
+        context.logger?.log(
+            `сверка акций (${goal.title}): в кабинете ${all.length}, отобрано ${context.states.length}`,
+        );
         return context;
     }
 }

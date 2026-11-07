@@ -7,6 +7,7 @@ export const PROMO_SWEEP_JOB = 'ozon-promo-sweep';
 
 /** Контекст сверки акций: цель → состояние → план → (применение) → отчёт. */
 export interface IPromoSweepContext extends IJobContext {
+    offerIds?: string[];
     apply: boolean;
     goal: SweepGoalKind;
     /** Все товары кабинета. */

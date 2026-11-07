@@ -1,3 +1,6 @@
+import { lossOfferKey } from '../helpers/price/marketplace.loss.stats';
+import { OnEvent } from '@nestjs/event-emitter';
+import { LOSS_SAVED_EVENT } from '../marketplace-loss/prices/loss-price.contracts';
 import { assertPricingWritesAllowed } from '../helpers/price/pricing-review-mode';
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
@@ -16,10 +19,12 @@ interface Review {
     expiresAt: number;
     entries: PriceReviewEntry[];
     jobId?: string;
+    lossRevisions: Map<string, number>;
 }
 @Injectable()
 export class PriceReviewService {
     private readonly logger = new Logger(PriceReviewService.name);
+    private readonly lossRevisions = new Map<string, number>();
     private readonly reviews = new Map<string, Review>();
     constructor(
         private readonly jobs: JobService,
@@ -28,6 +33,7 @@ export class PriceReviewService {
     ) {}
     prepareReview(offerId: string, clientId?: string) {
         this.cleanup();
+        const lossRevisions = new Map(this.lossRevisions);
         return this.jobs.run<PriceReviewContext, unknown>({
             kind: `price-review:${offerId}`,
             params: { offerId, mode: 'prepare' },
@@ -38,7 +44,7 @@ export class PriceReviewService {
                 const token = randomUUID(),
                     expiresAt = Date.now() + TTL;
                 const entries = structuredClone(ctx.entries);
-                this.reviews.set(token, { offerId, expiresAt, entries });
+                this.reviews.set(token, { offerId, expiresAt, entries, lossRevisions });
                 return { token, offerId, expiresAt, entries: structuredClone(entries) };
             },
         });
@@ -58,6 +64,12 @@ export class PriceReviewService {
             context: {
                 offerId: review.offerId,
                 entries: structuredClone(review.entries),
+                assertCurrent: (service) => {
+                    const key = service.toUpperCase();
+                    const keys = [key, `${key}:${this.lossOffer(review.offerId)}`];
+                    if (keys.some((k) => (this.lossRevisions.get(k) ?? 0) !== (review.lossRevisions.get(k) ?? 0)))
+                        throw new BadRequestException('Статистика потерь изменилась. Подготовьте цены заново.');
+                },
                 progress: emptyProgress(),
                 logger: this.logger,
             },
@@ -66,6 +78,19 @@ export class PriceReviewService {
         });
         review.jobId = state.id;
         return state;
+    }
+    @OnEvent(LOSS_SAVED_EVENT)
+    lossSaved(service: string, offers?: string[]) {
+        const key = service.toUpperCase();
+        const keys = offers ? offers.map((offer) => `${key}:${this.lossOffer(offer)}`) : [key];
+        for (const k of keys) this.lossRevisions.set(k, (this.lossRevisions.get(k) ?? 0) + 1);
+    }
+    private lossOffer(offer: string): string {
+        try {
+            return lossOfferKey(offer);
+        } catch {
+            return offer;
+        }
     }
     private cleanup() {
         for (const [token, review] of this.reviews)

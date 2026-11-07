@@ -1,3 +1,4 @@
+import { priceUpdateQueue } from '../helpers/price/price-update.queue';
 import { Inject, Injectable } from '@nestjs/common';
 import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
 import { IJobCommand, IJobContext } from '../interfaces/i.job.context';
@@ -18,6 +19,7 @@ export interface PriceReviewEntry {
 export interface PriceReviewContext extends IJobContext {
     offerId: string;
     entries: PriceReviewEntry[];
+    assertCurrent?: (service: string) => void;
 }
 @Injectable()
 export class PreparePriceReviewCommand implements IJobCommand<PriceReviewContext> {
@@ -70,7 +72,10 @@ export class SendPriceReviewCommand implements IJobCommand<PriceReviewContext> {
             await jobCheckpoint(ctx);
             if (!entry.error && entry.prices.length) {
                 try {
-                    entry.response = await this.extra.getService(entry.service).updatePrices(entry.prices);
+                    entry.response = await priceUpdateQueue.run(entry.service, async () => {
+                        ctx.assertCurrent?.(entry.service);
+                        return this.extra.getService(entry.service).updatePrices(entry.prices);
+                    });
                     const r: any = entry.response;
                     if (
                         entry.service === GoodServiceEnum.OZON &&

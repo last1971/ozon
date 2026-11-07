@@ -1,3 +1,4 @@
+import { ozonPricesMatch } from '../../helpers/price/ozon-prices-match';
 import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -99,14 +100,8 @@ export class VerifyOzonPricesCommand implements ICommandAsync<IGoodsProcessingCo
         }
         return sent
             .map((s) => ({ sent: s, actual: actual.get(s.offer_id) }))
-            .filter((m) => !m.actual || !same(m.sent, m.actual));
+            .filter((m) => !m.actual || !ozonPricesMatch(m.sent, m.actual, MATCH_RUB));
     }
-}
-
-function same(sent: UpdatePriceDto, actual: ProductPriceDto['price']): boolean {
-    return (['price', 'old_price', 'min_price'] as const).every(
-        (f) => Math.abs(toNumber(sent[f]) - toNumber(actual[f])) <= MATCH_RUB,
-    );
 }
 
 function prices(p: { price?: string | number; old_price?: string | number; min_price?: string | number }): string {

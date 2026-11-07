@@ -1,3 +1,4 @@
+import { LossPriceQueueStore } from './prices/loss-price-queue.store';
 import { validateLossExpenses } from './loss-expenses';
 import { Inject, Injectable } from '@nestjs/common';
 import { FirebirdPool, ISOLATION_REPEATABLE_READ, ISOLATION_READ_COMMITTED_READ_ONLY } from 'ts-firebird';
@@ -20,7 +21,10 @@ LOSS_READ_ISOLATION[1] = ISOLATION_READ_COMMITTED_READ_ONLY[1];
 
 @Injectable()
 export class LossStatsStore implements ILossStatsStore {
-    constructor(@Inject(FIREBIRD) protected readonly pool: FirebirdPool) {}
+    constructor(
+        @Inject(FIREBIRD) protected readonly pool: FirebirdPool,
+        private readonly priceQueue?: LossPriceQueueStore,
+    ) {}
 
     async replace(snapshot: LossSnapshot, hooks: LossSaveHooks = {}): Promise<void> {
         assertLossService(snapshot.service);
@@ -72,7 +76,9 @@ export class LossStatsStore implements ILossStatsStore {
         const expenses = snapshot.rows.map((row) =>
             row.expenses === undefined ? undefined : validateLossExpenses(row.expenses),
         );
+        const frozenRows = snapshot.rows.map((row, i) => ({ ...row, expenses: expenses[i] }));
         await hooks.checkpoint?.(0, rows.length);
+        let changedOffers: string[] = [];
         const t = await this.pool.getTransaction();
         try {
             // UPDATE существующей служебной строки берёт write lock. Пустые снимки также сериализованы.
@@ -85,6 +91,19 @@ export class LossStatsStore implements ILossStatsStore {
             const old = await t.query('SELECT CALCULATED_AT FROM MP_LOSS_STATE WHERE SERVICE = ?', [service], false);
             if (old[0]?.CALCULATED_AT && new Date(old[0].CALCULATED_AT).getTime() >= calculatedAt.getTime())
                 throw new Error('Уже сохранён такой же или более новый снимок');
+            if (this.priceQueue && (service === 'OZON' || service === 'WB')) {
+                const previous = await t.query('SELECT * FROM MP_LOSS_STATS WHERE SERVICE = ?', [service], false);
+                changedOffers = await this.priceQueue.enqueueChanges(
+                    service,
+                    calculatedAt,
+                    previous.map(decodeLossRow),
+                    frozenRows,
+                    t,
+                    async () => {
+                        await hooks.checkpoint?.(0, rows.length);
+                    },
+                );
+            }
             await t.execute('DELETE FROM MP_LOSS_STATS WHERE SERVICE = ?', [service], false);
             for (let i = 0; i < rows.length; i++) {
                 await t.execute(
@@ -117,6 +136,7 @@ export class LossStatsStore implements ILossStatsStore {
             await hooks.checkpoint?.(rows.length, rows.length);
             await hooks.beforeCommit?.();
             await t.commit(true);
+            this.priceQueue?.committed(service, changedOffers);
         } catch (error) {
             await t.rollback(true).catch(() => undefined);
             throw error;
@@ -144,42 +164,42 @@ export class LossStatsStore implements ILossStatsStore {
                     state.PERIOD_FROM && state.PERIOD_TO
                         ? { from: date(state.PERIOD_FROM), to: date(state.PERIOD_TO) }
                         : null,
-                rows: rows.map(
-                    (row): StoredLossRow => ({
-                        ...(row.LOSS_COSTS_VERSION === 1
-                            ? {
-                                  expenses: validateLossExpenses({
-                                      ...(row.RETURN_COST_MODE === 'TARIFF'
-                                          ? {}
-                                          : { paidReturnDelivery: row.RETURN_DELIVERY_RUB }),
-                                      cancellationDelivery: row.CANCEL_DELIVERY_RUB,
-                                      sellerReturnDelivery: row.SELLER_RETURN_RUB,
-                                      confirmedDefectCompensation: row.DEFECT_COMP_RUB,
-                                  }),
-                              }
-                            : {}),
-                        offerId: lossOfferKey(`${row.GOODSCODE}-${row.PIECES}`),
-                        soldUnits: row.SOLD_UNITS,
-                        returnedUnits: row.RETURNED_UNITS,
-                        writtenOffUnits: row.WRITTEN_OFF_UNITS,
-                        returnRate: row.RETURN_RATE,
-                        appliedReturnRate: row.APPLIED_RETURN_RATE ?? null,
-                        defectRate: row.DEFECT_RATE,
-                        state: String(row.DATA_STATE).trim() as StoredLossRow['state'],
-                        calculatedAt: new Date(row.CALCULATED_AT),
-                        warnings:
-                            row.DATA_STATE === 'MIGRATED'
-                                ? ['Перенесён процент; исходные количества неизвестны']
-                                : calculateLossRates({
-                                      soldUnits: row.SOLD_UNITS,
-                                      returnedUnits: row.RETURNED_UNITS,
-                                      writtenOffUnits: row.WRITTEN_OFF_UNITS,
-                                  }).warnings,
-                    }),
-                ),
+                rows: rows.map(decodeLossRow),
             };
         } finally {
             await t.rollback(true);
         }
     }
+}
+
+function decodeLossRow(row: any): StoredLossRow {
+    return {
+        ...(row.LOSS_COSTS_VERSION === 1
+            ? {
+                  expenses: validateLossExpenses({
+                      ...(row.RETURN_COST_MODE === 'TARIFF' ? {} : { paidReturnDelivery: row.RETURN_DELIVERY_RUB }),
+                      cancellationDelivery: row.CANCEL_DELIVERY_RUB,
+                      sellerReturnDelivery: row.SELLER_RETURN_RUB,
+                      confirmedDefectCompensation: row.DEFECT_COMP_RUB,
+                  }),
+              }
+            : {}),
+        offerId: lossOfferKey(`${row.GOODSCODE}-${row.PIECES}`),
+        soldUnits: row.SOLD_UNITS,
+        returnedUnits: row.RETURNED_UNITS,
+        writtenOffUnits: row.WRITTEN_OFF_UNITS,
+        returnRate: row.RETURN_RATE,
+        appliedReturnRate: row.APPLIED_RETURN_RATE ?? null,
+        defectRate: row.DEFECT_RATE,
+        state: String(row.DATA_STATE).trim() as StoredLossRow['state'],
+        calculatedAt: new Date(row.CALCULATED_AT),
+        warnings:
+            row.DATA_STATE === 'MIGRATED'
+                ? ['Перенесён процент; исходные количества неизвестны']
+                : calculateLossRates({
+                      soldUnits: row.SOLD_UNITS,
+                      returnedUnits: row.RETURNED_UNITS,
+                      writtenOffUnits: row.WRITTEN_OFF_UNITS,
+                  }).warnings,
+    };
 }

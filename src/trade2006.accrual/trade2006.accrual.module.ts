@@ -1,3 +1,4 @@
+import { MarketplaceLossModule } from '../marketplace-loss/marketplace-loss.module';
 import {
     LoadOzonLossFinancialsCommand,
     ReadOzonLossFeesCommand,
@@ -18,7 +19,7 @@ import { Trade2006InvoiceModule } from '../trade2006.invoice/trade2006.invoice.m
 import { ProductModule } from '../product/product.module';
 
 @Module({
-    imports: [JobModule, FirebirdModule, Trade2006InvoiceModule, ProductModule, MpEventModule],
+    imports: [MarketplaceLossModule, JobModule, FirebirdModule, Trade2006InvoiceModule, ProductModule, MpEventModule],
     providers: [
         Trade2006AccrualService,
         AccrualWeekService,

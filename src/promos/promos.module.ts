@@ -1,8 +1,8 @@
 import { GoodModule } from '../good/good.module';
 import { EnrichWithPricingCommand } from './price-lever/sweep/enrich-with-pricing.command';
 import { Module } from '@nestjs/common';
-import { PriceModule } from 'src/price/price.module';
-import { ProductModule } from 'src/product/product.module';
+import { PriceModule } from '../price/price.module';
+import { ProductModule } from '../product/product.module';
 import { JobModule } from '../job/job.module';
 import { OzonApiModule } from '../ozon.api/ozon.api.module';
 import { OzonPromosApi } from './promos.api';

@@ -27,7 +27,8 @@ export type MpKind =
     | 'CANCEL_WAIT'
     | 'DONOR_PIECES'
     | 'PROFIT_CHECK'
-    | 'INCOMING';
+    | 'INCOMING'
+    | 'LOSS_PRICE';
 
 /** Строка журнала с разобранным PAYLOAD — для экранов, которым нужны данные события, а не только факт. */
 export interface MpEventRowDto {
@@ -111,13 +112,43 @@ export class MpEventService {
                 );
                 return false;
             }
-            await transaction.execute(
-                'INSERT INTO MP_EVENT (SERVICE, KIND, EXT_ID, STATE, POSTING, PAYLOAD)' + ' VALUES (?, ?, ?, ?, ?, ?)',
-                [...key, event.posting ?? null, event.payload ? JSON.stringify(event.payload) : null],
-                false,
-            );
+            await this.insert(event, transaction);
             return true;
         });
+    }
+
+    /** Новый ключ уже гарантирован вызывающей транзакцией; конфликт откатывает всю операцию. */
+    async recordNew(event: MpEventDto, t: FirebirdTransaction): Promise<void> {
+        if (!t) throw new Error('Для нового события нужна общая транзакция');
+        await this.insert(event, t);
+    }
+
+    private async insert(event: MpEventDto, transaction: FirebirdTransaction): Promise<void> {
+        await transaction.execute(
+            'INSERT INTO MP_EVENT (SERVICE, KIND, EXT_ID, STATE, POSTING, PAYLOAD)' + ' VALUES (?, ?, ?, ?, ?, ?)',
+            [
+                event.service,
+                event.kind,
+                event.extId,
+                event.state,
+                event.posting ?? null,
+                event.payload ? JSON.stringify(event.payload) : null,
+            ],
+            false,
+        );
+    }
+
+    /** Обновить диагностику только конкретной незавершённой версии задания. */
+    async updatePendingPayload(event: MpEventDto, payload: unknown): Promise<void> {
+        await this.withTransaction(null, (transaction) =>
+            transaction
+                .execute(
+                    'UPDATE MP_EVENT SET PAYLOAD = ? WHERE SERVICE = ? AND KIND = ? AND EXT_ID = ? AND STATE = ? AND HANDLED_AT IS NULL',
+                    [JSON.stringify(payload), event.service, event.kind, event.extId, event.state],
+                    false,
+                )
+                .then(() => undefined),
+        );
     }
 
     /** Событие отработано целиком. До этого момента следующий проход возьмёт его снова. */
@@ -252,7 +283,8 @@ export class MpEventService {
     ): Promise<MpEventRowDto[]> {
         return this.withTransaction(t, async (transaction) => {
             const rows = await transaction.query(
-                'SELECT EXT_ID, STATE, POSTING, FIRST_SEEN, PAYLOAD FROM MP_EVENT' +
+                'SELECT EXT_ID, STATE, POSTING, FIRST_SEEN, PAYLOAD,' +
+                    ' CASE WHEN OCTET_LENGTH(PAYLOAD) <= 8191 THEN CAST(PAYLOAD AS VARCHAR(8191)) ELSE NULL END AS PAYLOAD_TEXT FROM MP_EVENT' +
                     ' WHERE SERVICE = ? AND KIND = ? AND STATE = ? AND HANDLED_AT IS NULL ORDER BY FIRST_SEEN',
                 [service, kind, state],
                 false,

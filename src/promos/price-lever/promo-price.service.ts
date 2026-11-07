@@ -82,8 +82,8 @@ export class PromoPriceService {
     }
 
     /** Весь каталог кабинета, включая товары без участия в акциях. */
-    async allStates(): Promise<PromoPriceState[]> {
-        const offers = [...new Set(await this.productService.listAllOfferIds())];
+    async allStates(offerIds?: string[]): Promise<PromoPriceState[]> {
+        const offers = [...new Set(offerIds ?? (await this.productService.listAllOfferIds()))];
         if (!offers.length) return [];
         const items: ProductPriceDto[] = [];
         for (const part of chunk(offers, 1000)) {

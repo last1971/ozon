@@ -4,6 +4,7 @@ import axios from '@/axios.config';
 import { useJob } from '@/composable/useJob';
 import { lossCostLabels as costLabels } from '@/contracts/loss-cost-labels';
 import JobProgress from './JobProgress.vue';
+import LossPriceQueue from './LossPriceQueue.vue';
 import type { JobState } from '@/contracts/job.state';
 import type { LossSnapshot, LossRow, LossCostReport } from '@/contracts/marketplace-loss';
 
@@ -159,7 +160,11 @@ onMounted(async () => {
         <v-btn class="my-3" :disabled="!selected || busy" :loading="starting" @click="recalculate"
             >Пересчитать статистику</v-btn
         >
-        <p>Пересчёт сохраняет статистику. Отправка цен этой кнопкой не запускается.</p>
+        <p>
+            Пересчёт сохраняет статистику. Изменения Ozon и ВБ запускают обновление цен и проверку акций через очередь
+            ниже.
+        </p>
+        <LossPriceQueue :service="selected" :revision="`${job?.id}:${job?.status}`" />
         <JobProgress v-if="job" :job="job" done-text="Статистика сохранена" />
         <v-alert v-if="error" type="error" class="my-3">{{ error }}</v-alert>
         <v-alert v-if="job?.status === 'failed'" type="error" class="my-3">

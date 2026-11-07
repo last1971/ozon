@@ -1,3 +1,4 @@
+import { wbPriceTask } from './wb-price-task';
 import { LossPricingService } from '../marketplace-loss/loss-pricing.service';
 import { BulkPriceJobService } from '../price/bulk/bulk-price-job.service';
 import { SerializePriceUpdate } from '../helpers/price/price-update.queue';
@@ -206,24 +207,8 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
     @SerializePriceUpdate('wb')
     async updatePrices(updatePrices: UpdatePriceDto[]): Promise<any> {
         assertPricingWritesAllowed();
-        const skus = updatePrices.map((updatePrice) => updatePrice.offer_id);
-        const data = updatePrices.map((updatePrice) => {
-            const nmID = this.cardService.getNmID(updatePrice.offer_id);
-            const base = parseInt(updatePrice.old_price);
-            const minPrice = Number(updatePrice.min_price);
-            return {
-                nmID: parseInt(nmID),
-                price: base,
-                // Правило владельца 23.10.2026: покупатель ВБ видит минимальную, база «до скидки» — витрина.
-                // Без минимальной — до price, как раньше.
-                discount: wbDiscountTo(base, minPrice > 0 ? minPrice : parseInt(updatePrice.price)),
-            };
-        });
-        const wbs = await this.goodService.getWbData(skus);
-        wbs.forEach((wb) => {
-            wb.minPrice = find(updatePrices, { offer_id: wb.id }).min_price;
-        });
-        await Promise.all(wbs.map((wb) => this.goodService.setWbData(wb, null)));
+        const data = updatePrices.map((price) => wbPriceTask(price, this.cardService.getNmID(price.offer_id)));
+        await this.saveMinPrices(updatePrices);
         const response = await this.pushPriceTasks(data);
         const remaining = data.map((task, index) => ({ nmID: task.nmID, offer_id: updatePrices[index].offer_id }));
         response.results = response.results.map((row) => {
@@ -232,6 +217,15 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
             return { ...row, offer_id: match?.offer_id };
         });
         return response;
+    }
+
+    /** Общее сохранение пола, в том числе когда округлённая цена/скидка уже стоят в ВБ. */
+    async saveMinPrices(prices: UpdatePriceDto[]): Promise<void> {
+        const wbs = await this.goodService.getWbData(prices.map((p) => p.offer_id));
+        wbs.forEach((wb) => {
+            wb.minPrice = find(prices, { offer_id: wb.id }).min_price;
+        });
+        await Promise.all(wbs.map((wb) => this.goodService.setWbData(wb, null)));
     }
 
     /**

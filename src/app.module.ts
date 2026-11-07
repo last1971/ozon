@@ -1,3 +1,4 @@
+import { LossPriceUpdateModule } from './marketplace-loss/prices/loss-price-update.module';
 import { MarketplaceLossApiModule } from './marketplace-loss/marketplace-loss-api.module';
 import { Logger, Module } from '@nestjs/common';
 import { AppController } from './app.controller';
@@ -117,6 +118,7 @@ import JSONbig from 'json-bigint';
         ScheduleModule.forRoot(),
         JobModule,
         MarketplaceLossApiModule,
+        LossPriceUpdateModule,
         ProfitCheckModule,
         OzonApiModule,
         ProductModule,

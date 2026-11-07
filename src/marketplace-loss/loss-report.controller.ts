@@ -27,7 +27,9 @@ export class LossReportController {
     }
     @Post(':service/recalculate')
     @HttpCode(202)
-    @ApiOperation({ summary: 'Пересчитать и сохранить статистику; прогресс GET /api/job/{id}. Цены не отправляются' })
+    @ApiOperation({
+        summary: 'Пересчитать статистику и поставить изменения Ozon/ВБ в очередь цен; прогресс GET /api/job/{id}',
+    })
     start(@Param('service') service: string, @Headers('x-client-id') clientId?: string) {
         return this.markets.start(service, clientId);
     }

@@ -1,3 +1,4 @@
+import { LossPriceQueueStore } from '../marketplace-loss/prices/loss-price-queue.store';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { FirebirdPool, ISOLATION_READ_COMMITTED_READ_ONLY } from 'ts-firebird';
 import { FIREBIRD } from '../firebird/firebird.module';
@@ -9,8 +10,8 @@ import { lossOfferKey } from '../helpers/price/marketplace.loss.stats';
 @Injectable()
 export class OzonReturnStore extends LossStatsStore {
     private readonly logger = new Logger(OzonReturnStore.name);
-    constructor(@Inject(FIREBIRD) pool: FirebirdPool) {
-        super(pool);
+    constructor(@Inject(FIREBIRD) pool: FirebirdPool, priceQueue?: LossPriceQueueStore) {
+        super(pool, priceQueue);
     }
     async replace(snapshot: LossSnapshot, hooks?: LossSaveHooks): Promise<void> {
         if (snapshot.service !== 'OZON' || !snapshot.rows.length) throw new Error('Нужен непустой снимок Ozon');

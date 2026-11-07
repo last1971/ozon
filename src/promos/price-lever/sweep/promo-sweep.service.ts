@@ -48,19 +48,21 @@ export class PromoSweepService {
     }
 
     /** apply=false — только отчёт; apply=true — выполнить планы. Та же задача уже идёт — вернётся она. */
-    start(apply: boolean, goal: SweepGoalKind, clientId?: string): JobStateDto {
+    start(apply: boolean, goal: SweepGoalKind, clientId?: string, offerIds?: string[]): JobStateDto {
         if (apply) assertPricingWritesAllowed();
         const warnings = new Map<string, PricingWarning>();
         return this.jobs.run<IPromoSweepContext, PromoSweepReport>({
             kind: PROMO_SWEEP_JOB,
-            params: { apply, goal },
+            params: { apply, goal, ...(offerIds ? { offerIds } : {}) },
             clientId,
             commands: this.commands,
-            execute: (run) => priceUpdateQueue.run(apply ? 'ozon' : undefined, () => withPricingWarnings(warnings, run)),
+            execute: (run) =>
+                priceUpdateQueue.run(apply ? 'ozon' : undefined, () => withPricingWarnings(warnings, run)),
             cleanup: async () => {},
-            context: { apply, goal, progress: emptyProgress(), logger: this.logger },
+            context: { apply, goal, ...(offerIds ? { offerIds } : {}), progress: emptyProgress(), logger: this.logger },
             result: (ctx) => {
-                for (const w of warnings.values()) this.logger.warn(`${w.message}: ${w.count}; примеры ${w.examples.join(', ')}`);
+                for (const w of warnings.values())
+                    this.logger.warn(`${w.message}: ${w.count}; примеры ${w.examples.join(', ')}`);
                 return ctx.report as PromoSweepReport;
             },
         });
