@@ -31,6 +31,6 @@ import { ProductModule } from '../product/product.module';
         OzonLossFinancialCommands,
         CalculateOzonLossExpensesCommand,
     ],
-    exports: [Trade2006AccrualService, AccrualWeekService, OzonReturnPreviewService],
+    exports: [Trade2006AccrualService, AccrualWeekService, OzonReturnPreviewService, OzonReturnService],
 })
 export class Trade2006AccrualModule {}

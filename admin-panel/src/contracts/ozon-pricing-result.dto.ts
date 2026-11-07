@@ -34,6 +34,10 @@ export interface OzonPricingResultDto {
         label: number;
         handling: number;
         returns: number;
+        cancellations?: number;
+        sellerReturns?: number;
+        defects?: number;
+        defectCompensation?: number;
         tax: number;
         vat: number;
         profitTax: number;

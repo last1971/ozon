@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { lossCostLabels } from '@/contracts/loss-cost-labels';
 import type { OzonPricingResultDto } from '@/contracts/ozon-pricing-result.dto';
 
 defineProps<{ result?: OzonPricingResultDto; loading?: boolean }>();
@@ -26,7 +27,7 @@ const costLabels = {
     packing: 'Упаковка',
     label: 'Этикетка',
     handling: 'Внутренние расходы',
-    returns: 'Возвраты',
+    ...lossCostLabels,
     tax: 'Налог УСН',
     vat: 'НДС',
     profitTax: 'Налог на прибыль',

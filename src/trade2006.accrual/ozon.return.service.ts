@@ -53,46 +53,52 @@ export class OzonReturnService {
         }
     }
 
+    /** Ручной запуск возвращает id сразу; цепочка и дедупликация остаются в JobService. */
+    start(clientId?: string, now = new Date()) {
+        const { from, to } = lossPeriod(now);
+        const context: OzonLossExpenseContext = {
+            service: 'OZON',
+            preliminary: false,
+            period: { from, to },
+            calculatedAt: now,
+            minSales: Number(this.config.get('OZON_RETURN_MIN_SALES', 1)),
+            defaultPerc: Number(this.config.get('OZON_RETURN_PERC_DEFAULT', 0)),
+            catalog: [],
+            skuToOffer: new Map(),
+            knownOffers: [],
+            sales: [],
+            rows: [],
+            writeOffs: [],
+            progress: emptyProgress(),
+        };
+        return this.jobs.run<OzonLossExpenseContext, { rows: number; from: string; to: string }>({
+            kind: 'loss-recalculate:ozon',
+            params: { from, to },
+            clientId,
+            context,
+            commands: [
+                new LoadOzonLossCatalogCommand(this.products, this.store),
+                new LoadLossHistoryCommand(new OzonLossHistorySource(this.previewService, context)),
+                new LoadLossWriteOffsCommand(this.writeOffs),
+                ...this.financials.loading,
+                new CalculateLossReportCommand(),
+                new ApplyOzonReturnPolicyCommand(),
+                this.financials.calculate,
+                new ApplyLossExpensesCommand(),
+                new SaveLossSnapshotCommand(this.store),
+            ],
+            canCancel: (c) => !c.committing,
+            // Транзакцией владеет store; JobService ждёт выхода команды и её rollback.
+            cleanup: async () => {},
+            result: (c) => ({ rows: c.rows.length, ...c.period }),
+        });
+    }
+
     async recalculate(now = new Date()): Promise<{ rows: number; from: string; to: string }> {
         if (this.running) throw new Error('Пересчёт возвратов Ozon уже выполняется');
         this.running = true;
         try {
-            const { from, to } = lossPeriod(now);
-            const context: OzonLossExpenseContext = {
-                service: 'OZON',
-                preliminary: false,
-                period: { from, to },
-                calculatedAt: now,
-                minSales: Number(this.config.get('OZON_RETURN_MIN_SALES', 1)),
-                defaultPerc: Number(this.config.get('OZON_RETURN_PERC_DEFAULT', 0)),
-                catalog: [],
-                skuToOffer: new Map(),
-                knownOffers: [],
-                sales: [],
-                rows: [],
-                writeOffs: [],
-                progress: emptyProgress(),
-            };
-            const job = this.jobs.run<OzonLossExpenseContext, { rows: number; from: string; to: string }>({
-                kind: 'loss-recalculate:ozon',
-                params: { from, to },
-                context,
-                commands: [
-                    new LoadOzonLossCatalogCommand(this.products, this.store),
-                    new LoadLossHistoryCommand(new OzonLossHistorySource(this.previewService, context)),
-                    new LoadLossWriteOffsCommand(this.writeOffs),
-                    ...this.financials.loading,
-                    new CalculateLossReportCommand(),
-                    new ApplyOzonReturnPolicyCommand(),
-                    this.financials.calculate,
-                    new ApplyLossExpensesCommand(),
-                    new SaveLossSnapshotCommand(this.store),
-                ],
-                canCancel: (c) => !c.committing,
-                // Транзакцией владеет store; JobService ждёт выхода команды и её rollback.
-                cleanup: async () => {},
-                result: (c) => ({ rows: c.rows.length, ...c.period }),
-            });
+            const job = this.start(undefined, now);
             const done = await this.jobs.whenDone(job.id);
             if (done.status !== 'done') throw new Error(done.error);
             return done.result as { rows: number; from: string; to: string };
