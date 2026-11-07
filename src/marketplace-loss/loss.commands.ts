@@ -21,6 +21,7 @@ export class LoadLossHistoryCommand implements IJobCommand<LossContext> {
         assertLossService(this.source.service);
         if (ctx.service !== this.source.service) throw new Error('Источник другой площадки');
         ctx.preliminary = this.source.preliminary;
+        ctx.returnsKnown = this.source.returnsKnown !== false;
         let cursor = ctx.period.from;
         const seen = new Set([cursor]);
         for (let page = 0; page < 100; page++) {
@@ -30,6 +31,11 @@ export class LoadLossHistoryCommand implements IJobCommand<LossContext> {
             if (!result || !Array.isArray(result.operations)) throw new Error('Некорректная страница операций');
             if (result.next !== null && (typeof result.next !== 'string' || !result.next || seen.has(result.next)))
                 throw new Error('Повторный или некорректный курсор продаж');
+            if (result.excludedGoods?.length) {
+                ctx.excludedGoods ??= [];
+                ctx.excludedGoods.push(...result.excludedGoods);
+                ctx.preliminary = true;
+            }
             if (result.counts !== undefined) {
                 if (!Array.isArray(result.counts)) throw new Error('Некорректные итоги операций');
                 ctx.counts ??= [];
@@ -73,7 +79,7 @@ export class CalculateLossReportCommand implements IJobCommand<LossContext> {
     readonly phase = 'Расчёт процентов';
     readonly weight = 20;
     async execute<T extends LossContext>(ctx: T): Promise<T> {
-        const stats = new MarketplaceLossAccumulator(ctx.period, ctx.service);
+        const stats = new MarketplaceLossAccumulator(ctx.period, ctx.service, ctx.returnsKnown !== false);
         ctx.progress.total = ctx.sales.length + ctx.writeOffs.length + (ctx.counts?.length ?? 0);
         if (ctx.sales.length && ctx.counts?.length) throw new Error('Нельзя смешивать операции и готовые итоги');
         for (const row of ctx.counts ?? []) {
@@ -89,7 +95,9 @@ export class CalculateLossReportCommand implements IJobCommand<LossContext> {
             if (++ctx.progress.done % 100 === 0) await jobCheckpoint(ctx);
         }
         await jobCheckpoint(ctx);
-        ctx.rows = stats.result();
+        const excluded = new Set((ctx.excludedGoods ?? []).map((r) => r.goodscode));
+        ctx.rows = stats.result().filter((r) => !excluded.has(r.offerId.split('-')[0]));
+        ctx.progress.counters.excludedGoods = excluded.size;
         Object.assign(ctx.progress.counters, {
             offers: ctx.rows.length,
             withReturns: ctx.rows.filter((r) => r.returnedUnits > 0).length,

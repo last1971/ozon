@@ -220,3 +220,48 @@ describe('Единое хранилище снимков потерь', () => {
         });
     });
 });
+
+describe('Частичные снимки без загруженных возвратов', () => {
+    it.each([0, 10])('сохраняет неизвестное количество и процент возвратов как NULL, продажи %s', async (soldUnits) => {
+        const { store, t } = setup();
+        const partial = {
+            ...row('123', soldUnits, 0, 2),
+            returnedUnits: null,
+            ...calculateLossRates({ soldUnits, returnedUnits: null, writtenOffUnits: 2 }),
+        };
+        await store.replace({ ...snapshot(), service: 'YANDEX', rows: [partial] });
+        const values = t.execute.mock.calls.find(([sql]) => sql.startsWith('INSERT'))[1];
+        expect(values.slice(3, 9)).toEqual([soldUnits, null, 2, null, soldUnits ? 0.2 : null, 'PARTIAL']);
+    });
+    it('не позволяет передавать неизвестный процент в цены', async () => {
+        const { store, pool } = setup();
+        const partial = { ...row(), returnedUnits: null, returnRate: null, appliedReturnRate: 0 };
+        await expect(store.replace({ ...snapshot(), rows: [partial] })).rejects.toThrow('неизвестный');
+        expect(pool.getTransaction).not.toHaveBeenCalled();
+    });
+    it('читает NULL возвратов, сохраняя известный процент брака', async () => {
+        const { store, t } = setup();
+        t.query
+            .mockResolvedValueOnce([{ CALCULATED_AT: snapshot().calculatedAt, PRELIMINARY: 1 }])
+            .mockResolvedValueOnce([
+                {
+                    GOODSCODE: 123,
+                    PIECES: 1,
+                    SOLD_UNITS: 10,
+                    RETURNED_UNITS: null,
+                    WRITTEN_OFF_UNITS: 2,
+                    RETURN_RATE: null,
+                    DEFECT_RATE: 0.2,
+                    DATA_STATE: 'PARTIAL',
+                    CALCULATED_AT: snapshot().calculatedAt,
+                },
+            ]);
+        expect((await store.read('YANDEX')).rows[0]).toMatchObject({
+            returnedUnits: null,
+            returnRate: null,
+            defectRate: 0.2,
+            state: 'PARTIAL',
+            warnings: [expect.stringContaining('неизвестен')],
+        });
+    });
+});

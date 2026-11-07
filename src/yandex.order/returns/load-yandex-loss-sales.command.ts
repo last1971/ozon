@@ -7,7 +7,7 @@ import { LossContext } from '../../marketplace-loss/loss.contracts';
 import { ConfigService } from '@nestjs/config';
 import { YandexFirebirdSalesSource } from './yandex-loss-history.source';
 
-/** Загружает продажи из Firebird-инвойсов (STATUS=4, покупатель YANDEX_BUYER_ID). 90 дней, полные данные. */
+/** Загружает продажи из Firebird-инвойсов (STATUS IN (4, 5), покупатель YANDEX_BUYER_ID). 90 дней. Возвраты неизвестны. */
 @Injectable()
 export class LoadYandexLossSalesCommand implements IJobCommand<LossContext> {
     readonly phase = 'Продажи и возвраты';

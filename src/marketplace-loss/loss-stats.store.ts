@@ -44,7 +44,16 @@ export class LossStatsStore implements ILossStatsStore {
             if (applied !== null && (!Number.isFinite(applied) || applied < 0 || applied > 1))
                 throw new Error('Некорректная применяемая доля возвратов');
             const key = ozonReturnKey(offer);
-            const state = !row.soldUnits ? 'NO_SALES' : rates.warnings.length ? 'REVIEW' : 'READY';
+            if (row.returnedUnits === null && applied !== null)
+                throw new Error('Нельзя применять неизвестный процент возвратов');
+            const state =
+                row.returnedUnits === null
+                    ? 'PARTIAL'
+                    : !row.soldUnits
+                      ? 'NO_SALES'
+                      : rates.warnings.length
+                        ? 'REVIEW'
+                        : 'READY';
             return [
                 service,
                 Number(key.goodscode),

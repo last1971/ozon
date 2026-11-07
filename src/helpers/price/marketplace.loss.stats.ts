@@ -22,7 +22,7 @@ export interface RecordedWriteOff {
 export interface MarketplaceLossRow {
     offerId: string;
     soldUnits: number;
-    returnedUnits: number;
+    returnedUnits: number | null;
     writtenOffUnits: number;
     returnRate: number | null;
     defectRate: number | null;
@@ -76,6 +76,7 @@ export class MarketplaceLossAccumulator {
     constructor(
         period: LossPeriod,
         private readonly service: string,
+        private readonly returnsKnown = true,
     ) {
         this.from = lossDate(period.from);
         this.to = lossDate(period.to);
@@ -158,7 +159,7 @@ export class MarketplaceLossAccumulator {
                 rows.set(offerId, {
                     offerId,
                     soldUnits: 0,
-                    returnedUnits: 0,
+                    returnedUnits: this.returnsKnown ? 0 : null,
                     writtenOffUnits: 0,
                     returnRate: null,
                     defectRate: null,
@@ -169,13 +170,16 @@ export class MarketplaceLossAccumulator {
         for (const item of this.totals.values()) {
             const row = get(item.offerId);
             row.soldUnits += item.soldUnits;
-            row.returnedUnits += item.returnedUnits;
+            row.returnedUnits =
+                row.returnedUnits === null || item.returnedUnits === null
+                    ? null
+                    : row.returnedUnits + item.returnedUnits;
         }
         for (const sale of this.sales.values()) {
             if (sale.at < this.from || sale.at >= this.to) continue;
             const row = get(sale.offerId);
             if (sale.kind === 'S') row.soldUnits += sale.units;
-            else row.returnedUnits += sale.units;
+            else if (row.returnedUnits !== null) row.returnedUnits += sale.units;
         }
         for (const item of this.writeOffs.values())
             get(lossOfferKey(`${item.goodscode}-${item.pieces}`)).writtenOffUnits += item.units;
@@ -189,9 +193,11 @@ export function calculateLossRates(
     counts: Pick<MarketplaceLossRow, 'soldUnits' | 'returnedUnits' | 'writtenOffUnits'>,
 ) {
     const { soldUnits, returnedUnits, writtenOffUnits } = counts;
-    const returned = calculateOzonReturnPerc({ soldUnits, paidReturnUnits: returnedUnits });
+    const returned =
+        returnedUnits === null ? null : calculateOzonReturnPerc({ soldUnits, paidReturnUnits: returnedUnits });
     const defect = calculateOzonReturnPerc({ soldUnits, paidReturnUnits: writtenOffUnits });
     const warnings: string[] = [];
+    if (returnedUnits === null) warnings.push('Возвраты не загружены: процент возвратов неизвестен');
     if (!soldUnits) warnings.push('Нет продаж: проценты не определены');
     else if (returned > 1 || defect > 1)
         warnings.push('Потери превышают продажи периода: требуется проверка перед применением к ценам');

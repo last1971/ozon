@@ -80,27 +80,31 @@ describe('Сохранение статистики Яндекса через о
     });
     afterEach(() => jest.restoreAllMocks());
 
-    it('продажи из Firebird и списание дают корректные доли; preliminary=false, 90 дней', async () => {
+    it('продажи из Firebird и списание дают корректные доли; preliminary=true, 90 дней', async () => {
         const { run, writeOffs, lossStore } = setup([salesRow('123', 1, 3)]);
         writeOffs.listRecordedWriteOffs.mockResolvedValue([writtenOff]);
         const done = await run();
         expect(done.status).toBe('done');
         expect(done.result).toMatchObject({
             service: 'YANDEX',
-            preliminary: false,
+            preliminary: true,
             from: '2026-08-08',
             to: '2026-11-06',
         });
-        expect(lossStore.replace.mock.calls[0][0]).toMatchObject({ service: 'YANDEX', preliminary: false });
+        expect(lossStore.replace.mock.calls[0][0]).toMatchObject({ service: 'YANDEX', preliminary: true });
         const rows = lossStore.replace.mock.calls[0][0].rows;
         // '123': 3 продажи, 0 списаний
-        expect(rows).toEqual(expect.arrayContaining([
-            expect.objectContaining({ offerId: '123', soldUnits: 3, returnedUnits: 0, returnRate: 0 }),
-        ]));
+        expect(rows).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ offerId: '123', soldUnits: 3, returnedUnits: null, returnRate: null }),
+            ]),
+        );
         // '123-4': 0 продаж, 1 списание → defectRate null
-        expect(rows).toEqual(expect.arrayContaining([
-            expect.objectContaining({ offerId: '123-4', soldUnits: 0, writtenOffUnits: 1, defectRate: null }),
-        ]));
+        expect(rows).toEqual(
+            expect.arrayContaining([
+                expect.objectContaining({ offerId: '123-4', soldUnits: 0, writtenOffUnits: 1, defectRate: null }),
+            ]),
+        );
     });
 
     it('продажи с фасовкой: TOTAL_QUAN/PIECES = soldUnits', async () => {
@@ -200,7 +204,10 @@ describe('Сохранение статистики Яндекса через о
                 LoadYandexWriteOffsCommand,
                 CalculateYandexLossReportCommand,
                 SaveLossSnapshotCommand,
-                { provide: ConfigService, useValue: new ConfigService({ SERVICES: ['yandex'], YANDEX_BUYER_ID: 24465 }) },
+                {
+                    provide: ConfigService,
+                    useValue: new ConfigService({ SERVICES: ['yandex'], YANDEX_BUYER_ID: 24465 }),
+                },
                 { provide: MpReturnAcceptStore, useValue: { listRecordedWriteOffs: jest.fn().mockResolvedValue([]) } },
                 { provide: FIREBIRD, useValue: pool },
                 { provide: LOSS_STATS_STORE, useValue: storeMock },
@@ -212,7 +219,7 @@ describe('Сохранение статистики Яндекса через о
             // Firebird-запрос был выполнен
             expect(transaction.query).toHaveBeenCalledTimes(1);
             // snapshot сохранён с правильным сервисом
-            expect(storeMock.replace.mock.calls[0][0]).toMatchObject({ service: 'YANDEX', preliminary: false });
+            expect(storeMock.replace.mock.calls[0][0]).toMatchObject({ service: 'YANDEX', preliminary: true });
         } finally {
             await module.close();
         }

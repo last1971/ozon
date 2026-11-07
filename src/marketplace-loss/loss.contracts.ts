@@ -4,12 +4,17 @@ import type { LossPeriod, MarketplaceLossRow, RecordedWriteOff } from '../helper
 export interface LossCounts {
     offerId: string;
     soldUnits: number;
-    returnedUnits: number;
+    returnedUnits: number | null;
+}
+export interface LossExclusion {
+    goodscode: string;
+    reason: string;
 }
 export interface LossHistoryPage {
     operations: LossOperation[];
     /** Итоги за запрошенное окно, если существующий источник уже сводит операции (Ozon). */
     counts?: LossCounts[];
+    excludedGoods?: LossExclusion[];
     next: string | null;
 }
 export interface LossOperation {
@@ -25,6 +30,7 @@ export interface LossOperation {
 export interface ILossHistorySource {
     readonly service: string;
     readonly preliminary: boolean;
+    readonly returnsKnown?: boolean;
     readPage(cursor: string): Promise<LossHistoryPage>;
 }
 export interface ILossWriteOffSource {
@@ -36,6 +42,8 @@ export interface LossContext extends IJobContext {
     period: LossPeriod;
     sales: LossOperation[];
     counts?: LossCounts[];
+    returnsKnown?: boolean;
+    excludedGoods?: LossExclusion[];
     writeOffs: RecordedWriteOff[];
     rows: MarketplaceLossRow[];
 }
@@ -51,7 +59,7 @@ export interface StoredLossRow extends Omit<MarketplaceLossRow, 'soldUnits' | 'r
     soldUnits: number | null;
     returnedUnits: number | null;
     writtenOffUnits: number | null;
-    state: 'MIGRATED' | 'NO_SALES' | 'READY' | 'REVIEW';
+    state: 'MIGRATED' | 'NO_SALES' | 'READY' | 'REVIEW' | 'PARTIAL';
     calculatedAt: Date;
 }
 export interface StoredLossSnapshot extends Omit<LossSnapshot, 'period' | 'rows'> {

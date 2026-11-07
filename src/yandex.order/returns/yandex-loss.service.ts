@@ -4,6 +4,7 @@ import { GoodServiceEnum } from '../../good/good.service.enum';
 import { JobService } from '../../job/job.service';
 import { emptyProgress } from '../../interfaces/i.job.context';
 import { lossPeriod } from '../../helpers/price/marketplace.loss.stats';
+import { LossExclusion } from '../../marketplace-loss/loss.contracts';
 import { SaveLossContext, SaveLossSnapshotCommand } from '../../marketplace-loss/loss.commands';
 import { LoadYandexLossSalesCommand } from './load-yandex-loss-sales.command';
 import { LoadYandexWriteOffsCommand } from './load-yandex-write-offs.command';
@@ -16,6 +17,7 @@ export interface YandexLossResult {
     to: string;
     calculatedAt: Date;
     rows: number;
+    excludedGoods: LossExclusion[];
 }
 
 /** Сохраняет статистику Яндекс.Маркета общими командами; расчёт цен к ней ещё не подключён. */
@@ -59,6 +61,7 @@ export class YandexLossService {
                 ...c.period,
                 calculatedAt: c.calculatedAt,
                 rows: c.rows.length,
+                excludedGoods: c.excludedGoods ?? [],
             }),
         });
     }
