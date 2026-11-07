@@ -1,3 +1,4 @@
+import { WbFinancialReportService } from './finance/financial-report.service';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { IOrderable } from '../interfaces/IOrderable';
 import { PostingDto } from '../posting/dto/posting.dto';
@@ -80,6 +81,7 @@ export class WbOrderService implements IOrderable, ISalePriceFallback, IFboSales
         private readonly mpRunner: MpDecisionRunnerService,
         private readonly currentPrices: WbCurrentPricesService,
         private readonly goodsReturnReport: WbGoodsReturnReportService,
+        private readonly financialReports: WbFinancialReportService,
     ) {
         this.postingDtos = new Map<string, PostingDto>();
     }
@@ -446,15 +448,8 @@ export class WbOrderService implements IOrderable, ISalePriceFallback, IFboSales
         return newOrders.concat(confirmOrders);
     }
 
-    @RateLimit(60000)
     async getTransactions(data: TransactionFilterDate, rrdid = 0): Promise<Array<WbTransactionDto>> {
-        // WB на пустой период отдаёт 204 No Content → axios кладёт пустую строку
-        const res = await this.api.method('/api/v5/supplier/reportDetailByPeriod', 'statistics', {
-            dateFrom: data.from,
-            dateTo: data.to,
-            rrdid,
-        });
-        return Array.isArray(res) ? res : [];
+        return this.financialReports.read(data, rrdid);
     }
 
     async getTransactionsFromFile(file: Express.Multer.File): Promise<Array<WbTransactionDto>> {

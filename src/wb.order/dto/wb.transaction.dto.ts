@@ -1,4 +1,5 @@
 export class WbTransactionDto {
+    raw?: Readonly<Record<string, unknown>>;
     order_dt: string;
     srid: string;
     delivery_rub: number;

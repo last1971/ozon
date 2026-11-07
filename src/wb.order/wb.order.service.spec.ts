@@ -1,3 +1,12 @@
+import { JobService } from '../job/job.service';
+import { WbFinancialReportService } from './finance/financial-report.service';
+import { WbFinancialReportReader } from './finance/financial-report.reader';
+import {
+    ValidateWbFinancialReportCommand,
+    LoadWbFinancialReportCommand,
+    NormalizeWbFinancialReportCommand,
+} from './finance/financial-report.commands';
+import { WB_FINANCIAL_REPORT_URL } from './finance/financial-report.context';
 import { Test, TestingModule } from '@nestjs/testing';
 import { WbOrderService } from './wb.order.service';
 import { INVOICE_SERVICE } from '../interfaces/IInvoice';
@@ -123,6 +132,12 @@ describe('WbOrderService', () => {
 
         module = await Test.createTestingModule({
             providers: [
+                JobService,
+                WbFinancialReportService,
+                WbFinancialReportReader,
+                ValidateWbFinancialReportCommand,
+                LoadWbFinancialReportCommand,
+                NormalizeWbFinancialReportCommand,
                 WbOrderService,
                 {
                     provide: INVOICE_SERVICE,
@@ -385,74 +400,66 @@ describe('WbOrderService', () => {
         ]);
     });
 
-    it('getTransactions', async () => {
-        const date = new Date();
+    it('getTransactions использует новый финансовый API', async () => {
+        method.mockResolvedValueOnce('');
+        const date = new Date('2026-11-01T00:00:00+03:00');
         await service.getTransactions({ from: date, to: date });
         expect(method.mock.calls[0]).toEqual([
-            '/api/v5/supplier/reportDetailByPeriod',
-            'statistics',
+            WB_FINANCIAL_REPORT_URL,
+            'post',
             {
-                dateFrom: date,
-                dateTo: date,
-                rrdid: 0,
+                dateFrom: '2026-11-01T00:00:00.000+03:00',
+                dateTo: '2026-11-01T00:00:00.000+03:00',
+                rrdId: 0,
+                limit: 100000,
+                period: 'weekly',
             },
+            true,
         ]);
     });
-
-    it.each([
-        ['204 No Content (пустая строка)', ''],
-        ['undefined', undefined],
-        ['null', null],
-    ])('getTransactions returns [] when WB responds with %s', async (_label, value) => {
-        method.mockResolvedValueOnce(value);
+    it('204 No Content остаётся пустым отчётом', async () => {
+        method.mockResolvedValueOnce('');
         const date = new Date();
-        const result = await service.getTransactions({ from: date, to: date });
-        expect(result).toEqual([]);
+        expect(await service.getTransactions({ from: date, to: date })).toEqual([]);
     });
-
-    it('updateTransactions', async () => {
-        const date = new Date();
-        method.mockResolvedValueOnce([
+    it.each([undefined, null, { status: 'NotOk', error: { status: 403 } }])(
+        'ошибка %j не становится пустым отчётом',
+        async (value) => {
+            method.mockResolvedValueOnce(value);
+            const date = new Date();
+            await expect(service.getTransactions({ from: date, to: date })).rejects.toThrow('не прочитан');
+        },
+    );
+    it('updateTransactions получает прежний контракт и сохраняет прежние суммы', async () => {
+        // Две страницы одного отчёта: тест проверяет преобразование, не ждёт минуту в реальном времени.
+        jest.spyOn(service as any, 'getTransactions').mockResolvedValue([
             {
-                order_dt: date,
+                order_dt: '',
                 srid: '123',
                 delivery_rub: 10,
                 ppvz_for_pay: 100,
                 additional_payment: 0,
                 penalty: 0,
                 rrd_id: 1,
-                assembly_id: null,
+                assembly_id: 0,
             },
             {
-                order_dt: date,
+                order_dt: '',
                 srid: '124',
                 delivery_rub: 0,
                 ppvz_for_pay: 200,
                 additional_payment: 0,
                 penalty: 0,
                 rrd_id: 2,
-                assembly_id: null,
+                assembly_id: 0,
             },
         ]);
-
+        const date = new Date();
         await service.updateTransactions({ from: date, to: date }, null);
-
-        // Проверяем вызов API для получения транзакций
-        expect(method.mock.calls[0]).toEqual([
-            '/api/v5/supplier/reportDetailByPeriod',
-            'statistics',
-            {
-                dateFrom: date,
-                dateTo: date,
-                rrdid: 0,
-            },
-        ]);
-
-        // Проверяем вызов updateByCommissions с правильными комиссиями
         expect(updateByCommissions.mock.calls[0]).toEqual([
             new Map([
-                ['123', 90], // 100 - 10
-                ['124', 200], // 200 - 0
+                ['123', 90],
+                ['124', 200],
             ]),
             null,
         ]);

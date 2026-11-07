@@ -1,3 +1,10 @@
+import { WbFinancialReportService } from './finance/financial-report.service';
+import { WbFinancialReportReader } from './finance/financial-report.reader';
+import {
+    ValidateWbFinancialReportCommand,
+    LoadWbFinancialReportCommand,
+    NormalizeWbFinancialReportCommand,
+} from './finance/financial-report.commands';
 import { MarketplaceLossModule } from '../marketplace-loss/marketplace-loss.module';
 import { WbLossService } from './returns/wb-loss.service';
 import { JobModule } from '../job/job.module';
@@ -37,6 +44,11 @@ import { WbCurrentPricesModule } from '../wb.price/wb.current-prices.module';
         WbCurrentPricesModule,
     ],
     providers: [
+        WbFinancialReportService,
+        WbFinancialReportReader,
+        ValidateWbFinancialReportCommand,
+        LoadWbFinancialReportCommand,
+        NormalizeWbFinancialReportCommand,
         WbReturnPreviewService,
         WbLossService,
         LoadWbLossSalesCommand,
@@ -49,6 +61,6 @@ import { WbCurrentPricesModule } from '../wb.price/wb.current-prices.module';
         SelectBestIdCommand,
         FetchInvoiceByRemarkCommand,
     ],
-    exports: [WbOrderService, WbLossService],
+    exports: [WbOrderService, WbLossService, WbFinancialReportService],
 })
 export class WbOrderModule {}
