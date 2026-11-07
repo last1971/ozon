@@ -267,11 +267,12 @@ describe('Trade2006GoodService', () => {
 
     it('test getPerc', async () => {
         await service.getPerc(['3']);
-        expect(query.mock.calls[0]).toEqual([expect.stringContaining("FROM MP_LOSS_STATS WHERE SERVICE = 'OZON'"), ['3'], false]);
+        expect(query.mock.calls[0]).toEqual([expect.stringContaining("FROM MP_LOSS_STATS WHERE SERVICE = 'OZON'"), ['3', '3'], false]);
         const sql = query.mock.calls[0][0];
         expect(sql).toContain('L.APPLIED_RETURN_RATE AS RETURN_PERC');
         expect(sql).toContain('L.GOODSCODE = P.GOODSCODE AND L.PIECES = P.PIECES');
-        expect(sql).toContain('WHERE COALESCE(P.GOODSCODE, L.GOODSCODE) IN (?)');
+        expect(sql).toContain('FROM OZON_PERC WHERE GOODSCODE IN (?)');
+        expect(sql).toContain('AND GOODSCODE IN (?)');
         expect(sql).not.toContain('P.RETURN_PERC');
     });
     it('getQuantityThresholds — пороги ступеней из PRICE', async () => {

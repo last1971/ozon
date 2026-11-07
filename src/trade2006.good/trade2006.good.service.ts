@@ -171,17 +171,18 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                 const batch = codes.slice(i, i + batchSize);
                 const placeholders = batch.map(() => '?').join(',');
 
+                // Фильтр до FULL JOIN: Firebird не должен соединять весь каталог ради нескольких кодов.
                 const pecents = await transaction.query(
                     `SELECT COALESCE(P.GOODSCODE, L.GOODSCODE) AS GOODSCODE,
                             COALESCE(P.PIECES, L.PIECES) AS PIECES,
                             P.PERC_NOR, P.PERC_ADV, P.PERC_MAX, P.PERC_MIN, P.PACKING_PRICE, P.AVAILABLE_PRICE,
                             L.APPLIED_RETURN_RATE AS RETURN_PERC, L.CALCULATED_AT AS RETURN_PERC_AT
-                     FROM OZON_PERC P
+                     FROM (SELECT * FROM OZON_PERC WHERE GOODSCODE IN (${placeholders})) P
                      FULL JOIN (SELECT GOODSCODE, PIECES, APPLIED_RETURN_RATE, CALCULATED_AT
-                                FROM MP_LOSS_STATS WHERE SERVICE = 'OZON') L
-                       ON L.GOODSCODE = P.GOODSCODE AND L.PIECES = P.PIECES
-                     WHERE COALESCE(P.GOODSCODE, L.GOODSCODE) IN (${placeholders})`,
-                    batch,
+                                FROM MP_LOSS_STATS WHERE SERVICE = 'OZON'
+                                  AND GOODSCODE IN (${placeholders})) L
+                       ON L.GOODSCODE = P.GOODSCODE AND L.PIECES = P.PIECES`,
+                    [...batch, ...batch],
                     false,
                 );
 
