@@ -1,3 +1,6 @@
+import { LossScheduleService } from './loss-schedule.service';
+import { LossPriceUpdateModule } from './prices/loss-price-update.module';
+import { JobModule } from '../job/job.module';
 import { Module } from '@nestjs/common';
 import { MarketplaceLossModule } from './marketplace-loss.module';
 import { Trade2006AccrualModule } from '../trade2006.accrual/trade2006.accrual.module';
@@ -17,6 +20,8 @@ import { LossReportController } from './loss-report.controller';
 @Module({
     imports: [
         MarketplaceLossModule,
+        LossPriceUpdateModule,
+        JobModule,
         Trade2006AccrualModule,
         WbOrderModule,
         YandexOrderModule,
@@ -26,6 +31,7 @@ import { LossReportController } from './loss-report.controller';
     ],
     providers: [
         LossMarketsService,
+        LossScheduleService,
         LossReportService,
         {
             provide: LOSS_RECALCULATORS,

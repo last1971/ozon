@@ -10,6 +10,7 @@ export const PRICING_WRITE_CRONS = new Set([
     'updateYandexPrices',
     'ozonPromoSweepMin',
     'wbHoldMinPrices',
+    'marketplaceLossPriceRetry',
     'processDiscountRequests',
 ]);
 

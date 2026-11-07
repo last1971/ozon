@@ -413,6 +413,9 @@ export const cronConfig: Record<string, CronSetup> = {
     // Булево значение сохраняет Europe/Moscow из @Cron; в разработке записи выключены.
     ozonLogisticsRoutes: { production: true, development: false },
     ozonReturnPerc: { production: true, development: false },
+    wbLossStats: { production: true, development: false },
+    yandexLossStats: { production: true, development: false },
+    marketplaceLossPriceRetry: { production: true, development: false },
     testCase1: {
         production: false,
         development: false,
