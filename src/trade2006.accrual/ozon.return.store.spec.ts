@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { OzonReturnStore } from './ozon.return.store';
 import { calculateLossRates, lossPeriod } from '../helpers/price/marketplace.loss.stats';
 import { LossSnapshot } from '../marketplace-loss/loss.contracts';
@@ -111,5 +112,25 @@ describe('Ozon использует единое хранилище, настр�
         t.query.mockRejectedValue(Error('read'));
         await expect(store.listKnownOffers()).rejects.toThrow('read');
         expect(t.rollback).toHaveBeenCalledWith(true);
+    });
+});
+
+describe('Старые некорректные фасовки не останавливают пересчёт Ozon', () => {
+    it('пропускает нулевую фасовку с предупреждением, сохраняет остальные ключи и не пишет старую таблицу', async () => {
+        const { store, t } = setup();
+        t.query.mockResolvedValue([
+            { GOODSCODE: 513555, PIECES: 0 },
+            { GOODSCODE: 123, PIECES: 1 },
+            { GOODSCODE: 123, PIECES: 4 },
+        ]);
+        const warn = jest.spyOn(Logger.prototype, 'warn').mockImplementation();
+        try {
+            expect(await store.listKnownOffers()).toEqual(['123', '123-4']);
+            expect(warn).toHaveBeenCalledWith(expect.stringContaining('513555/0'));
+            expect(t.execute).not.toHaveBeenCalled();
+            expect(t.rollback).toHaveBeenCalledWith(true);
+        } finally {
+            warn.mockRestore();
+        }
     });
 });

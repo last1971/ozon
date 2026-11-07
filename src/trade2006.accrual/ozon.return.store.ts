@@ -1,4 +1,4 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Logger } from '@nestjs/common';
 import { FirebirdPool, ISOLATION_READ_COMMITTED_READ_ONLY } from 'ts-firebird';
 import { FIREBIRD } from '../firebird/firebird.module';
 import { LossStatsStore } from '../marketplace-loss/loss-stats.store';
@@ -8,6 +8,7 @@ import { lossOfferKey } from '../helpers/price/marketplace.loss.stats';
 /** Адаптер Ozon: известные фасовки; запись наследуется из единого хранилища MP_LOSS_STATS. */
 @Injectable()
 export class OzonReturnStore extends LossStatsStore {
+    private readonly logger = new Logger(OzonReturnStore.name);
     constructor(@Inject(FIREBIRD) pool: FirebirdPool) {
         super(pool);
     }
@@ -26,7 +27,23 @@ export class OzonReturnStore extends LossStatsStore {
                 [],
                 false,
             );
-            return rows.map((row) => lossOfferKey(`${row.GOODSCODE}-${row.PIECES}`));
+            const valid = rows.filter(
+                (row) =>
+                    Number.isSafeInteger(row.GOODSCODE) &&
+                    row.GOODSCODE > 0 &&
+                    Number.isSafeInteger(row.PIECES) &&
+                    row.PIECES > 0,
+            );
+            const invalid = rows.filter((row) => !valid.includes(row));
+            if (invalid.length)
+                this.logger.warn(
+                    `Пропущены старые некорректные фасовки Ozon: ${invalid.length}; ` +
+                        invalid
+                            .slice(0, 10)
+                            .map((row) => `${row.GOODSCODE}/${row.PIECES}`)
+                            .join(', '),
+                );
+            return valid.map((row) => lossOfferKey(`${row.GOODSCODE}-${row.PIECES}`));
         } finally {
             await t.rollback(true);
         }
