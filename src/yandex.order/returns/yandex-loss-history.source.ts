@@ -44,8 +44,10 @@ export class YandexFirebirdSalesSource implements ILossHistorySource {
         for (let i = 0; i < rows.length; i++) {
             if (i % 500 === 0) await jobCheckpoint();
             const r = rows[i];
-            const goodscode = lossOfferKey(String(r.GOODSCODE));
-            if (goodscode.includes('-')) throw new Error('Некорректный код товара REALPRICE');
+            // GOODSCODE — код товара, а не артикул с фасовкой: «123-1» нельзя превращать в «123».
+            const code = String(r.GOODSCODE);
+            if (!/^[1-9]\d*$/.test(code) || code !== code.trim()) throw new Error('Некорректный код товара REALPRICE');
+            const goodscode = lossOfferKey(code);
             const pieces = Number(r.PIECES);
             const quantity = Number(r.TOTAL_QUAN);
             if (r.TOTAL_QUAN === null || !Number.isSafeInteger(quantity) || quantity < 0)
