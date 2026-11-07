@@ -175,7 +175,9 @@ describe('Регистрация времени и сохранение преж
         expect(meta).toMatchObject({ name, cronTime: time, timeZone: 'Europe/Moscow' });
         expect(cronConfig[String(name)]).toEqual({ production: true, development: false });
         expect(
-            new CronTime(String(time), 'Europe/Moscow').getNextDateFrom(new Date('2026-11-07T00:00:00Z')).toISO(),
+            new CronTime(String(time), 'Europe/Moscow')
+                .getNextDateFrom(new Date('2026-11-07T00:00:00Z'), meta.timeZone)
+                .toISO(),
         ).toBe(expected);
     });
     it('повтор каждые 10 минут не подменяется часовым поясом сервера', () => {
@@ -186,8 +188,11 @@ describe('Регистрация времени и сохранение преж
             timeZone: 'Europe/Moscow',
         });
         expect(cronConfig.marketplaceLossPriceRetry).toEqual({ production: true, development: false });
-        const first = new CronTime(meta.cronTime, meta.timeZone).getNextDateFrom(new Date('2026-11-07T00:00:00Z'));
-        const second = new CronTime(meta.cronTime, meta.timeZone).getNextDateFrom(first.toJSDate());
+        const first = new CronTime(meta.cronTime, meta.timeZone).getNextDateFrom(
+            new Date('2026-11-07T00:00:00Z'),
+            meta.timeZone,
+        );
+        const second = new CronTime(meta.cronTime, meta.timeZone).getNextDateFrom(first.toJSDate(), meta.timeZone);
         expect(first.toISO()).toBe('2026-11-07T03:06:00.000+03:00');
         expect(second.toMillis() - first.toMillis()).toBe(10 * 60_000);
     });
