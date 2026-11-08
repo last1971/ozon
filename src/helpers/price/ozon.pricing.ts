@@ -18,6 +18,7 @@ export interface OzonPriceScheme {
 }
 /** Ставки — доли, наценки и налоги — проценты. Только данные, без запросов. */
 export interface OzonPricingContext {
+    warnings?: string[];
     lossStatistics?: Omit<MarketplaceLossCostsInput, 'purchaseCost'>;
     schemes: OzonPriceScheme[];
     acquiringRate: number;

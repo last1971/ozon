@@ -92,13 +92,11 @@ export class OzonLogisticsService {
             if (!Number.isFinite(n) || n < 0) throw new Error(`Некорректный ${name} в API Ozon`);
             return n;
         };
-        let history: OzonRoutesSnapshot | null = null,
-            historyError: string | undefined;
+        let history: OzonRoutesSnapshot;
         try {
             history = await this.routes.get();
         } catch (e) {
-            historyError = 'Не удалось прочитать распределение направлений';
-            this.warn(`${historyError}: ${e.message}`, product.offer_id);
+            throw new Error(`Не удалось прочитать распределение направлений для доставки: ${e.message}`);
         }
         const tariff = await this.tariffs.logistics(info.volumeWeight ?? product.volume_weight);
         const acquiringAmount = money(product.acquiring, 'эквайринг');
@@ -108,9 +106,8 @@ export class OzonLogisticsService {
         const commissions = product.commissions;
         const schemes: { fbs?: OzonSchemeLogistics; fbo?: OzonSchemeLogistics } = {};
         for (const scheme of ['fbs', 'fbo'] as OzonScheme[]) {
-            if (scheme === 'fbo' && !(info.fboCount > 0)) continue;
-            let origins = [{ cluster: 'Новосибирск', units: 1 }],
-                unavailable = historyError;
+            if (!(info[scheme === 'fbs' ? 'fbsCount' : 'fboCount'] > 0)) continue;
+            let origins = [{ cluster: 'Новосибирск', units: 1 }];
             if (scheme === 'fbo') {
                 try {
                     const failure = this.stockFailures.get(info.sku);
@@ -124,21 +121,11 @@ export class OzonLogisticsService {
                     );
                     origins = fboOrigins(info.sku, stocks, clusters);
                 } catch (e) {
-                    origins = [];
-                    unavailable = `Не удалось определить склады FBO с остатком: ${e.message}`;
+                    throw new Error(`Не удалось определить склады FBO с остатком для доставки: ${e.message}`);
                 }
             }
-            const directions = history ? selectOzonRoutes(history, scheme, info.sku, info.typeId, minUnits) : null;
-            const bands = weightedOzonLogistics(
-                tariff,
-                directions,
-                origins,
-                {
-                    min: commissions[`${scheme}_direct_flow_trans_min_amount`],
-                    max: commissions[`${scheme}_direct_flow_trans_max_amount`],
-                },
-                unavailable,
-            );
+            const directions = selectOzonRoutes(history, scheme, info.sku, info.typeId, minUnits);
+            const bands = weightedOzonLogistics(tariff, directions, origins);
             for (const warning of new Set(bands.map((b) => b.warning).filter(Boolean)))
                 this.warn(warning, `${info.sku}/${scheme}`);
             const returnFlow: unknown = commissions[`${scheme}_return_flow_amount`];

@@ -7,6 +7,7 @@ interface Entry {
     service: string;
     prices: { offer_id: string; min_price: string; price: string; old_price: string }[];
     discount?: number;
+    warnings?: string[];
     error?: string;
     response?: unknown;
 }
@@ -71,6 +72,7 @@ watch(
                     <p v-if="result.sent">Запросы завершены. Проверьте ответы площадок ниже.</p>
                     <div v-for="entry in result.entries" :key="entry.service" class="my-4">
                         <h3>{{ entry.service.toUpperCase() }}</h3>
+                        <v-alert v-for="warning in entry.warnings" :key="warning" type="warning">{{ warning }}</v-alert>
                         <v-alert v-if="entry.error" type="warning">{{ entry.error }}</v-alert>
                         <v-table v-if="entry.prices.length">
                             <thead>

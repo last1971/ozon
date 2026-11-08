@@ -57,10 +57,10 @@ describe('Распределение направлений', () => {
             ).units,
         ).toBe(1);
     });
-    it('при малой истории использует тип, затем кабинет; без истории — null', () => {
+    it('при малой истории использует свой тип; без достаточной истории категории — null', () => {
         const snap = build([posting('a', '123-5', 2), posting('b', '124', 8), posting('c', '125', 20, 'Казань')]);
         expect(selectOzonRoutes(snap, 'fbs', '123-5', 1, 5).scope).toBe('type');
-        expect(selectOzonRoutes(snap, 'fbs', '123-5', 1, 15).scope).toBe('cabinet');
+        expect(selectOzonRoutes(snap, 'fbs', '123-5', 1, 15)).toBeNull();
         expect(selectOzonRoutes(snap, 'fbs', '124', 1, 8).scope).toBe('offer');
         expect(selectOzonRoutes(snap, 'fbo', '124', 1)).toBeNull();
     });
@@ -79,5 +79,32 @@ describe('Распределение направлений', () => {
         expect(() => build([{ ...posting('a'), in_process_at: 'bad' }])).toThrow();
         expect(() => build([{ ...posting('a'), products: [] }])).toThrow();
         expect(() => build([posting('a', '123-5', Number.MAX_SAFE_INTEGER), posting('b')])).toThrow();
+    });
+});
+
+it('чужая категория и общая история кабинета не подставляются вместо своей категории', () => {
+    const snapshot = build([posting('other', '125', 10)]);
+    expect(selectOzonRoutes(snapshot, 'fbs', '123-5', 1)).toBeNull();
+});
+
+it('средние категории FBS и FBO берутся из разных историй', () => {
+    const snapshot = buildOzonRoutes(
+        [
+            { scheme: 'fbs', postings: [posting('a', '124', 8, 'Москва')] },
+            { scheme: 'fbo', postings: [posting('b', '124', 2, 'Казань')] },
+        ],
+        catalog,
+        from,
+        to,
+    );
+    expect(selectOzonRoutes(snapshot, 'fbs', '123-5', 1)).toMatchObject({
+        scope: 'type',
+        units: 8,
+        destinations: [{ cluster: 'Москва', units: 8 }],
+    });
+    expect(selectOzonRoutes(snapshot, 'fbo', '123-5', 1)).toMatchObject({
+        scope: 'type',
+        units: 2,
+        destinations: [{ cluster: 'Казань', units: 2 }],
     });
 });

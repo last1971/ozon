@@ -13,6 +13,7 @@ export interface PriceReviewEntry {
     service: GoodServiceEnum;
     prices: UpdatePriceDto[];
     discount?: number;
+    warnings?: string[];
     error?: string;
     response?: unknown;
 }
@@ -38,6 +39,8 @@ export class PreparePriceReviewCommand implements IJobCommand<PriceReviewContext
             const entry: PriceReviewEntry = { service: name, prices: [] };
             try {
                 const inputs = await this.goods.buildPriceables(service, [ctx.offerId]);
+                const warnings = [...new Set(inputs.flatMap((input) => input.ozon?.warnings ?? []))];
+                if (warnings.length) entry.warnings = warnings;
                 entry.prices = inputs.map((input) => calculatePrice(input, service.getObtainCoeffs()));
                 if (!entry.prices.length) entry.error = 'Товар не найден или нет базы для расчёта';
                 if (

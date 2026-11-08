@@ -96,6 +96,5 @@ export function selectOzonRoutes(
     if (own?.units >= minUnits) return own;
     const type = typeId == null ? null : find('type', String(typeId));
     if (type?.units >= minUnits) return type;
-    const cabinet = find('cabinet', 'all');
-    return cabinet?.units > 0 ? cabinet : null;
+    return null; // Другие категории кабинета не подставляются вместо своей.
 }

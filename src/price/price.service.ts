@@ -219,6 +219,7 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
             if (base.base_source === 'none') throw new Error('Нет базы себестоимости');
             await this.ozonPricing.prepare([info]);
             const ozon = await this.ozonPricing.load(product, info);
+            if (ozon.warnings?.length) known.warnings = ozon.warnings;
             const input = ozonPricingInput(
                 {
                     ...base,
@@ -286,12 +287,13 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                 offerId,
                 limits: { minProfitRub: input.minProfitRub, minMarkupPercent: input.minMarkupPercent },
                 buyer,
+                ...(known.warnings ? { warnings: known.warnings } : {}),
                 lowerBand,
                 costSources: {
                     commission: 'XLSX комиссий',
                     delivery:
-                        delivery?.source === 'api-average' || delivery?.source === 'api-max'
-                            ? 'API Ozon — резервный тариф'
+                        delivery?.source === 'category-average'
+                            ? 'XLSX логистики и история направлений категории'
                             : 'XLSX логистики и история направлений',
                     firstMile: 'API Ozon',
                     lastMile: 'API Ozon',

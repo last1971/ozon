@@ -29,14 +29,13 @@ const directions: RouteBucket = {
     ],
 };
 const origins = [{ cluster: 'Новосибирск', units: 1 }];
-const api = { min: 50, max: 200 };
 const rows = [
     rate(20, undefined, undefined, low),
     rate(30, undefined, 'Казань', low),
     rate(100),
     rate(150, undefined, 'Казань'),
 ];
-const quote = (r = rows, d = directions, o = origins) => weightedOzonLogistics({ loaded: true, rows: r }, d, o, api);
+const quote = (r = rows, d = directions, o = origins) => weightedOzonLogistics({ loaded: true, rows: r }, d, o);
 describe('Взвешенная логистика по тарифным ступеням', () => {
     it('для 8/2 доставок возвращает 22 рубля до 300 и 110 рублей выше 300', () => {
         expect(quote().map((b) => b.amount)).toEqual([22, 110]);
@@ -72,25 +71,16 @@ describe('Взвешенная логистика по тарифным ступ
         };
         expect(quote([rate(100), rate(200, '', '', high, true)], d)[0].amount).toBe(120);
     });
-    it('нет истории — среднее min/max API по каждой ступени', () => {
-        expect(quote(rows, null).map((b) => [b.amount, b.source])).toEqual([
-            [125, 'api-average'],
-            [125, 'api-average'],
-        ]);
+    it('без истории не выдумывает среднее API и не выдаёт ноль', () => {
+        expect(() => quote(rows, null)).toThrow('истории');
     });
-    it('нет таблицы, маршрута или текущего склада — максимум API с причиной', () => {
-        expect(weightedOzonLogistics({ loaded: false, rows: [] }, null, origins, api)[0]).toMatchObject({
-            amount: 200,
-            source: 'api-max',
-            warning: expect.any(String),
-        });
-        expect(quote([rate(100)])[0].source).toBe('api-max');
-        expect(quote(rows, null, [])[0].source).toBe('api-max');
+    it('отсутствие таблицы, маршрута или склада останавливает расчёт доставки', () => {
+        expect(() => weightedOzonLogistics({ loaded: false, rows: [] }, null, origins)).toThrow('тарифа');
+        expect(() => quote([rate(100)])).toThrow('маршрута');
+        expect(() => quote(rows, directions, [])).toThrow('кластера');
     });
-    it('ошибка чтения истории не превращается в отсутствие продаж', () => {
-        expect(weightedOzonLogistics({ loaded: true, rows }, null, origins, api, 'Ошибка API')[0].source).toBe(
-            'api-max',
-        );
+    it('нет тарифа для объёма — не подменяет его тарифом другого объёма', () => {
+        expect(() => weightedOzonLogistics({ loaded: true, rows: [] }, directions, origins)).toThrow('объёма');
     });
     it('не округляет результат заранее, нулевой тариф допустим', () => {
         const d = {
@@ -109,9 +99,7 @@ describe('Взвешенная логистика по тарифным ступ
     it('отклоняет дубли и некорректные ставки', () => {
         expect(() => quote([rate(100), rate(100), rate(150, undefined, 'Казань')])).toThrow();
         expect(() => quote([rate(-1), rate(150, undefined, 'Казань')])).toThrow();
-        expect(() =>
-            weightedOzonLogistics({ loaded: false, rows: [] }, null, origins, { min: 50, max: NaN }),
-        ).toThrow();
+        expect(() => weightedOzonLogistics({ loaded: false, rows: [] }, null, origins)).toThrow();
     });
     it('отклоняет пересечение диапазонов и некорректные веса', () => {
         expect(() => quote([...rows, rate(100, undefined, undefined, { ...low, max: 500 })])).toThrow();
@@ -167,4 +155,15 @@ describe('FBO: российские и зарубежные склады', () =>
             ),
         ).toEqual(data.map((d) => ({ cluster: d.name, units: d.units })));
     });
+});
+
+it('средняя своей категории использует те же тарифы и веса, но имеет явный источник и предупреждение', () => {
+    const category = { ...directions, scope: 'type' as const, key: '8' };
+    const result = quote(rows, category);
+    expect(result.map((b) => b.amount)).toEqual([22, 110]);
+    expect(result.every((b) => b.source === ('category-average' as any))).toBe(true);
+    expect(result[0].warning).toBe('Использована средняя доставка по категории');
+});
+it('история всего кабинета не подменяет среднюю категории', () => {
+    expect(() => quote(rows, { ...directions, scope: 'cabinet', key: 'all' })).toThrow('категории');
 });

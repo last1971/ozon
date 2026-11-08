@@ -34,6 +34,7 @@ const render = (data?: OzonPricingResultDto, loading = false, editable = false) 
         slots: editable ? { markup: '<span>Процент</span>' } : {},
         global: {
             stubs: {
+                VAlert: { template: '<div><slot /></div>' },
                 VTable: { template: '<table><slot /></table>' },
                 VRow: { template: '<div><slot /></div>' },
                 VCol: { template: '<div><slot /></div>' },
@@ -160,4 +161,11 @@ it('при ошибке тарифа форма товара сохраняет 
     expect(wrapper.text()).toContain('База себестоимости: Остаточные партии — 100 ₽');
     expect(wrapper.findAll('tbody tr')[0].text()).toContain('800 ₽');
     expect(wrapper.text()).not.toContain('Нет базы');
+});
+
+it('показывает предупреждение о средней доставке категории рядом с расчётом', () => {
+    const data = { ...result(), warnings: ['Использована средняя доставка по категории'] };
+    const wrapper = render(data);
+    expect(wrapper.text()).toContain('Использована средняя доставка по категории');
+    expect(wrapper.find('table').exists()).toBe(true);
 });

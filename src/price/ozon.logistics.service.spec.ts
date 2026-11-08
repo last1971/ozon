@@ -21,7 +21,16 @@ const make = () => {
     };
     const routes = {
         cacheKey: 'test:opt',
-        get: jest.fn().mockResolvedValue({ from: 'from', to: 'to', buckets: [bucket, { ...bucket, scheme: 'fbo' }] }),
+        get: jest.fn().mockResolvedValue({
+            from: 'from',
+            to: 'to',
+            buckets: [
+                bucket,
+                { ...bucket, scheme: 'fbo' },
+                { ...bucket, scope: 'type', key: '8' },
+                { ...bucket, scheme: 'fbo', scope: 'type', key: '8' },
+            ],
+        }),
     };
     const tariffs = { logistics: jest.fn().mockResolvedValue({ loaded: true, revision: 'v1', rows }) };
     const products = {
@@ -62,7 +71,7 @@ const make = () => {
             [scheme + '_return_flow_amount']: 80,
         });
     product.commissions.fbs_first_mile_max_amount = 10;
-    const info: any = { sku: '123-5', typeId: 8, volumeWeight: 0.5, fboCount: 4 };
+    const info: any = { sku: '123-5', typeId: 8, volumeWeight: 0.5, fbsCount: 4, fboCount: 4 };
     return { service, routes, tariffs, products, cache, data, config, product, info, rows };
 };
 describe('Расходы Ozon для единого расчёта цены', () => {
@@ -113,35 +122,28 @@ describe('Расходы Ozon для единого расчёта цены', ()
         expect(m.products.fboStocks).not.toHaveBeenCalled();
         expect(m.tariffs.logistics).toHaveBeenCalledWith(0.9);
     });
-    it('нет истории — среднее API; ошибка истории — максимум с предупреждением', async () => {
+    it('нет истории или ошибка чтения — понятный отказ без API-резерва', async () => {
         const m = make();
         m.routes.get.mockResolvedValueOnce({ buckets: [] });
-        expect((await m.service.quote(m.product, m.info)).fbs.bands[0]).toMatchObject({
-            amount: 120,
-            source: 'api-average',
-        });
+        await expect(m.service.quote(m.product, m.info)).rejects.toThrow('категории');
         m.routes.get.mockRejectedValueOnce(new Error('unavailable'));
-        expect((await m.service.quote(m.product, m.info)).fbs.bands[0]).toMatchObject({
-            amount: 200,
-            source: 'api-max',
-            warning: expect.any(String),
-        });
+        await expect(m.service.quote(m.product, m.info)).rejects.toThrow(
+            'распределение направлений для доставки: unavailable',
+        );
     });
-    it('ошибка складов FBO не меняет FBS и не кэшируется; следующий запрос восстанавливается', async () => {
+    it('ошибка активного FBO не скрывается выбором FBS; следующий запрос восстанавливается', async () => {
         const m = make();
         m.products.fboStocks.mockRejectedValueOnce(new Error('429'));
-        const result = await m.service.quote(m.product, m.info);
-        expect(result.fbs.bands[0].amount).toBe(20);
-        expect(result.fbo.bands[0]).toMatchObject({ amount: 200, source: 'api-max' });
+        await expect(m.service.quote(m.product, m.info)).rejects.toThrow('FBO');
         expect(m.cache.set).not.toHaveBeenCalled();
         expect((await m.service.quote(m.product, m.info)).fbo.bands[0].source).toBe('tariff');
     });
-    it('резервирование всего остатка приводит к API max, не к нулевой доставке', async () => {
+    it('резервирование всего остатка не подменяется API max или нулевой доставкой', async () => {
         const m = make();
         m.products.fboStocks.mockResolvedValue([
             { offer_id: '123-5', sku: 1, warehouse_id: 9, present: 5, reserved: 5 },
         ]);
-        expect((await m.service.quote(m.product, m.info)).fbo.bands[0].amount).toBe(200);
+        await expect(m.service.quote(m.product, m.info)).rejects.toThrow('кластера');
     });
     it.each(['acquiring', 'lastMile', 'firstMile'])('отсутствующий расход %s не заменяется нулём', async (field) => {
         const m = make();
@@ -183,12 +185,11 @@ describe('Пакетная подготовка FBO', () => {
         await m.service.prepare([m.info, second]);
         expect(m.products.fboStocks).toHaveBeenCalledTimes(1);
     });
-    it('отказ пачки не создаёт повторного запроса на каждый товар; остаётся резервный тариф', async () => {
+    it('отказ пачки не создаёт повторного запроса на каждый товар и не выдумывает тариф', async () => {
         const m = make();
         m.products.fboStocks.mockRejectedValue(new Error('429'));
         await m.service.prepare([m.info, { ...m.info, sku: 'other' }]);
-        const quote = await m.service.quote(m.product, m.info);
-        expect(quote.fbo.bands[0].amount).toBe(200);
+        await expect(m.service.quote(m.product, m.info)).rejects.toThrow('429');
         expect(m.products.fboStocks).toHaveBeenCalledTimes(1);
     });
 });
@@ -209,4 +210,92 @@ it.each([NaN, Infinity, -1])('повреждённый обратный тари
     const m = make();
     m.product.commissions.fbs_return_flow_amount = value;
     await expect(m.service.quote(m.product, m.info)).rejects.toThrow('Некорректный');
+});
+
+it('при отсутствии своей истории берёт среднюю своей категории и предупреждает', async () => {
+    const m = make();
+    const buckets = ['fbs', 'fbo'].map((scheme) => ({
+        scheme,
+        scope: 'type',
+        key: '8',
+        units: 4,
+        destinations: [
+            { cluster: 'Москва', units: 3 },
+            { cluster: 'Казань', units: 1 },
+        ],
+    }));
+    m.routes.get.mockResolvedValue({ from: 'from', to: 'to', buckets });
+    m.tariffs.logistics.mockResolvedValue({
+        loaded: true,
+        revision: 'v1',
+        rows: [...m.rows, ...m.rows.map((r) => ({ ...r, destination: 'Казань', amount: r.amount * 2 }))],
+    });
+    const warning = jest.spyOn(m.service as any, 'warn');
+    const result = await m.service.quote(m.product, m.info);
+    expect(result.fbs.bands.map((b) => b.amount)).toEqual([25, 125]);
+    expect(result.fbs).toMatchObject({ historySource: 'type', firstMile: 10, lastMile: 25 });
+    expect(result.fbs.bands[0]).toMatchObject({
+        source: 'category-average',
+        warning: 'Использована средняя доставка по категории',
+    });
+    expect(warning).toHaveBeenCalledWith('Использована средняя доставка по категории', '123-5/fbs');
+});
+it('без своей истории и категории не выдаёт min/max API за доставку', async () => {
+    const m = make();
+    m.routes.get.mockResolvedValue({ from: 'from', to: 'to', buckets: [] });
+    await expect(m.service.quote(m.product, m.info)).rejects.toThrow('категории');
+});
+
+it('неактивная FBS-схема не мешает расчёту активной FBO', async () => {
+    const m = make();
+    m.info.fbsCount = 0;
+    const snapshot = await m.routes.get();
+    m.routes.get.mockResolvedValue({ ...snapshot, buckets: snapshot.buckets.filter((b) => b.scheme === 'fbo') });
+    const result = await m.service.quote(m.product, m.info);
+    expect(result.fbs).toBeUndefined();
+    expect(result.fbo.bands[0].amount).toBe(20);
+});
+it('известная доставка из XLSX не требует min/max API', async () => {
+    const m = make();
+    for (const scheme of ['fbs', 'fbo']) {
+        delete m.product.commissions[`${scheme}_direct_flow_trans_min_amount`];
+        delete m.product.commissions[`${scheme}_direct_flow_trans_max_amount`];
+    }
+    const result = await m.service.quote(m.product, m.info);
+    expect(result.fbs.bands.map((b) => b.amount)).toEqual([20, 100]);
+});
+
+it('средняя FBO учитывает собственные склады с остатком и не требует неактивную FBS', async () => {
+    const m = make();
+    m.info.fbsCount = 0;
+    m.routes.get.mockResolvedValue({
+        from: 'from',
+        to: 'to',
+        buckets: [
+            {
+                scheme: 'fbo',
+                scope: 'type',
+                key: '8',
+                units: 4,
+                destinations: [{ cluster: 'Москва', units: 4 }],
+            },
+        ],
+    });
+    m.products.fboStocks.mockResolvedValue([
+        { offer_id: '123-5', sku: 1, warehouse_id: 9, present: 3, reserved: 0 },
+        { offer_id: '123-5', sku: 1, warehouse_id: 10, present: 1, reserved: 0 },
+    ]);
+    m.products.ozonClusters.mockResolvedValue([
+        { name: 'Новосибирск', logistic_clusters: [{ warehouses: [{ warehouse_id: 9 }] }] },
+        { name: 'Санкт-Петербург', logistic_clusters: [{ warehouses: [{ warehouse_id: 10 }] }] },
+    ]);
+    m.tariffs.logistics.mockResolvedValue({
+        loaded: true,
+        revision: 'v1',
+        rows: [...m.rows, ...m.rows.map((r) => ({ ...r, origin: 'Санкт-Петербург', amount: r.amount * 2 }))],
+    });
+    const quote = await m.service.quote(m.product, m.info);
+    expect(quote.fbs).toBeUndefined();
+    expect(quote.fbo.bands.map((b) => b.amount)).toEqual([25, 125]);
+    expect(quote.fbo).toMatchObject({ firstMile: 0, lastMile: 25, historySource: 'type' });
 });

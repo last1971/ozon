@@ -71,3 +71,13 @@ describe('Подтверждение отправки', () => {
         expect(wrapper.text()).toContain('Настройки изменились');
     });
 });
+
+it('предупреждение о средней категории видно до подтверждения и само не запрещает отправку', async () => {
+    const preview = state();
+    Object.assign(preview.result.entries[0], { warnings: ['Использована средняя доставка по категории'] });
+    vi.mocked(axios.post).mockResolvedValueOnce({ data: preview });
+    await prepare();
+    expect(wrapper.text()).toContain('Использована средняя доставка по категории');
+    expect(confirm().attributes('disabled')).toBeUndefined();
+    expect(axios.post).toHaveBeenCalledTimes(1);
+});

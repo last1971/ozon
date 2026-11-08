@@ -38,6 +38,7 @@ const costLabels = {
     <section class="my-4" :aria-busy="Boolean(loading)">
         <h3 class="text-subtitle-1 mb-2">Текущие и расчётные цены Ozon</h3>
         <p v-if="loading" class="text-grey" role="status">{{ result ? 'Обновление…' : 'Расчёт…' }}</p>
+        <v-alert v-for="warning in result?.warnings" :key="warning" type="warning" class="my-2">{{ warning }}</v-alert>
         <p v-if="result?.error" class="text-grey" role="status">{{ result.error }}</p>
         <template v-if="result && (!result.error || $slots.markup)">
             <p class="mb-2">База себестоимости: {{ sources[result.baseSource] }} — {{ money(result.base) }}</p>

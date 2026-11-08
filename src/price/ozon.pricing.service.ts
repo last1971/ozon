@@ -56,7 +56,11 @@ export class OzonPricingService {
         const statistics = this.lossSnapshots.has(info)
             ? this.lossSnapshots.get(info)
             : (await this.losses.load('OZON', [product.offer_id])).get(product.offer_id);
+        const warnings = [
+            ...new Set(schemes.flatMap((scheme) => scheme.logistics.map((band) => band.warning).filter(Boolean))),
+        ];
         return {
+            ...(warnings.length ? { warnings } : {}),
             ...(statistics ? { lossStatistics: statistics } : {}),
             schemes,
             acquiringRate: quote.acquiringRate,

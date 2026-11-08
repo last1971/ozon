@@ -4,7 +4,7 @@ import type { RouteBucket, WeightedCluster } from './ozon.routes';
 
 export interface LogisticsCostBand extends PriceBand {
     amount: number;
-    source: 'tariff' | 'tariff-default' | 'api-average' | 'api-max';
+    source: 'tariff' | 'tariff-default' | 'category-average';
     warning?: string;
 }
 export function priceInBand(price: number, band: PriceBand): boolean {
@@ -22,13 +22,14 @@ export function weightedOzonLogistics(
     tariffs: { loaded: boolean; rows: LogisticsRow[] },
     directions: RouteBucket | null,
     origins: WeightedCluster[],
-    api: { min: number; max: number },
-    unavailableReason?: string,
 ): LogisticsCostBand[] {
+    if (!tariffs.loaded || !tariffs.rows.length) throw new Error('Нет загруженного тарифа доставки для объёма товара');
+    if (!directions || !['offer', 'type'].includes(directions.scope))
+        throw new Error('Нет истории направлений товара или его категории');
+    if (!origins.length) throw new Error('Нет кластера склада с доступным остатком для расчёта доставки');
     const bands = [...new Map(tariffs.rows.map((r) => [bandKey(r.band), r.band])).values()].sort(
         (a, b) => a.min - b.min,
     );
-    if (!bands.length) bands.push({ min: 0, max: null, minIncluded: true, maxIncluded: false });
     for (let i = 0; i < bands.length; i++) {
         const b = bands[i],
             prev = bands[i - 1];
@@ -41,24 +42,12 @@ export function weightedOzonLogistics(
             throw new Error('Некорректные или пересекающиеся ступени логистики');
         }
     }
-    const fallback = (band: PriceBand, average: boolean, warning: string): LogisticsCostBand => {
-        if (!finiteMoney(api.max) || (average && (!finiteMoney(api.min) || api.min > api.max)))
-            throw new Error('Нет корректной запасной логистики API');
-        return {
-            ...band,
-            amount: average ? (api.min + api.max) / 2 : api.max,
-            source: average ? 'api-average' : 'api-max',
-            warning,
-        };
-    };
     return bands.map((band) => {
-        if (!tariffs.loaded || !tariffs.rows.length) return fallback(band, false, 'Нет загруженного тарифа для объёма');
-        if (unavailableReason) return fallback(band, false, unavailableReason);
-        if (!origins.length) return fallback(band, false, 'Нет кластера склада с доступным остатком');
-        if (!directions) return fallback(band, true, 'Нет истории направлений');
         if (origins.some((o) => !o.cluster || !Number.isSafeInteger(o.units) || o.units <= 0))
             throw new Error('Некорректные остатки по кластерам');
         if (
+            !Number.isSafeInteger(directions.units) ||
+            directions.units <= 0 ||
             !directions.destinations.length ||
             directions.destinations.some((d) => !Number.isSafeInteger(d.units) || d.units <= 0) ||
             directions.destinations.reduce((sum, d) => sum + d.units, 0) !== directions.units
@@ -78,14 +67,19 @@ export function weightedOzonLogistics(
                         normalize(r.destination) === normalize(dest.cluster),
                 );
                 const matching = specific.length ? specific : rates.filter((r) => r.isDefault);
-                if (!matching.length) return fallback(band, false, 'Нет тарифа маршрута и тарифа по умолчанию');
+                if (!matching.length) throw new Error('Нет тарифа маршрута и тарифа по умолчанию для доставки');
                 if (matching.length !== 1 || !finiteMoney(matching[0].amount))
                     throw new Error('Неоднозначный или некорректный тариф маршрута');
                 usedDefault ||= !specific.length;
                 sum += (origin.units / totalStock) * (dest.units / directions.units) * matching[0].amount;
             }
         if (!finiteMoney(sum)) throw new Error('Некорректная средняя логистика');
-        return { ...band, amount: sum, source: usedDefault ? ('tariff-default' as const) : ('tariff' as const) };
+        return {
+            ...band,
+            amount: sum,
+            source: directions.scope === 'type' ? 'category-average' : usedDefault ? 'tariff-default' : 'tariff',
+            ...(directions.scope === 'type' ? { warning: 'Использована средняя доставка по категории' } : {}),
+        };
     });
 }
 
