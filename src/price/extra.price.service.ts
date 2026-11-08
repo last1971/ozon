@@ -1,3 +1,4 @@
+import { IncomingPricesCommand } from './commands/incoming-prices.command';
 import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
@@ -51,6 +52,7 @@ import { VerifyOzonPricesCommand } from './commands/verify-ozon-prices.command';
 
 @Injectable()
 export class ExtraPriceService {
+    @Inject(forwardRef(() => IncomingPricesCommand)) private readonly incomingPricesCommand: IncomingPricesCommand;
     private services: Map<GoodServiceEnum, IPriceUpdateable>;
     private readonly logger = new Logger(ExtraPriceService.name);
 
@@ -138,8 +140,8 @@ export class ExtraPriceService {
     }
 
     /** Пересчитать и отправить цены по кодам Trade на всех площадках; отчёт по каждой, где эти товары есть. */
-    public async updatePriceForGoodSkus(skus: string[]): Promise<ServicePriceReport[]> {
-        const serviceEntries = [...this.services.entries()];
+    public async updatePriceForGoodSkus(skus: string[], onlyServices?: GoodServiceEnum[]): Promise<ServicePriceReport[]> {
+        const serviceEntries = [...this.services.entries()].filter(([key]) => !onlyServices || onlyServices.includes(key));
 
         const reports = await Promise.all(
             serviceEntries.map(async ([serviceEnum, service]): Promise<ServicePriceReport | null> => {
@@ -182,10 +184,8 @@ export class ExtraPriceService {
     /**
      * Цепочка прихода товара — единственное место, где известен её состав (решение владельца 17.10.2026):
      * проверить, что коды есть → коды Trade в артикулы площадок → сбросить доступную цену →
-     * пересчитать цены на всех площадках → журнал по товару (из чего считали, что отправили, что ответила площадка) →
-     * перечитать цены Озона и сверить с отправленными (не сошлось — повтор, снова нет — письмо «цены») →
-     * сверить маркетинговую цену с минимальной и сообщить о расхождении →
-     * запустить пересчёт акций Озона → сложить итог → записать в лог.
+     * Ozon/WB: общие команды расчёта, сравнения, отправки, подтверждения и адресного контроля акций;
+     * остальные площадки — их существующий путь пересчёта. Дождаться всех результатов → записать итог.
      * Наценки по приходу НЕ пересчитываются: они остаются как были, цена следует за новой входящей;
      * товару без наценок цена считается по дефолтам PERC_* (buildPriceables).
      * Зовут: очередь приходов (Trade2006IncomingService) и ручная кнопка POST /price/incoming-goods.
@@ -195,11 +195,7 @@ export class ExtraPriceService {
             this.validateSkusNotEmptyCommand,
             this.tradeSkusCommand,
             this.resetAvailablePriceCommand,
-            this.updatePriceForGoodSkusCommand,
-            this.logPriceReportsCommand,
-            this.verifyOzonPricesCommand,
-            this.checkPriceDifferenceAndNotifyCommand,
-            this.emitUpdatePromosCommand,
+            this.incomingPricesCommand,
             this.setResultProcessingMessageCommand,
             this.logResultProcessingMessageCommand,
         ]);
@@ -210,12 +206,14 @@ export class ExtraPriceService {
         return this.logger;
     }
 
-    /** Ручной запуск цепочки прихода по кодам Trade (кнопка). Ошибку гасит в лог — это не очередь, повторять некому. */
+    /** Ручной запуск цепочки прихода по кодам Trade (кнопка). Ошибка возвращается вызывающему; успешный ответ означает завершённую цепочку. */
     async handleIncomingGoods(skus: string[]): Promise<void> {
         try {
-            await this.incomingGoodsChain().execute({ skus, logger: this.logger });
+            const result = await this.incomingGoodsChain().execute({ skus, logger: this.logger });
+            if (result.incomingFailures?.length) throw new Error(result.incomingFailures.map(r => `${r.service} ${r.offerId}: ${r.error}`).join('; '));
         } catch (error) {
             this.logger.error(`Error updating prices after incoming goods: ${error.message}`, error.stack);
+            throw error;
         }
     }
 

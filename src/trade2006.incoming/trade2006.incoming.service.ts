@@ -58,7 +58,7 @@ export class Trade2006IncomingService {
             const ctx = await this.chain().execute({ settledMinutes, prihods: [], skus: [] });
             if (ctx.prihods.length) {
                 this.logger.log(
-                    `[incoming] приходов ${ctx.prihods.length} (${ctx.prihods.map((p) => p.np).join(', ')}), товаров ${ctx.skus.length}`,
+                    `[incoming] приходов ${ctx.prihods.length} (${ctx.prihods.map((p) => p.np).join(', ')}), товаров ${ctx.skus.length}; завершено ${ctx.completed?.length ?? 0}, ожидают ${ctx.pending?.length ?? 0}`,
                 );
             }
             return ctx;

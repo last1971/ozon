@@ -498,7 +498,7 @@ export class PriceController {
             await this.extraService.handleIncomingGoods(skus);
             return {
                 success: true,
-                message: `Обработка ${skus.length} товаров успешно запущена`,
+                message: `Обработка ${skus.length} товаров завершена`,
             };
         } catch (error) {
             return {

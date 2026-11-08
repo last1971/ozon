@@ -346,6 +346,7 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
         calcDiscount: (base: number, minPrice: number, currentDiscount: number) => number | null,
         dryRun = false,
         expected?: Map<string, PricingSnapshot>,
+        assertInputsCurrent?: (offerId: string) => Promise<void>,
     ): Promise<WbBulkPriceReport> {
         const snapshot = priceUpdateQueue.reader('wb');
         const current = await this.currentPrices.getAll();
@@ -397,6 +398,7 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
                     const res = await priceUpdateQueue.run(
                         'wb',
                         async () => {
+                            await assertInputsCurrent?.(article);
                             priceUpdateQueue.assertCurrent(expected?.get(article) ?? snapshot([article]));
                             try {
                                 return await this.pushPriceTasks([task], current);
@@ -445,6 +447,7 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
         articles: string[],
         dryRun = false,
         expected?: Map<string, PricingSnapshot>,
+        assertInputsCurrent?: (offerId: string) => Promise<void>,
     ): Promise<WbBulkPriceReport> {
         return this.applyWb(
             articles.length ? articles : 'all',
@@ -462,6 +465,7 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
             },
             dryRun,
             expected,
+            assertInputsCurrent,
         );
     }
 

@@ -25,7 +25,8 @@ export class ApplySweepCommand implements IJobCommand<IPromoSweepContext> {
                 onWaiting: (waiting) => {
                     context.progress.counters.waiting = Number(waiting);
                 },
-                assertCurrent: () => {
+                assertCurrent: async () => {
+                    await context.assertInputsCurrent?.(plan.offerId);
                     if (context.stopChain) throw new Error('Задача остановлена');
                 },
             });

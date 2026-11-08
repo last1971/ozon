@@ -13,8 +13,9 @@ import { EventEmitter2 } from '@nestjs/event-emitter';
 
 describe('Trade2006IncomingService (очередь приходов)', () => {
     const journal = {
-        listSettledUnhandled: jest.fn().mockResolvedValue([]),
-        markHandled: jest.fn().mockResolvedValue(undefined),
+        listUnhandledRows: jest.fn().mockResolvedValue([]),
+        finishVersion: jest.fn().mockResolvedValue(true),
+        isCurrentVersion: jest.fn().mockResolvedValue(true),
     };
     const chainExecute = jest.fn().mockResolvedValue({});
     const prices = { incomingGoodsChain: () => ({ execute: chainExecute }), chainLogger: () => undefined };
@@ -47,14 +48,14 @@ describe('Trade2006IncomingService (очередь приходов)', () => {
 
     it('очередь пуста — цепочка цен не зовётся, помечать нечего', async () => {
         const ctx = await service.run();
-        expect(journal.listSettledUnhandled).toHaveBeenCalledWith('TRADE', 'INCOMING', 'pending', 15);
+        expect(journal.listUnhandledRows).toHaveBeenCalledWith('TRADE', 'INCOMING', 'pending', null, 15);
         expect(chainExecute).not.toHaveBeenCalled();
-        expect(journal.markHandled).not.toHaveBeenCalled();
+        expect(journal.finishVersion).not.toHaveBeenCalled();
         expect(ctx.stopChain).toBe(true);
     });
 
     it('два прихода → коды без повторов → цепочка прихода → оба помечены', async () => {
-        journal.listSettledUnhandled.mockResolvedValueOnce([
+        journal.listUnhandledRows.mockResolvedValueOnce([
             { extId: '10296', posting: null, firstSeen: new Date() },
             { extId: '10297', posting: null, firstSeen: new Date() },
         ]);
@@ -68,34 +69,34 @@ describe('Trade2006IncomingService (очередь приходов)', () => {
         expect(query.mock.calls[0][1]).toEqual(['10296', '10297']);
         expect(ctx.skus).toEqual(['568615', '557283']);
         expect(chainExecute).toHaveBeenCalledWith(expect.objectContaining({ skus: ['568615', '557283'] }));
-        expect(journal.markHandled).toHaveBeenCalledTimes(2);
-        expect(journal.markHandled).toHaveBeenCalledWith({
+        expect(journal.finishVersion).toHaveBeenCalledTimes(2);
+        expect(journal.finishVersion).toHaveBeenCalledWith({
             service: 'TRADE',
             kind: 'INCOMING',
             extId: '10296',
             state: 'pending',
-        });
+        }, undefined, expect.objectContaining({ incoming: expect.any(Object) }), true);
     });
 
     it('приход без строк — цены не считаем, но заявку закрываем', async () => {
-        journal.listSettledUnhandled.mockResolvedValueOnce([{ extId: '10298', posting: null, firstSeen: new Date() }]);
+        journal.listUnhandledRows.mockResolvedValueOnce([{ extId: '10298', posting: null, firstSeen: new Date() }]);
         query.mockResolvedValueOnce([]);
         await service.run();
         expect(chainExecute).not.toHaveBeenCalled();
-        expect(journal.markHandled).toHaveBeenCalledTimes(1);
+        expect(journal.finishVersion).toHaveBeenCalledTimes(1);
     });
 
     it('цепочка цен упала — заявки остаются в очереди, run отдаёт null', async () => {
-        journal.listSettledUnhandled.mockResolvedValueOnce([{ extId: '10299', posting: null, firstSeen: new Date() }]);
+        journal.listUnhandledRows.mockResolvedValueOnce([{ extId: '10299', posting: null, firstSeen: new Date() }]);
         query.mockResolvedValueOnce([{ NP: '10299', GOODSCODE: 1 }]);
         chainExecute.mockRejectedValueOnce(new Error('Ozon 500'));
         const ctx = await service.run();
         expect(ctx).toBeNull();
-        expect(journal.markHandled).not.toHaveBeenCalled();
+        expect(journal.finishVersion).not.toHaveBeenCalled();
     });
 
     it('товара нет на складе — его приход остаётся в очереди, остальные помечены', async () => {
-        journal.listSettledUnhandled.mockResolvedValueOnce([
+        journal.listUnhandledRows.mockResolvedValueOnce([
             { extId: '10301', posting: null, firstSeen: new Date() },
             { extId: '10302', posting: null, firstSeen: new Date() },
         ]);
@@ -119,13 +120,13 @@ describe('Trade2006IncomingService (очередь приходов)', () => {
         });
         const ctx = await service.run();
         expect(ctx.heldSkus).toEqual(['549853']);
-        expect(journal.markHandled).toHaveBeenCalledTimes(1);
-        expect(journal.markHandled).toHaveBeenCalledWith(expect.objectContaining({ extId: '10302' }));
+        expect(journal.finishVersion).toHaveBeenCalledTimes(2);
+        expect(journal.finishVersion).toHaveBeenCalledWith(expect.objectContaining({ extId: '10302' }), undefined, expect.any(Object), true);
         expect(events.emit).not.toHaveBeenCalled();
     });
 
-    it('товар так и не дошёл до склада за INCOMING_HOLD_HOURS — приход закрыт, письмо в «цены»', async () => {
-        journal.listSettledUnhandled.mockResolvedValueOnce([
+    it('даже через два часа отсутствие остатка остаётся в очереди с причиной', async () => {
+        journal.listUnhandledRows.mockResolvedValueOnce([
             { extId: '10303', posting: null, firstSeen: new Date(Date.now() - 3 * 3600 * 1000) },
         ]);
         query.mockResolvedValueOnce([{ NP: '10303', GOODSCODE: 549853 }]);
@@ -141,18 +142,14 @@ describe('Trade2006IncomingService (очередь приходов)', () => {
             ],
         });
         await service.run();
-        expect(journal.markHandled).toHaveBeenCalledWith(expect.objectContaining({ extId: '10303' }));
-        expect(events.emit).toHaveBeenCalledWith(
-            'error.message',
-            'Приход: цена не пересчитана',
-            expect.stringContaining('приход 10303: 549853'),
-            'PRICES',
-        );
+        expect(journal.finishVersion).toHaveBeenCalledWith(expect.objectContaining({ extId: '10303' }), undefined,
+            expect.objectContaining({ incoming: expect.objectContaining({ pending: ['549853: нет остатка на складе'] }) }), false);
+        expect(events.emit).not.toHaveBeenCalled();
     });
 
     it('ручной запуск берёт очередь без ожидания тишины', async () => {
         await service.manualCheck();
-        expect(journal.listSettledUnhandled).toHaveBeenCalledWith('TRADE', 'INCOMING', 'pending', 0);
+        expect(journal.listUnhandledRows).toHaveBeenCalledWith('TRADE', 'INCOMING', 'pending', null, 0);
     });
 
     it('магазин: таблица SHOPIN, NP передаётся числом', async () => {

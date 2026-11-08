@@ -1,6 +1,6 @@
 import { GoodModule } from '../good/good.module';
 import { EnrichWithPricingCommand } from './price-lever/sweep/enrich-with-pricing.command';
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { PriceModule } from '../price/price.module';
 import { ProductModule } from '../product/product.module';
 import { JobModule } from '../job/job.module';
@@ -19,7 +19,7 @@ import { PromoSweepService } from './price-lever/sweep/promo-sweep.service';
 import { NotifySweepCommand } from './price-lever/sweep/notify-sweep.command';
 
 @Module({
-    imports: [OzonApiModule, ProductModule, PriceModule, GoodModule, JobModule],
+    imports: [OzonApiModule, ProductModule, forwardRef(() => PriceModule), GoodModule, JobModule],
     providers: [
         OzonPromosApi,
         OzonSellerActionsApi,

@@ -295,6 +295,14 @@ describe('WbPriceService', () => {
             expect(report.toUpdate).toBe(1);
         });
 
+        it('приход изменился: асинхронный guard запрещает отправку устаревшей скидки', async () => {
+            getWbData.mockResolvedValueOnce([{ id: 'A', minPrice: 94.5, commission: 0, tariff: 0 }]);
+            mockCabinet([{ vendorCode: 'A', nmID: 1, discount: 0, sizes: [{ price: 100 }] }]);
+            const report = await service.setMinPrices(['A'], false, undefined, async () => { throw Error('Приход изменился'); });
+            expect(uploadPayload()).toBeUndefined();
+            expect(report.errors).toEqual([expect.stringContaining('Приход изменился')]);
+        });
+
         it('setDiscount: ставит переданный процент как есть', async () => {
             getWbData.mockResolvedValueOnce([{ id: 'A', minPrice: 0, commission: 0, tariff: 0 }]);
             mockCabinet([{ vendorCode: 'A', nmID: 1, discount: 0, sizes: [{ price: 100 }] }]);

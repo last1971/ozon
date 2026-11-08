@@ -37,6 +37,8 @@ export interface MpEventRowDto {
     posting: string | null;
     firstSeen: Date;
     payload: unknown;
+    /** Точная версия LAST_SEEN без потери долей секунды при преобразовании в JS Date. */
+    version?: string;
 }
 
 export interface MpEventDto {
@@ -149,6 +151,40 @@ export class MpEventService {
                 )
                 .then(() => undefined),
         );
+    }
+
+    /** Проверка версии перед внешней записью; изменения документа не теряются за ожиданием очереди. */
+    async isCurrentVersion(event: MpEventDto, version: string): Promise<boolean> {
+        if (!version) return false;
+        return this.withTransaction(null, async (transaction) => {
+            const rows = await transaction.query(
+                'SELECT CAST(LAST_SEEN AS VARCHAR(32)) AS EVENT_VERSION FROM MP_EVENT WHERE SERVICE = ? AND KIND = ? AND EXT_ID = ? AND STATE = ? AND HANDLED_AT IS NULL',
+                [event.service, event.kind, event.extId, event.state],
+                false,
+            );
+            return rows.length === 1 && String(rows[0].EVENT_VERSION) === version;
+        });
+    }
+
+    /** Короткая блокировка только при фиксации; сетевые ожидания выполняются без транзакции. */
+    async finishVersion(event: MpEventDto, version: string, payload: unknown, handled: boolean): Promise<boolean> {
+        if (!version) return false;
+        return this.withTransaction(null, async (transaction) => {
+            const rows = await transaction.query(
+                'SELECT CAST(LAST_SEEN AS VARCHAR(32)) AS EVENT_VERSION FROM MP_EVENT WHERE SERVICE = ? AND KIND = ? AND EXT_ID = ? AND STATE = ? AND HANDLED_AT IS NULL WITH LOCK',
+                [event.service, event.kind, event.extId, event.state],
+                false,
+            );
+            if (rows.length !== 1 || String(rows[0].EVENT_VERSION) !== version) return false;
+            await transaction.execute(
+                'UPDATE MP_EVENT SET PAYLOAD = ?' +
+                    (handled ? ', HANDLED_AT = CURRENT_TIMESTAMP' : '') +
+                    ' WHERE SERVICE = ? AND KIND = ? AND EXT_ID = ? AND STATE = ? AND HANDLED_AT IS NULL AND CAST(LAST_SEEN AS VARCHAR(32)) = ?',
+                [JSON.stringify(payload), event.service, event.kind, event.extId, event.state, version],
+                false,
+            );
+            return true;
+        });
     }
 
     /** Событие отработано целиком. До этого момента следующий проход возьмёт его снова. */
@@ -280,12 +316,17 @@ export class MpEventService {
         kind: MpKind,
         state: string,
         t: FirebirdTransaction = null,
+        settledMinutes = 0,
     ): Promise<MpEventRowDto[]> {
         return this.withTransaction(t, async (transaction) => {
             const rows = await transaction.query(
-                'SELECT EXT_ID, STATE, POSTING, FIRST_SEEN, PAYLOAD,' +
+                'SELECT EXT_ID, STATE, POSTING, FIRST_SEEN, PAYLOAD, CAST(LAST_SEEN AS VARCHAR(32)) AS EVENT_VERSION,' +
                     ' CASE WHEN OCTET_LENGTH(PAYLOAD) <= 8191 THEN CAST(PAYLOAD AS VARCHAR(8191)) ELSE NULL END AS PAYLOAD_TEXT FROM MP_EVENT' +
-                    ' WHERE SERVICE = ? AND KIND = ? AND STATE = ? AND HANDLED_AT IS NULL ORDER BY FIRST_SEEN',
+                    ' WHERE SERVICE = ? AND KIND = ? AND STATE = ? AND HANDLED_AT IS NULL' +
+                    (settledMinutes > 0
+                        ? ` AND LAST_SEEN < DATEADD(-${Math.max(0, Math.floor(Number(settledMinutes) || 0))} MINUTE TO CURRENT_TIMESTAMP)`
+                        : '') +
+                    ' ORDER BY FIRST_SEEN',
                 [service, kind, state],
                 false,
             );
@@ -426,7 +467,7 @@ export class MpEventService {
         transaction: FirebirdTransaction,
     ): Promise<MpEventRowDto[]> {
         const rows = await transaction.query(
-            'SELECT EXT_ID, STATE, POSTING, FIRST_SEEN, PAYLOAD,' +
+            'SELECT EXT_ID, STATE, POSTING, FIRST_SEEN, PAYLOAD, CAST(LAST_SEEN AS VARCHAR(32)) AS EVENT_VERSION,' +
                 ' CASE WHEN OCTET_LENGTH(PAYLOAD) <= 8191 THEN CAST(PAYLOAD AS VARCHAR(8191)) ELSE NULL END AS PAYLOAD_TEXT FROM MP_EVENT' +
                 ` WHERE SERVICE = ? AND KIND = ? AND ${where} ORDER BY FIRST_SEEN DESC`,
             [service, kind, ...values],
@@ -451,6 +492,7 @@ export class MpEventService {
                 posting: r.POSTING ? String(r.POSTING) : null,
                 firstSeen: new Date(r.FIRST_SEEN),
                 payload,
+                ...(r.EVENT_VERSION ? { version: String(r.EVENT_VERSION) } : {}),
             });
         }
         return result;

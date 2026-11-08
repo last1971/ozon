@@ -222,4 +222,15 @@ describe('PromoPriceApplier — исполнение шагов плана', () 
         expect(result.results.map((r) => r.status)).toEqual(['ok', 'rejected']);
         expect(remove).toHaveBeenCalledTimes(1);
     });
+    it('ожидает асинхронную проверку версии прихода и не применяет устаревший план', async () => {
+        const result = await applier.apply(plan([raise, removeStep]), {
+            assertCurrent: async () => { throw new Error('Приход изменился'); },
+        });
+        expect(result.applied).toBe(false);
+        expect(result.notes.join('; ')).toContain('Приход изменился');
+        expect(update).not.toHaveBeenCalled();
+        expect(remove).not.toHaveBeenCalled();
+        expect(setPercent).not.toHaveBeenCalled();
+    });
+
 });

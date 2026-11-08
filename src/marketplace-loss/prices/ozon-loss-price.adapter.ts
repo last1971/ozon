@@ -61,10 +61,16 @@ export class OzonLossPriceAdapter implements LossPriceAdapter {
             }),
         );
     }
-    async promos(offers: string[], snapshots?: Map<string, PricingSnapshot>) {
-        const job = snapshots
-            ? this.sweep.start(true, 'min', 'loss-queue', offers, snapshots)
-            : this.sweep.start(true, 'min', 'loss-queue', offers);
+    async promos(
+        offers: string[],
+        snapshots?: Map<string, PricingSnapshot>,
+        assertInputsCurrent?: (offerId: string) => Promise<void>,
+    ) {
+        const job = assertInputsCurrent
+            ? this.sweep.start(true, 'min', 'incoming', offers, snapshots, assertInputsCurrent)
+            : snapshots
+              ? this.sweep.start(true, 'min', 'loss-queue', offers, snapshots)
+              : this.sweep.start(true, 'min', 'loss-queue', offers);
         const activity = setJobActivity('ozon', 'Проверка акций Ozon', 'waiting');
         if (activity) activity.waitingFor = { id: job.id, kind: job.kind };
         const state = await this.jobs.whenDone(job.id);

@@ -1,25 +1,36 @@
 import { Injectable } from '@nestjs/common';
 import { ICommandAsync } from '../../interfaces/i.command.acync';
 import { ExtraPriceService } from '../../price/extra.price.service';
+import { MpEventService } from '../../mp-event/mp-event.service';
+import { INCOMING_KIND, INCOMING_PENDING, TRADE_SERVICE } from '../incoming.constants';
 import { goodCode } from '../../helpers';
 import { IncomingContext } from '../incoming.types';
 
-/**
- * 3. Композиция: цепочка прихода из цен (ExtraPriceService.incomingGoodsChain) по кодам прохода.
- * Ошибка цепочки летит наверх — приход остаётся в очереди и пойдёт следующим проходом.
- * Приход без товаров (все строки удалили) — считать нечего, но пометить обработанным надо.
- * Товары, которых площадки не посчитали, потому что их нет на складе (`not-in-stock`), — в heldSkus:
- * их приходы подождут следующего прохода. «Нет свободного остатка» не держит: продавать нечего, ждать бесполезно.
- */
+/** 3. Общая цепочка цен и акций; версия прихода проверяется перед внешними изменениями. */
 @Injectable()
 export class RepriceIncomingGoodsCommand implements ICommandAsync<IncomingContext> {
-    constructor(private readonly prices: ExtraPriceService) {}
+    constructor(
+        private readonly prices: ExtraPriceService,
+        private readonly journal: MpEventService,
+    ) {}
 
     async execute(ctx: IncomingContext): Promise<IncomingContext> {
         if (ctx.skus.length === 0) return ctx;
-        const result = await this.prices
-            .incomingGoodsChain()
-            .execute({ skus: ctx.skus, logger: this.prices.chainLogger() });
+        const result = await this.prices.incomingGoodsChain().execute({
+            skus: ctx.skus,
+            logger: this.prices.chainLogger(),
+            assertInputsCurrent: async (offerId) => {
+                const code = goodCode({ offer_id: offerId });
+                for (const prihod of ctx.prihods.filter((p) => ctx.goodsByPrihod?.get(p.np)?.includes(code)))
+                    if (
+                        !(await this.journal.isCurrentVersion(
+                            { service: TRADE_SERVICE, kind: INCOMING_KIND, extId: prihod.np, state: INCOMING_PENDING },
+                            prihod.version,
+                        ))
+                    )
+                        throw new Error(`Приход ${prihod.np} изменился во время обработки; нужен новый расчёт`);
+            },
+        });
         const heldSkus = [
             ...new Set(
                 (result?.priceReports || [])
@@ -28,6 +39,6 @@ export class RepriceIncomingGoodsCommand implements ICommandAsync<IncomingContex
                     .map((s) => goodCode({ offer_id: s.offer_id })),
             ),
         ];
-        return { ...ctx, heldSkus };
+        return { ...ctx, heldSkus, failures: result.incomingFailures ?? [] };
     }
 }

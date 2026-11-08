@@ -12,6 +12,8 @@ export interface IUnprofitableItem {
 
 export interface IGoodsProcessingContext {
     skus: string[];
+    incomingFailures?: { service: string; offerId: string; error: string }[];
+    assertInputsCurrent?: (offerId: string) => Promise<void>;
     ozonSkus?: string[];
     ozonPrices?: PriceDto[];
     ozonPricesHighPrice?: PriceDto[];

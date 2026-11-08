@@ -40,11 +40,18 @@ export interface LossPriceAdapter {
     matches(target: UpdatePriceDto, actual: unknown): boolean;
     persist(targets: UpdatePriceDto[]): Promise<void>;
     send(targets: UpdatePriceDto[], current?: Map<string, unknown>): Promise<Map<string, LossPriceResult>>;
-    promos(offers: string[], snapshots?: Map<string, PricingSnapshot>): Promise<Map<string, LossPriceResult>>;
+    promos(
+        offers: string[],
+        snapshots?: Map<string, PricingSnapshot>,
+        assertInputsCurrent?: (offerId: string) => Promise<void>,
+    ): Promise<Map<string, LossPriceResult>>;
 }
 export const LOSS_PRICE_ADAPTERS = Symbol('LOSS_PRICE_ADAPTERS');
 export interface LossPriceContext extends IJobContext {
     service: LossPriceMarket;
+    /** Адресный запуск использует уже сопоставленные артикулы, без обхода каталога. */
+    offerIds?: string[];
+    assertInputsCurrent?: (offerId: string) => Promise<void>;
     adapter: LossPriceAdapter;
     tasks: LossPriceTask[];
     current?: Map<string, unknown>;

@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { PricingSnapshot } from '../../../helpers/price/price-update.queue';
 import { withPricingWarnings, PricingWarning } from '../../../helpers/price/pricing-warnings';
 import { assertPricingWritesAllowed } from '../../../helpers/price/pricing-review-mode';
@@ -54,12 +55,13 @@ export class PromoSweepService {
         clientId?: string,
         offerIds?: string[],
         pricingSnapshots?: Map<string, PricingSnapshot>,
+        assertInputsCurrent?: (offerId: string) => Promise<void>,
     ): JobStateDto {
         if (apply) assertPricingWritesAllowed();
         const warnings = new Map<string, PricingWarning>();
         return this.jobs.run<IPromoSweepContext, PromoSweepReport>({
             kind: PROMO_SWEEP_JOB,
-            params: { apply, goal, ...(offerIds ? { offerIds } : {}) },
+            params: { apply, goal, ...(offerIds ? { offerIds } : {}), ...(assertInputsCurrent ? { revision: randomUUID() } : {}) },
             clientId,
             commands: this.commands,
             execute: (run) => withPricingWarnings(warnings, run),
@@ -68,6 +70,7 @@ export class PromoSweepService {
                 apply,
                 goal,
                 pricingSnapshots,
+                assertInputsCurrent,
                 ...(offerIds ? { offerIds } : {}),
                 progress: emptyProgress(),
                 logger: this.logger,

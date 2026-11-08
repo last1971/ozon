@@ -8,7 +8,9 @@ import { PriceReviewService } from './price-review.service';
 import { PreparePriceReviewCommand, SendPriceReviewCommand } from './price-review.commands';
 import { OzonPricingService } from './ozon.pricing.service';
 import { OzonLogisticsModule } from './ozon.logistics.module';
-import { Module } from '@nestjs/common';
+import { IncomingPricesCommand } from './commands/incoming-prices.command';
+import { LossPriceUpdateModule } from '../marketplace-loss/prices/loss-price-update.module';
+import { Module, forwardRef } from '@nestjs/common';
 import { PriceService } from './price.service';
 import { PriceController } from './price.controller';
 import { ProductModule } from '../product/product.module';
@@ -47,6 +49,7 @@ import { VerifyOzonPricesCommand } from './commands/verify-ozon-prices.command';
 
 @Module({
     imports: [
+        forwardRef(() => LossPriceUpdateModule),
         MarketplaceLossModule,
         BulkPriceJobModule,
         JobModule,
@@ -68,6 +71,7 @@ import { VerifyOzonPricesCommand } from './commands/verify-ozon-prices.command';
         OzonPricingService,
         PriceService,
         ExtraPriceService,
+        IncomingPricesCommand,
         ResetAvailablePriceCommand,
         TradeSkusCommand,
         UpdatePercentsForGoodSkusCommand,
@@ -98,6 +102,7 @@ import { VerifyOzonPricesCommand } from './commands/verify-ozon-prices.command';
         OzonPricingService,
         PriceService,
         ExtraPriceService,
+        IncomingPricesCommand,
         ResetAvailablePriceCommand,
         TradeSkusCommand,
         UpdatePercentsForGoodSkusCommand,

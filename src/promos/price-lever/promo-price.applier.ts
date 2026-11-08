@@ -11,7 +11,7 @@ import { PromoPriceApplyResult, PromoPricePlan, PromoPriceStep, PromoStepResult 
 
 export interface PromoApplyOptions extends SerialTaskOptions {
     snapshot?: PricingSnapshot;
-    assertCurrent?: () => void;
+    assertCurrent?: () => void | Promise<void>;
 }
 
 type Step<K extends PromoPriceStep['kind']> = Extract<PromoPriceStep, { kind: K }>;
@@ -40,11 +40,11 @@ export class PromoPriceApplier {
             return await priceUpdateQueue.run(
                 'ozon',
                 async () => {
-                    const assertCurrent = () => {
-                        options.assertCurrent?.();
+                    const assertCurrent = async () => {
+                        await options.assertCurrent?.();
                         if (options.snapshot) priceUpdateQueue.assertCurrent(options.snapshot);
                     };
-                    assertCurrent();
+                    await assertCurrent();
                     {
                         const current = await this.products.getPrices({
                             offer_id: [plan.offerId],
@@ -66,7 +66,7 @@ export class PromoPriceApplier {
                             throw new Error('Текущая цена Ozon изменилась. План устарел; требуется новая сверка.');
                     }
                     plan = await refreshPromoPlan(plan, this.api);
-                    assertCurrent();
+                    await assertCurrent();
                     try {
                         return await this.executePlan(plan);
                     } finally {

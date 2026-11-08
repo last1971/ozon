@@ -1,4 +1,5 @@
 import { Test } from '@nestjs/testing';
+import { IncomingPricesCommand } from './commands/incoming-prices.command';
 import { ExtraPriceService } from './extra.price.service';
 import { ConfigService } from '@nestjs/config';
 import { PriceService } from './price.service';
@@ -190,6 +191,7 @@ describe('ExtraPriceService', () => {
                 { provide: ExportUnprofitableXlsxCommand, useValue: mockCommand },
                 { provide: LogPriceReportsCommand, useValue: mockCommand },
                 { provide: VerifyOzonPricesCommand, useValue: mockCommand },
+                { provide: IncomingPricesCommand, useValue: mockCommand },
             ],
         }).compile();
 
@@ -228,6 +230,7 @@ describe('ExtraPriceService', () => {
             mockCommand as any, // logPriceReportsCommand
             mockCommand as any, // verifyOzonPricesCommand
         );
+        (extraPriceService as any).incomingPricesCommand = mockCommand;
     });
 
     describe('getService', () => {
@@ -277,6 +280,7 @@ describe('ExtraPriceService', () => {
                 mockCommand as any, // logPriceReportsCommand
                 mockCommand as any, // verifyOzonPricesCommand
             );
+        (extraPriceService as any).incomingPricesCommand = mockCommand;
 
             const service = extraPriceService.getService(GoodServiceEnum.OZON);
             expect(service).toBe(mockPriceService);
@@ -820,6 +824,7 @@ describe('ExtraPriceService', () => {
                 mockCommand as any,
                 mockCommand as any,
             );
+        (extraPriceService as any).incomingPricesCommand = mockCommand;
         });
 
         it('should check and update VAT for OZON service', async () => {
@@ -896,6 +901,7 @@ describe('ExtraPriceService', () => {
                 mockCommand as any, // logPriceReportsCommand
                 mockCommand as any, // verifyOzonPricesCommand
             );
+        (extraPriceService as any).incomingPricesCommand = mockCommand;
 
             await expect(extraPriceService.updateVatForAllMismatches(GoodServiceEnum.YANDEX, 20)).rejects.toThrow(
                 'Service yandex does not support VAT operations',

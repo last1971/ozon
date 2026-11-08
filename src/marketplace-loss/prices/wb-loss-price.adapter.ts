@@ -44,10 +44,16 @@ export class WbLossPriceAdapter implements LossPriceAdapter {
             }),
         );
     }
-    async promos(offers: string[], snapshots?: Map<string, PricingSnapshot>) {
-        const report = snapshots
-            ? await this.pricing.setMinPrices(offers, false, snapshots)
-            : await this.pricing.setMinPrices(offers);
+    async promos(
+        offers: string[],
+        snapshots?: Map<string, PricingSnapshot>,
+        assertInputsCurrent?: (offerId: string) => Promise<void>,
+    ) {
+        const report = assertInputsCurrent
+            ? await this.pricing.setMinPrices(offers, false, snapshots, assertInputsCurrent)
+            : snapshots
+              ? await this.pricing.setMinPrices(offers, false, snapshots)
+              : await this.pricing.setMinPrices(offers);
         return new Map(
             offers.map((offer): [string, LossPriceResult] => {
                 const error = report.errors.find((e) => e.startsWith(offer + ':'));

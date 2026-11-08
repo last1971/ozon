@@ -1,4 +1,5 @@
-import { Module } from '@nestjs/common';
+import { MarketPriceWorkflowService } from './market-price-workflow.service';
+import { Module, forwardRef } from '@nestjs/common';
 import { MarketplaceLossModule } from '../marketplace-loss.module';
 import { MpEventModule } from '../../mp-event/mp-event.module';
 import { JobModule } from '../../job/job.module';
@@ -28,7 +29,7 @@ import {
         MpEventModule,
         JobModule,
         GoodModule,
-        PriceModule,
+        forwardRef(() => PriceModule),
         ProductModule,
         WbPriceModule,
         WbCurrentPricesModule,
@@ -38,6 +39,7 @@ import {
         OzonLossPriceAdapter,
         WbLossPriceAdapter,
         LossPriceUpdateService,
+        MarketPriceWorkflowService,
         LoadLossPriceTasksCommand,
         CalculateLossPriceTargetsCommand,
         CompareLossPricesCommand,
@@ -52,6 +54,6 @@ import {
         },
     ],
     controllers: [LossPriceQueueController],
-    exports: [LossPriceUpdateService],
+    exports: [LossPriceUpdateService, MarketPriceWorkflowService],
 })
 export class LossPriceUpdateModule {}

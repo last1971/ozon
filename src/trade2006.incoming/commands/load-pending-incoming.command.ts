@@ -10,13 +10,19 @@ export class LoadPendingIncomingCommand implements ICommandAsync<IncomingContext
     constructor(private readonly journal: MpEventService) {}
 
     async execute(ctx: IncomingContext): Promise<IncomingContext> {
-        const rows = await this.journal.listSettledUnhandled(
+        const rows = await this.journal.listUnhandledRows(
             TRADE_SERVICE,
             INCOMING_KIND,
             INCOMING_PENDING,
+            null,
             ctx.settledMinutes,
         );
-        const prihods = rows.map((r) => ({ np: r.extId, firstSeen: r.firstSeen }));
+        const prihods = rows.map((r) => ({
+            np: r.extId,
+            firstSeen: r.firstSeen,
+            version: r.version,
+            payload: r.payload,
+        }));
         return { ...ctx, prihods, stopChain: prihods.length === 0 };
     }
 }

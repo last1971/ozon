@@ -34,7 +34,10 @@ import { RestoreCountsCommand } from './commands/restore-counts.command';
 @Injectable()
 export class ExtraGoodService implements OnApplicationBootstrap {
     private logger = new Logger(ExtraGoodService.name);
-    private services: Map<GoodServiceEnum, { service: ICountUpdateable; isSwitchedOn: boolean }>;
+    private services: Map<
+        GoodServiceEnum,
+        { service: ICountUpdateable; isSwitchedOn: boolean; skuListLoadFailed?: boolean }
+    >;
     constructor(
         private productService: ProductService,
         private yandexOffer: YandexOfferService,
@@ -296,11 +299,13 @@ export class ExtraGoodService implements OnApplicationBootstrap {
             const started = Date.now();
             try {
                 await service.service.loadSkuList();
+                service.skuListLoadFailed = false;
                 this.logger.log(
                     `Service ${serviceEnum}: ${service.service.skuList.length} SKU за ${Math.round((Date.now() - started) / 1000)} с`,
                 );
             } catch (error) {
                 service.isSwitchedOn = false;
+                service.skuListLoadFailed = true;
                 const subject = `Сервис ${serviceEnum} отключён: ошибка загрузки SKU`;
                 let message = error.message;
                 if (error.response?.data) {
@@ -350,7 +355,15 @@ export class ExtraGoodService implements OnApplicationBootstrap {
     tradeSkusToServiceSkus(tradeSkus: string[], serviceEnum: GoodServiceEnum): string[] {
         const service = this.getCountUpdateableService(serviceEnum);
         if (!service || !service.skuList) return [];
-        return service.skuList.filter((serviceSku) => tradeSkus.some((tradeSku) => serviceSku.startsWith(tradeSku)));
+        return service.skuList.filter((serviceSku) =>
+            tradeSkus.some((tradeSku) => serviceSku === String(tradeSku) || serviceSku.startsWith(`${tradeSku}-`)),
+        );
+    }
+
+    /** Ошибка загрузки не равна пустому каталогу. Переключатель остатков не запрещает пересчёт цены. */
+    isSkuListAvailable(serviceEnum: GoodServiceEnum): boolean {
+        const entry = this.services.get(serviceEnum);
+        return !!entry && !entry.skuListLoadFailed && Array.isArray(entry.service.skuList);
     }
 
     getSkuList(serviceEnum: GoodServiceEnum): string[] {

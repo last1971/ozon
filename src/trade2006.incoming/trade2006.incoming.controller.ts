@@ -14,8 +14,9 @@ export class Trade2006IncomingController {
         const ctx = await this.trade2006IncomingService.manualCheck();
         if (!ctx) return { success: false, message: 'Проход уже идёт или упал — см. лог' };
         return {
-            success: true,
-            message: `Приходов: ${ctx.prihods.length}, товаров: ${ctx.skus.length}`,
+            success: !ctx.pending?.length,
+            message: `Приходов: ${ctx.prihods.length}, товаров: ${ctx.skus.length}; завершено ${ctx.completed?.length ?? 0}, ожидают ${ctx.pending?.length ?? 0}`,
+            ...(ctx.pending?.length ? { pending: ctx.pending } : {}),
         };
     }
 }
