@@ -29,10 +29,10 @@ function setup() {
     };
     const goods = { buildPriceables: jest.fn().mockImplementation(async () => [{ ...input }]), setPercents: jest.fn() };
     const prepare = new PreparePriceReviewCommand(extra as any, goods as any);
-    const send = new SendPriceReviewCommand(extra as any);
+    const send = new SendPriceReviewCommand(extra as any, new PreparePriceReviewCommand(extra as any, goods as any));
     const service = new PriceReviewService(jobs, prepare, send);
     const preview = async () => (await jobs.whenDone(service.prepareReview('123').id)).result as any;
-    return { jobs, ozon, wb, goods, service, preview, input, coeffs };
+    return { jobs, ozon, wb, goods, service, preview, input, coeffs, extra };
 }
 describe('Предпросмотр и подтверждённая отправка цен', () => {
     it('подготовка использует общую формулу и ничего не сохраняет/не отправляет', async () => {
@@ -50,7 +50,6 @@ describe('Предпросмотр и подтверждённая отправ�
             review = await m.preview();
         const expected = structuredClone(review.entries[0].prices);
         review.entries[0].prices[0].price = '1';
-        m.input.perc = 900;
         const first = m.service.sendReview(review.token),
             second = m.service.sendReview(review.token);
         expect(first.id).toBe(second.id);
@@ -58,7 +57,7 @@ describe('Предпросмотр и подтверждённая отправ�
         expect(done).toMatchObject({ status: 'done', progress: { percent: 100 } });
         expect(m.ozon.updatePrices).toHaveBeenCalledTimes(1);
         expect(m.ozon.updatePrices).toHaveBeenCalledWith(expected);
-        expect(m.goods.buildPriceables).toHaveBeenCalledTimes(2);
+        expect(m.goods.buildPriceables).toHaveBeenCalledTimes(4);
         expect(m.goods.setPercents).not.toHaveBeenCalled();
     });
     it('просроченный или поддельный снимок не отправляется', async () => {
@@ -96,4 +95,24 @@ describe('Предпросмотр и подтверждённая отправ�
         const done = await m.jobs.whenDone(m.service.sendReview(review.token).id);
         expect((done.result as any).entries.map((e) => Boolean(e.error))).toEqual([true, true]);
     });
+});
+
+it('изменившийся расчёт не отправляет ни старые, ни новые неподтверждённые суммы', async () => {
+    const m = setup(),
+        review = await m.preview();
+    m.input.perc = 900;
+    const done = await m.jobs.whenDone(m.service.sendReview(review.token).id);
+    expect(m.ozon.updatePrices).not.toHaveBeenCalled();
+    expect(m.wb.updatePrices).not.toHaveBeenCalled();
+    expect((done.result as any).entries.every((e) => e.error.includes('Подготовьте цены заново'))).toBe(true);
+});
+
+it('площадка, отключённая после предпросмотра, не отправляет цену и не мешает другой', async () => {
+    const m = setup(),
+        review = await m.preview();
+    jest.spyOn(m.extra, 'getService').mockImplementation((name) => (name === GoodServiceEnum.WB ? m.wb : null));
+    const done = await m.jobs.whenDone(m.service.sendReview(review.token).id);
+    expect(m.ozon.updatePrices).not.toHaveBeenCalled();
+    expect(m.wb.updatePrices).toHaveBeenCalledTimes(1);
+    expect((done.result as any).entries[0].error).toContain('Площадка отключена');
 });

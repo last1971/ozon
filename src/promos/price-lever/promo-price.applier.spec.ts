@@ -1,3 +1,4 @@
+import { ProductService } from '../../product/product.service';
 import { Test } from '@nestjs/testing';
 import { OzonPromosApi } from '../promos.api';
 import { PromosService } from '../promos.service';
@@ -34,6 +35,12 @@ describe('PromoPriceApplier — исполнение шагов плана', () 
             ok: true,
             notes: [],
             state: {
+                offerId: '532100',
+                productId: 77,
+                oldPrice: 2500,
+                price: 2300,
+                minPrice: 1943,
+                buyerPrice: 919,
                 ozonActions: [
                     {
                         actionId: 1977747,
@@ -77,6 +84,25 @@ describe('PromoPriceApplier — исполнение шагов плана', () 
         const module = await Test.createTestingModule({
             providers: [
                 PromoPriceApplier,
+                {
+                    provide: ProductService,
+                    useValue: {
+                        getPrices: async () => ({
+                            items: [
+                                {
+                                    offer_id: '532100',
+                                    product_id: 77,
+                                    price: {
+                                        old_price: '2500',
+                                        price: '2300',
+                                        min_price: '1943',
+                                        marketing_seller_price: '919',
+                                    },
+                                },
+                            ],
+                        }),
+                    },
+                },
                 {
                     provide: OzonPromosApi,
                     useValue: {
@@ -184,5 +210,16 @@ describe('PromoPriceApplier — исполнение шагов плана', () 
         const res = await applier.apply(plan([]));
         expect(res.applied).toBe(true);
         expect(calls).toEqual([]);
+    });
+    it('частичный результат сохраняет принятый шаг Ozon и отказ процента без обещания отката', async () => {
+        setPercent.mockImplementationOnce(async () => {
+            calls.push('percent');
+            return { applied: [], rejected: [{ reason: 'code5' }] };
+        });
+        const result = await applier.apply(plan([removeStep, raise]));
+        expect(calls).toEqual(['remove', 'percent']);
+        expect(result.applied).toBe(false);
+        expect(result.results.map((r) => r.status)).toEqual(['ok', 'rejected']);
+        expect(remove).toHaveBeenCalledTimes(1);
     });
 });

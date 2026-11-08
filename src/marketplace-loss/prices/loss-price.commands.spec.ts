@@ -195,7 +195,7 @@ describe('Каждая команда очереди цен', () => {
         expect(s.pending.size).toBe(0);
         expect(s.adapter.send).not.toHaveBeenCalled();
         expect(s.adapter.persist).toHaveBeenCalledWith([calculatePrice(input(), coeffs)]);
-        expect(s.adapter.promos).toHaveBeenCalledWith(['123']);
+        expect(s.adapter.promos).toHaveBeenCalledWith(['123'], expect.any(Map));
     });
     it('частичный отказ пачки не мешает завершению остальных товаров', async () => {
         const s = setup(['123', '456']);
@@ -211,7 +211,7 @@ describe('Каждая команда очереди цен', () => {
             attempts: 1,
             lastError: 'Отказ API',
         });
-        expect(s.adapter.promos).toHaveBeenCalledWith(['123']);
+        expect(s.adapter.promos).toHaveBeenCalledWith(['123'], expect.any(Map));
     });
     it('нет подтверждения API — задание остаётся, пропавший ответ не считается успехом', async () => {
         const s = setup();
@@ -256,13 +256,14 @@ describe('Каждая команда очереди цен', () => {
         const s = setup(Array.from({ length: 205 }, (_, i) => String(i + 1)));
         const done = await s.run();
         expect(done.progress.percent).toBe(100);
-        expect(s.adapter.send.mock.calls.map(([batch]) => batch.length)).toEqual([100, 100, 5]);
+        expect(s.adapter.send.mock.calls.map(([batch]) => batch.length)).toEqual(Array(205).fill(1));
+        expect(s.goods.buildPriceables.mock.calls.map(([, batch]) => batch.length)).toEqual([100, 100, 5]);
         expect(s.adapter.promos.mock.calls.map(([batch]) => batch.length)).toEqual([100, 100, 5]);
         expect(s.pending.size).toBe(0);
     });
 });
 describe('Организация очереди и совместимость ручных/автоматических запусков', () => {
-    it('ожидает общую очередь площадки до расчёта, вложенная проверка акций не блокирует себя', async () => {
+    it('расчёт не занимает очередь; запись ждёт текущую операцию, вложенная проверка не блокируется', async () => {
         const s = setup();
         let release: () => void;
         const held = priceUpdateQueue.run(
@@ -274,8 +275,8 @@ describe('Организация очереди и совместимость р
         );
         while (!release) await new Promise<void>((resolve) => setImmediate(resolve));
         const job = s.worker.start('WB');
-        await new Promise<void>((resolve) => setImmediate(resolve));
-        expect(s.goods.buildPriceables).not.toHaveBeenCalled();
+        while (!s.goods.buildPriceables.mock.calls.length) await new Promise<void>((resolve) => setImmediate(resolve));
+        expect(s.adapter.send).not.toHaveBeenCalled();
         release();
         await held;
         expect((await s.jobs.whenDone(job.id)).status).toBe('done');
@@ -532,4 +533,37 @@ it('общий API-сбой после ручного пробуждения н�
     expect(s.worker.hasReady('WB', [...s.pending.values()])).toBe(true);
     await s.jobs.whenDone(s.worker.start('WB', 'cron').id);
     expect(s.pending.size).toBe(0);
+});
+
+it('изменение цены после расчёта не перезаписывается старым заданием потерь', async () => {
+    const s = setup();
+    await s.load.execute(s.ctx);
+    await s.calculate.execute(s.ctx);
+    await s.compare.execute(s.ctx);
+    await priceUpdateQueue.run('wb', async () => priceUpdateQueue.changed('wb', ['123']));
+    await s.send.execute(s.ctx);
+    await s.finish.execute(s.ctx);
+    expect(s.adapter.send).not.toHaveBeenCalled();
+    expect(s.pending.size).toBe(1);
+    expect(([...s.pending.values()][0].payload as any).lastError).toContain('устарел');
+});
+it('ожидание подтверждения цены не занимает очередь площадки', async () => {
+    const s = setup();
+    let unblock: () => void;
+    await s.load.execute(s.ctx);
+    await s.calculate.execute(s.ctx);
+    await s.compare.execute(s.ctx);
+    await s.send.execute(s.ctx);
+    const read = s.adapter.current.mockImplementationOnce(
+        () =>
+            new Promise((resolve) => {
+                unblock = () => resolve(new Map(s.current));
+            }),
+    );
+    const confirming = s.confirm.execute(s.ctx);
+    while (!unblock) await new Promise(setImmediate);
+    await priceUpdateQueue.run('wb', async () => 'manual', { priority: 'manual' });
+    unblock();
+    await confirming;
+    expect(read).toHaveBeenCalled();
 });

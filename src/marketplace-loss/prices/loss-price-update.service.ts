@@ -12,7 +12,6 @@ import { OnEvent } from '@nestjs/event-emitter';
 import { JobService } from '../../job/job.service';
 import { emptyProgress, IJobCommand } from '../../interfaces/i.job.context';
 import { JobStateDto } from '../../job/job.state.dto';
-import { priceUpdateQueue } from '../../helpers/price/price-update.queue';
 import { assertPricingWritesAllowed } from '../../helpers/price/pricing-review-mode';
 import {
     LOSS_PRICE_ADAPTERS,
@@ -103,7 +102,6 @@ export class LossPriceUpdateService implements OnApplicationBootstrap {
             clientId,
             context,
             commands: this.commands,
-            execute: (run) => priceUpdateQueue.run(key.toLowerCase(), run),
             cleanup: async () => {},
             result: (c) => ({
                 service: key,

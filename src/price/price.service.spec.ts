@@ -329,7 +329,7 @@ describe('PriceService', () => {
         expect(result).toMatchObject({ total: 3, failed: 3 });
         expect(getPrices.mock.calls).toHaveLength(1);
         expect(getPrices.mock.calls[0]).toEqual([{ cursor: '', limit: 1000, visibility: 'IN_SALE' }]);
-        expect(repriceForService).toHaveBeenCalledWith(service, ['1', '2', '3']);
+        expect(repriceForService).toHaveBeenCalledWith(service, ['1', '2', '3'], undefined, expect.objectContaining({ offers: ['1', '2', '3'] }));
     });
     it('getObtainCoeffs', () => {
         expect(service.getObtainCoeffs()).toEqual({

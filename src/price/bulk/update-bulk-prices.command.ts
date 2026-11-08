@@ -39,7 +39,7 @@ export class UpdateBulkPricesCommand implements IJobCommand<BulkPriceContext> {
             await jobCheckpoint(ctx);
             let rows: BulkPriceRow[];
             try {
-                rows = rowsFor(batch, await ctx.source.update(batch), ctx.source.market);
+                rows = rowsFor(batch, await ctx.source.update(batch, ctx), ctx.source.market);
             } catch (error) {
                 rows = batch.map((offer_id) => ({ offer_id, status: 'error', reason: error.message }));
             }

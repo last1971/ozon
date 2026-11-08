@@ -2,7 +2,6 @@ import { jobCheckpoint } from '../job/job.checkpoint';
 import { PricingDataError } from '../helpers/price/pricing-error';
 import { lossPriceFields, productLossPriceFields } from '../helpers/price/marketplace.loss.input';
 import { BulkPriceJobService } from './bulk/bulk-price-job.service';
-import { SerializePriceUpdate } from '../helpers/price/price-update.queue';
 import { OzonPricingResultDto, OzonPricingPreviewDto } from './dto/ozon-pricing-result.dto';
 import {
     calculateOzonPrices,
@@ -331,7 +330,6 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
         }
     }
 
-    @SerializePriceUpdate('ozon')
     async update(prices: UpdatePricesDto): Promise<any> {
         return this.product.setPrice(prices);
     }
@@ -359,7 +357,7 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                         next: page.items.length ? page.cursor : undefined,
                     };
                 },
-                update: (offers) => this.goodService.repriceForService(this, offers),
+                update: (offers, context) => this.goodService.repriceForService(this, offers, undefined, context),
             },
             clientId,
         );

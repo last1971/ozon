@@ -1,3 +1,4 @@
+import { PricingSnapshot } from '../../../helpers/price/price-update.queue';
 import { IJobContext } from '../../../interfaces/i.job.context';
 import { PromoPriceApplyResult, PromoPricePlan, PromoPriceState, PromoSweepReport } from '../promo-price.types';
 import { SweepGoalKind } from './sweep-goal';
@@ -18,6 +19,7 @@ export interface IPromoSweepContext extends IJobContext {
     collectedStates?: PromoPriceState[];
     /** Ошибки расчёта: показать в отчёте, не применять план по старому минимуму. */
     pricingErrors?: Map<string, string>;
+    pricingSnapshots?: Map<string, PricingSnapshot>;
     plans?: PromoPricePlan[];
     results?: PromoPriceApplyResult[];
     report?: PromoSweepReport;

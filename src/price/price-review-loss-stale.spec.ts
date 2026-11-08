@@ -30,7 +30,7 @@ const setup = () => {
     const service = new PriceReviewService(
         jobs,
         new PreparePriceReviewCommand(extra as any, goods as any),
-        new SendPriceReviewCommand(extra as any),
+        new SendPriceReviewCommand(extra as any, new PreparePriceReviewCommand(extra as any, goods as any)),
     );
     const preview = async () => (await jobs.whenDone(service.prepareReview('123').id)).result as any;
     return { jobs, service, ozon, wb, preview, goods };
@@ -92,4 +92,24 @@ it('изменение канонического кода отменяет пр
     s.service.lossSaved('OZON', ['123-1']);
     await s.jobs.whenDone(s.service.sendReview(review.token).id);
     expect(s.ozon.updatePrices).not.toHaveBeenCalled();
+});
+
+it('срок предпросмотра проверяется снова после ожидания очереди', async () => {
+    const s = setup(),
+        review = await s.preview();
+    let release: () => void;
+    const held = priceUpdateQueue.run('ozon', () => new Promise<void>((r) => (release = r)));
+    while (!release) await new Promise(setImmediate);
+    const job = s.service.sendReview(review.token);
+    while (!priceUpdateQueue.state('ozon').manual) await new Promise(setImmediate);
+    const now = jest.spyOn(Date, 'now').mockReturnValue(review.expiresAt + 1);
+    try {
+        release();
+        await held;
+        const done = await s.jobs.whenDone(job.id);
+        expect(s.ozon.updatePrices).not.toHaveBeenCalled();
+        expect((done.result as any).entries[0].error).toContain('Предпросмотр устарел');
+    } finally {
+        now.mockRestore();
+    }
 });

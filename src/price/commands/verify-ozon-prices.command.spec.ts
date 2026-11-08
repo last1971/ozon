@@ -1,3 +1,4 @@
+import { priceUpdateQueue } from '../../helpers/price/price-update.queue';
 import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -107,5 +108,16 @@ describe('VerifyOzonPricesCommand (сверка после отправки це
             ],
         }).compile();
         expect(module.get(VerifyOzonPricesCommand)).toBeInstanceOf(VerifyOzonPricesCommand);
+    });
+    it('после ручного изменения не повторяет старые суммы и не посылает ложное письмо', async () => {
+        const context = ctx();
+        context.priceReports[0].pricingSnapshots = new Map(
+            sent.map((p) => [p.offer_id, priceUpdateQueue.capture('ozon', [p.offer_id])]),
+        );
+        priceUpdateQueue.changed('ozon', ['551444']);
+        getPrices.mockResolvedValueOnce(onOzon({ '564323': [3359, 6718, 1680], '551444': [1200, 2400, 600] }));
+        await command.execute(context);
+        expect(updatePrices).not.toHaveBeenCalled();
+        expect(emit).not.toHaveBeenCalled();
     });
 });

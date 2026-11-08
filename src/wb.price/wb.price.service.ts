@@ -1,7 +1,7 @@
 import { wbPriceTask } from './wb-price-task';
 import { LossPricingService } from '../marketplace-loss/loss-pricing.service';
 import { BulkPriceJobService } from '../price/bulk/bulk-price-job.service';
-import { SerializePriceUpdate } from '../helpers/price/price-update.queue';
+import { priceUpdateQueue, PricingSnapshot } from '../helpers/price/price-update.queue';
 import { assertPricingWritesAllowed } from '../helpers/price/pricing-review-mode';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { IPriceUpdateable } from '../interfaces/i.price.updateable';
@@ -195,7 +195,7 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
                         next: page.nextArgs ? JSON.stringify(page.nextArgs) : undefined,
                     };
                 },
-                update: (offers) => this.goodService.repriceForService(this, offers),
+                update: (offers, context) => this.goodService.repriceForService(this, offers, undefined, context),
             },
             clientId,
         );
@@ -204,19 +204,55 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
         return this.bulk.wait(this.startUpdateAllPrices().id);
     }
 
-    @SerializePriceUpdate('wb')
-    async updatePrices(updatePrices: UpdatePriceDto[]): Promise<any> {
+    async preparePriceUpdates() {
+        const current = await this.currentPrices.getAll();
+        return (prices: UpdatePriceDto[]) => this.updatePrices(prices, current);
+    }
+    async updatePrices(
+        updatePrices: UpdatePriceDto[],
+        knownCurrent?: Map<string, import('./wb.current-prices.service').WbCurrentPrice>,
+    ): Promise<any> {
         assertPricingWritesAllowed();
-        const data = updatePrices.map((price) => wbPriceTask(price, this.cardService.getNmID(price.offer_id)));
-        await this.saveMinPrices(updatePrices);
-        const response = await this.pushPriceTasks(data);
-        const remaining = data.map((task, index) => ({ nmID: task.nmID, offer_id: updatePrices[index].offer_id }));
-        response.results = response.results.map((row) => {
-            const index = remaining.findIndex((task) => Object.is(task.nmID, row.nmID));
-            const [match] = index >= 0 ? remaining.splice(index, 1) : [];
-            return { ...row, offer_id: match?.offer_id };
-        });
-        return response;
+        const snapshot = priceUpdateQueue.reader(
+            'wb',
+            updatePrices.map((p) => p.offer_id),
+        );
+        const current = knownCurrent ?? (await this.currentPrices.getAll());
+        const results: any[] = [],
+            uploadIds: string[] = [];
+        for (const price of updatePrices) {
+            try {
+                const response = await priceUpdateQueue.run(
+                    'wb',
+                    async () => {
+                        priceUpdateQueue.assertCurrent(snapshot([price.offer_id]));
+                        const data = [wbPriceTask(price, this.cardService.getNmID(price.offer_id))];
+                        try {
+                            await this.saveMinPrices([price]);
+                            return await this.pushPriceTasks(data, current);
+                        } finally {
+                            priceUpdateQueue.changed('wb', [price.offer_id]);
+                        }
+                    },
+                    { priority: 'background' },
+                );
+                results.push(...response.results.map((row) => ({ ...row, offer_id: price.offer_id })));
+                uploadIds.push(...(response.uploadIds ?? []));
+            } catch (error) {
+                results.push({
+                    offer_id: price.offer_id,
+                    nmID: this.cardService.getNmID(price.offer_id),
+                    status: 'error',
+                    message: error.message,
+                });
+            }
+        }
+        return {
+            error: results.some((r) => r.status === 'error'),
+            results,
+            uploadIds,
+            data: uploadIds.length ? { id: uploadIds.join(', ') } : null,
+        };
     }
 
     /** Общее сохранение пола, в том числе когда округлённая цена/скидка уже стоят в ВБ. */
@@ -303,12 +339,13 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
      * и одной задачей отправляет в ВБ. minPrice берётся из Firebird, базовая цена — из кабинета ВБ.
      * calcDiscount: вернуть процент, вернуть null — пропустить, бросить — записать в errors.
      */
-    @SerializePriceUpdate('wb')
     private async applyWb(
         articles: string[] | 'all',
         calcDiscount: (base: number, minPrice: number, currentDiscount: number) => number | null,
         dryRun = false,
+        expected?: Map<string, PricingSnapshot>,
     ): Promise<WbBulkPriceReport> {
+        const snapshot = priceUpdateQueue.reader('wb');
         const current = await this.currentPrices.getAll();
         if (articles === 'all') articles = [...current.keys()];
         const wbData = await this.goodService.getWbData(articles);
@@ -352,13 +389,32 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
         // ВБ принимает до 1000 товаров в задаче («все» по кабинету — больше)
         const uploadIds: string[] = [];
         if (!dryRun && data.length) {
-            const res = await this.pushPriceTasks(data, current);
-            uploadIds.push(...res.uploadIds);
-            for (const row of res.results) {
-                const article = [...current].find(([, p]) => p.nmID === row.nmID)?.[0] ?? String(row.nmID);
-                if (row.status === 'error') errors.push(`${article}: ${row.message}`);
-                if (row.status === 'unchanged') skipped.push(article);
-                if (row.status !== 'accepted') {
+            for (const task of data) {
+                const article = [...current].find(([, p]) => p.nmID === task.nmID)?.[0] ?? String(task.nmID);
+                try {
+                    const res = await priceUpdateQueue.run(
+                        'wb',
+                        async () => {
+                            priceUpdateQueue.assertCurrent(expected?.get(article) ?? snapshot([article]));
+                            try {
+                                return await this.pushPriceTasks([task], current);
+                            } finally {
+                                priceUpdateQueue.changed('wb', [article]);
+                            }
+                        },
+                        { priority: 'background' },
+                    );
+                    uploadIds.push(...res.uploadIds);
+                    for (const row of res.results) {
+                        if (row.status === 'error') errors.push(`${article}: ${row.message}`);
+                        if (row.status === 'unchanged') skipped.push(article);
+                        if (row.status !== 'accepted') {
+                            const index = changes.findIndex((c) => c.article === article);
+                            if (index >= 0) changes.splice(index, 1);
+                        }
+                    }
+                } catch (error) {
+                    errors.push(`${article}: ${error.message}`);
                     const index = changes.findIndex((c) => c.article === article);
                     if (index >= 0) changes.splice(index, 1);
                 }
@@ -383,7 +439,11 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
      * задравшей скидку, и когда цена выше минимальной. Пустой список — все карточки кабинета.
      * Уже стоящие на минимальной пропускаются: ВБ на повтор отвечает 400 «already set». dryRun — только отчёт.
      */
-    async setMinPrices(articles: string[], dryRun = false): Promise<WbBulkPriceReport> {
+    async setMinPrices(
+        articles: string[],
+        dryRun = false,
+        expected?: Map<string, PricingSnapshot>,
+    ): Promise<WbBulkPriceReport> {
         return this.applyWb(
             articles.length ? articles : 'all',
             (base, minPrice, currentDiscount) => {
@@ -399,6 +459,7 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
                 return discount === currentDiscount ? null : discount;
             },
             dryRun,
+            expected,
         );
     }
 

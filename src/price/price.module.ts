@@ -1,3 +1,4 @@
+import { PricingInputsRevisionService } from './pricing-inputs-revision.service';
 import { MarketplaceLossModule } from '../marketplace-loss/marketplace-loss.module';
 import { BulkPriceJobModule } from './bulk/bulk-price-job.module';
 import { PricingModeController } from './pricing-mode.controller';
@@ -60,6 +61,7 @@ import { VerifyOzonPricesCommand } from './commands/verify-ozon-prices.command';
         OzonCategoryModule,
     ],
     providers: [
+        PricingInputsRevisionService,
         PriceReviewService,
         PreparePriceReviewCommand,
         SendPriceReviewCommand,

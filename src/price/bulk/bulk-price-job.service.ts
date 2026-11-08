@@ -1,7 +1,6 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { JobService } from '../../job/job.service';
 import { emptyProgress } from '../../interfaces/i.job.context';
-import { priceUpdateQueue } from '../../helpers/price/price-update.queue';
 import { withPricingWarnings } from '../../helpers/price/pricing-warnings';
 import { BulkPriceContext, BulkPriceSource, BulkPriceReport } from './bulk-price.context';
 import { CollectBulkPricesCommand } from './collect-bulk-prices.command';
@@ -31,7 +30,7 @@ export class BulkPriceJobService {
             clientId,
             context,
             commands: [this.collect, this.update, this.report],
-            execute: (run) => priceUpdateQueue.run(source.market, () => withPricingWarnings(context.warnings, run)),
+            execute: (run) => withPricingWarnings(context.warnings, run),
             // После отмены ждём текущий запрос; следующий пакет уже не отправляем.
             cleanup: async () => {},
             result: (ctx) => ctx.report,

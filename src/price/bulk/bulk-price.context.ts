@@ -18,7 +18,7 @@ export interface BulkPriceReport {
 export interface BulkPriceSource {
     market: 'ozon' | 'wb';
     page: (cursor: string) => Promise<{ offers: string[]; next?: string }>;
-    update: (offers: string[]) => Promise<PriceUpdateReport>;
+    update: (offers: string[], context?: IJobContext) => Promise<PriceUpdateReport>;
 }
 export interface BulkPriceContext extends IJobContext {
     source: BulkPriceSource;

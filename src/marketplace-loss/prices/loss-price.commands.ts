@@ -1,3 +1,4 @@
+import { priceUpdateQueue } from '../../helpers/price/price-update.queue';
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { chunk } from 'lodash';
@@ -86,6 +87,10 @@ export class CalculateLossPriceTargetsCommand implements IJobCommand<LossPriceCo
     constructor(@Inject(GOOD_SERVICE) private readonly goods: IGood) {}
     async execute(ctx: LossPriceContext) {
         if (!valid(ctx).length) return ctx;
+        const snapshot = priceUpdateQueue.reader(
+            ctx.service.toLowerCase(),
+            valid(ctx).map((t) => t.offerId),
+        );
         const offers = new Map<string, string[]>();
         for (const offer of new Set(await ctx.adapter.offers())) {
             try {
@@ -103,6 +108,7 @@ export class CalculateLossPriceTargetsCommand implements IJobCommand<LossPriceCo
                 task.failureKind = 'data';
                 continue;
             }
+            task.snapshot = snapshot(actual);
             actual.forEach((offer) => requested.set(offer, task));
         }
         ctx.progress.total = requested.size;
@@ -155,6 +161,7 @@ export class CompareLossPricesCommand implements IJobCommand<LossPriceContext> {
         const all = targets(ctx);
         if (!all.length) return ctx;
         const current = await ctx.adapter.current(all.map((p) => p.offer_id));
+        ctx.current = current;
         ctx.progress.total = ctx.tasks.length;
         for (const task of ctx.tasks) {
             await jobCheckpoint(ctx);
@@ -178,35 +185,56 @@ export class SendLossPricesCommand implements IJobCommand<LossPriceContext> {
     readonly weight = 2;
     async execute(ctx: LossPriceContext) {
         ctx.progress.total = valid(ctx).reduce((count, task) => count + task.changed.length, 0);
-        // Сохраняем пол и при неизменившейся округлённой цене ВБ. Другие адаптеры здесь ничего не пишут.
+        const key = ctx.service.toLowerCase();
         for (const task of valid(ctx)) {
             await jobCheckpoint(ctx);
             try {
-                const unchanged = task.targets.filter((p) => !task.changed.includes(p));
-                if (unchanged.length) await ctx.adapter.persist(unchanged);
-            } catch (e) {
-                task.error = reason(e);
-                task.failureKind = pricingFailureKind(e);
+                await priceUpdateQueue.run(
+                    key,
+                    async () => {
+                        await jobCheckpoint(ctx);
+                        if (task.snapshot) priceUpdateQueue.assertCurrent(task.snapshot);
+                        try {
+                            const unchanged = task.targets.filter((p) => !task.changed.includes(p));
+                            if (unchanged.length) await ctx.adapter.persist(unchanged);
+                            if (task.changed.length) {
+                                ctx.sent += task.changed.length;
+                                const response = await ctx.adapter.send(task.changed, ctx.current);
+                                const single = { ...ctx, tasks: [task] };
+                                rejectOffers(
+                                    single,
+                                    new Map([
+                                        ...task.targets
+                                            .filter((p) => !task.changed.includes(p))
+                                            .map((p) => [p.offer_id, null] as [string, null]),
+                                        ...response,
+                                    ]),
+                                );
+                            }
+                        } finally {
+                            priceUpdateQueue.changed(
+                                key,
+                                task.targets.map((t) => t.offer_id),
+                            );
+                            task.snapshot = priceUpdateQueue.capture(
+                                key,
+                                task.targets.map((t) => t.offer_id),
+                            );
+                        }
+                    },
+                    {
+                        priority: 'background',
+                        onWaiting: (waiting) => {
+                            ctx.progress.counters.waiting = Number(waiting);
+                        },
+                    },
+                );
+            } catch (error) {
+                task.error = reason(error);
+                task.failureKind = pricingFailureKind(error);
             }
+            ctx.progress.done += task.changed.length;
         }
-        const changed = valid(ctx).flatMap((t) => t.changed);
-        ctx.progress.total = changed.length;
-        const results = new Map<string, LossPriceResult>(
-            valid(ctx).flatMap((t) =>
-                t.targets.filter((p) => !t.changed.includes(p)).map((p) => [p.offer_id, null] as [string, null]),
-            ),
-        );
-        for (const batch of chunk(changed, 100)) {
-            await jobCheckpoint(ctx);
-            ctx.sent += batch.length;
-            try {
-                for (const [offer, error] of await ctx.adapter.send(batch)) results.set(offer, error);
-            } catch (e) {
-                batch.forEach((p) => results.set(p.offer_id, { message: reason(e), kind: pricingFailureKind(e) }));
-            }
-            ctx.progress.done += batch.length;
-        }
-        rejectOffers(ctx, results);
         ctx.progress.counters.sent = ctx.sent;
         return ctx;
     }
@@ -231,6 +259,7 @@ export class ConfirmLossPricesCommand implements IJobCommand<LossPriceContext> {
             await jobCheckpoint(ctx);
             if (!task.error)
                 try {
+                    if (task.snapshot) priceUpdateQueue.assertCurrent(task.snapshot);
                     if (task.targets.some((p) => !ctx.adapter.matches(p, current.get(p.offer_id)))) {
                         task.error = 'Площадка ещё не подтвердила рассчитанные цены; задание оставлено для повтора';
                         task.failureKind = 'temporary';
@@ -256,7 +285,12 @@ export class CheckLossPricePromosCommand implements IJobCommand<LossPriceContext
         for (const batch of chunk(all, ctx.adapter.promoBatchSize ?? 100)) {
             await jobCheckpoint(ctx);
             try {
-                for (const [offer, error] of await ctx.adapter.promos(batch.map((p) => p.offer_id)))
+                for (const [offer, error] of await ctx.adapter.promos(
+                    batch.map((p) => p.offer_id),
+                    new Map(
+                        valid(ctx).flatMap((task) => task.targets.map((p) => [p.offer_id, task.snapshot] as const)),
+                    ),
+                ))
                     results.set(offer, error);
             } catch (e) {
                 batch.forEach((p) => results.set(p.offer_id, { message: reason(e), kind: pricingFailureKind(e) }));

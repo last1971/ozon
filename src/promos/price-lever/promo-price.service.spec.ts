@@ -139,7 +139,7 @@ describe('PromoPriceService — состояние товара из обоих 
         applierApply.mockImplementation(async (p: any) => ({ ...p, results: [], applied: true }));
         const [res] = await service.apply(['383367'], 'min');
         expect(getPrices).toHaveBeenCalledTimes(1);
-        expect(applierApply).toHaveBeenCalledWith(expect.objectContaining({ offerId: '383367', target: 213 }));
+        expect(applierApply).toHaveBeenCalledWith(expect.objectContaining({ offerId: '383367', target: 213 }), expect.objectContaining({ priority: 'manual', snapshot: expect.any(Object) }));
         expect(res.applied).toBe(true);
     });
 

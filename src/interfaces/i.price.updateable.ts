@@ -12,6 +12,8 @@ export interface IPriceUpdateable {
         onError?: (offerId: string, error: unknown) => void,
     ): Promise<IProductCoeffsable[]>;
     updatePrices(updatePrices: UpdatePriceDto[]): Promise<any>;
+    /** Пакетное чтение протокольных данных до поштучной записи (например, текущих цен WB). */
+    preparePriceUpdates?(): Promise<(prices: UpdatePriceDto[]) => Promise<any>>;
     updateAllPrices(): Promise<any>;
     createAction(file: Express.Multer.File): Promise<Excel.Buffer>;
 }

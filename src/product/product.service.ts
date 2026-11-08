@@ -1,6 +1,6 @@
 import { OzonStockWriter } from './ozon-stock.writer';
 import { ozonDisplayPrice } from '../helpers/price/ozon.display-price';
-import { SerializePriceUpdate } from '../helpers/price/price-update.queue';
+import { priceUpdateQueue } from '../helpers/price/price-update.queue';
 import { Injectable, Logger, OnModuleInit } from '@nestjs/common';
 import { OzonApiService } from '../ozon.api/ozon.api.service';
 import { ProductListResultDto } from './dto/product.list.result.dto';
@@ -267,22 +267,55 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
         return clusters;
     }
 
-    @SerializePriceUpdate('ozon')
     async setPrice(prices: UpdatePricesDto): Promise<any> {
-        const batchSize = 1000;
+        const snapshot = priceUpdateQueue.reader(
+            'ozon',
+            prices.prices.map((p) => p.offer_id),
+        );
+        const batchSize = 1;
         const results = [];
 
         for (const batch of chunk(prices.prices, batchSize)) {
-            const batchRequest: UpdatePricesDto = { prices: batch.map((row) =>
-                row.price !== undefined && row.old_price !== undefined
-                    ? { ...row, old_price: String(ozonDisplayPrice(Number(row.price), Number(row.old_price))) }
-                    : row) };
-            const result = await this.ozonApiService.method('/v1/product/import/prices', batchRequest);
-            if (!Array.isArray(result?.result)) {
-                const message = result?.error?.message || 'Ozon не вернул результат обновления';
-                results.push(...batch.map((row) => ({ offer_id: row.offer_id, updated: false,
-                    errors: [{ code: 'api_error', message: typeof message === 'string' ? message : JSON.stringify(message) }] })));
-            } else results.push(...result.result);
+            await priceUpdateQueue.run(
+                'ozon',
+                async () => {
+                    priceUpdateQueue.assertCurrent(snapshot(batch.map((p) => p.offer_id)));
+                    try {
+                        const batchRequest: UpdatePricesDto = {
+                            prices: batch.map((row) =>
+                                row.price !== undefined && row.old_price !== undefined
+                                    ? {
+                                          ...row,
+                                          old_price: String(ozonDisplayPrice(Number(row.price), Number(row.old_price))),
+                                      }
+                                    : row,
+                            ),
+                        };
+                        const result = await this.ozonApiService.method('/v1/product/import/prices', batchRequest);
+                        if (!Array.isArray(result?.result)) {
+                            const message = result?.error?.message || 'Ozon не вернул результат обновления';
+                            results.push(
+                                ...batch.map((row) => ({
+                                    offer_id: row.offer_id,
+                                    updated: false,
+                                    errors: [
+                                        {
+                                            code: 'api_error',
+                                            message: typeof message === 'string' ? message : JSON.stringify(message),
+                                        },
+                                    ],
+                                })),
+                            );
+                        } else results.push(...result.result);
+                    } finally {
+                        priceUpdateQueue.changed(
+                            'ozon',
+                            batch.map((p) => p.offer_id),
+                        );
+                    }
+                },
+                { priority: 'background' },
+            );
         }
 
         return { result: results };

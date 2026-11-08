@@ -1,3 +1,4 @@
+import type { PricingSnapshot } from '../helpers/price/price-update.queue';
 import type { PricingFailureKind } from '../helpers/price/pricing-error';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { IPriceable } from '../interfaces/i.priceable';
@@ -29,6 +30,8 @@ export interface PriceUpdateReport {
     skipped: PriceSkip[];
     /** Ответ площадки как есть; null — отправлять было нечего. */
     response: any;
+    /** Версия после собственной записи; поздний повтор не затирает последующее ручное изменение. */
+    pricingSnapshots?: Map<string, PricingSnapshot>;
 }
 
 export interface ServicePriceReport extends PriceUpdateReport {

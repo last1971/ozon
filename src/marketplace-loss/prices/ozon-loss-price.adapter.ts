@@ -1,3 +1,4 @@
+import { PricingSnapshot } from '../../helpers/price/price-update.queue';
 import { Injectable } from '@nestjs/common';
 import { chunk } from 'lodash';
 import { PriceService } from '../../price/price.service';
@@ -59,8 +60,10 @@ export class OzonLossPriceAdapter implements LossPriceAdapter {
             }),
         );
     }
-    async promos(offers: string[]) {
-        const job = this.sweep.start(true, 'min', 'loss-queue', offers);
+    async promos(offers: string[], snapshots?: Map<string, PricingSnapshot>) {
+        const job = snapshots
+            ? this.sweep.start(true, 'min', 'loss-queue', offers, snapshots)
+            : this.sweep.start(true, 'min', 'loss-queue', offers);
         const state = await this.jobs.whenDone(job.id);
         if (state.status !== 'done') throw new Error(state.error || 'Сверка акций Ozon не завершена');
         const report = state.result as PromoSweepReport;

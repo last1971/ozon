@@ -1,10 +1,11 @@
+import { IJobContext } from '../interfaces/i.job.context';
 import { notifyPricingInputs } from '../helpers/price/pricing-inputs-changed';
 import { pricingFailureKind } from '../helpers/price/pricing-error';
 import { calculatePriceBatch } from '../helpers/price/calculate-price-batch';
 import { jobCheckpoint } from '../job/job.checkpoint';
 import { productLossPriceFields } from '../helpers/price/marketplace.loss.input';
 import { calculateMarketplaceLossCosts } from '../helpers/price/marketplace.loss.costs';
-import { priceUpdateQueue } from '../helpers/price/price-update.queue';
+import { priceUpdateQueue, PricingSnapshot } from '../helpers/price/price-update.queue';
 import { completePricePercents } from '../helpers/price/price.percents';
 import { ozonReturnPriceFields } from '../helpers/price/ozon.return.perc';
 import { Inject, Injectable, Logger } from '@nestjs/common';
@@ -692,16 +693,93 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         service: IPriceUpdateable,
         skus: string[],
         prices?: Map<string, UpdatePriceDto>,
+        context?: IJobContext,
     ): Promise<PriceUpdateReport> {
-        return priceUpdateQueue.run(service.priceUpdateKey, async () => {
-            const { priceables, skipped } = await this.collectPriceables(service, skus, prices);
-            const coeffs = service.getObtainCoeffs();
-            const calculated = await calculatePriceBatch(priceables, coeffs);
-            skipped.push(...calculated.skipped);
+        const snapshot = priceUpdateQueue.reader(service.priceUpdateKey, skus);
+        const { priceables, skipped } = await this.collectPriceables(service, skus, prices);
+        const coeffs = service.getObtainCoeffs();
+        const calculated = await calculatePriceBatch(priceables, coeffs, context);
+        skipped.push(...calculated.skipped);
+        if (!service.priceUpdateKey) {
             const sent = calculated.prices;
-            const response = sent.length > 0 ? await service.updatePrices(sent) : null;
-            return { coeffs, inputs: priceables, sent, skipped, response };
-        });
+            return {
+                coeffs,
+                inputs: priceables,
+                sent,
+                skipped,
+                response: sent.length ? await service.updatePrices(sent) : null,
+            };
+        }
+        const update =
+            calculated.prices.length && service.preparePriceUpdates
+                ? await service.preparePriceUpdates()
+                : (rows: UpdatePriceDto[]) => service.updatePrices(rows);
+        const sent: UpdatePriceDto[] = [],
+            results: any[] = [];
+        const pricingSnapshots = new Map<string, PricingSnapshot>();
+        for (const target of calculated.prices) {
+            await jobCheckpoint(context);
+            try {
+                const response = await priceUpdateQueue.run(
+                    service.priceUpdateKey,
+                    async () => {
+                        await jobCheckpoint(context);
+                        priceUpdateQueue.assertCurrent(snapshot([target.offer_id]));
+                        sent.push(target);
+                        try {
+                            return await update([target]);
+                        } finally {
+                            priceUpdateQueue.changed(service.priceUpdateKey, [target.offer_id]);
+                            pricingSnapshots.set(
+                                target.offer_id,
+                                priceUpdateQueue.capture(service.priceUpdateKey, [target.offer_id]),
+                            );
+                        }
+                    },
+                    {
+                        priority: 'background',
+                        onWaiting: (waiting) => {
+                            if (context) context.progress.counters.waiting = Number(waiting);
+                        },
+                    },
+                );
+                results.push(response);
+            } catch (error) {
+                if (!sent.includes(target))
+                    skipped.push({
+                        offer_id: target.offer_id,
+                        reason: 'pricing-data',
+                        failureKind: pricingFailureKind(error),
+                        message: error.message,
+                    });
+                else
+                    results.push(
+                        service.priceUpdateKey === 'ozon'
+                            ? {
+                                  result: [
+                                      {
+                                          offer_id: target.offer_id,
+                                          updated: false,
+                                          errors: [{ code: 'request_failed', message: error.message }],
+                                      },
+                                  ],
+                              }
+                            : {
+                                  error: true,
+                                  results: [{ offer_id: target.offer_id, status: 'error', message: error.message }],
+                              },
+                    );
+            }
+        }
+        const response =
+            service.priceUpdateKey === 'ozon'
+                ? { result: results.flatMap((r) => r?.result ?? []) }
+                : {
+                      error: results.some((r) => r?.error),
+                      results: results.flatMap((r) => r?.results ?? []),
+                      uploadIds: results.flatMap((r) => r?.uploadIds ?? []),
+                  };
+        return { coeffs, inputs: priceables, sent, skipped, response, pricingSnapshots };
     }
 
     async buildPriceables(

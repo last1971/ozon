@@ -1,3 +1,4 @@
+import { priceUpdateQueue, PricingSnapshot, PricePlanStaleError } from '../../helpers/price/price-update.queue';
 import { ozonPricesMatch } from '../../helpers/price/ozon-prices-match';
 import { forwardRef, Inject, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -46,14 +47,23 @@ export class VerifyOzonPricesCommand implements ICommandAsync<IGoodsProcessingCo
         const report = (context.priceReports || []).find((r) => r.service === GoodServiceEnum.OZON);
         if (!report?.sent.length) return context;
         try {
-            await this.verify(report.sent, ozonResultsByOffer(report.response));
+            const snapshot = priceUpdateQueue.reader('ozon');
+            await this.verify(
+                report.sent,
+                ozonResultsByOffer(report.response),
+                report.pricingSnapshots ?? new Map(report.sent.map((p) => [p.offer_id, snapshot([p.offer_id])])),
+            );
         } catch (e) {
             this.logger.error(`сверка цен Озона не выполнена — ${e.message}`);
         }
         return context;
     }
 
-    private async verify(sent: UpdatePriceDto[], firstAnswers: Map<string, OzonPriceResult>): Promise<void> {
+    private async verify(
+        sent: UpdatePriceDto[],
+        firstAnswers: Map<string, OzonPriceResult>,
+        snapshots: Map<string, PricingSnapshot>,
+    ): Promise<void> {
         let mismatches = await this.compare(sent);
         if (mismatches.length === 0) {
             this.logger.log(`цены Озона встали: ${sent.length} из ${sent.length}`);
@@ -62,10 +72,35 @@ export class VerifyOzonPricesCommand implements ICommandAsync<IGoodsProcessingCo
         this.logger.warn(
             `цены Озона не встали у ${mismatches.length} из ${sent.length} (${mismatches.map((m) => m.sent.offer_id).join(', ')}) — отправляем ещё раз`,
         );
-        const retrySent = mismatches.map((m) => m.sent);
-        const retryAnswers = ozonResultsByOffer(
-            await this.extraPriceService.getService(GoodServiceEnum.OZON).updatePrices(retrySent),
-        );
+        const retrySent: UpdatePriceDto[] = [],
+            answers: any[] = [];
+        for (const { sent: target } of mismatches) {
+            try {
+                await priceUpdateQueue.run(
+                    'ozon',
+                    async () => {
+                        priceUpdateQueue.assertCurrent(snapshots.get(target.offer_id));
+                        try {
+                            const response = await this.extraPriceService
+                                .getService(GoodServiceEnum.OZON)
+                                .updatePrices([target]);
+                            answers.push(...(response?.result ?? []));
+                            retrySent.push(target);
+                        } finally {
+                            priceUpdateQueue.changed('ozon', [target.offer_id]);
+                        }
+                    },
+                    { priority: 'background' },
+                );
+            } catch (error) {
+                if (!(error instanceof PricePlanStaleError)) throw error;
+                this.logger.log(
+                    `${target.offer_id}: старую цену повторно не отправляем — после первой отправки данные изменились`,
+                );
+            }
+        }
+        if (!retrySent.length) return;
+        const retryAnswers = ozonResultsByOffer({ result: answers });
         mismatches = await this.compare(retrySent);
         if (mismatches.length === 0) {
             this.logger.log(`цены Озона встали со второго раза: ${retrySent.length}`);

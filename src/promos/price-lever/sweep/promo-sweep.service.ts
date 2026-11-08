@@ -1,5 +1,5 @@
+import { PricingSnapshot } from '../../../helpers/price/price-update.queue';
 import { withPricingWarnings, PricingWarning } from '../../../helpers/price/pricing-warnings';
-import { priceUpdateQueue } from '../../../helpers/price/price-update.queue';
 import { assertPricingWritesAllowed } from '../../../helpers/price/pricing-review-mode';
 import { EnrichWithPricingCommand } from './enrich-with-pricing.command';
 import { Injectable, Logger } from '@nestjs/common';
@@ -48,7 +48,13 @@ export class PromoSweepService {
     }
 
     /** apply=false — только отчёт; apply=true — выполнить планы. Та же задача уже идёт — вернётся она. */
-    start(apply: boolean, goal: SweepGoalKind, clientId?: string, offerIds?: string[]): JobStateDto {
+    start(
+        apply: boolean,
+        goal: SweepGoalKind,
+        clientId?: string,
+        offerIds?: string[],
+        pricingSnapshots?: Map<string, PricingSnapshot>,
+    ): JobStateDto {
         if (apply) assertPricingWritesAllowed();
         const warnings = new Map<string, PricingWarning>();
         return this.jobs.run<IPromoSweepContext, PromoSweepReport>({
@@ -56,10 +62,16 @@ export class PromoSweepService {
             params: { apply, goal, ...(offerIds ? { offerIds } : {}) },
             clientId,
             commands: this.commands,
-            execute: (run) =>
-                priceUpdateQueue.run(apply ? 'ozon' : undefined, () => withPricingWarnings(warnings, run)),
+            execute: (run) => withPricingWarnings(warnings, run),
             cleanup: async () => {},
-            context: { apply, goal, ...(offerIds ? { offerIds } : {}), progress: emptyProgress(), logger: this.logger },
+            context: {
+                apply,
+                goal,
+                pricingSnapshots,
+                ...(offerIds ? { offerIds } : {}),
+                progress: emptyProgress(),
+                logger: this.logger,
+            },
             result: (ctx) => {
                 for (const w of warnings.values())
                     this.logger.warn(`${w.message}: ${w.count}; примеры ${w.examples.join(', ')}`);

@@ -1,3 +1,5 @@
+import { priceUpdateQueue, PricingSnapshot } from '../helpers/price/price-update.queue';
+import { GoodServiceEnum } from '../good/good.service.enum';
 import { lossOfferKey } from '../helpers/price/marketplace.loss.stats';
 import { OnEvent } from '@nestjs/event-emitter';
 import { LOSS_SAVED_EVENT } from '../marketplace-loss/prices/loss-price.contracts';
@@ -20,6 +22,7 @@ interface Review {
     entries: PriceReviewEntry[];
     jobId?: string;
     lossRevisions: Map<string, number>;
+    pricingSnapshots: Map<string, PricingSnapshot>;
 }
 @Injectable()
 export class PriceReviewService {
@@ -34,6 +37,9 @@ export class PriceReviewService {
     prepareReview(offerId: string, clientId?: string) {
         this.cleanup();
         const lossRevisions = new Map(this.lossRevisions);
+        const pricingSnapshots = new Map(
+            Object.values(GoodServiceEnum).map((key) => [key, priceUpdateQueue.capture(key, [offerId])]),
+        );
         return this.jobs.run<PriceReviewContext, unknown>({
             kind: `price-review:${offerId}`,
             params: { offerId, mode: 'prepare' },
@@ -44,7 +50,7 @@ export class PriceReviewService {
                 const token = randomUUID(),
                     expiresAt = Date.now() + TTL;
                 const entries = structuredClone(ctx.entries);
-                this.reviews.set(token, { offerId, expiresAt, entries, lossRevisions });
+                this.reviews.set(token, { offerId, expiresAt, entries, lossRevisions, pricingSnapshots });
                 return { token, offerId, expiresAt, entries: structuredClone(entries) };
             },
         });
@@ -65,6 +71,9 @@ export class PriceReviewService {
                 offerId: review.offerId,
                 entries: structuredClone(review.entries),
                 assertCurrent: (service) => {
+                    if (review.expiresAt < Date.now())
+                        throw new BadRequestException('Предпросмотр устарел. Подготовьте цены заново.');
+                    priceUpdateQueue.assertCurrent(review.pricingSnapshots.get(service));
                     const key = service.toUpperCase();
                     const keys = [key, `${key}:${this.lossOffer(review.offerId)}`];
                     if (keys.some((k) => (this.lossRevisions.get(k) ?? 0) !== (review.lossRevisions.get(k) ?? 0)))

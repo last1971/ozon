@@ -89,7 +89,7 @@ describe('PromosService — правила участия в акциях', () =
 
             expect(await service.unfitProductsRemoval(1)).toBe(3);
             expect(listAll).toHaveBeenCalledWith('products', 1);
-            expect(update).toHaveBeenCalledWith(1, [
+            expect(update.mock.calls.flatMap(([, rows]) => rows)).toEqual([
                 { productId: 1, actionPrice: 60, stock: 3 },
                 { productId: 3, actionPrice: 170, stock: 0 },
                 { productId: 4, actionPrice: 90, stock: 0 },
@@ -135,7 +135,7 @@ describe('PromosService — правила участия в акциях', () =
             deactivate.mockResolvedValue([1]);
 
             expect(await service.unfitProductsRemoval(1)).toBe(2);
-            expect(deactivate).toHaveBeenCalledWith(1, [1, 3]);
+            expect(deactivate.mock.calls).toEqual([[1, [1]], [1, [3]]]);
         });
 
         it('снятие «уже стоит» (товара в акции нет) — снят, без принудительного deactivate', async () => {
@@ -157,7 +157,7 @@ describe('PromosService — правила участия в акциях', () =
             deactivate.mockResolvedValue([1, 3, 4]);
 
             expect(await service.unfitProductsRemoval(2)).toBe(3);
-            expect(deactivate).toHaveBeenCalledWith(2, [1, 3, 4]);
+            expect(deactivate.mock.calls).toEqual([[2, [1]], [2, [3]], [2, [4]]]);
             expect(update).not.toHaveBeenCalled();
         });
 
@@ -212,7 +212,7 @@ describe('PromosService — правила участия в акциях', () =
         ])('стратегия %s → цены %j', async (strategy, expected) => {
             expect(await service.fitProductsAddition(1, strategy)).toBe(2);
             expect(listAll).toHaveBeenCalledWith('candidates', 1);
-            expect(update).toHaveBeenCalledWith(1, [
+            expect(update.mock.calls.flatMap(([, rows]) => rows)).toEqual([
                 { productId: 1, actionPrice: expected[0], stock: 10 },
                 { productId: 2, actionPrice: expected[1], stock: 20 },
             ]);
@@ -224,7 +224,7 @@ describe('PromosService — правила участия в акциях', () =
                 [2, 5],
             ]); // пол 1: ceil(40/0.8)=50 — ровно лимит, проходит; пол 2: ceil(90/0.95)=95 ≤ 100
             expect(await service.fitProductsAddition(1, FitProductsStrategy.MIN_FROM_MIN_PRICE)).toBe(2);
-            expect(update).toHaveBeenCalledWith(1, [
+            expect(update.mock.calls.flatMap(([, rows]) => rows)).toEqual([
                 { productId: 1, actionPrice: 50, stock: 10 },
                 { productId: 2, actionPrice: 95, stock: 20 },
             ]);
@@ -264,23 +264,20 @@ describe('PromosService — правила участия в акциях', () =
                 .mockResolvedValueOnce([]);
             update
                 .mockResolvedValueOnce(okUpdate({ removed: [1] })) // снятие в акции 1
-                .mockResolvedValueOnce(okUpdate({ added: [2, 3], rejected: [{ productId: 3, reason: 'x' }] })); // добавление
+                .mockResolvedValueOnce(okUpdate({ added: [2] }))
+                .mockResolvedValueOnce(okUpdate({ rejected: [{ productId: 3, reason: 'x' }] })); // отказ только третьего товара
 
             const result = await service.addRemoveProductToActions(['SKU1', 'SKU2', 'SKU3']);
 
             expect(update).toHaveBeenNthCalledWith(1, 1, [{ productId: 1, actionPrice: 100, stock: 5 }]);
-            expect(update).toHaveBeenNthCalledWith(2, 1, [
-                { productId: 2, actionPrice: 250, stock: 3 },
-                { productId: 3, actionPrice: 350, stock: 4 },
-            ]);
-            // по пустой акции шлюз получает пустой список — HTTP он сам не делает (см. promos.api.spec)
-            expect(update).toHaveBeenNthCalledWith(3, 2, []);
+            expect(update).toHaveBeenNthCalledWith(2, 1, [{ productId: 2, actionPrice: 250, stock: 3 }]);
+            expect(update).toHaveBeenNthCalledWith(3, 1, [{ productId: 3, actionPrice: 350, stock: 4 }]);
             expect(update).toHaveBeenCalledTimes(3);
             expect(result).toEqual([
                 {
                     action_id: 1,
                     removed: { success_ids: [1], failed: [] },
-                    added: { success_ids: [2, 3], failed: [{ productId: 3, reason: 'x' }] },
+                    added: { success_ids: [2], failed: [{ productId: 3, reason: 'x' }] },
                 },
                 { action_id: 2, removed: { success_ids: [], failed: [] }, added: { success_ids: [], failed: [] } },
             ]);

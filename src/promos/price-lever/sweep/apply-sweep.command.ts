@@ -18,7 +18,16 @@ export class ApplySweepCommand implements IJobCommand<IPromoSweepContext> {
         context.progress.done = 0;
         for (const plan of plans) {
             if (context.stopChain) break;
-            const res = await this.applier.apply(plan);
+            const res = await this.applier.apply(plan, {
+                snapshot: context.pricingSnapshots?.get(plan.offerId),
+                priority: 'background',
+                onWaiting: (waiting) => {
+                    context.progress.counters.waiting = Number(waiting);
+                },
+                assertCurrent: () => {
+                    if (context.stopChain) throw new Error('Задача остановлена');
+                },
+            });
             context.results.push(res);
             context.progress.done++;
             const key = res.applied ? 'appliedOk' : 'appliedFailed';

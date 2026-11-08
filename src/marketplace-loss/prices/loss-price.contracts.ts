@@ -1,3 +1,4 @@
+import { PricingSnapshot } from '../../helpers/price/price-update.queue';
 import type { PricingFailureKind } from '../../helpers/price/pricing-error';
 import type { PricingInputsChanged } from '../../helpers/price/pricing-inputs-changed';
 import { IJobContext } from '../../interfaces/i.job.context';
@@ -27,6 +28,7 @@ export interface LossPriceTask {
     error?: string;
     failureKind?: PricingFailureKind;
     deferred?: boolean;
+    snapshot?: PricingSnapshot;
 }
 /** Адаптер отвечает за протокол площадки, общая цепочка — за очередь и порядок фаз. */
 export type LossPriceResult = string | { message: string; kind: PricingFailureKind } | null;
@@ -37,14 +39,15 @@ export interface LossPriceAdapter {
     current(offers: string[]): Promise<Map<string, unknown>>;
     matches(target: UpdatePriceDto, actual: unknown): boolean;
     persist(targets: UpdatePriceDto[]): Promise<void>;
-    send(targets: UpdatePriceDto[]): Promise<Map<string, LossPriceResult>>;
-    promos(offers: string[]): Promise<Map<string, LossPriceResult>>;
+    send(targets: UpdatePriceDto[], current?: Map<string, unknown>): Promise<Map<string, LossPriceResult>>;
+    promos(offers: string[], snapshots?: Map<string, PricingSnapshot>): Promise<Map<string, LossPriceResult>>;
 }
 export const LOSS_PRICE_ADAPTERS = Symbol('LOSS_PRICE_ADAPTERS');
 export interface LossPriceContext extends IJobContext {
     service: LossPriceMarket;
     adapter: LossPriceAdapter;
     tasks: LossPriceTask[];
+    current?: Map<string, unknown>;
     sent: number;
     forceRetry?: boolean;
     wake?: PricingInputsChanged;

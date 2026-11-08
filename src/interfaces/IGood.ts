@@ -1,3 +1,4 @@
+import { IJobContext } from './i.job.context';
 import { GoodDto } from '../good/dto/good.dto';
 import { GoodPriceDto } from '../good/dto/good.price.dto';
 import { GoodPercentDto } from '../good/dto/good.percent.dto';
@@ -34,6 +35,7 @@ export interface IGood {
         service: IPriceUpdateable,
         skus: string[],
         prices?: Map<string, UpdatePriceDto>,
+        context?: IJobContext,
     ): Promise<PriceUpdateReport>;
     /**
      * Данные расчёта цены по артикулам (себестоимость, наценки, комиссия, доставка) — единственный

@@ -1,4 +1,4 @@
-import { SerializePriceUpdate } from '../helpers/price/price-update.queue';
+import { priceUpdateQueue } from '../helpers/price/price-update.queue';
 import { Injectable, Logger } from '@nestjs/common';
 import { OnEvent } from '@nestjs/event-emitter';
 import { chunk as chunkArray } from 'lodash';
@@ -80,6 +80,7 @@ export class PromosService {
      * @returns сколько товаров отправлено на добавление
      */
     async fitProductsAddition(actionId: number, strategy: FitProductsStrategy): Promise<number> {
+        const snapshot = priceUpdateQueue.reader('ozon');
         const candidates = await this.api.listAll('candidates', actionId);
         const [prices, counts, percents] = await Promise.all([
             this.productService.getProductsPrices(candidates),
@@ -98,7 +99,19 @@ export class PromosService {
                 stock: c.stock,
             }))
             .filter((u) => u.actionPrice > 0);
-        await this.api.update(actionId, updates);
+        for (const item of updates)
+            await priceUpdateQueue.run(
+                'ozon',
+                async () => {
+                    priceUpdateQueue.assertCurrent(snapshot([`#product:${item.productId}`]));
+                    try {
+                        return await this.api.update(actionId, [item]);
+                    } finally {
+                        priceUpdateQueue.changed('ozon', [`#product:${item.productId}`]);
+                    }
+                },
+                { priority: 'background' },
+            );
         return updates.length;
     }
 
@@ -107,8 +120,9 @@ export class PromosService {
      * по каждой акции участник с ценой акции не выше нашего пола снимается,
      * кандидат с предельной ценой не ниже пола добавляется по предельной цене.
      */
-    @SerializePriceUpdate('ozon')
     async addRemoveProductToActions(ids: string[], chunkLimit: number = 100): Promise<AddRemoveProductToAction[]> {
+        const snapshot = priceUpdateQueue.reader('ozon');
+        const currentSnapshots = new Map<string, ReturnType<typeof priceUpdateQueue.capture>>();
         const result: AddRemoveProductToAction[] = [];
         const [actions, prices, percents] = await Promise.all([
             this.api.listActions(),
@@ -143,13 +157,44 @@ export class PromosService {
                 }
             }
 
-            const removed = await this.remove(action, toRemove);
-            const added = await this.api.update(action.id, toAdd);
-            result.push({
-                action_id: action.id,
-                removed,
-                added: { success_ids: added.added, failed: added.rejected },
-            });
+            const removed = { success_ids: [] as number[], failed: [] as RejectedProduct[] };
+            const added = { success_ids: [] as number[], failed: [] as RejectedProduct[] };
+            for (const [items, removing] of [
+                [toRemove, true],
+                [toAdd, false],
+            ] as const) {
+                for (const item of items) {
+                    const price = prices.find((p) => p.product_id === item.productId);
+                    const offer = price?.offer_id ?? `#product:${item.productId}`;
+                    try {
+                        const res = await priceUpdateQueue.run(
+                            'ozon',
+                            async () => {
+                                priceUpdateQueue.assertCurrent(
+                                    currentSnapshots.get(offer) ?? snapshot([offer, `#product:${item.productId}`]),
+                                );
+                                try {
+                                    if (removing) return await this.remove(action, [item]);
+                                    const update = await this.api.update(action.id, [item]);
+                                    return { success_ids: update.added, failed: update.rejected };
+                                } finally {
+                                    priceUpdateQueue.changed('ozon', [offer, `#product:${item.productId}`]);
+                                    currentSnapshots.set(
+                                        offer,
+                                        priceUpdateQueue.capture('ozon', [offer, `#product:${item.productId}`]),
+                                    );
+                                }
+                            },
+                            { priority: 'background' },
+                        );
+                        (removing ? removed : added).success_ids.push(...res.success_ids);
+                        (removing ? removed : added).failed.push(...res.failed);
+                    } catch (error) {
+                        (removing ? removed : added).failed.push({ productId: item.productId, reason: error.message });
+                    }
+                }
+            }
+            result.push({ action_id: action.id, removed, added });
         }
         return result;
     }
@@ -171,16 +216,43 @@ export class PromosService {
         action: Pick<Action, 'id' | 'is_voucher_action'>,
         items: ActionProductUpdate[],
     ): Promise<{ success_ids: number[]; failed: RejectedProduct[] }> {
+        const result = { success_ids: [] as number[], failed: [] as RejectedProduct[] };
+        for (const item of items) {
+            const one = await priceUpdateQueue.run(
+                'ozon',
+                async () => {
+                    try {
+                        return await this.removeOne(action, [item]);
+                    } finally {
+                        priceUpdateQueue.changed('ozon', [`#product:${item.productId}`]);
+                    }
+                },
+                { priority: 'background' },
+            );
+            result.success_ids.push(...one.success_ids);
+            result.failed.push(...one.failed);
+        }
+        return result;
+    }
+    private async removeOne(action: Pick<Action, 'id' | 'is_voucher_action'>, items: ActionProductUpdate[]) {
         if (!items.length) return { success_ids: [], failed: [] };
         if (action.is_voucher_action) {
             const ids = items.map((i) => i.productId);
-            const done = await this.api.deactivate(action.id, ids);
+            const done = (await this.api.deactivate(action.id, ids)).filter((id) => ids.includes(id));
             return {
                 success_ids: done,
                 failed: ids.filter((id) => !done.includes(id)).map((id) => ({ productId: id, reason: 'не снят' })),
             };
         }
-        const res = await this.api.update(action.id, items);
+        const raw = await this.api.update(action.id, items);
+        const ids = new Set(items.map((p) => p.productId));
+        const res = {
+            ...raw,
+            added: raw.added.filter((id) => ids.has(id)),
+            removed: raw.removed.filter((id) => ids.has(id)),
+            unchanged: raw.unchanged.filter((id) => ids.has(id)),
+            rejected: raw.rejected.filter((p) => ids.has(p.productId)),
+        };
         if (res.added.length) {
             this.logger.log(
                 `акция ${action.id}: ${res.added.length} товаров остались в акции по нашему полу (в пределах лимита)`,
@@ -191,7 +263,7 @@ export class PromosService {
         // Эластичный бустинг цену выше лимита не принимает и товар не исключает (20.10.2026, 532100:
         // «DiscountPercent must be greater or equal than 45…») — такие снимаем принудительно.
         const rejectedIds = res.rejected.map((r) => r.productId);
-        const forced = await this.api.deactivate(action.id, rejectedIds);
+        const forced = (await this.api.deactivate(action.id, rejectedIds)).filter((id) => rejectedIds.includes(id));
         if (forced.length) this.logger.log(`акция ${action.id}: принудительно сняты ${forced.length} товаров`);
         return {
             success_ids: [...res.removed, ...res.unchanged, ...forced],

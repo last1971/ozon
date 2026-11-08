@@ -94,7 +94,12 @@ describe('WbPriceService', () => {
             goods: new Map([[1, 2]]),
         });
         await service.updateAllPrices();
-        expect(repriceForService).toHaveBeenCalledWith(service, [1]);
+        expect(repriceForService).toHaveBeenCalledWith(
+            service,
+            [1],
+            undefined,
+            expect.objectContaining({ offers: [1] }),
+        );
     });
 
     it('updateWbPrice', async () => {
