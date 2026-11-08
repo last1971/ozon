@@ -65,3 +65,29 @@ it('уведомление явно обозначает расчётную оц
     expect(m.text).toContain('-3.64% от базы');
     expect(m.text).toContain('проверка будет повторена');
 });
+
+it('помечает «Хочу скидку» только у нужного товара, сохраняя числа, тему и срочность', () => {
+    const normal = item('warn');
+    const flagged = { ...normal, payload: { service: 'OZON', invoiceNumber: 21016 }, verdicts: [
+        { ...normal.verdicts[0], wannaDiscount: true },
+        { ...normal.verdicts[0], offer_id: '564323' },
+    ] };
+    const message = profitCheckMessage([flagged]);
+    const baseline = profitCheckMessage([{ ...flagged, verdicts: flagged.verdicts.map(({ wannaDiscount, ...v }: any) => v) }]);
+    expect(message.subject).toBe(baseline.subject);
+    expect(message.notice).toBe(baseline.notice);
+    expect(message.text.replace(' · «Хочу скидку»', '')).toBe(baseline.text);
+    expect(message.text.split('\n').find(line => line.includes('553603 ×'))).toContain('«Хочу скидку»');
+    expect(message.text.split('\n').find(line => line.includes('564323 ×'))).not.toContain('«Хочу скидку»');
+});
+it('для заказа без подтверждённой персональной скидки пометки нет', () => {
+    expect(profitCheckMessage([item('warn')]).text).not.toContain('«Хочу скидку»');
+});
+it('пометка не скрывает тревогу об отсутствии прибыли', () => {
+    const i = item('alert'); i.verdicts[0] = { ...i.verdicts[0], wannaDiscount: true } as any;
+    const message = profitCheckMessage([i]);
+    expect(message.notice).toBe(false);
+    expect(message.subject).toBe('Заказ без прибыли: 1');
+    expect(message.text).toContain('🔴 ПРИБЫЛИ НЕТ: 1');
+    expect(message.text).toContain('«Хочу скидку»');
+});

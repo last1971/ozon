@@ -22,6 +22,7 @@ export class PostingDto {
 
     @ApiProperty({ description: 'Финансовые данные', required: false })
     financial_data?: {
+        products?: { product_id: number | string; actions?: string[] }[];
         cluster_from?: string;
         cluster_to?: string;
     };

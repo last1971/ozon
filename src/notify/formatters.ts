@@ -60,12 +60,14 @@ export function profitCheckMessage(items: any[]): NotifyMessage {
     const head = (i: any) =>
         `${i.payload?.service} ${i.posting}${i.payload?.invoiceNumber ? ` · счёт №${i.payload.invoiceNumber}` : ''}` +
         (i.payload?.priceOrigin === 'card' ? ' · цена из карточки на момент проверки, статистика заказ не отдала' : '');
-    const lineOf = (v: any) =>
-        v.level === 'skip'
+    const lineOf = (v: any) => {
+        const text = v.level === 'skip'
             ? `  ${v.offer_id} × ${v.units}: не проверено — ${v.reason}`
             : `  ${v.offer_id} × ${v.units}: цена ${fmt(v.pricePerUnit)}, мин ${fmt(v.minPrice)}, ` +
               `себестоимость ${fmt(v.cost)} (${v.costSource}), прибыль ${fmt(v.profitPerUnit)} за шт, итого ${fmt(v.profitTotal)}` +
               (v.profitPercent === undefined ? '' : ` (${v.profitPercent}% от базы)`);
+        return text + (v.wannaDiscount === true ? ' · «Хочу скидку»' : '');
+    };
     const block = (title: string, list: any[]) =>
         list.length
             ? [

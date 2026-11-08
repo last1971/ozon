@@ -10,4 +10,7 @@ export class ProductPostingDto implements IOfferIdable {
 
     @ApiProperty({ description: 'Количество продукта', example: 2 })
     quantity: number;
+
+    /** SKU площадки для сопоставления строки с financial_data; не артикул продавца. */
+    sku?: number | string;
 }

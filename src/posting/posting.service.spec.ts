@@ -258,6 +258,7 @@ describe('PostingService', () => {
             },
             100,
             '',
+            true,
         ]);
     });
 

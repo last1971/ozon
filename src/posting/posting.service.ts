@@ -94,7 +94,8 @@ export class PostingService implements IOrderable, ISuppliable, IMarkSubmittable
         let hasMore = true;
         const cursors = new Set<string>();
         while (hasMore) {
-            const response = window
+            // При создании FBS-счёта сохраняем причину персональной скидки вместе с ценой заказа.
+            const response = window || status === 'awaiting_packaging'
                 ? await this.productService.orderList(filter, limit, cursor, true)
                 : await this.productService.orderList(filter, limit, cursor);
             if (window && (!Array.isArray(response?.postings) || typeof response.has_next !== 'boolean'))

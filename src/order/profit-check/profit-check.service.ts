@@ -1,3 +1,4 @@
+import { ozonWannaDiscountSkus } from './ozon-sale-discounts';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { OnEvent } from '@nestjs/event-emitter';
@@ -80,6 +81,7 @@ export class ProfitCheckService {
             const source = this.sources.of(service);
             const priceSource = source?.salePriceSource() ?? 'none';
             if (priceSource === 'none') return;
+            const wannaDiscountSkus = service === 'OZON' ? ozonWannaDiscountSkus(event.posting) : new Set<string>();
             const payload: ProfitCheckPayload = {
                 service,
                 buyerId: event.buyerId,
@@ -91,6 +93,7 @@ export class ProfitCheckService {
                     offer_id: p.offer_id,
                     units: Number(p.quantity) || 0,
                     pricePerUnit: parseFloat(String(p.price)) || 0,
+                    ...(p.sku != null && wannaDiscountSkus.has(String(p.sku)) ? { wannaDiscount: true } : {}),
                 })),
             };
             await this.journal.record(

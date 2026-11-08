@@ -1,3 +1,4 @@
+import { profitCheckMessage } from '../../notify/formatters';
 import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import { EventEmitter2 } from '@nestjs/event-emitter';
@@ -112,6 +113,32 @@ describe('ProfitCheckService', () => {
                 externalId: 'P-1',
                 lines: [{ offer_id: '568615', units: 1, pricePerUnit: 1197.11 }],
             });
+        });
+
+        it.each([false, true])('«Хочу скидку» проходит из FBS/FBO-заказа через сохранённую очередь в уведомление: FBO=%s', async isFbo => {
+            await service.enqueue({ buyerId: 24231, posting: posting({
+                isFbo,
+                products: [
+                    { offer_id: '568615', sku: 2538835481, quantity: 1, price: '1197.11' },
+                    { offer_id: '568615-5', sku: 2659212195, quantity: 1, price: '1197.11' },
+                ],
+                financial_data: { products: [
+                    { product_id: '2538835481', actions: ['WANNADISCOUNT-20261107-96H'] },
+                    { product_id: 2659212195, actions: ['26-11'] },
+                ] },
+            }), invoice, transaction: t });
+            const event = journal.record.mock.calls[0][0];
+            const payload = JSON.parse(JSON.stringify(event.payload));
+            expect(payload.lines[0]).toEqual({ offer_id: '568615', units: 1, pricePerUnit: 1197.11, wannaDiscount: true });
+            expect(payload.lines[1]).not.toHaveProperty('wannaDiscount');
+            journal.listUnhandledRows.mockImplementation(async market => market === 'OZON' ? [{
+                ...event, firstSeen: new Date(), payload,
+            }] : []);
+            await service.run();
+            const items = emitter.emit.mock.calls[0][1];
+            expect(items[0].level).toBe('alert');
+            expect(items[0].verdicts[0]).toMatchObject({ wannaDiscount: true, pricePerUnit: 1197.11 });
+            expect(profitCheckMessage(items).text).toContain('«Хочу скидку»');
         });
 
         it('ВБ: источник lookup, внешний id = rid заказа', async () => {

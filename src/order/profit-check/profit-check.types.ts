@@ -17,6 +17,8 @@ export interface SaleLine {
     units: number;
     /** Наша цена за единицу маркетплейса. */
     pricePerUnit: number;
+    /** В финансовых данных этой строки Ozon подтвердил персональную скидку «Хочу скидку». */
+    wannaDiscount?: boolean;
 }
 
 /** Ссылка для поиска цены у площадки. */
