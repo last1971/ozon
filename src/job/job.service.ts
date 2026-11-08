@@ -13,6 +13,8 @@ export interface JobRunOptions<T extends IJobContext, R> {
     params: Record<string, unknown>;
     clientId?: string;
     commands: IJobCommand<T>[];
+    /** Не меняет контракт старых задач, пока замеры не включены явно. */
+    measure?: boolean;
     context: T;
     /** Что из контекста считать результатом задачи */
     result: (context: T) => R;
@@ -80,6 +82,7 @@ export class JobService {
             progress: opts.context.progress,
             startedAt: new Date().toISOString(),
         };
+        if (opts.measure) state.progress.metrics = { phaseMs: {}, operations: {} };
         const weighted = this.weightedProgress(opts.commands, state);
         this.states.set(state.id, state);
         this.logger.log(`[job] start ${state.kind} ${state.id} ${JSON.stringify(state.params)}`);
@@ -221,7 +224,17 @@ export class JobService {
                 }
                 delete ctx.progress.activities;
                 weighted?.start(index);
-                const result = await command.execute(ctx);
+                const started = performance.now();
+                let result: T;
+                try {
+                    result = await command.execute(ctx);
+                } finally {
+                    if (ctx.progress.metrics) {
+                        const key = command.phase ?? `phase-${index}`;
+                        ctx.progress.metrics.phaseMs[key] =
+                            (ctx.progress.metrics.phaseMs[key] ?? 0) + Math.max(0, performance.now() - started);
+                    }
+                }
                 if (!result.stopChain) {
                     for (const activity of Object.values(result.progress.activities ?? {}))
                         if (activity.state === 'running') activity.state = 'done';

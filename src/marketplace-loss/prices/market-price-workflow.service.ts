@@ -45,6 +45,7 @@ export class MarketPriceWorkflowService {
             // Не присоединяться к другой версии документа или ручному запуску.
             params: { offers: ids, runId: randomUUID() },
             clientId: 'incoming',
+            measure: true,
             commands: this.commands,
             cleanup: async () => {},
             context: {

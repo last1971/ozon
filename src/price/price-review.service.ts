@@ -44,6 +44,7 @@ export class PriceReviewService {
             kind: `price-review:${offerId}`,
             params: { offerId, mode: 'prepare' },
             clientId,
+            measure: true,
             context: { offerId, entries: [], progress: emptyProgress(), logger: this.logger },
             commands: [this.prepare],
             result: (ctx) => {
@@ -67,6 +68,7 @@ export class PriceReviewService {
             kind: `price-review:${review.offerId}`,
             params: { token, mode: 'send' },
             clientId,
+            measure: true,
             context: {
                 offerId: review.offerId,
                 entries: structuredClone(review.entries),

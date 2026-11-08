@@ -1,4 +1,4 @@
-import { setJobActivity } from '../job/job.execution';
+import { addJobMetric, measureJobOperation, setJobActivity } from '../job/job.execution';
 import { wbPriceTask } from './wb-price-task';
 import { LossPricingService } from '../marketplace-loss/loss-pricing.service';
 import { BulkPriceJobService } from '../price/bulk/bulk-price-job.service';
@@ -349,9 +349,9 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
         assertInputsCurrent?: (offerId: string) => Promise<void>,
     ): Promise<WbBulkPriceReport> {
         const snapshot = priceUpdateQueue.reader('wb');
-        const current = await this.currentPrices.getAll();
+        const current = await measureJobOperation('inputReadMs', () => this.currentPrices.getAll());
         if (articles === 'all') articles = [...current.keys()];
-        const wbData = await this.goodService.getWbData(articles);
+        const wbData = await measureJobOperation('inputReadMs', () => this.goodService.getWbData(articles as string[]));
         const minPriceByArt = new Map(wbData.map((w) => [w.id, Number(w.minPrice)]));
 
         const data: WbPriceTask[] = [];
@@ -361,6 +361,7 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
         const changes: WbBulkPriceReport['changes'] = [];
         const belowMin: string[] = [];
 
+        const planningStarted = performance.now();
         for (const article of articles) {
             const cur = current.get(article);
             if (!cur) {
@@ -390,6 +391,7 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
         }
 
         // ВБ принимает до 1000 товаров в задаче («все» по кабинету — больше)
+        addJobMetric('planMs', Math.max(0, performance.now() - planningStarted));
         const uploadIds: string[] = [];
         if (!dryRun && data.length) {
             for (const task of data) {

@@ -1,6 +1,8 @@
+import { measureJobOperation } from '../../../job/job.execution';
 import { jobCheckpoint } from '../../../job/job.checkpoint';
 import { lossPriceFields } from '../../../helpers/price/marketplace.loss.input';
-import { Injectable } from '@nestjs/common';
+import { OzonCalculationCacheService } from '../../../price/ozon-calculation-cache.service';
+import { Injectable, Optional } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { chunk } from 'lodash';
 import { IJobCommand } from '../../../interfaces/i.job.context';
@@ -25,6 +27,7 @@ export class EnrichWithPricingCommand implements IJobCommand<IPromoSweepContext>
         private readonly products: ProductService,
         private readonly goods: Trade2006GoodService,
         private readonly config: ConfigService,
+        @Optional() private readonly calculations?: OzonCalculationCacheService,
     ) {}
 
     async execute(context: IPromoSweepContext): Promise<IPromoSweepContext> {
@@ -52,7 +55,7 @@ export class EnrichWithPricingCommand implements IJobCommand<IPromoSweepContext>
             let data: Awaited<ReturnType<typeof this.loadBatch>>;
             let batchError: unknown;
             try {
-                data = await this.loadBatch(offers, codes);
+                data = await measureJobOperation('inputReadMs', () => this.loadBatch(offers, codes));
             } catch (e) {
                 batchError = e;
             }
@@ -78,7 +81,7 @@ export class EnrichWithPricingCommand implements IJobCommand<IPromoSweepContext>
                     );
                     if (base.base_source === 'none') throw new Error(`нет базы: ${base.skipReason}`);
                     if (!percent) throw new Error('нет наценок');
-                    const ozon = await this.pricing.load(product, info);
+                    const ozon = await measureJobOperation('prepareMs', () => this.pricing.load(product, info));
                     const input = ozonPricingInput(
                         {
                             ...base,
@@ -100,9 +103,20 @@ export class EnrichWithPricingCommand implements IJobCommand<IPromoSweepContext>
                         },
                         coeffs,
                     );
-                    const result = calculateOzonPrices(input);
-                    state.calcMinPrice = result.min.salePrice;
-                    const floor = ozonDeadZoneFloor(input, result);
+                    const cached = this.calculations
+                        ? await this.calculations.calculate(state.offerId, input, {
+                              product,
+                              info,
+                              goods: data.goods.find((g) => String(g.code) === code),
+                              percent,
+                              pieces,
+                          })
+                        : undefined;
+                    const result = cached ? undefined : calculateOzonPrices(input);
+                    state.calcMinPrice = cached ? cached.minPrice : result.min.salePrice;
+                    const floor = cached ? cached.deadZoneFloor : ozonDeadZoneFloor(input, result);
+                    const counter = cached?.cacheHit ? 'calculationCacheHit' : 'calculationCacheMiss';
+                    context.progress.counters[counter] = (context.progress.counters[counter] ?? 0) + 1;
                     if (floor !== undefined) state.deadZoneFloor = floor;
                 } catch (e) {
                     context.progress.counters.noBase++;

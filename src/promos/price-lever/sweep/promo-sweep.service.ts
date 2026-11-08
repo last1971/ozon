@@ -61,8 +61,14 @@ export class PromoSweepService {
         const warnings = new Map<string, PricingWarning>();
         return this.jobs.run<IPromoSweepContext, PromoSweepReport>({
             kind: PROMO_SWEEP_JOB,
-            params: { apply, goal, ...(offerIds ? { offerIds } : {}), ...(assertInputsCurrent ? { revision: randomUUID() } : {}) },
+            params: {
+                apply,
+                goal,
+                ...(offerIds ? { offerIds } : {}),
+                ...(assertInputsCurrent ? { revision: randomUUID() } : {}),
+            },
             clientId,
+            measure: true,
             commands: this.commands,
             execute: (run) => withPricingWarnings(warnings, run),
             cleanup: async () => {},

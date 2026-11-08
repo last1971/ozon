@@ -1,3 +1,5 @@
+import { JobModule } from '../job/job.module';
+import { WbMinPriceCheckCommand } from './wb-min-price-check.command';
 import { MarketplaceLossModule } from '../marketplace-loss/marketplace-loss.module';
 import { BulkPriceJobModule } from '../price/bulk/bulk-price-job.module';
 import { Module } from '@nestjs/common';
@@ -9,8 +11,16 @@ import { WbCurrentPricesModule } from './wb.current-prices.module';
 import { WbMinPriceGuard } from './wb.min-price.guard';
 
 @Module({
-    imports: [MarketplaceLossModule, BulkPriceJobModule, GoodModule, WbApiModule, WbCardModule, WbCurrentPricesModule],
-    providers: [WbPriceService, WbMinPriceGuard],
+    imports: [
+        JobModule,
+        MarketplaceLossModule,
+        BulkPriceJobModule,
+        GoodModule,
+        WbApiModule,
+        WbCardModule,
+        WbCurrentPricesModule,
+    ],
+    providers: [WbPriceService, WbMinPriceGuard, WbMinPriceCheckCommand],
     exports: [WbPriceService],
 })
 export class WbPriceModule {}

@@ -107,7 +107,7 @@ describe('режим проверки цен', () => {
         expect(new PricingModeController(scheduler).status()).toEqual({
             reviewMode: true,
             writesAllowed: false,
-            crons: [...PRICING_WRITE_CRONS].map((name) => ({ name, running: false })),
+            crons: [...PRICING_WRITE_CRONS].map((name) => ({ name, running: false, expression: null, timeZone: null })),
         });
     });
     it('реальные API-адаптеры отклоняют запись до HTTP/fetch, чтение Ozon работает', async () => {

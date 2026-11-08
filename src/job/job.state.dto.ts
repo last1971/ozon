@@ -1,9 +1,10 @@
 import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
-import { JobProgress, JobActivity } from '../interfaces/i.job.context';
+import { JobProgress, JobActivity, JobMetrics } from '../interfaces/i.job.context';
 
 export type JobStatus = 'running' | 'done' | 'failed';
 
 export class JobProgressDto implements JobProgress {
+    @ApiPropertyOptional({ description: 'Замеры фаз, API и ожидания очереди' }) metrics?: JobMetrics;
     @ApiPropertyOptional({ description: 'Общий процент цепочки, 0–100' }) percent?: number;
     @ApiPropertyOptional({ description: 'Текущая фаза (команда цепочки)' }) phase?: string;
     @ApiPropertyOptional({ description: 'Операции по площадкам; при ожидании — связанное задание и его прогресс' })

@@ -1,6 +1,7 @@
+import { addJobMetric, measureJobOperation } from '../job/job.execution';
 import { RateLimitRetryPolicy } from '../helpers/rate-limit.retry.policy';
 import { waitRateLimit } from '../helpers/decorators/rate-limit.decorator';
-import { assertPricingRequestAllowed } from '../helpers/price/pricing-review-mode';
+import { assertPricingRequestAllowed, pricingRequestWrites } from '../helpers/price/pricing-review-mode';
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { firstValueFrom, map } from 'rxjs';
@@ -27,19 +28,28 @@ export class OzonApiService {
         };
 
         for (let attempt = 1; ; attempt++) {
-            await this.limit(name, String(ozon.CLIENT_ID));
+            await measureJobOperation('apiThrottleMs', () => this.limit(name, String(ozon.CLIENT_ID)));
             try {
                 const request =
                     httpMethod === 'get'
                         ? this.httpService.get(ozon.URL + name, { params: options, headers })
                         : this.httpService.post(ozon.URL + name, options, { headers });
-                return (await firstValueFrom(request)).data;
+                addJobMetric('apiRequests');
+                return await measureJobOperation(
+                    pricingRequestWrites('ozon', name, httpMethod) ? 'apiWriteMs' : 'apiReadMs',
+                    async () => (await firstValueFrom(request)).data,
+                );
             } catch (error) {
+                addJobMetric('apiErrors');
+                if (error.response?.status === 429) addJobMetric('rateLimits');
                 const wait = this.retryPolicy.decide(error.response, attempt);
                 if (wait === null)
                     return this.handleApiError(error, ozon.URL + name, httpMethod.toUpperCase(), options, headers);
                 this.logger.warn(`Ozon: лимит ${name}, повтор через ${wait / 1000} с`);
-                await new Promise((resolve) => setTimeout(resolve, wait));
+                await measureJobOperation(
+                    'apiRetryWaitMs',
+                    () => new Promise<void>((resolve) => setTimeout(resolve, wait)),
+                );
             }
         }
     }

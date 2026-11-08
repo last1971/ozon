@@ -1,3 +1,4 @@
+import { OzonCalculationCacheService } from './ozon-calculation-cache.service';
 import { PricingInputsRevisionService } from './pricing-inputs-revision.service';
 import { MarketplaceLossModule } from '../marketplace-loss/marketplace-loss.module';
 import { BulkPriceJobModule } from './bulk/bulk-price-job.module';
@@ -69,6 +70,7 @@ import { VerifyOzonPricesCommand } from './commands/verify-ozon-prices.command';
         PreparePriceReviewCommand,
         SendPriceReviewCommand,
         OzonPricingService,
+        OzonCalculationCacheService,
         PriceService,
         ExtraPriceService,
         IncomingPricesCommand,
@@ -100,6 +102,7 @@ import { VerifyOzonPricesCommand } from './commands/verify-ozon-prices.command';
     controllers: [PriceController, PriceReviewController, PricingModeController],
     exports: [
         OzonPricingService,
+        OzonCalculationCacheService,
         PriceService,
         ExtraPriceService,
         IncomingPricesCommand,

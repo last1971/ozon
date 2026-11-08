@@ -12,7 +12,12 @@ export class PricingModeController {
             writesAllowed: !pricingReviewMode(),
             crons: [...this.scheduler.getCronJobs()]
                 .filter(([name]) => PRICING_WRITE_CRONS.has(name))
-                .map(([name, job]) => ({ name, running: Boolean(job.running) })),
+                .map(([name, job]) => ({
+                    name,
+                    running: Boolean(job.running),
+                    expression: job.cronTime ? String(job.cronTime.source) : null,
+                    timeZone: job.cronTime?.timeZone ?? null,
+                })),
         };
     }
 }

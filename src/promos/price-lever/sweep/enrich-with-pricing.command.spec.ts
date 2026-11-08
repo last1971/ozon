@@ -244,3 +244,30 @@ it('неизвестные дополнительные расходы не ис
     expect(ctx.states[0].calcMinPrice).toBe(200);
     expect(statistics.defectRate).toBeNull();
 });
+
+it('кеш расчёта не заменяет свежую цену и акции, ошибка чтения не скрывается старой ценой', async () => {
+    const { OzonCalculationCacheService } = await import('../../../price/ozon-calculation-cache.service');
+    const memory = new Map();
+    const cache = {
+        get: async (key) => memory.get(key),
+        set: async (key, value) => {
+            memory.set(key, value);
+        },
+    };
+    const m = make();
+    (m.command as any).calculations = new OzonCalculationCacheService(cache as any, new ConfigService());
+    const first = context([state()]);
+    await m.command.execute(first);
+    const second = context([{ ...state(), buyerPrice: 250, buyerPriceCalc: 250 }]);
+    await m.command.execute(second);
+    expect(second.progress.counters.calculationCacheHit).toBe(1);
+    expect(m.products.infoList).toHaveBeenCalledTimes(2);
+    expect(m.pricing.load).toHaveBeenCalledTimes(2);
+    await new PlanSweepCommand().execute(second);
+    expect(second.plans[0].buyerBefore).toBe(250);
+    m.products.infoList.mockRejectedValueOnce(Error('API 503'));
+    const failed = context([state()]);
+    await m.command.execute(failed);
+    expect(failed.pricingErrors.get('123-5')).toBe('API 503');
+    expect(failed.states[0].calcMinPrice).toBeUndefined();
+});

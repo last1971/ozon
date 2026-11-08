@@ -27,8 +27,8 @@ export function assertPricingWritesAllowed(): void {
 type Platform = 'ozon' | 'wb' | 'yandex' | 'avito' | 'sylius';
 
 /** Проверяет реальные пути записи, включая старые ручки и rawFetch. Чтение POST разрешено. */
-export function assertPricingRequestAllowed(platform: Platform, endpoint: string, method: string): void {
-    if (!pricingReviewMode() || ['get', 'head', 'statistics'].includes(method.toLowerCase())) return;
+export function pricingRequestWrites(platform: Platform, endpoint: string, method: string): boolean {
+    if (['get', 'head', 'statistics'].includes(method.toLowerCase())) return false;
     const path = new URL(endpoint, 'https://market.invalid/').pathname.replace(/\/+$/, '').toLowerCase();
     let writes = false;
     switch (platform) {
@@ -60,5 +60,8 @@ export function assertPricingRequestAllowed(platform: Platform, endpoint: string
             writes = /\/price\/update$/.test(path);
             break;
     }
-    if (writes) assertPricingWritesAllowed();
+    return writes;
+}
+export function assertPricingRequestAllowed(platform: Platform, endpoint: string, method: string): void {
+    if (pricingReviewMode() && pricingRequestWrites(platform, endpoint, method)) assertPricingWritesAllowed();
 }

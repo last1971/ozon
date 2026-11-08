@@ -246,3 +246,39 @@ it('сбой одного API-пакета не запускает тысячу 
     expect(m.products.getPrices).toHaveBeenCalledTimes(2);
     expect(errors).toHaveBeenCalledTimes(1000);
 });
+
+it('в подготовленной пачке комиссия читается один раз на тип, в новом проходе — заново', async () => {
+    const m = make();
+    const second = { ...m.info, sku: '456' };
+    await m.loader.prepare([m.info, second]);
+    await m.loader.load(m.product, m.info);
+    await m.loader.load({ ...m.product, offer_id: '456' }, second);
+    expect(m.categories.getCommissions).toHaveBeenCalledTimes(1);
+    m.categories.getCommissions.mockResolvedValue({ fbs: m.bands.map((b) => ({ ...b, rate: 0.3 })), fbo: [] });
+    await m.loader.prepare([m.info]);
+    expect((await m.loader.load(m.product, m.info)).schemes[0].commissions[0].rate).toBe(0.3);
+    expect(m.categories.getCommissions).toHaveBeenCalledTimes(2);
+});
+it('ошибка комиссии одной категории не мешает другой; следующий одиночный запрос свежий', async () => {
+    const m = make();
+    const second = { ...m.info, sku: '456', typeId: 9 };
+    const good = await m.categories.getCommissions();
+    m.categories.getCommissions.mockClear();
+    m.categories.getCommissions.mockImplementation(async (id) => {
+        if (id === 8) throw Error('DB временно');
+        return good;
+    });
+    await m.loader.prepare([m.info, second]);
+    await expect(m.loader.load(m.product, m.info)).rejects.toThrow('DB временно');
+    expect((await m.loader.load({ ...m.product, offer_id: '456' }, second)).schemes.length).toBe(1);
+    m.categories.getCommissions.mockResolvedValue(good);
+    await expect(m.loader.load(m.product, m.info)).resolves.toHaveProperty('schemes');
+});
+
+it('снимок комиссии расходуется одним load, последующий вызов без prepare заново читает тариф', async () => {
+    const m = make();
+    await m.loader.prepare([m.info]);
+    await m.loader.load(m.product, m.info);
+    m.categories.getCommissions.mockResolvedValue({ fbs: m.bands.map((b) => ({ ...b, rate: 0.31 })), fbo: [] });
+    expect((await m.loader.load(m.product, m.info)).schemes[0].commissions[0].rate).toBe(0.31);
+});

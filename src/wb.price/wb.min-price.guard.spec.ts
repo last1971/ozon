@@ -1,3 +1,5 @@
+import { JobService } from '../job/job.service';
+import { WbMinPriceCheckCommand } from './wb-min-price-check.command';
 import { GoodServiceEnum } from '../good/good.service.enum';
 import { WB_MIN_PRICES_EVENT, WbMinPriceGuard } from './wb.min-price.guard';
 
@@ -5,7 +7,12 @@ describe('WbMinPriceGuard — крон «ВБ к минимальной»', () =
     const setMinPrices = jest.fn();
     const emit = jest.fn();
     const guard = (services: GoodServiceEnum[] = [GoodServiceEnum.WB]) =>
-        new WbMinPriceGuard({ setMinPrices } as any, { get: () => services } as any, { emit } as any);
+        new WbMinPriceGuard(
+            { get: () => services } as any,
+            { emit } as any,
+            new JobService(),
+            new WbMinPriceCheckCommand({ setMinPrices } as any),
+        );
     const report = (over: any = {}) => ({
         toUpdate: 0,
         belowMin: [],

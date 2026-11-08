@@ -1,4 +1,5 @@
-import { assertPricingRequestAllowed } from '../helpers/price/pricing-review-mode';
+import { addJobMetric, measureJobOperation } from '../job/job.execution';
+import { assertPricingRequestAllowed, pricingRequestWrites } from '../helpers/price/pricing-review-mode';
 import { Injectable, Logger } from '@nestjs/common';
 import { HttpService } from '@nestjs/axios';
 import { VaultService } from 'vault-module/lib/vault.service';
@@ -35,9 +36,15 @@ export class WbApiService {
         };
         for (let attempt = 1; ; attempt++) {
             try {
-                return (await firstValueFrom(this.send(url, method, options, headers))).data;
+                addJobMetric('apiRequests');
+                return await measureJobOperation(
+                    pricingRequestWrites('wb', url, method) ? 'apiWriteMs' : 'apiReadMs',
+                    async () => (await firstValueFrom(this.send(url, method, options, headers))).data,
+                );
             } catch (e) {
                 const error = e as AxiosError<any>;
+                addJobMetric('apiErrors');
+                if (error.response?.status === 429) addJobMetric('rateLimits');
                 if (
                     method === 'post' &&
                     url === 'https://discounts-prices-api.wildberries.ru/api/v2/upload/task' &&
@@ -52,7 +59,7 @@ export class WbApiService {
                 this.logger.warn(
                     `ВБ: лимит на ${error.config?.method?.toUpperCase() ?? method} ${url} — жду ${Math.round(wait / 1000)} с и повторяю`,
                 );
-                await sleep(wait);
+                await measureJobOperation('apiRetryWaitMs', () => sleep(wait));
             }
         }
     }

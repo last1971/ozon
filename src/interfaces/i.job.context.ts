@@ -8,7 +8,13 @@ export interface JobActivity {
 }
 
 /** Ход задачи. Команды двигают done/total/counters сами, фазу пишет исполнитель (JobService). */
+export interface JobMetrics {
+    /** Время фаз и операций в миллисекундах; вложенные операции не складываются с фазами. */
+    phaseMs: Record<string, number>;
+    operations: Record<string, number>;
+}
 export interface JobProgress {
+    metrics?: JobMetrics;
     /** Общий процент цепочки; задаёт JobService для команд с весами. */
     percent?: number;
     phase?: string; // на какой команде сейчас: «база», «каталог», «сверка», «запись»…

@@ -100,6 +100,7 @@ export class LossPriceUpdateService implements OnApplicationBootstrap {
             kind: lossPriceJobKind(key),
             params: {},
             clientId,
+            measure: true,
             context,
             commands: this.commands,
             cleanup: async () => {},

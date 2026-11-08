@@ -17,3 +17,18 @@ export function setJobActivity(
     job.progress.activities ??= {};
     return (job.progress.activities[key] = { phase, state, ...(error ? { error } : {}) });
 }
+
+/** Диагностика живёт в существующем JobService и контексте автора, без отдельного хранилища. */
+export function addJobMetric(name: string, amount = 1): void {
+    const metrics = currentJob()?.progress.metrics;
+    if (metrics && Number.isFinite(amount) && amount >= 0)
+        metrics.operations[name] = (metrics.operations[name] ?? 0) + amount;
+}
+export async function measureJobOperation<T>(name: string, operation: () => Promise<T>): Promise<T> {
+    const started = performance.now();
+    try {
+        return await operation();
+    } finally {
+        addJobMetric(name, Math.max(0, performance.now() - started));
+    }
+}

@@ -1,3 +1,5 @@
+import { JobModule } from '../job/job.module';
+import { WbMinPriceCheckCommand } from './wb-min-price-check.command';
 import { ConfigModule } from '@nestjs/config';
 import { EventEmitterModule } from '@nestjs/event-emitter';
 import { Test } from '@nestjs/testing';
@@ -12,8 +14,17 @@ import { WbPriceService } from './wb.price.service';
 describe('кроны «к минимальной» — зависимости собираются из глобальных модулей', () => {
     it('WbMinPriceGuard и NotifySweepCommand создаются контейнером', async () => {
         const module = await Test.createTestingModule({
-            imports: [ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }), EventEmitterModule.forRoot()],
-            providers: [WbMinPriceGuard, NotifySweepCommand, { provide: WbPriceService, useValue: {} }],
+            imports: [
+                JobModule,
+                ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
+                EventEmitterModule.forRoot(),
+            ],
+            providers: [
+                WbMinPriceGuard,
+                WbMinPriceCheckCommand,
+                NotifySweepCommand,
+                { provide: WbPriceService, useValue: {} },
+            ],
         }).compile();
         expect(module.get(WbMinPriceGuard)).toBeInstanceOf(WbMinPriceGuard);
         expect(module.get(NotifySweepCommand)).toBeInstanceOf(NotifySweepCommand);

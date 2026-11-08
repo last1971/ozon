@@ -11,6 +11,10 @@ import { OzonPricingContext, OzonPriceScheme } from '../helpers/price/ozon.prici
 /** Собирает актуальные входы. Выбор цены и формула прибыли остаются чистыми функциями. */
 @Injectable()
 export class OzonPricingService {
+    private readonly commissionSnapshots = new WeakMap<
+        ProductInfoDto,
+        { typeId: number; value?: Awaited<ReturnType<OzonCategoryService['getCommissions']>>; error?: unknown }
+    >();
     private readonly lossSnapshots = new WeakMap<ProductInfoDto, LossPricingStatistics | undefined>();
     constructor(
         private readonly categories: OzonCategoryService,
@@ -20,20 +24,39 @@ export class OzonPricingService {
     ) {}
 
     async prepare(infos: ProductInfoDto[]) {
-        const [, statistics] = await Promise.all([
+        const [, statistics, commissions] = await Promise.all([
             this.logistics.prepare(infos),
             this.losses.load(
                 'OZON',
                 infos.map((info) => info.sku),
             ),
+            Promise.all(
+                [...new Set(infos.map((info) => info.typeId).filter((id) => Number.isSafeInteger(id) && id > 0))].map(
+                    async (typeId) => {
+                        try {
+                            return { typeId, value: await this.categories.getCommissions(typeId) };
+                        } catch (error) {
+                            return { typeId, error };
+                        }
+                    },
+                ),
+            ),
         ]);
-        for (const info of infos) this.lossSnapshots.set(info, statistics.get(info.sku));
+        for (const info of infos) {
+            this.lossSnapshots.set(info, statistics.get(info.sku));
+            const snapshot = commissions.find((row) => row.typeId === info.typeId);
+            if (snapshot) this.commissionSnapshots.set(info, snapshot);
+        }
     }
 
     async load(product: ProductPriceDto, info: ProductInfoDto): Promise<OzonPricingContext> {
         if (!info || info.sku !== product.offer_id || !info.typeId)
             throw new PricingDataError(`${product.offer_id}: нет карточки или типа Ozon`);
-        const commissions = await this.categories.getCommissions(info.typeId);
+        const snapshot = this.commissionSnapshots.get(info);
+        this.commissionSnapshots.delete(info);
+        if (snapshot?.typeId === info.typeId && snapshot.error) throw snapshot.error;
+        const commissions =
+            snapshot?.typeId === info.typeId ? snapshot.value : await this.categories.getCommissions(info.typeId);
         if (!commissions) throw new PricingDataError(`${product.offer_id}: нет импортированных комиссий Ozon`);
         const quote = await this.logistics.quote(product, info);
         const schemes: OzonPriceScheme[] = [];

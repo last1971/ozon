@@ -1,4 +1,4 @@
-import { currentJob, setJobActivity } from '../../job/job.execution';
+import { currentJob, setJobActivity, addJobMetric } from '../../job/job.execution';
 import { SerialTaskQueue, SerialTaskOptions } from '../serial-task.queue';
 import { lossOfferKey } from './marketplace.loss.stats';
 import type { PricingInputsChanged } from './pricing-inputs-changed';
@@ -22,10 +22,17 @@ export class PriceUpdateQueue extends SerialTaskQueue {
         const label = key === 'ozon' ? 'Ozon' : key === 'wb' ? 'ВБ' : key?.toUpperCase();
         const phase =
             job?.progress.activities?.[key]?.phase ?? job?.progress.phase ?? `Проверка актуальности цен ${label}`;
+        let waitingSince: number | undefined;
         return super.run(key, operation, {
             ...options,
             owner: job ? { id: job.id, kind: job.kind } : options.owner,
             onWaiting: (waiting, owner) => {
+                if (waiting) waitingSince ??= performance.now();
+                else if (waitingSince !== undefined) {
+                    addJobMetric('queueWaitMs', Math.max(0, performance.now() - waitingSince));
+                    addJobMetric('queueWaits');
+                    waitingSince = undefined;
+                }
                 const activity = setJobActivity(
                     key,
                     waiting ? `Ожидание текущей операции ${label}` : phase,
