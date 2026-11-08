@@ -6,6 +6,8 @@ import { IPromoSweepContext } from './promo-sweep.context';
 /** Планы (и итоги применения) → отчёт со счётчиками. Строки без полного состояния товара. */
 @Injectable()
 export class BuildSweepReportCommand implements IJobCommand<IPromoSweepContext> {
+    readonly phase = 'Подготовка отчёта';
+    readonly weight = 1;
     async execute(context: IPromoSweepContext): Promise<IPromoSweepContext> {
         const results = new Map((context.results ?? []).map((r) => [r.productId, r]));
         // Перед отправкой план мог измениться вслед за лимитами Ozon.

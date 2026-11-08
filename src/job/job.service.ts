@@ -1,3 +1,4 @@
+import { withJobExecution } from './job.execution';
 import { Injectable, Logger } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { CommandChainAsync } from '../helpers/command/command.chain.async';
@@ -101,6 +102,13 @@ export class JobService {
                     void state.progress.percent;
                     state.status = 'failed';
                     state.error = error;
+                    for (const activity of Object.values(state.progress.activities ?? {})) {
+                        if (activity.state === 'running' || activity.state === 'waiting') {
+                            activity.state = 'failed';
+                            activity.error = error;
+                            delete activity.waitingFor;
+                        }
+                    }
                 });
 
             let cancellation: string | undefined;
@@ -125,7 +133,9 @@ export class JobService {
             };
 
             // .catch обязателен: unhandled rejection роняет процесс, pm2 рестартует и стирает все задачи
-            (opts.execute ? opts.execute(() => chain.execute(opts.context)) : chain.execute(opts.context))
+            withJobExecution(state, () =>
+                opts.execute ? opts.execute(() => chain.execute(opts.context)) : chain.execute(opts.context),
+            )
                 .then(async (ctx) => {
                     if (opts.cleanup) await cleanup(ctx);
                     if (ctx.stopChain)
@@ -153,13 +163,19 @@ export class JobService {
 
     get(id: string): JobStateDto | null {
         this.cleanup();
-        return this.states.get(id) ?? null;
+        const state = this.states.get(id);
+        if (state) this.refreshWaiting(state);
+        return state ?? null;
     }
 
     list(kind?: string): JobStateDto[] {
         this.cleanup();
         return [...this.states.values()]
             .filter((s) => !kind || s.kind === kind)
+            .map((s) => {
+                this.refreshWaiting(s);
+                return s;
+            })
             .sort((a, b) => b.startedAt.localeCompare(a.startedAt));
     }
 
@@ -203,9 +219,14 @@ export class JobService {
                     ctx.progress.done = 0;
                     ctx.progress.total = undefined;
                 }
+                delete ctx.progress.activities;
                 weighted?.start(index);
                 const result = await command.execute(ctx);
-                if (!result.stopChain) weighted?.complete();
+                if (!result.stopChain) {
+                    for (const activity of Object.values(result.progress.activities ?? {}))
+                        if (activity.state === 'running') activity.state = 'done';
+                    weighted?.complete();
+                }
                 return result;
             },
         };
@@ -235,7 +256,7 @@ export class JobService {
                     Number.isFinite(done) && Number.isFinite(total) && total > 0
                         ? Math.max(0, Math.min(1, done / total))
                         : 0;
-                // 100 означает успешно завершённую задачу, а не последний отправленный SQL.
+                // 100 означает завершение цепочки; частичные ошибки остаются в её результате.
                 highest = Math.max(
                     highest,
                     Math.min(99, Math.floor((100 * (completed + active * fraction)) / totalWeight)),
@@ -253,6 +274,21 @@ export class JobService {
                 void state.progress.percent;
             },
         };
+    }
+
+    private refreshWaiting(state: JobStateDto): void {
+        for (const activity of Object.values(state.progress.activities ?? {})) {
+            const waiting = activity.waitingFor;
+            if (!waiting) continue;
+            const owner = this.states.get(waiting.id);
+            delete waiting.percent;
+            delete waiting.phase;
+            delete waiting.done;
+            delete waiting.total;
+            if (!owner) continue;
+            const { percent, phase, done, total } = owner.progress;
+            Object.assign(waiting, { ...(percent !== undefined ? { percent } : {}), phase, done, total });
+        }
     }
 
     private cleanup(): void {

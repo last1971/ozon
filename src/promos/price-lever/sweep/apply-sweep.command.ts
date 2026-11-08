@@ -6,7 +6,8 @@ import { IPromoSweepContext } from './promo-sweep.context';
 /** Применить планы по одному товару. Без apply — пропуск. Отмена задачи проверяется между товарами. */
 @Injectable()
 export class ApplySweepCommand implements IJobCommand<IPromoSweepContext> {
-    readonly phase = 'применение';
+    readonly phase = 'Изменение акций Ozon';
+    readonly weight = 20;
 
     constructor(private readonly applier: PromoPriceApplier) {}
 

@@ -1,3 +1,4 @@
+import { setJobActivity } from '../job/job.execution';
 import { priceUpdateQueue } from '../helpers/price/price-update.queue';
 import { Inject, Injectable } from '@nestjs/common';
 import { GOOD_SERVICE, IGood } from '../interfaces/IGood';
@@ -16,6 +17,7 @@ export interface PriceReviewEntry {
     warnings?: string[];
     error?: string;
     response?: unknown;
+    status?: 'accepted' | 'unchanged' | 'completed' | 'skipped' | 'failed';
 }
 export interface PriceReviewContext extends IJobContext {
     offerId: string;
@@ -35,7 +37,14 @@ export class PreparePriceReviewCommand implements IJobCommand<PriceReviewContext
         ctx.progress.total = services.length;
         for (const name of services) {
             await jobCheckpoint(ctx);
+            setJobActivity(name, 'Подготовка расчёта');
             const entry = await this.entry(name, ctx.offerId);
+            setJobActivity(
+                name,
+                entry.error ? 'Расчёт недоступен' : 'Расчёт готов',
+                entry.error ? 'failed' : 'done',
+                entry.error,
+            );
             ctx.entries.push(entry);
             ctx.progress.done++;
         }
@@ -68,7 +77,7 @@ export class PreparePriceReviewCommand implements IJobCommand<PriceReviewContext
 }
 @Injectable()
 export class SendPriceReviewCommand implements IJobCommand<PriceReviewContext> {
-    readonly phase = 'Отправка подтверждённых цен';
+    readonly phase = 'Подготовка подтверждённых цен';
     readonly weight = 1;
     constructor(
         private readonly extra: ExtraPriceService,
@@ -80,6 +89,8 @@ export class SendPriceReviewCommand implements IJobCommand<PriceReviewContext> {
             ctx.entries.map(async (entry) => {
                 await jobCheckpoint(ctx);
                 if (!entry.error && entry.prices.length) {
+                    let attempted = false;
+                    setJobActivity(entry.service, 'Проверка актуальности цен');
                     try {
                         entry.response = await priceUpdateQueue.run(
                             entry.service,
@@ -95,6 +106,9 @@ export class SendPriceReviewCommand implements IJobCommand<PriceReviewContext> {
                                     );
                                 await jobCheckpoint(ctx);
                                 ctx.assertCurrent?.(entry.service);
+                                setJobActivity(entry.service, 'Выполнение запроса площадки');
+                                ctx.progress.phase = 'Обработка запросов площадок';
+                                attempted = true;
                                 try {
                                     return await service.updatePrices(entry.prices);
                                 } finally {
@@ -114,20 +128,53 @@ export class SendPriceReviewCommand implements IJobCommand<PriceReviewContext> {
                         const r: any = entry.response;
                         if (
                             entry.service === GoodServiceEnum.OZON &&
-                            (!r?.result?.length || r.result.some((item) => !item.updated))
+                            (!r?.result?.length ||
+                                entry.prices.some(
+                                    (price) =>
+                                        !r.result.some((item) => item.offer_id === price.offer_id && item.updated),
+                                ))
                         )
                             entry.error = 'Ozon не подтвердил обновление всех цен. Смотрите ответ площадки.';
                         else if (
+                            r == null ||
+                            (Array.isArray(r) && r.some((row) => row?.error)) ||
+                            r?.results?.some((row) => row.status === 'error') ||
                             r?.error ||
                             r?.errors?.length ||
                             r?.status === 'NotOk' ||
                             (r?.offerUpdate && r.offerUpdate.status !== 'OK')
                         )
                             entry.error = 'Площадка вернула ошибку. Смотрите ответ ниже.';
+                        entry.status = entry.error
+                            ? 'failed'
+                            : r?.results?.length && r.results.every((row) => row.status === 'unchanged')
+                              ? 'unchanged'
+                              : entry.service === GoodServiceEnum.OZON ||
+                                  r?.data?.id ||
+                                  r?.status === 'OK' ||
+                                  r?.results?.some((row) => row.status === 'accepted') ||
+                                  r?.updated > 0
+                                ? 'accepted'
+                                : 'completed';
                     } catch (error) {
                         entry.error = error.message;
+                        entry.status = attempted ? 'failed' : 'skipped';
                     }
-                }
+                } else entry.status = 'skipped';
+                setJobActivity(
+                    entry.service,
+                    entry.status === 'completed'
+                        ? 'Запрос завершён; проверьте ответ'
+                        : entry.status === 'accepted'
+                          ? 'Запрос принят площадкой'
+                          : entry.status === 'unchanged'
+                            ? 'Цены уже совпадали'
+                            : entry.status === 'skipped'
+                              ? 'Не отправлено'
+                              : 'Запрос не подтверждён',
+                    entry.status === 'failed' ? 'failed' : entry.status === 'skipped' ? 'skipped' : 'done',
+                    entry.error,
+                );
                 ctx.progress.done++;
             }),
         );

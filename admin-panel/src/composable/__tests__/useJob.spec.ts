@@ -39,3 +39,46 @@ describe('Общий прогресс массовых обновлений', ()
         job.clear();
     });
 });
+
+it('запоздавший ответ прежнего опроса не заменяет новую отправку', async () => {
+    const job = useJob('race');
+    job.clear();
+    let release: (value: any) => void;
+    vi.mocked(axios.get).mockImplementation(() => new Promise((r) => (release = r)));
+    const oldRead = job.refresh();
+    const sending: any = {
+        id: 'new-send',
+        kind: 'race',
+        status: 'running',
+        progress: { percent: 0, done: 0, total: 1, counters: {} },
+    };
+    await job.start(async () => sending);
+    release!({ data: [{ id: 'old', status: 'done' }] });
+    await oldRead;
+    expect(job.box.job?.id).toBe('new-send');
+    job.clear();
+});
+it('сохраняет прежний результат на время нового расчёта', async () => {
+    const job = useJob('previous');
+    job.clear();
+    await job.start(async () => ({
+        id: 'old',
+        kind: 'previous',
+        status: 'done',
+        params: {},
+        startedAt: '',
+        progress: { done: 1, total: 1, percent: 100, counters: {} },
+        result: { price: 260 },
+    }));
+    await job.start(async () => ({
+        id: 'new',
+        kind: 'previous',
+        status: 'running',
+        params: {},
+        startedAt: '',
+        progress: { done: 0, total: 1, percent: 0, counters: {} },
+    }));
+    expect(job.box.lastResult).toEqual({ price: 260 });
+    expect(job.box.job?.status).toBe('running');
+    job.clear();
+});

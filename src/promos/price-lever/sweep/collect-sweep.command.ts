@@ -8,7 +8,8 @@ import { sweepGoal } from './sweep-goal';
 /** Весь каталог; предварительный отбор уточняется после расчёта минимальной цены. */
 @Injectable()
 export class CollectSweepCommand implements IJobCommand<IPromoSweepContext> {
-    readonly phase = 'сбор';
+    readonly phase = 'Сбор товаров и акций Ozon';
+    readonly weight = 3;
 
     constructor(private readonly promoPrice: PromoPriceService) {}
 

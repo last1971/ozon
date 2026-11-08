@@ -298,7 +298,12 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                 buyer,
                 ...(known.warnings ? { warnings: known.warnings } : {}),
                 lowerBand,
+                defectBasis: input.lossCosts ? { rate: input.lossCosts.defectRate ?? null, purchaseCost: input.lossCosts.purchaseCost ?? null } : undefined,
                 costSources: {
+                    cancellations: 'Фактические расходы при отказах на одну продажу за 90 дней',
+                    sellerReturns: 'Фактическая перевозка обратно продавцу на одну продажу за 90 дней',
+                    defects: 'Применённая доля брака и закупочная стоимость упаковки',
+                    defectCompensation: 'Подтверждённое возмещение уже учтено в чистом резерве',
                     commission: 'XLSX комиссий',
                     delivery:
                         delivery?.source === 'category-average'
@@ -310,7 +315,7 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                     advertising: 'Настройка товара',
                     packing: 'Настройка товара',
                     label: 'Настройка сервера',
-                    handling: 'Настройка сервера',
+                    handling: 'Собственные расходы продавца, заданные на сервере',
                     returns: 'История возвратов и тарифы доставки',
                     tax: 'Настройка сервера',
                     vat: 'Настройка сервера',

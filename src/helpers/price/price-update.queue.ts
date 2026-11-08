@@ -1,4 +1,5 @@
-import { SerialTaskQueue } from '../serial-task.queue';
+import { currentJob, setJobActivity } from '../../job/job.execution';
+import { SerialTaskQueue, SerialTaskOptions } from '../serial-task.queue';
 import { lossOfferKey } from './marketplace.loss.stats';
 import type { PricingInputsChanged } from './pricing-inputs-changed';
 export class PricePlanStaleError extends Error {}
@@ -16,6 +17,25 @@ const offerKey = (offer: string) => {
 
 /** Та же очередь записи; версии позволяют отклонить план, подготовленный до другой операции. */
 export class PriceUpdateQueue extends SerialTaskQueue {
+    run<T>(key: string | undefined, operation: () => Promise<T>, options: SerialTaskOptions = {}): Promise<T> {
+        const job = currentJob();
+        const label = key === 'ozon' ? 'Ozon' : key === 'wb' ? 'ВБ' : key?.toUpperCase();
+        const phase =
+            job?.progress.activities?.[key]?.phase ?? job?.progress.phase ?? `Проверка актуальности цен ${label}`;
+        return super.run(key, operation, {
+            ...options,
+            owner: job ? { id: job.id, kind: job.kind } : options.owner,
+            onWaiting: (waiting, owner) => {
+                const activity = setJobActivity(
+                    key,
+                    waiting ? `Ожидание текущей операции ${label}` : phase,
+                    waiting ? 'waiting' : 'running',
+                );
+                if (activity && waiting && owner && owner.id !== job?.id) activity.waitingFor = { ...owner };
+                options.onWaiting?.(waiting, owner);
+            },
+        });
+    }
     private readonly versions = new Map<string, number>();
     reader(key: string, offers?: string[]): (offers: string[]) => PricingSnapshot {
         const versions = offers

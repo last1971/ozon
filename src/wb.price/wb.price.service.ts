@@ -1,3 +1,4 @@
+import { setJobActivity } from '../job/job.execution';
 import { wbPriceTask } from './wb-price-task';
 import { LossPricingService } from '../marketplace-loss/loss-pricing.service';
 import { BulkPriceJobService } from '../price/bulk/bulk-price-job.service';
@@ -301,6 +302,7 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
         }
         const uploadIds: string[] = [];
         for (const part of chunk(pending, 1000)) {
+            setJobActivity('wb', 'Отправка цены в ВБ');
             const response = await this.api.method(
                 'https://discounts-prices-api.wildberries.ru/api/v2/upload/task',
                 'post',

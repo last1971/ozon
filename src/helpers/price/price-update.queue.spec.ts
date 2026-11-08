@@ -107,3 +107,25 @@ it('устаревший снимок фасовки отклоняется; д�
     queue.inputsChanged({ service: 'OZON', codes: ['123'] });
     expect(() => queue.assertCurrent(ten)).toThrow('устарел');
 });
+
+it('ожидающая операция и её уведомления сохраняют контекст своего автора', async () => {
+    const { AsyncLocalStorage } = await import('async_hooks');
+    const context = new AsyncLocalStorage<string>(),
+        queue = new PriceUpdateQueue(),
+        block = gate();
+    const first = context.run('first', () => queue.run('ozon', () => block.wait));
+    await new Promise(setImmediate);
+    const seen: (string | undefined)[] = [];
+    const second = context.run('second', () =>
+        queue.run(
+            'ozon',
+            async () => {
+                seen.push(context.getStore());
+            },
+            { onWaiting: () => seen.push(context.getStore()) },
+        ),
+    );
+    block.open();
+    await Promise.all([first, second]);
+    expect(seen).toEqual(['second', 'second', 'second']);
+});

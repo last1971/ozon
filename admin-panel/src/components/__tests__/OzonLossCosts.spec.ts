@@ -25,6 +25,6 @@ it('расходы Ozon показывают все новые компонен�
     });
     expect(w.find('details').text()).toContain('Доставка при отказах: 2 ₽');
     expect(w.find('details').text()).toContain('Возврат продавцу: 3 ₽');
-    expect(w.find('details').text()).toContain('Резерв брака за вычетом возмещения: 5 ₽');
-    expect(w.find('details').text()).toContain('Учтённое возмещение брака: 1 ₽');
+    expect(w.find('details').text()).toContain('Чистый резерв брака: 5 ₽');
+    expect(w.find('details').text()).toContain('Уже учтённое возмещение брака: 1 ₽');
 });

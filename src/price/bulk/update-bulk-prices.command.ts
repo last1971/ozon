@@ -31,7 +31,7 @@ function rowsFor(offers: string[], report: PriceUpdateReport, market: string): B
 }
 @Injectable()
 export class UpdateBulkPricesCommand implements IJobCommand<BulkPriceContext> {
-    readonly phase = 'Расчёт и отправка цен';
+    readonly phase = 'Расчёт цен и подготовка запросов';
     readonly weight = 18;
     async execute(ctx: BulkPriceContext) {
         ctx.progress.total = ctx.offers.length;

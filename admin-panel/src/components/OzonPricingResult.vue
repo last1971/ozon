@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { lossCostLabels } from '@/contracts/loss-cost-labels';
+import { lossCostLabels, lossCostHints } from '@/contracts/loss-cost-labels';
 import type { OzonPricingResultDto } from '@/contracts/ozon-pricing-result.dto';
 
 defineProps<{ result?: OzonPricingResultDto; loading?: boolean }>();
@@ -26,7 +26,7 @@ const costLabels = {
     advertising: 'Реклама',
     packing: 'Упаковка',
     label: 'Этикетка',
-    handling: 'Внутренние расходы',
+    handling: 'Наши внутренние расходы',
     ...lossCostLabels,
     tax: 'Налог УСН',
     vat: 'НДС',
@@ -117,10 +117,22 @@ const costLabels = {
             </p>
             <details v-if="result.costs" class="mt-2">
                 <summary>Расходы при минимальной цене</summary>
+                <p v-if="result.defectBasis?.rate != null" class="mt-2" data-defect-basis>
+                    Для брака применено {{ percent(result.defectBasis.rate) }} от закупочной стоимости упаковки
+                    {{ money(result.defectBasis.purchaseCost) }}. В расходы включён чистый резерв
+                    {{ money(result.costs.defects) }}. Возмещение {{ money(result.costs.defectCompensation) }} уже
+                    учтено.
+                </p>
                 <v-row class="mt-1">
                     <v-col v-for="(label, key) in costLabels" :key="key" cols="12" sm="6" md="4">
                         {{ label }}: {{ money(result.costs[key])
                         }}<small class="d-block text-medium-emphasis">{{ result.costSources?.[key] }}</small>
+                        <small v-if="lossCostHints[key]" class="d-block text-medium-emphasis">{{
+                            lossCostHints[key]
+                        }}</small>
+                        <small v-if="key === 'handling'" class="d-block text-medium-emphasis"
+                            >Собственные расходы продавца, заданные на сервере.</small
+                        >
                     </v-col>
                 </v-row>
             </details>

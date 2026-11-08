@@ -12,7 +12,8 @@ export const OZON_PROMO_SWEEP_EVENT = 'ozon.promo.sweep';
  */
 @Injectable()
 export class NotifySweepCommand implements IJobCommand<IPromoSweepContext> {
-    readonly phase = 'уведомление';
+    readonly phase = 'Уведомление о результате';
+    readonly weight = 1;
 
     constructor(private readonly events: EventEmitter2) {}
 

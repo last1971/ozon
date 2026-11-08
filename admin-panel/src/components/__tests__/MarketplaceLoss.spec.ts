@@ -243,8 +243,8 @@ describe('Статистика потерь по площадкам', () => {
         });
         await button(w, 'На одну продажу').trigger('click');
         await flushPromises();
-        expect(w.find('[data-loss-costs]').text()).toContain('Возвраты: 12,5 ₽');
-        expect(w.find('[data-loss-costs]').text()).toContain('Резерв брака за вычетом возмещения: 2 ₽');
+        expect(w.find('[data-loss-costs]').text()).toContain('Оплаченные возвраты покупателя: 12,5 ₽');
+        expect(w.find('[data-loss-costs]').text()).toContain('Чистый резерв брака: 2 ₽');
         vi.mocked(axios.get).mockResolvedValueOnce({ data: { offerId: '123-5', costs: null, error: 'Нет тарифа' } });
         await button(w, 'На одну продажу').trigger('click');
         await flushPromises();

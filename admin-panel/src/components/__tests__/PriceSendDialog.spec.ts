@@ -19,12 +19,8 @@ const state = (sent = false) => ({
         entries: [{ service: 'ozon', prices: [{ offer_id: '123', min_price: '260', price: '569', old_price: '708' }] }],
     },
 });
-beforeEach(() => {
-    vi.resetAllMocks();
-    useJob(kind).clear();
-    vi.mocked(axios.post).mockImplementation(async (url) => ({ data: state(url.endsWith('/send')) }));
-    vi.mocked(axios.get).mockResolvedValue({ data: [] });
-    wrapper = mount(PriceSendDialog, {
+function renderDialog() {
+    return mount(PriceSendDialog, {
         props: { offerId: '123', settingsKey: 'initial', disabled: false },
         global: {
             stubs: {
@@ -39,6 +35,13 @@ beforeEach(() => {
             },
         },
     });
+}
+beforeEach(() => {
+    vi.resetAllMocks();
+    useJob(kind).clear();
+    vi.mocked(axios.post).mockImplementation(async (url) => ({ data: state(url.endsWith('/send')) }));
+    vi.mocked(axios.get).mockResolvedValue({ data: [] });
+    wrapper = renderDialog();
 });
 afterEach(() => {
     wrapper.unmount();
@@ -80,4 +83,81 @@ it('предупреждение о средней категории видно
     expect(wrapper.text()).toContain('Использована средняя доставка по категории');
     expect(confirm().attributes('disabled')).toBeUndefined();
     expect(axios.post).toHaveBeenCalledTimes(1);
+});
+
+it('во время отправки сохраняет рассчитанные суммы, а после 100% отдельно показывает ошибки и пропуски', async () => {
+    await prepare();
+    vi.mocked(axios.post).mockResolvedValueOnce({
+        data: {
+            ...state(),
+            id: 'sending',
+            status: 'running',
+            result: undefined,
+            params: { mode: 'send' },
+            progress: {
+                done: 0,
+                total: 3,
+                percent: 0,
+                counters: {},
+                activities: { ozon: { state: 'waiting', phase: 'Ожидание текущей операции Ozon' } },
+            },
+        },
+    });
+    await confirm().trigger('click');
+    await flushPromises();
+    expect(wrapper.text()).toContain('260 ₽');
+    expect(wrapper.text()).toContain('Обновление ещё не завершено');
+    expect(wrapper.text()).not.toContain('Запрос принят площадкой');
+    const done = {
+        ...state(true),
+        result: {
+            sent: true,
+            entries: [
+                { ...state().result.entries[0], status: 'accepted' },
+                { service: 'wb', prices: [], status: 'failed', error: 'ВБ не подтвердил цену' },
+                { service: 'avito', prices: [], status: 'skipped', error: 'Нет карточки' },
+            ],
+        },
+    };
+    vi.mocked(axios.get).mockImplementation(async (url) => ({ data: url === '/api/job' ? [done] : done }));
+    await useJob(kind).refresh();
+    await flushPromises();
+    expect(wrapper.text()).toContain('100% — задача завершена');
+    expect(wrapper.text()).toContain('не означает, что все площадки приняли цены');
+    expect(wrapper.text()).toContain('Запрос принят площадкой');
+    expect(wrapper.text()).toContain('Ошибка: обновление не подтверждено');
+    expect(wrapper.text()).toContain('Не отправлено');
+    expect(wrapper.text()).toContain('ВБ не подтвердил цену');
+});
+it('после перезагрузки подхватывает ожидающую отправку без нового POST', async () => {
+    wrapper.unmount();
+    useJob(kind).clear();
+    localStorage.setItem(`job:${kind}`, 'restored');
+    const restored: any = {
+        ...state(),
+        id: 'restored',
+        status: 'running',
+        result: undefined,
+        params: { mode: 'send' },
+        progress: {
+            percent: 0,
+            done: 0,
+            total: 2,
+            counters: {},
+            activities: {
+                ozon: {
+                    state: 'waiting',
+                    phase: 'Ожидание текущей операции Ozon',
+                    waitingFor: { id: 'sweep', kind: 'ozon-promo-sweep', percent: 64 },
+                },
+            },
+        },
+    };
+    vi.mocked(axios.get).mockImplementation(async (url) => ({ data: url === '/api/job' ? [restored] : restored }));
+    wrapper = renderDialog();
+    await flushPromises();
+    expect(wrapper.text()).toContain('Товар 123');
+    expect(wrapper.text()).not.toContain('Настройки изменились');
+    expect(useJob(kind).box.job?.progress.activities?.ozon.waitingFor?.percent).toBe(64);
+    expect(axios.post).not.toHaveBeenCalled();
 });

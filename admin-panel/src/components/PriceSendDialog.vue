@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import axios from '@/axios.config';
 import { useJob } from '@/composable/useJob';
 import JobProgress from './JobProgress.vue';
@@ -10,6 +10,7 @@ interface Entry {
     warnings?: string[];
     error?: string;
     response?: unknown;
+    status?: 'accepted' | 'unchanged' | 'completed' | 'skipped' | 'failed';
 }
 interface Review {
     token?: string;
@@ -21,11 +22,15 @@ const props = defineProps<{ offerId: string; settingsKey: string; disabled: bool
 const emit = defineEmits<{ (e: 'sent'): void }>();
 const open = ref(false);
 const job = useJob<Review>(`price-review:${props.offerId}`);
-const result = computed(() => (job.box.job?.status === 'done' ? job.box.job.result : undefined));
+const result = computed(() => (job.box.job?.status === 'done' ? job.box.job.result : job.box.lastResult));
 const running = computed(() => job.box.job?.status === 'running');
 const preparedKey = ref('');
+const settingsChanged = computed(
+    () => props.disabled || (preparedKey.value !== '' && preparedKey.value !== props.settingsKey),
+);
 const canSend = computed(
     () =>
+        job.box.job?.status === 'done' &&
         !props.disabled &&
         !job.box.error &&
         preparedKey.value === props.settingsKey &&
@@ -33,6 +38,19 @@ const canSend = computed(
         result.value.entries.some((e) => !e.error && e.prices.length) &&
         !running.value,
 );
+onMounted(async () => {
+    await job.attach();
+    if (job.box.job?.status === 'running') open.value = true;
+});
+const entryStatus = (entry: Entry) =>
+    ({
+        completed: 'Запрос завершён, проверьте ответ площадки',
+        accepted: 'Запрос принят площадкой',
+        unchanged: 'Цены уже совпадали',
+        skipped: 'Не отправлено',
+        failed: 'Ошибка: обновление не подтверждено',
+    })[entry.status ?? (entry.error ? 'skipped' : 'accepted')];
+const error = computed(() => job.box.error || (job.box.job?.status === 'failed' ? job.box.job.error : ''));
 const money = (v: string) => Number(v).toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + ' ₽';
 async function prepare() {
     preparedKey.value = props.settingsKey;
@@ -53,6 +71,7 @@ watch(
 </script>
 <template>
     <v-btn :disabled="disabled || running" @click="prepare">Отправить цены…</v-btn>
+    <v-btn v-if="job.box.job && !open" variant="text" @click="open = true">Показать ход и результат</v-btn>
     <v-dialog v-model="open" max-width="1000" :persistent="running">
         <v-card title="Проверка перед отправкой цен">
             <v-card-text>
@@ -60,18 +79,27 @@ watch(
                     Товар {{ offerId }}. Отправятся только перечисленные ниже суммы. Настройки товара эта операция не
                     сохраняет.
                 </p>
-                <JobProgress v-if="job.box.job" :job="job.box.job" />
-                <v-alert v-if="job.box.error" type="error">{{ job.box.error }}</v-alert>
-                <v-alert v-if="preparedKey !== settingsKey || disabled" type="warning"
+                <JobProgress v-if="job.box.job" :job="job.box.job" done-text="Обработка завершена" />
+                <p v-if="running && result" class="text-medium-emphasis" role="status">
+                    Ниже показаны ранее рассчитанные суммы. Обновление ещё не завершено.
+                </p>
+                <v-alert v-if="error" type="error">{{ error }}</v-alert>
+                <v-alert v-if="settingsChanged" type="warning"
                     >Настройки изменились. Сохраните их и подготовьте цены заново.</v-alert
                 >
                 <template v-if="result">
                     <p v-if="result.expiresAt">
                         Предпросмотр действует до {{ new Date(result.expiresAt).toLocaleTimeString('ru-RU') }}.
                     </p>
-                    <p v-if="result.sent">Запросы завершены. Проверьте ответы площадок ниже.</p>
+                    <p v-if="result.sent && !running">
+                        100% — задача завершена. Это не означает, что все площадки приняли цены. Результат каждой
+                        площадки указан ниже.
+                    </p>
                     <div v-for="entry in result.entries" :key="entry.service" class="my-4">
                         <h3>{{ entry.service.toUpperCase() }}</h3>
+                        <p v-if="result.sent && !running" :class="entry.error ? 'text-error' : ''">
+                            {{ entryStatus(entry) }}
+                        </p>
                         <v-alert v-for="warning in entry.warnings" :key="warning" type="warning">{{ warning }}</v-alert>
                         <v-alert v-if="entry.error" type="warning">{{ entry.error }}</v-alert>
                         <v-table v-if="entry.prices.length">

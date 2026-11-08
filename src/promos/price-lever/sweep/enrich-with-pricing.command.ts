@@ -1,3 +1,4 @@
+import { jobCheckpoint } from '../../../job/job.checkpoint';
 import { lossPriceFields } from '../../../helpers/price/marketplace.loss.input';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -17,7 +18,8 @@ import { sweepGoal } from './sweep-goal';
 
 @Injectable()
 export class EnrichWithPricingCommand implements IJobCommand<IPromoSweepContext> {
-    readonly phase = 'расчёт цен';
+    readonly phase = 'Расчёт минимальных цен';
+    readonly weight = 10;
     constructor(
         private readonly pricing: OzonPricingService,
         private readonly products: ProductService,
@@ -54,8 +56,9 @@ export class EnrichWithPricingCommand implements IJobCommand<IPromoSweepContext>
             } catch (e) {
                 batchError = e;
             }
-            for (const state of batch) {
+            for (const [index, state] of batch.entries()) {
                 if (context.stopChain) break;
+                if (index % 25 === 0) await jobCheckpoint(context);
                 try {
                     if (batchError) throw batchError;
                     const product = data.products.find((p) => p.offer_id === state.offerId);

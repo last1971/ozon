@@ -5,6 +5,15 @@ export interface JobProgress {
     done: number;
     total?: number;
     counters: Record<string, number>;
+    activities?: Record<
+        string,
+        {
+            phase: string;
+            state: 'running' | 'waiting' | 'done' | 'failed' | 'skipped';
+            error?: string;
+            waitingFor?: { id: string; kind: string; phase?: string; percent?: number; done?: number; total?: number };
+        }
+    >;
 }
 
 export type JobStatus = 'running' | 'done' | 'failed';

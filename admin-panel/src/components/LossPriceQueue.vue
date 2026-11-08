@@ -85,7 +85,7 @@ watch(
         </p>
         <p v-if="!loading && !readError">Незавершённых заданий: {{ pending.length }}.</p>
         <v-alert v-if="pending.length" type="warning" class="my-2">
-            Эти обновления ещё не завершены. Неизвестные расходы нулём не заменяются.
+            Эти обновления ещё не завершены. Причины и число попыток указаны ниже.
             <details>
                 <summary>Показать задания</summary>
                 <p v-for="event in pending" :key="event.extId">

@@ -1,3 +1,4 @@
+import { setJobActivity } from '../job/job.execution';
 import { OzonStockWriter } from './ozon-stock.writer';
 import { ozonDisplayPrice } from '../helpers/price/ozon.display-price';
 import { priceUpdateQueue } from '../helpers/price/price-update.queue';
@@ -291,6 +292,7 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
                                     : row,
                             ),
                         };
+                        setJobActivity('ozon', 'Отправка цены в Ozon');
                         const result = await this.ozonApiService.method('/v1/product/import/prices', batchRequest);
                         if (!Array.isArray(result?.result)) {
                             const message = result?.error?.message || 'Ozon не вернул результат обновления';

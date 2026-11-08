@@ -22,6 +22,7 @@ export interface OzonPricingResultDto {
     buyer?: { price: number; profit: number; profitPercent: number };
     lowerBand?: { ceiling: number; profit: number | null; targetProfit: number; eligible: boolean };
     costSources?: Record<string, string>;
+    defectBasis?: { rate: number | null; purchaseCost: number | null };
     warnings?: string[];
     deadZoneFloor?: number;
     costs: {

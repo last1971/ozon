@@ -119,7 +119,7 @@ describe('Команды массового обновления', () => {
         };
         const state = bulk.start(source);
         expect(bulk.start(source).id).toBe(state.id);
-        while (state.progress.phase !== 'Расчёт и отправка цен') await new Promise(setImmediate);
+        while (state.progress.phase !== 'Расчёт цен и подготовка запросов') await new Promise(setImmediate);
         expect(state.progress.percent).toBe(5);
         release();
         const result = await bulk.wait(state.id);

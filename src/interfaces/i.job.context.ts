@@ -1,5 +1,12 @@
 import { ICommandAsync } from './i.command.acync';
 
+export interface JobActivity {
+    phase: string;
+    state: 'running' | 'waiting' | 'done' | 'failed' | 'skipped';
+    error?: string;
+    waitingFor?: { id: string; kind: string; phase?: string; percent?: number; done?: number; total?: number };
+}
+
 /** Ход задачи. Команды двигают done/total/counters сами, фазу пишет исполнитель (JobService). */
 export interface JobProgress {
     /** Общий процент цепочки; задаёт JobService для команд с весами. */
@@ -7,7 +14,9 @@ export interface JobProgress {
     phase?: string; // на какой команде сейчас: «база», «каталог», «сверка», «запись»…
     done: number; // сколько единиц текущей фазы сделано
     total?: number; // сколько всего в текущей фазе, если известно
-    counters: Record<string, number>; // произвольные счётчики по ходу: ok, toFix, ambiguous…
+    counters: Record<string, number>;
+    /** Независимые операции площадок и реальная причина ожидания в общей очереди. */
+    activities?: Record<string, JobActivity>; // произвольные счётчики по ходу: ok, toFix, ambiguous…
 }
 
 /** То, что должен нести контекст любой фоновой задачи. Контексты задач его расширяют. */

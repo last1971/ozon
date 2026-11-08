@@ -1,3 +1,4 @@
+import { setJobActivity } from '../job/job.execution';
 import { IJobContext } from '../interfaces/i.job.context';
 import { notifyPricingInputs } from '../helpers/price/pricing-inputs-changed';
 import { pricingFailureKind } from '../helpers/price/pricing-error';
@@ -725,6 +726,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                     async () => {
                         await jobCheckpoint(context);
                         priceUpdateQueue.assertCurrent(snapshot([target.offer_id]));
+                        setJobActivity(service.priceUpdateKey, 'Проверка запроса цены');
                         sent.push(target);
                         try {
                             return await update([target]);

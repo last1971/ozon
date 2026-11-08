@@ -1,3 +1,4 @@
+import { setJobActivity } from '../../job/job.execution';
 import { priceUpdateQueue } from '../../helpers/price/price-update.queue';
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -181,7 +182,7 @@ export class CompareLossPricesCommand implements IJobCommand<LossPriceContext> {
 
 @Injectable()
 export class SendLossPricesCommand implements IJobCommand<LossPriceContext> {
-    readonly phase = 'Отправка изменившихся цен';
+    readonly phase = 'Подготовка запросов цен';
     readonly weight = 2;
     async execute(ctx: LossPriceContext) {
         ctx.progress.total = valid(ctx).reduce((count, task) => count + task.changed.length, 0);
@@ -196,8 +197,12 @@ export class SendLossPricesCommand implements IJobCommand<LossPriceContext> {
                         if (task.snapshot) priceUpdateQueue.assertCurrent(task.snapshot);
                         try {
                             const unchanged = task.targets.filter((p) => !task.changed.includes(p));
-                            if (unchanged.length) await ctx.adapter.persist(unchanged);
+                            if (unchanged.length) {
+                                setJobActivity(key, 'Сохранение ограничения цены');
+                                await ctx.adapter.persist(unchanged);
+                            }
                             if (task.changed.length) {
+                                setJobActivity(key, 'Подготовка запроса площадки');
                                 ctx.sent += task.changed.length;
                                 const response = await ctx.adapter.send(task.changed, ctx.current);
                                 const single = { ...ctx, tasks: [task] };

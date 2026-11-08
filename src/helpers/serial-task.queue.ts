@@ -1,15 +1,23 @@
-import { AsyncLocalStorage } from 'async_hooks';
+import { AsyncLocalStorage, AsyncResource } from 'async_hooks';
 
+export interface SerialTaskOwner {
+    id: string;
+    kind: string;
+}
 export interface SerialTaskOptions {
+    owner?: SerialTaskOwner;
     priority?: 'manual' | 'background';
-    onWaiting?: (waiting: boolean) => void;
+    onWaiting?: (waiting: boolean, owner?: SerialTaskOwner) => void;
 }
 interface PendingTask {
     priority: 'manual' | 'background';
     start: () => void;
+    waiting: (owner?: SerialTaskOwner) => void;
+    owner?: SerialTaskOwner;
 }
 interface QueueState {
     running: boolean;
+    owner?: SerialTaskOwner;
     manualStreak: number;
     pending: PendingTask[];
 }
@@ -32,22 +40,26 @@ export class SerialTaskQueue {
         const q = this.queues.get(key) ?? { running: false, manualStreak: 0, pending: [] };
         this.queues.set(key, q);
         const held = new Map(this.active.getStore());
-        const notify = (waiting: boolean) => {
+        // Восстанавливаем весь контекст автора операции, а не контекст завершившегося соседа.
+        const invoke = AsyncResource.bind(() => this.active.run(held, operation));
+        const notify = AsyncResource.bind((waiting: boolean, owner?: SerialTaskOwner) => {
             try {
-                options.onWaiting?.(waiting);
+                options.onWaiting?.(waiting, owner);
             } catch {
                 /* Наблюдатель не управляет записью. */
             }
-        };
+        });
         return new Promise<T>((resolve, reject) => {
             q.pending.push({
                 priority: options.priority ?? 'background',
+                owner: options.owner,
+                waiting: (owner) => notify(true, owner),
                 start: () => {
                     notify(false);
                     const token = { active: true };
                     held.set(key, token);
                     Promise.resolve()
-                        .then(() => this.active.run(held, operation))
+                        .then(invoke)
                         .then(resolve, reject)
                         .finally(() => {
                             token.active = false;
@@ -56,7 +68,7 @@ export class SerialTaskQueue {
                         });
                 },
             });
-            if (q.running) notify(true);
+            if (q.running) notify(true, q.owner);
             this.drain(key, q);
         });
     }
@@ -72,6 +84,8 @@ export class SerialTaskQueue {
         const [next] = q.pending.splice(index, 1);
         q.manualStreak = next.priority === 'manual' ? q.manualStreak + 1 : 0;
         q.running = true;
+        q.owner = next.owner;
         next.start();
+        q.pending.forEach((task) => task.waiting(q.owner));
     }
 }

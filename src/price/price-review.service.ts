@@ -83,7 +83,18 @@ export class PriceReviewService {
                 logger: this.logger,
             },
             commands: [this.send],
-            result: (ctx) => ({ offerId: ctx.offerId, entries: ctx.entries, sent: true }),
+            cleanup: async () => {},
+            result: (ctx) => ({
+                offerId: ctx.offerId,
+                entries: ctx.entries,
+                sent: true,
+                summary: Object.fromEntries(
+                    ['accepted', 'unchanged', 'completed', 'skipped', 'failed'].map((status) => [
+                        status,
+                        ctx.entries.filter((entry) => entry.status === status).length,
+                    ]),
+                ),
+            }),
         });
         review.jobId = state.id;
         return state;

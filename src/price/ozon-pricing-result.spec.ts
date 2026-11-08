@@ -350,3 +350,17 @@ it.each([-1, NaN, Infinity])('неверный процент %s не скрыв
     });
     expect(m.pricing.load).not.toHaveBeenCalled();
 });
+
+it('показывает применённый процент брака и закупку упаковки отдельно от рыночной базы', async () => {
+    const m = setup();
+    m.context.lossStatistics = {
+        defectRate: 0.08,
+        confirmedDefectCompensation: 1,
+        cancellationDelivery: null,
+        sellerReturnDelivery: null,
+    };
+    const result = await m.service.getOzonPricingResult('123-5', { available_price: 400 });
+    expect(result.base).toBe(400);
+    expect(result.defectBasis).toEqual({ rate: 0.08, purchaseCost: 100 });
+    expect(result.costs).toMatchObject({ defects: 7, defectCompensation: 1 });
+});

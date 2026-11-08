@@ -1,3 +1,4 @@
+import { setJobActivity } from '../../job/job.execution';
 import { PricingSnapshot } from '../../helpers/price/price-update.queue';
 import { Injectable } from '@nestjs/common';
 import { chunk } from 'lodash';
@@ -64,7 +65,15 @@ export class OzonLossPriceAdapter implements LossPriceAdapter {
         const job = snapshots
             ? this.sweep.start(true, 'min', 'loss-queue', offers, snapshots)
             : this.sweep.start(true, 'min', 'loss-queue', offers);
+        const activity = setJobActivity('ozon', 'Проверка акций Ozon', 'waiting');
+        if (activity) activity.waitingFor = { id: job.id, kind: job.kind };
         const state = await this.jobs.whenDone(job.id);
+        setJobActivity(
+            'ozon',
+            state.status === 'done' ? 'Проверка акций завершена' : 'Проверка акций не завершена',
+            state.status === 'done' ? 'done' : 'failed',
+            state.error,
+        );
         if (state.status !== 'done') throw new Error(state.error || 'Сверка акций Ozon не завершена');
         const report = state.result as PromoSweepReport;
         if (report.checked !== offers.length) throw new Error('Неполная сверка акций Ozon');

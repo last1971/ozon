@@ -67,3 +67,48 @@ describe('Общий блок прогресса', () => {
         expect(render(j, { inline: true, doneText: 'failed' }).text()).toBe('failed');
     });
 });
+
+it('ожидание показывает процент фона отдельно от процента отправки', () => {
+    const j = job();
+    Object.assign(j.progress, {
+        percent: 0,
+        activities: {
+            ozon: {
+                state: 'waiting',
+                phase: 'Ожидание текущей операции Ozon',
+                waitingFor: {
+                    id: 'sweep',
+                    kind: 'ozon-promo-sweep',
+                    percent: 64,
+                    phase: 'расчёт цен',
+                    done: 25,
+                    total: 100,
+                },
+            },
+        },
+    });
+    const w = render(j);
+    expect(w.text()).toContain('0%');
+    expect(w.text()).toContain('Ожидание текущей операции Ozon');
+    expect(w.text()).toContain('Проверка акций Ozon: 64%');
+    expect(w.text()).toContain('25 из 100');
+    expect(w.find('[data-bar]').attributes('data-value')).toBe('0');
+});
+
+it('100% с частичной ошибкой не показывает общий успех вместо результатов площадок', () => {
+    const j = job();
+    j.status = 'done';
+    Object.assign(j.progress, {
+        percent: 100,
+        activities: {
+            ozon: { state: 'done', phase: 'Запрос принят площадкой' },
+            wb: { state: 'failed', phase: 'Запрос не подтверждён', error: 'API 500' },
+        },
+    });
+    const w = render(j, { doneText: 'Обработка завершена' });
+    expect(w.text()).toContain('100%');
+    expect(w.text()).toContain('есть ошибки');
+    expect(w.text()).toContain('Ozon — Запрос принят площадкой');
+    expect(w.text()).toContain('ВБ — Запрос не подтверждён');
+    expect(w.find('[data-bar]').exists()).toBe(false);
+});

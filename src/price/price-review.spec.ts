@@ -116,3 +116,47 @@ it('площадка, отключённая после предпросмотр
     expect(m.wb.updatePrices).toHaveBeenCalledTimes(1);
     expect((done.result as any).entries[0].error).toContain('Площадка отключена');
 });
+
+it('при отмене job ждёт начатый запрос и не обещает откат принятой цены', async () => {
+    const m = setup(),
+        preview = await m.preview();
+    let release: () => void;
+    m.ozon.updatePrices.mockImplementationOnce(
+        () => new Promise((r) => (release = () => r({ result: [{ offer_id: '123', updated: true }] }))),
+    );
+    const job = m.service.sendReview(preview.token);
+    while (!release) await new Promise(setImmediate);
+    expect(m.jobs.cancel(job.id).status).toBe('running');
+    release();
+    const done = await m.jobs.whenDone(job.id);
+    expect(done.status).toBe('failed');
+    expect(done.error).toBe('отменена');
+    expect(m.ozon.updatePrices).toHaveBeenCalledTimes(1);
+});
+
+it('завершённый job возвращает отдельные принятые, совпавшие и ошибочные результаты', async () => {
+    const m = setup(),
+        preview = await m.preview();
+    m.wb.updatePrices.mockResolvedValueOnce({
+        error: false,
+        results: [{ offer_id: '123', status: 'unchanged' }],
+    } as any);
+    const done = await m.jobs.whenDone(m.service.sendReview(preview.token).id);
+    expect(done.progress.percent).toBe(100);
+    expect((done.result as any).summary).toMatchObject({ accepted: 1, unchanged: 1, failed: 0 });
+    expect((done.result as any).entries.map((e) => e.status)).toEqual(['accepted', 'unchanged']);
+});
+it('ошибка в массиве ответа сайта не объявляется успешным приёмом цены', async () => {
+    const m = setup();
+    const site = {
+        getObtainCoeffs: () => m.coeffs,
+        updatePrices: jest.fn().mockResolvedValue([{ offer_id: '123', error: 'reject tiers' }]),
+    };
+    jest.spyOn(m.extra, 'getService').mockImplementation((name) =>
+        name === GoodServiceEnum.SYLIUS ? (site as any) : null,
+    );
+    const preview = await m.preview();
+    const done = await m.jobs.whenDone(m.service.sendReview(preview.token).id);
+    expect((done.result as any).entries[0]).toMatchObject({ status: 'failed', error: expect.any(String) });
+    expect((done.result as any).summary.failed).toBe(1);
+});

@@ -70,7 +70,7 @@ describe('Отдельный блок расчётных цен', () => {
         expect(rows[2].text()).toContain('FBO');
         expect(wrapper.text()).toContain('База себестоимости: Остаточные партии — 100 ₽');
         expect(wrapper.text()).toContain('Между 300 ₽ и 650 ₽');
-        expect(wrapper.find('details').text()).toContain('Возвраты: 20 ₽');
+        expect(wrapper.find('details').text()).toContain('Оплаченные возвраты покупателя: 20 ₽');
     });
     it('ошибка скрывает таблицу и устаревшие цены', () => {
         const wrapper = render({ ...result(), error: 'Нет базы себестоимости' });
@@ -86,7 +86,7 @@ describe('Отдельный блок расчётных цен', () => {
         expect(wrapper.attributes('aria-busy')).toBe('true');
         expect(wrapper.find('table').exists()).toBe(true);
         expect(wrapper.findAll('tbody tr')[0].findAll('td')[4].text()).toBe('229 ₽');
-        expect(wrapper.find('details').text()).toContain('Возвраты: 20 ₽');
+        expect(wrapper.find('details').text()).toContain('Оплаченные возвраты покупателя: 20 ₽');
         await wrapper.setProps({ result: { ...result(), min: { ...result().min!, price: 250 } }, loading: false });
         expect(wrapper.text()).not.toContain('Обновление…');
         expect(wrapper.attributes('aria-busy')).toBe('false');
@@ -168,4 +168,20 @@ it('показывает предупреждение о средней дост
     const wrapper = render(data);
     expect(wrapper.text()).toContain('Использована средняя доставка по категории');
     expect(wrapper.find('table').exists()).toBe(true);
+});
+
+it('показывает процент и закупочную базу брака, чистый резерв и уже учтённое возмещение', () => {
+    const data = {
+        ...result(),
+        base: 400,
+        defectBasis: { rate: 0.08, purchaseCost: 100 },
+        costs: { ...result().costs!, defects: 7, defectCompensation: 1 },
+    };
+    const w = render(data);
+    expect(w.find('[data-defect-basis]').text()).toContain('8% от закупочной стоимости упаковки 100 ₽');
+    expect(w.find('[data-defect-basis]').text()).toContain('чистый резерв 7 ₽');
+    expect(w.find('details').text()).toContain('повторно не вычитается');
+    expect(w.find('details').text()).toContain('Оплаченные возвраты покупателя: 20 ₽');
+    expect(w.find('details').text()).toContain('Чистый резерв брака: 7 ₽');
+    expect(w.find('details').text()).toContain('Уже учтённое возмещение брака: 1 ₽');
 });

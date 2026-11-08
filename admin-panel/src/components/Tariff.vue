@@ -33,7 +33,7 @@ async function reloadTrarif() {
                 <th class="text-left">Эквайринг: резерв</th>
                 <th class="text-left">Миля</th>
                 <th class="text-left">Мин Миля</th>
-                <th class="text-left">Внутренние расходы</th>
+                <th class="text-left">Наши внутренние расходы</th>
                 <th class="text-left">Упаковка</th>
                 <th class="text-left">Этикетка</th>
                 <th class="text-left">Налог</th>

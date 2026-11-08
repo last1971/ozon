@@ -6,6 +6,9 @@ const POLL_MS = 2000;
 
 /** Состояние одного вида задач; общее на все компоненты (как snackbarState в useInfoSnackbar). */
 interface JobBox<R> {
+    lastResult: R | undefined;
+    generation: number;
+    readSequence: number;
     job: JobState<R> | null; // моя текущая (или последняя) задача
     others: JobState[]; // остальные запуски вида: чужие и мои прошлые
     error: string;
@@ -24,9 +27,26 @@ function storageKey(kind: string) {
  */
 export function useJob<R = unknown>(kind: string, options: { followLatest?: boolean } = {}) {
     if (!boxes.has(kind)) {
-        boxes.set(kind, reactive({ job: null, others: [], error: '', timer: null }) as JobBox<unknown>);
+        boxes.set(
+            kind,
+            reactive({
+                job: null,
+                lastResult: undefined,
+                generation: 0,
+                readSequence: 0,
+                others: [],
+                error: '',
+                timer: null,
+            }) as JobBox<unknown>,
+        );
     }
     const box = boxes.get(kind) as JobBox<R>;
+
+    const accept = (state: JobState<R> | null) => {
+        if (box.job?.status === 'done' && box.job.result !== undefined) box.lastResult = box.job.result;
+        box.job = state;
+        if (state?.status === 'done' && state.result !== undefined) box.lastResult = state.result;
+    };
 
     const remember = (id: string | null) => {
         try {
@@ -41,21 +61,28 @@ export function useJob<R = unknown>(kind: string, options: { followLatest?: bool
 
     /** Один опрос: моя задача по id (404 → задача пропала, например после рестарта) + список вида. */
     const refresh = async () => {
+        const generation = box.generation,
+            sequence = ++box.readSequence;
+        const current = () => generation === box.generation && sequence === box.readSequence;
         try {
             const list = await axios.get<JobState[]>('/api/job', { params: { kind } });
+            if (!current()) return;
+            box.error = '';
             const me = clientId();
             if (options.followLatest) {
-                box.job = (list.data[0] as JobState<R>) ?? null;
+                accept((list.data[0] as JobState<R>) ?? null);
                 remember(box.job?.id ?? null);
             }
             if (box.job) {
                 try {
                     const res = await axios.get<JobState<R>>(`/api/job/${box.job.id}`);
-                    box.job = res.data;
+                    if (!current()) return;
+                    accept(res.data);
                 } catch (e: any) {
+                    if (!current()) return;
                     if (e.response?.status === 404) {
                         box.error = 'задача не найдена — сервер перезапущен или прошло больше часа; запусти заново';
-                        box.job = null;
+                        accept(null);
                         remember(null);
                     } else {
                         box.error = e.response?.data?.message || e.message;
@@ -67,13 +94,14 @@ export function useJob<R = unknown>(kind: string, options: { followLatest?: bool
             if (!box.job && me) {
                 const mine = list.data.find((j) => j.clientId === me && j.status === 'running');
                 if (mine) {
-                    box.job = mine as JobState<R>;
+                    accept(mine as JobState<R>);
                     remember(mine.id);
                 }
             }
         } catch (e: any) {
-            box.error = e.response?.data?.message || e.message;
+            if (current()) box.error = e.response?.data?.message || e.message;
         }
+        if (!current()) return;
         if (box.job?.status !== 'running') stopPolling();
     };
 
@@ -85,12 +113,16 @@ export function useJob<R = unknown>(kind: string, options: { followLatest?: bool
     /** Запустить: starter делает POST и возвращает состояние задачи. */
     const start = async (starter: () => Promise<JobState<R>>) => {
         box.error = '';
+        const generation = ++box.generation;
         try {
-            box.job = await starter();
-            remember(box.job.id);
-            startPolling();
+            const next = await starter();
+            if (generation !== box.generation) return;
+            accept(next);
+            remember(next.id);
+            if (next.status === 'running') startPolling();
+            else stopPolling();
         } catch (e: any) {
-            box.error = e.response?.data?.message || e.message;
+            if (generation === box.generation) box.error = e.response?.data?.message || e.message;
         }
     };
 
@@ -109,6 +141,8 @@ export function useJob<R = unknown>(kind: string, options: { followLatest?: bool
 
     const clear = () => {
         stopPolling();
+        ++box.generation;
+        box.lastResult = undefined;
         box.job = null;
         box.error = '';
         remember(null);

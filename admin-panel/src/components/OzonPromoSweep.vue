@@ -7,7 +7,7 @@ import { PROMO_SWEEP_JOB, resultColor, resultLabel, startPromoSweep, stepIcon, s
 import { SWEEP_GOALS, type PromoSweepItem, type PromoSweepReport, type SweepGoalKind } from "@/contracts/promo-price.dto";
 
 /**
- * Сверка акций Ozon по цели: все товары в акциях, которые цель отбирает, и план по каждому.
+ * Сверка акций Ozon по цели: все товары кабинета, которые цель отбирает, и план по каждому.
  * Что отбирать и к чему вести — решает бэк по цели; экран только выбирает её.
  * «Проверить» — только отчёт, «Применить всё» — выполнить. Фоновая задача, подхватывается после F5.
  */
@@ -30,6 +30,7 @@ watch(
 );
 
 const job = computed(() => sweep.box.job);
+const hasProblems = computed(() => Boolean(report.value?.failed || report.value?.unfixable));
 const running = computed(() => job.value?.status === 'running');
 const report = computed(() => (job.value?.status === 'done' ? job.value.result ?? null : null));
 /** Применять можно только после проверки по выбранной цели, и только если есть что. */
@@ -83,16 +84,16 @@ async function applyAll() {
                    @click="confirmApply = true">Применить всё</v-btn>
         </div>
 
-        <v-card v-if="job" class="mt-4" variant="tonal" :color="job.status === 'failed' ? 'error' : running ? 'primary' : 'success'">
+        <v-card v-if="job" class="mt-4" variant="tonal" :color="job.status === 'failed' ? 'error' : running ? 'primary' : hasProblems ? 'warning' : 'success'">
             <v-card-text>
-                <JobProgress :job="job" :show-count-without-total="false">
+                <JobProgress :job="job" :show-count-without-total="false" done-text="Обработка завершена">
                     <template #title>
                         {{ job.params.apply ? 'применение' : 'проверка' }}
                         <template v-if="reportGoal"> «{{ reportGoal.title }}»</template> · {{ whose(job) }}
                     </template>
                 </JobProgress>
                 <div v-if="report" class="mt-2 text-body-2">
-                    <span class="me-4">в акциях: {{ report.checked }}</span>
+                    <span class="me-4">проверено товаров: {{ report.checked }}</span>
                     <span class="me-4"><b>отобрано: {{ report.selected }}</b></span>
                     <span class="me-4">остаются в акциях Ozon: {{ report.keptInOzon }}</span>
                     <span class="me-4">выкинуть из акций Ozon: {{ report.removedFromOzon }}</span>
