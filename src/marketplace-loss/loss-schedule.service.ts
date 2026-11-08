@@ -55,7 +55,8 @@ export class LossScheduleService {
     private async retry(service: LossPriceMarket): Promise<void> {
         try {
             if (this.jobs.list(lossPriceJobKind(service)).some((job) => job.status === 'running')) return;
-            if (!(await this.queue.pending(service)).length) return;
+            const pending = await this.queue.pending(service);
+            if (!pending.length || !this.prices.hasReady(service, pending)) return;
             const done = await this.completed(this.prices.start(service, 'cron'));
             const report = done.result as { completed?: number; pending?: unknown[] };
             this.logger.log(

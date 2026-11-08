@@ -1,3 +1,4 @@
+import { PricingDataError } from '../helpers/price/pricing-error';
 import { pricingWarning } from '../helpers/price/pricing-warnings';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
@@ -82,14 +83,15 @@ export class OzonLogisticsService {
     }
 
     async quote(product: ProductPriceDto, info: ProductInfoDto) {
-        if (product.offer_id !== info.sku) throw new Error('Артикул цены не совпадает с карточкой');
+        if (product.offer_id !== info.sku) throw new PricingDataError('Артикул цены не совпадает с карточкой');
         const minUnits = Number(this.config.get('OZON_LOGISTICS_MIN_UNITS', 1));
         if (!Number.isSafeInteger(minUnits) || minUnits < 1)
-            throw new Error('OZON_LOGISTICS_MIN_UNITS должен быть целым >= 1');
+            throw new PricingDataError('OZON_LOGISTICS_MIN_UNITS должен быть целым >= 1');
         const money = (value: unknown, name: string): number => {
-            if (value === null || value === undefined || value === '') throw new Error(`Нет ${name} в API Ozon`);
+            if (value === null || value === undefined || value === '')
+                throw new PricingDataError(`Нет ${name} в API Ozon`);
             const n = Number(value);
-            if (!Number.isFinite(n) || n < 0) throw new Error(`Некорректный ${name} в API Ozon`);
+            if (!Number.isFinite(n) || n < 0) throw new PricingDataError(`Некорректный ${name} в API Ozon`);
             return n;
         };
         let history: OzonRoutesSnapshot;
@@ -102,7 +104,7 @@ export class OzonLogisticsService {
         const acquiringAmount = money(product.acquiring, 'эквайринг');
         const acquiringReferencePrice = money(product.price.price, 'цена для эквайринга');
         if (acquiringReferencePrice <= 0 && acquiringAmount > 0)
-            throw new Error('Нет положительной цены для ставки эквайринга');
+            throw new PricingDataError('Нет положительной цены для ставки эквайринга');
         const commissions = product.commissions;
         const schemes: { fbs?: OzonSchemeLogistics; fbo?: OzonSchemeLogistics } = {};
         for (const scheme of ['fbs', 'fbo'] as OzonScheme[]) {
@@ -121,7 +123,8 @@ export class OzonLogisticsService {
                     );
                     origins = fboOrigins(info.sku, stocks, clusters);
                 } catch (e) {
-                    throw new Error(`Не удалось определить склады FBO с остатком для доставки: ${e.message}`);
+                    const message = `Не удалось определить склады FBO с остатком для доставки: ${e.message}`;
+                    throw e instanceof PricingDataError ? new PricingDataError(message) : new Error(message);
                 }
             }
             const directions = selectOzonRoutes(history, scheme, info.sku, info.typeId, minUnits);

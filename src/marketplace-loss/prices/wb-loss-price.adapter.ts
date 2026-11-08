@@ -3,7 +3,7 @@ import { WbPriceService } from '../../wb.price/wb.price.service';
 import { WbCurrentPrice, WbCurrentPricesService } from '../../wb.price/wb.current-prices.service';
 import { UpdatePriceDto } from '../../price/dto/update.price.dto';
 import { wbPriceTask } from '../../wb.price/wb-price-task';
-import { LossPriceAdapter } from './loss-price.contracts';
+import { LossPriceAdapter, LossPriceResult } from './loss-price.contracts';
 
 @Injectable()
 export class WbLossPriceAdapter implements LossPriceAdapter {
@@ -32,13 +32,13 @@ export class WbLossPriceAdapter implements LossPriceAdapter {
             (response?.results ?? []).map((r) => [r.offer_id, r]),
         );
         return new Map(
-            targets.map((t): [string, string | null] => {
+            targets.map((t): [string, LossPriceResult] => {
                 const row = rows.get(t.offer_id);
                 return [
                     t.offer_id,
                     row && ['accepted', 'unchanged'].includes(row.status)
                         ? null
-                        : row?.message || 'ВБ не подтвердил приём цены',
+                        : { message: row?.message || 'ВБ не подтвердил приём цены', kind: row ? 'data' : 'temporary' },
                 ];
             }),
         );
@@ -46,17 +46,16 @@ export class WbLossPriceAdapter implements LossPriceAdapter {
     async promos(offers: string[]) {
         const report = await this.pricing.setMinPrices(offers);
         return new Map(
-            offers.map((offer): [string, string | null] => [
-                offer,
-                report.errors.find((e) => e.startsWith(offer + ':')) ||
-                    (report.missing.includes(offer)
-                        ? 'Нет текущей цены ВБ'
-                        : report.belowMin.includes(offer)
-                          ? 'Цена ВБ ниже нового минимума'
-                          : report.changes.some((c) => c.article === offer)
-                            ? 'Изменена скидка ВБ; ожидается подтверждение цены'
-                            : null),
-            ]),
+            offers.map((offer): [string, LossPriceResult] => {
+                const error = report.errors.find((e) => e.startsWith(offer + ':'));
+                if (error) return [offer, { message: error, kind: 'temporary' }];
+                if (report.missing.includes(offer)) return [offer, { message: 'Нет текущей цены ВБ', kind: 'data' }];
+                if (report.belowMin.includes(offer))
+                    return [offer, { message: 'Цена ВБ ниже нового минимума', kind: 'data' }];
+                if (report.changes.some((c) => c.article === offer))
+                    return [offer, { message: 'Изменена скидка ВБ; ожидается подтверждение цены', kind: 'temporary' }];
+                return [offer, null];
+            }),
         );
     }
 }

@@ -7,7 +7,10 @@ export interface IPriceUpdateable {
     readonly priceUpdateKey?: string;
     startUpdateAllPrices?(clientId?: string): import('../job/job.state.dto').JobStateDto;
     getObtainCoeffs(): ObtainCoeffsDto;
-    getProductsWithCoeffs(skus: string[]): Promise<IProductCoeffsable[]>;
+    getProductsWithCoeffs(
+        skus: string[],
+        onError?: (offerId: string, error: unknown) => void,
+    ): Promise<IProductCoeffsable[]>;
     updatePrices(updatePrices: UpdatePriceDto[]): Promise<any>;
     updateAllPrices(): Promise<any>;
     createAction(file: Express.Multer.File): Promise<Excel.Buffer>;

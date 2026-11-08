@@ -198,3 +198,51 @@ describe('Данные и потребители единого расчёта O
         );
     });
 });
+
+it('общий сборщик сохраняет исправный товар при ошибке загрузки другого артикула', async () => {
+    const m = make();
+    const context = await m.loader.load(m.product, m.info);
+    const broken = { ...m.product, offer_id: '456' };
+    m.products.getPrices.mockResolvedValue({ items: [m.product, broken] });
+    m.products.infoList.mockResolvedValue([m.info, { ...m.info, sku: '456' }]);
+    jest.spyOn(m.loader, 'load').mockImplementation(async (product) => {
+        if (product.offer_id === '456') throw new Error('Нет комиссии для 456');
+        return context;
+    });
+    const skipped = [];
+    const result = await (m.goods.buildPriceables as any)(m.priceService, ['123-5', '456'], undefined, (row) =>
+        skipped.push(row),
+    );
+    expect(result.map((p) => p.offer_id)).toEqual(['123-5']);
+    expect(skipped).toEqual([expect.objectContaining({ offer_id: '456', message: 'Нет комиссии для 456' })]);
+});
+
+it('экран получает обе карточки, а ошибка тарифа принадлежит только проблемному товару', async () => {
+    const m = make();
+    const context = await m.loader.load(m.product, m.info);
+    m.products.getPrices.mockResolvedValue({ items: [m.product, { ...m.product, offer_id: '456' }] });
+    m.products.infoList.mockResolvedValue([m.info, { ...m.info, sku: '456' }]);
+    jest.spyOn(m.loader, 'load').mockImplementation(async (product) => {
+        if (product.offer_id === '456') throw new Error('Нет тарифа для 456');
+        return context;
+    });
+    const result = await m.priceService.index({ offer_id: ['123-5', '456'] } as any);
+    expect(result.data).toHaveLength(2);
+    expect(result.data[0].ozon).toBe(context);
+    expect(result.data[1].pricingError).toBe('Нет тарифа для 456');
+    expect(result.data[1].ozon).toBeUndefined();
+});
+
+it('сбой одного API-пакета не запускает тысячу одиночных запросов и не теряет следующий пакет', async () => {
+    const m = make();
+    const offers = Array.from({ length: 1001 }, (_, i) => String(i + 1));
+    m.products.getPrices
+        .mockRejectedValueOnce(new Error('503'))
+        .mockResolvedValueOnce({ items: [{ ...m.product, offer_id: '1001' }] });
+    m.products.infoList.mockResolvedValue([{ ...m.info, sku: '1001' }]);
+    const errors = jest.fn();
+    const result = await m.priceService.getProductsWithCoeffs(offers, errors);
+    expect(result.map((p) => p.getSku())).toEqual(['1001']);
+    expect(m.products.getPrices).toHaveBeenCalledTimes(2);
+    expect(errors).toHaveBeenCalledTimes(1000);
+});

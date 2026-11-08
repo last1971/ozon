@@ -1,3 +1,5 @@
+import { jobCheckpoint } from '../job/job.checkpoint';
+import { PricingDataError } from '../helpers/price/pricing-error';
 import { lossPriceFields, productLossPriceFields } from '../helpers/price/marketplace.loss.input';
 import { BulkPriceJobService } from './bulk/bulk-price-job.service';
 import { SerializePriceUpdate } from '../helpers/price/price-update.queue';
@@ -112,7 +114,8 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
         await this.ozonPricing.prepare(productsInfos);
         const percDirectFlow = 1 + this.configService.get<number>('PERC_DIRECT_FLOW', 0) / 100;
         const data: PriceDto[] = [];
-        for (const item of products.items) {
+        for (const [index, item] of products.items.entries()) {
+            if (index % 50 === 0) await jobCheckpoint();
             const good = goods.find((g) => g.code.toString() === goodCode(item));
             const percent: GoodPercentDto = percents.find(
                 (p) => p.offer_id.toString() === goodCode(item) && p.pieces === goodQuantityCoeff(item),
@@ -127,17 +130,24 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
             };
             const base = resolvePriceBase(item.offer_id, goodQuantityCoeff(item), good, percent);
             const productInfo = productsInfos.find((info) => info.sku === item.offer_id);
-            const adapter = new OzonProductCoeffsAdapter(
-                item,
-                percDirectFlow,
-                productInfo,
-                this.priceCalculationHelper,
-                await this.ozonPricing.load(item, productInfo),
-            );
+            let adapter: OzonProductCoeffsAdapter;
+            let pricingError: string | undefined;
+            try {
+                adapter = new OzonProductCoeffsAdapter(
+                    item,
+                    percDirectFlow,
+                    productInfo,
+                    this.priceCalculationHelper,
+                    await this.ozonPricing.load(item, productInfo),
+                );
+            } catch (error) {
+                pricingError = (error instanceof Error ? error.message : String(error)) || 'Не удалось собрать данные расчёта Ozon';
+            }
 
             data.push({
-                ...ozonReturnPriceFields(adapter, percent.return_perc),
-                ...productLossPriceFields(adapter, goods),
+                ...(adapter ? ozonReturnPriceFields(adapter, percent.return_perc) : {}),
+                ...(adapter ? productLossPriceFields(adapter, goods) : {}),
+                ...(pricingError ? { pricingError } : {}),
                 fbs_return_flow_amount: item.commissions.fbs_return_flow_amount,
                 fbo_return_flow_amount: item.commissions.fbo_return_flow_amount,
                 product_id: item.product_id,
@@ -155,8 +165,8 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                 perc: percent.perc ?? this.configService.get<number>('PERC_NOR', 25),
                 old_perc: percent.old_perc ?? this.configService.get<number>('PERC_MAX', 50),
                 adv_perc: percent.adv_perc ?? 0,
-                sales_percent: adapter.getSalesPercent(),
-                fbs_direct_flow_trans_max_amount: adapter.getTransMaxAmount(),
+                sales_percent: adapter?.getSalesPercent() ?? null,
+                fbs_direct_flow_trans_max_amount: adapter?.getTransMaxAmount() ?? null,
                 auto_action_enabled: item.price.auto_action_enabled,
                 sum_pack: percent.packing_price ?? this.configService.get<number>('SUM_PACK', 10),
                 fbsCount: productInfo?.fbsCount || 0,
@@ -370,26 +380,54 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
         };
     }
 
-    async getProductsWithCoeffs(skus: string[]): Promise<IProductCoeffsable[]> {
+    async getProductsWithCoeffs(
+        skus: string[],
+        onError?: (offerId: string, error: unknown) => void,
+    ): Promise<IProductCoeffsable[]> {
         const percDirectFlow = 1 + this.configService.get<number>('PERC_DIRECT_FLOW', 0) / 100;
         const allResults: IProductCoeffsable[] = [];
 
-        await this.processPricesBatched(skus, async (items, skusBatch) => {
-            const counts = await this.product.infoList(skusBatch);
-            await this.ozonPricing.prepare(counts);
-            for (const product of items) {
-                const productInfo = counts.find((info) => info.sku === product.offer_id);
-                allResults.push(
-                    new OzonProductCoeffsAdapter(
-                        product,
-                        percDirectFlow,
-                        productInfo,
-                        this.priceCalculationHelper,
-                        await this.ozonPricing.load(product, productInfo),
-                    ),
-                );
-            }
-        });
+        await this.processPricesBatched(
+            skus,
+            async (items, skusBatch) => {
+                if (!items.length) {
+                    for (const offer of skusBatch)
+                        onError?.(offer, new PricingDataError('Карточка товара не найдена в Ozon'));
+                    return;
+                }
+                const counts = await this.product.infoList(skusBatch);
+                if (
+                    !Array.isArray(counts) ||
+                    new Set(counts.map((info) => info.sku)).size !== counts.length ||
+                    counts.some((info) => !skusBatch.includes(info.sku))
+                )
+                    throw new Error('Неполный или посторонний ответ карточек Ozon');
+                await this.ozonPricing.prepare(counts);
+                for (const [index, product] of items.entries()) {
+                    if (index % 50 === 0) await jobCheckpoint();
+                    try {
+                        const productInfo = counts.find((info) => info.sku === product.offer_id);
+                        allResults.push(
+                            new OzonProductCoeffsAdapter(
+                                product,
+                                percDirectFlow,
+                                productInfo,
+                                this.priceCalculationHelper,
+                                await this.ozonPricing.load(product, productInfo),
+                            ),
+                        );
+                    } catch (error) {
+                        if (!onError) throw error;
+                        onError(product.offer_id, error);
+                    }
+                }
+                for (const offer of skusBatch)
+                    if (!items.some((item) => item.offer_id === offer))
+                        onError?.(offer, new PricingDataError('Карточка товара не найдена в Ozon'));
+            },
+            1000,
+            onError,
+        );
 
         return allResults;
     }
@@ -398,20 +436,26 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
         skus: string[],
         processor: (items: ProductPriceDto[], skusBatch: string[]) => Promise<void>,
         batchSize = 1000,
+        onError?: (offerId: string, error: unknown) => void,
     ): Promise<void> {
         for (const skusBatch of chunk(skus, batchSize)) {
-            const response = await this.product.getPrices({
-                offer_id: skusBatch,
-                limit: batchSize,
-                visibility: ProductVisibility.ALL,
-            });
-
-            if (!response?.items) {
-                this.logger.error('Invalid response from Ozon API', { response, skus: skusBatch });
-                continue;
+            try {
+                const response = await this.product.getPrices({
+                    offer_id: skusBatch,
+                    limit: batchSize,
+                    visibility: ProductVisibility.ALL,
+                });
+                if (
+                    !Array.isArray(response?.items) ||
+                    new Set(response.items.map((p) => p.offer_id)).size !== response.items.length ||
+                    response.items.some((p) => !skusBatch.includes(p.offer_id))
+                )
+                    throw new Error('Неполный, повторный или посторонний ответ цен Ozon');
+                await processor(response.items, skusBatch);
+            } catch (error) {
+                if (!onError) throw error;
+                for (const offer of skusBatch) onError(offer, error);
             }
-
-            await processor(response.items, skusBatch);
         }
     }
 
@@ -526,6 +570,7 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
         const lossGoods = ozon.lossStatistics ? await this.goodService.prices([goodCode(price)], null) : [];
         return {
             ...price,
+            pricingError: undefined,
             lossCosts: undefined,
             ...productLossPriceFields(product, lossGoods),
             ...ozonReturnPriceFields(product, own?.return_perc ?? 0),

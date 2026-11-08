@@ -1,3 +1,4 @@
+import { PricingDataError } from '../helpers/price/pricing-error';
 import { LossPricingService, LossPricingStatistics } from '../marketplace-loss/loss-pricing.service';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -31,15 +32,15 @@ export class OzonPricingService {
 
     async load(product: ProductPriceDto, info: ProductInfoDto): Promise<OzonPricingContext> {
         if (!info || info.sku !== product.offer_id || !info.typeId)
-            throw new Error(`${product.offer_id}: нет карточки или типа Ozon`);
+            throw new PricingDataError(`${product.offer_id}: нет карточки или типа Ozon`);
         const commissions = await this.categories.getCommissions(info.typeId);
-        if (!commissions) throw new Error(`${product.offer_id}: нет импортированных комиссий Ozon`);
+        if (!commissions) throw new PricingDataError(`${product.offer_id}: нет импортированных комиссий Ozon`);
         const quote = await this.logistics.quote(product, info);
         const schemes: OzonPriceScheme[] = [];
         for (const scheme of ['fbs', 'fbo'] as const) {
             if (!(info[scheme === 'fbs' ? 'fbsCount' : 'fboCount'] > 0)) continue;
             const costs = quote[scheme];
-            if (!costs) throw new Error(`${product.offer_id}: нет расходов ${scheme}`);
+            if (!costs) throw new PricingDataError(`${product.offer_id}: нет расходов ${scheme}`);
             schemes.push({
                 scheme,
                 commissions: commissions[scheme].map((r) => ({

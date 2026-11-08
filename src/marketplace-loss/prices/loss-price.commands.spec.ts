@@ -168,7 +168,12 @@ describe('Каждая команда очереди цен', () => {
         await s.load.execute(s.ctx);
         await s.calculate.execute(s.ctx);
         expect(s.ctx.tasks[0].targets).toEqual([calculatePrice(input('123-1'), coeffs)]);
-        expect(s.goods.buildPriceables).toHaveBeenCalledWith(s.adapter.pricing, ['123-1']);
+        expect(s.goods.buildPriceables).toHaveBeenCalledWith(
+            s.adapter.pricing,
+            ['123-1'],
+            undefined,
+            expect.any(Function),
+        );
     });
     it.each(['card', 'base', 'partial'])('не отправляет при неполных данных: %s', async (kind) => {
         const s = setup();
@@ -402,4 +407,129 @@ it('неизвестный отказ становится известным: �
     expect(Number(s.current.get('123').min_price)).toBeGreaterThan(before);
     expect(s.pending.size).toBe(0);
     expect(s.adapter.send).toHaveBeenCalledTimes(2);
+});
+
+it('ошибка расчёта одного артикула не присваивается исправному соседу', async () => {
+    const s = setup(['123', '456']);
+    s.goods.buildPriceables.mockImplementation(async (_, ids) =>
+        ids.map((id) => ({
+            ...input(id),
+            min_perc: id === '456' ? NaN : 20,
+        })),
+    );
+    const result = await s.run();
+    expect((result.result as any).completed).toBe(1);
+    expect([...s.pending.values()].map((e) => e.payload.offerId)).toEqual(['456']);
+    expect(s.adapter.send.mock.calls[0][0].map((t) => t.offer_id)).toEqual(['123']);
+});
+it('неизменная ошибка данных не запускает тот же расчёт при следующем cron', async () => {
+    const s = setup();
+    s.goods.buildPriceables.mockImplementation(async (_, ids) => ids.map((id) => ({ ...input(id), min_perc: NaN })));
+    await s.jobs.whenDone(s.worker.start('WB', 'cron').id);
+    s.goods.buildPriceables.mockClear();
+    await s.jobs.whenDone(s.worker.start('WB', 'cron').id);
+    expect(s.goods.buildPriceables).not.toHaveBeenCalled();
+    expect(s.pending.size).toBe(1);
+});
+
+it('ручной повтор обходит ожидание ошибки данных', async () => {
+    const s = setup();
+    s.goods.buildPriceables.mockImplementationOnce(async (_, ids) =>
+        ids.map((id) => ({ ...input(id), min_perc: NaN })),
+    );
+    await s.jobs.whenDone(s.worker.start('WB', 'cron').id);
+    expect(s.worker.hasReady('WB', [...s.pending.values()])).toBe(false);
+    expect((await s.run()).status).toBe('done');
+    expect(s.pending.size).toBe(0);
+});
+it('изменение подходящей фасовки возобновляет цену без нового снимка статистики', async () => {
+    const s = setup();
+    s.goods.buildPriceables.mockImplementationOnce(async (_, ids) =>
+        ids.map((id) => ({ ...input(id), min_perc: NaN })),
+    );
+    await s.jobs.whenDone(s.worker.start('WB', 'cron').id);
+    s.worker.inputsChanged({ service: 'WB', offers: ['456'] });
+    expect(s.worker.hasReady('WB', [...s.pending.values()])).toBe(false);
+    s.worker.inputsChanged({ service: 'OZON', offers: ['123'] });
+    expect(s.worker.hasReady('WB', [...s.pending.values()])).toBe(false);
+    s.worker.inputsChanged({ service: 'WB', offers: ['123-1'] });
+    expect(s.worker.hasReady('WB', [...s.pending.values()])).toBe(true);
+    await s.jobs.whenDone(s.worker.start('WB', 'cron').id);
+    expect(s.pending.size).toBe(0);
+});
+it('данные из внешнего изменения подхватываются при часовом контрольном повторе', async () => {
+    const s = setup(),
+        now = Date.now();
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(now);
+    try {
+        s.goods.buildPriceables.mockImplementationOnce(async (_, ids) =>
+            ids.map((id) => ({ ...input(id), min_perc: NaN })),
+        );
+        await s.jobs.whenDone(s.worker.start('WB', 'cron').id);
+        clock.mockReturnValue(now + 3600000);
+        expect(s.worker.hasReady('WB', [...s.pending.values()])).toBe(true);
+        await s.jobs.whenDone(s.worker.start('WB', 'cron').id);
+        expect(s.pending.size).toBe(0);
+    } finally {
+        clock.mockRestore();
+    }
+});
+it('временный сбой повторяется следующим cron без потери события', async () => {
+    const s = setup(),
+        now = Date.now();
+    const clock = jest.spyOn(Date, 'now').mockReturnValue(now);
+    try {
+        s.goods.buildPriceables.mockRejectedValueOnce(new Error('API временно недоступен'));
+        await s.jobs.whenDone(s.worker.start('WB', 'cron').id);
+        expect([...s.pending.values()][0].payload).toMatchObject({ retryKind: 'temporary', attempts: 1 });
+        clock.mockReturnValue(now + 600000);
+        expect(s.worker.hasReady('WB', [...s.pending.values()])).toBe(true);
+        await s.jobs.whenDone(s.worker.start('WB', 'cron').id);
+        expect(s.pending.size).toBe(0);
+    } finally {
+        clock.mockRestore();
+    }
+});
+it('рестарт повторно читает сохранённые ошибки даже после потери подсказок пробуждения', async () => {
+    const s = setup();
+    s.goods.buildPriceables.mockImplementationOnce(async (_, ids) =>
+        ids.map((id) => ({ ...input(id), min_perc: NaN })),
+    );
+    await s.jobs.whenDone(s.worker.start('WB', 'cron').id);
+    const restarted = s.makeWorker();
+    restarted.worker.onApplicationBootstrap();
+    await restarted.jobs.whenDone(restarted.jobs.list(lossPriceJobKind('WB'))[0].id);
+    expect(s.pending.size).toBe(0);
+});
+it('ошибка одной фасовки не мешает другой фасовке того же товара', async () => {
+    const s = setup(['123', '123-5']);
+    s.goods.buildPriceables.mockImplementation(async (_, ids) =>
+        ids.map((id) => ({ ...input(id), min_perc: id === '123-5' ? NaN : 20 })),
+    );
+    const result = await s.run();
+    expect((result.result as any).completed).toBe(1);
+    expect([...s.pending.values()].map((r) => r.payload.offerId)).toEqual(['123-5']);
+});
+it('ошибка сравнения текущей цены одного товара не останавливает исправного соседа', async () => {
+    const s = setup(['123', '456']);
+    s.adapter.matches = (target, actual) => {
+        if (target.offer_id === '456') throw new Error('Нет nmID');
+        return matches(target, actual);
+    };
+    await s.run();
+    expect([...s.pending.values()].map((r) => r.payload.offerId)).toEqual(['456']);
+    expect(s.adapter.send.mock.calls[0][0].map((r) => r.offer_id)).toEqual(['123']);
+});
+
+it('общий API-сбой после ручного пробуждения не возвращает задание в старое ожидание', async () => {
+    const s = setup();
+    s.goods.buildPriceables.mockImplementationOnce(async (_, ids) =>
+        ids.map((id) => ({ ...input(id), min_perc: NaN })),
+    );
+    await s.jobs.whenDone(s.worker.start('WB', 'cron').id);
+    s.adapter.current.mockRejectedValueOnce(new Error('API current offline'));
+    expect((await s.run()).status).toBe('failed');
+    expect(s.worker.hasReady('WB', [...s.pending.values()])).toBe(true);
+    await s.jobs.whenDone(s.worker.start('WB', 'cron').id);
+    expect(s.pending.size).toBe(0);
 });

@@ -3,6 +3,7 @@ import type { OzonPricingContext } from '../helpers/price/ozon.pricing';
 import { PriceBaseSource } from '../good/dto/good.price.dto';
 
 export interface IPriceable {
+    pricingError?: string;
     ozon?: OzonPricingContext;
     lossCosts?: MarketplaceLossCostsInput;
     offer_id: string;

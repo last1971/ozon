@@ -1,4 +1,6 @@
-import { Inject, Injectable, Logger } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { notifyPricingInputs } from '../helpers/price/pricing-inputs-changed';
+import { Inject, Injectable, Logger, Optional } from '@nestjs/common';
 import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
 import { ConfigService } from '@nestjs/config';
 import { Cron } from '@nestjs/schedule';
@@ -23,6 +25,7 @@ export class OzonRoutesService {
         private readonly fbs: PostingService,
         private readonly fbo: PostingFboService,
         private readonly products: ProductService,
+        @Optional() private readonly events?: EventEmitter2,
     ) {
         const instance = createHash('sha256')
             .update(`${config.get('FB_HOST', '')}|${config.get('FB_BASE', '')}`)
@@ -113,6 +116,9 @@ export class OzonRoutesService {
             return;
         try {
             await this.refresh();
+            notifyPricingInputs(this.events, { service: 'OZON' }, (error) =>
+                this.logger.error(`История направлений обновлена, очередь не уведомлена: ${String(error)}`),
+            );
         } catch (e) {
             this.logger.error(`Не обновлено распределение доставок Ozon: ${e.message}`);
         }

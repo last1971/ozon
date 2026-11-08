@@ -1,3 +1,5 @@
+import type { PricingFailureKind } from '../../helpers/price/pricing-error';
+import type { PricingInputsChanged } from '../../helpers/price/pricing-inputs-changed';
 import { IJobContext } from '../../interfaces/i.job.context';
 import { IPriceUpdateable } from '../../interfaces/i.price.updateable';
 import { UpdatePriceDto } from '../../price/dto/update.price.dto';
@@ -14,6 +16,8 @@ export interface LossPricePayload {
     attempts?: number;
     lastError?: string;
     attemptedAt?: string;
+    nextAttemptAt?: string;
+    retryKind?: PricingFailureKind;
 }
 export interface LossPriceTask {
     offerId: string;
@@ -21,8 +25,11 @@ export interface LossPriceTask {
     targets: UpdatePriceDto[];
     changed: UpdatePriceDto[];
     error?: string;
+    failureKind?: PricingFailureKind;
+    deferred?: boolean;
 }
 /** Адаптер отвечает за протокол площадки, общая цепочка — за очередь и порядок фаз. */
+export type LossPriceResult = string | { message: string; kind: PricingFailureKind } | null;
 export interface LossPriceAdapter {
     readonly pricing: IPriceUpdateable;
     readonly promoBatchSize?: number;
@@ -30,8 +37,8 @@ export interface LossPriceAdapter {
     current(offers: string[]): Promise<Map<string, unknown>>;
     matches(target: UpdatePriceDto, actual: unknown): boolean;
     persist(targets: UpdatePriceDto[]): Promise<void>;
-    send(targets: UpdatePriceDto[]): Promise<Map<string, string | null>>;
-    promos(offers: string[]): Promise<Map<string, string | null>>;
+    send(targets: UpdatePriceDto[]): Promise<Map<string, LossPriceResult>>;
+    promos(offers: string[]): Promise<Map<string, LossPriceResult>>;
 }
 export const LOSS_PRICE_ADAPTERS = Symbol('LOSS_PRICE_ADAPTERS');
 export interface LossPriceContext extends IJobContext {
@@ -39,6 +46,8 @@ export interface LossPriceContext extends IJobContext {
     adapter: LossPriceAdapter;
     tasks: LossPriceTask[];
     sent: number;
+    forceRetry?: boolean;
+    wake?: PricingInputsChanged;
 }
 export const lossPriceJobKind = (service: string) => `loss-price-update:${service.toLowerCase()}`;
 export function lossPriceMarket(service: string): LossPriceMarket {

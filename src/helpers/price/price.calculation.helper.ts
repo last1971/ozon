@@ -95,6 +95,7 @@ export class PriceCalculationHelper {
         goodService: IGood,
         transaction: FirebirdTransaction = null,
         known?: PricesContextDto,
+        onError?: (offerId: string, error: unknown) => void,
     ): Promise<{
         codes: string[];
         goods: GoodPriceDto[];
@@ -105,7 +106,9 @@ export class PriceCalculationHelper {
         const goods = known ? known.goods : await goodService.prices(codes, transaction);
         const percents = known ? known.percents : await goodService.getPerc(codes, transaction);
         const products = service
-            ? await service.getProductsWithCoeffs(skus)
+            ? onError
+                ? await service.getProductsWithCoeffs(skus, onError)
+                : await service.getProductsWithCoeffs(skus)
             : skus.map((sku) => new GenericProductCoeffsAdapter(sku));
 
         return { codes, goods, percents, products };
@@ -120,14 +123,21 @@ export class PriceCalculationHelper {
         const sku = product.getSku();
         const code = goodCode({ offer_id: sku });
         const pieces = goodQuantityCoeff({ offer_id: sku });
-        return resolvePriceBase(sku, pieces,
-            goods.find(g => String(g.code) === code),
-            percents.find(p => String(p.offer_id) === code && Number(p.pieces ?? 1) === pieces),
+        return resolvePriceBase(
+            sku,
+            pieces,
+            goods.find((g) => String(g.code) === code),
+            percents.find((p) => String(p.offer_id) === code && Number(p.pieces ?? 1) === pieces),
             prices?.get(sku)?.incoming_price,
         );
     }
 
-    getIncomingPrice(product: IProductCoeffsable, goods: GoodPriceDto[], prices?: Map<string, UpdatePriceDto>, percents: GoodPercentDto[] = []): number {
+    getIncomingPrice(
+        product: IProductCoeffsable,
+        goods: GoodPriceDto[],
+        prices?: Map<string, UpdatePriceDto>,
+        percents: GoodPercentDto[] = [],
+    ): number {
         return this.getPriceBase(product, goods, percents, prices).incoming_price;
     }
 

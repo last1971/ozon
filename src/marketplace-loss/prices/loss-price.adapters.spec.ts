@@ -37,7 +37,7 @@ describe('Адаптер Ozon', () => {
         expect(await s.adapter.send([target, { ...target, offer_id: '456' }])).toEqual(
             new Map([
                 ['123', null],
-                ['456', 'Ozon не подтвердил приём цены'],
+                ['456', { message: 'Ozon не подтвердил приём цены', kind: 'temporary' }],
             ]),
         );
         expect(s.pricing.updatePrices).toHaveBeenCalledWith([target, { ...target, offer_id: '456' }]);
@@ -50,7 +50,7 @@ describe('Адаптер Ozon', () => {
             status: 'done',
             result: { checked: 1, items: [{ offerId: '123', ok: false, notes: ['Нет тарифа'] }] },
         } as any);
-        expect((await s.adapter.promos(['123'])).get('123')).toBe('Нет тарифа');
+        expect((await s.adapter.promos(['123'])).get('123')).toEqual({ message: 'Нет тарифа', kind: 'data' });
         s.jobs.whenDone.mockResolvedValueOnce({ status: 'failed', error: 'API' } as any);
         await expect(s.adapter.promos(['123'])).rejects.toThrow('API');
         s.jobs.whenDone.mockResolvedValueOnce({ status: 'done', result: { checked: 0, items: [] } });
@@ -90,7 +90,7 @@ describe('Адаптер ВБ', () => {
         expect(await s.adapter.send([target, { ...target, offer_id: '456' }])).toEqual(
             new Map([
                 ['123', null],
-                ['456', 'Ошибка ВБ'],
+                ['456', { message: 'Ошибка ВБ', kind: 'data' }],
             ]),
         );
     });
@@ -104,14 +104,20 @@ describe('Адаптер ВБ', () => {
             belowMin: [],
             changes: [{ article: '123' }],
         } as any);
-        expect((await s.adapter.promos(['123'])).get('123')).toContain('ожидается подтверждение');
+        expect((await s.adapter.promos(['123'])).get('123')).toEqual({
+            message: expect.stringContaining('ожидается подтверждение'),
+            kind: 'temporary',
+        });
         s.pricing.setMinPrices.mockResolvedValueOnce({
             errors: ['123: ошибка акции'],
             missing: [],
             belowMin: [],
             changes: [],
         });
-        expect((await s.adapter.promos(['123'])).get('123')).toBe('123: ошибка акции');
+        expect((await s.adapter.promos(['123'])).get('123')).toEqual({
+            message: '123: ошибка акции',
+            kind: 'temporary',
+        });
     });
 });
 it('ограниченный сбор переиспользует allStates с фильтром, полный сбор остаётся для прежних запусков', async () => {

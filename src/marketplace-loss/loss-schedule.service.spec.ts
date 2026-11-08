@@ -13,7 +13,10 @@ const setup = (services = ['OZON', 'WB', 'YANDEX'], environment = 'production') 
         list: jest.fn(() => services.map((service) => ({ service }))),
         start: jest.fn((service) => ({ id: 'daily-' + service })),
     };
-    const prices = { start: jest.fn((service) => ({ id: 'price-' + service })) };
+    const prices = {
+        start: jest.fn((service) => ({ id: 'price-' + service })),
+        hasReady: jest.fn().mockReturnValue(true),
+    };
     const queue = { pending: jest.fn().mockResolvedValue([{ extId: 'pending' }]) };
     const jobs = {
         list: jest.fn().mockReturnValue([]),
@@ -196,4 +199,12 @@ describe('Регистрация времени и сохранение преж
         expect(first.toISO()).toBe('2026-11-07T03:06:00.000+03:00');
         expect(second.toMillis() - first.toMillis()).toBe(10 * 60_000);
     });
+});
+
+it('cron не создаёт пустой job, если все ошибки ожидают следующей попытки', async () => {
+    const s = setup(['WB']);
+    s.prices.hasReady.mockReturnValue(false);
+    await s.service.retryPrices();
+    expect(s.queue.pending).toHaveBeenCalledWith('WB');
+    expect(s.prices.start).not.toHaveBeenCalled();
 });

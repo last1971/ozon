@@ -4,20 +4,31 @@ import { chunk } from 'lodash';
 import { GOOD_SERVICE, IGood } from '../../interfaces/IGood';
 import { IJobCommand } from '../../interfaces/i.job.context';
 import { jobCheckpoint } from '../../job/job.checkpoint';
-import { calculatePrice } from '../../helpers/price/price.helpers';
+import { calculatePriceBatch } from '../../helpers/price/calculate-price-batch';
+import { pricingFailureKind } from '../../helpers/price/pricing-error';
+import { PriceSkip } from '../../price/price-update.report';
+import { lossPriceRetryDue } from './loss-price.retry';
 import { lossOfferKey } from '../../helpers/price/marketplace.loss.stats';
 import { LossPriceQueueStore } from './loss-price-queue.store';
-import { LossPriceContext, LossPricePayload, LossPriceTask } from './loss-price.contracts';
+import { LossPriceContext, LossPricePayload, LossPriceTask, LossPriceResult } from './loss-price.contracts';
 
 const valid = (ctx: LossPriceContext) => ctx.tasks.filter((t) => !t.error);
 const targets = (ctx: LossPriceContext) => valid(ctx).flatMap((t) => t.targets);
 const reason = (e: unknown) => (e instanceof Error ? e.message : String(e));
-function rejectOffers(ctx: LossPriceContext, results: Map<string, string | null>) {
+function rejectOffers(ctx: LossPriceContext, results: Map<string, LossPriceResult>) {
     for (const task of valid(ctx)) {
         const errors = task.targets
-            .map((t) => (results.has(t.offer_id) ? results.get(t.offer_id) : 'Нет подтверждения площадки'))
-            .filter(Boolean);
-        if (errors.length) task.error = errors.join('; ');
+            .map((t) =>
+                results.has(t.offer_id)
+                    ? results.get(t.offer_id)
+                    : { message: 'Нет подтверждения площадки', kind: 'temporary' as const },
+            )
+            .filter(Boolean)
+            .map((failure) => (typeof failure === 'string' ? { message: failure, kind: 'data' as const } : failure));
+        if (errors.length) {
+            task.error = errors.map((failure) => failure.message).join('; ');
+            task.failureKind = errors.some((failure) => failure.kind === 'temporary') ? 'temporary' : 'data';
+        }
     }
 }
 
@@ -49,11 +60,20 @@ export class LoadLossPriceTasksCommand implements IJobCommand<LossPriceContext> 
                     targets: [],
                     changed: [],
                     error: `Повреждённое задание: ${reason(e)}`,
+                    failureKind: 'data',
                 });
             }
             ctx.progress.done++;
         }
         ctx.tasks = [...grouped.values()];
+        for (const task of ctx.tasks) {
+            if (task.events.some((event) => lossPriceRetryDue(event.payload, ctx.forceRetry, ctx.wake))) continue;
+            task.deferred = true;
+            task.error =
+                (task.events[task.events.length - 1].payload as LossPricePayload)?.lastError ||
+                'Ожидание следующего повтора';
+        }
+        ctx.progress.counters.deferred = ctx.tasks.filter((task) => task.deferred).length;
         ctx.progress.counters.tasks = ctx.tasks.length;
         return ctx;
     }
@@ -80,6 +100,7 @@ export class CalculateLossPriceTargetsCommand implements IJobCommand<LossPriceCo
             const actual = offers.get(task.offerId);
             if (!actual?.length) {
                 task.error = 'Товар этой фасовки не найден в кабинете';
+                task.failureKind = 'data';
                 continue;
             }
             actual.forEach((offer) => requested.set(offer, task));
@@ -88,29 +109,35 @@ export class CalculateLossPriceTargetsCommand implements IJobCommand<LossPriceCo
         for (const batch of chunk([...requested.keys()], 100)) {
             await jobCheckpoint(ctx);
             try {
-                const inputs = await this.goods.buildPriceables(ctx.adapter.pricing, batch);
+                const skipped = new Map<string, PriceSkip>();
+                const inputs = await this.goods.buildPriceables(ctx.adapter.pricing, batch, undefined, (row) =>
+                    skipped.set(row.offer_id, row),
+                );
                 const found = new Map(inputs.map((input) => [input.offer_id, input]));
                 if (found.size !== inputs.length || inputs.some((input) => !batch.includes(input.offer_id)))
                     throw new Error('Повторный или посторонний артикул в расчёте');
+                const calculated = await calculatePriceBatch(inputs, ctx.adapter.pricing.getObtainCoeffs(), ctx);
+                for (const row of calculated.skipped) skipped.set(row.offer_id, row);
+                const calculatedByOffer = new Map(calculated.prices.map((target) => [target.offer_id, target]));
                 for (const offer of batch) {
                     const task = requested.get(offer);
-                    const input = found.get(offer);
-                    if (!input) {
-                        task.error = 'Не все фасовки удалось рассчитать: нет базы или корректных расходов';
+                    const target = calculatedByOffer.get(offer);
+                    if (!target) {
+                        const failure = skipped.get(offer);
+                        task.error =
+                            failure?.message ||
+                            (failure?.reason
+                                ? `Товар не рассчитан: ${failure.reason}`
+                                : 'Не все фасовки удалось рассчитать: нет базы или корректных расходов');
+                        task.failureKind = failure?.failureKind ?? 'data';
                         continue;
                     }
-                    const target = calculatePrice(input, ctx.adapter.pricing.getObtainCoeffs());
-                    if (
-                        [target.price, target.min_price].some((n) => !Number.isFinite(Number(n)) || Number(n) <= 0) ||
-                        !Number.isFinite(Number(target.old_price)) ||
-                        Number(target.old_price) < 0
-                    )
-                        throw new Error('Получены некорректные цены');
                     task.targets.push(target);
                 }
             } catch (e) {
                 batch.forEach((offer) => {
                     requested.get(offer).error = reason(e);
+                    requested.get(offer).failureKind = pricingFailureKind(e);
                 });
             }
             ctx.progress.done += batch.length;
@@ -132,7 +159,12 @@ export class CompareLossPricesCommand implements IJobCommand<LossPriceContext> {
         for (const task of ctx.tasks) {
             await jobCheckpoint(ctx);
             if (!task.error)
-                task.changed = task.targets.filter((t) => !ctx.adapter.matches(t, current.get(t.offer_id)));
+                try {
+                    task.changed = task.targets.filter((t) => !ctx.adapter.matches(t, current.get(t.offer_id)));
+                } catch (error) {
+                    task.error = reason(error);
+                    task.failureKind = 'data';
+                }
             ctx.progress.done++;
         }
         ctx.progress.counters.unchanged = valid(ctx).reduce((n, t) => n + t.targets.length - t.changed.length, 0);
@@ -154,11 +186,12 @@ export class SendLossPricesCommand implements IJobCommand<LossPriceContext> {
                 if (unchanged.length) await ctx.adapter.persist(unchanged);
             } catch (e) {
                 task.error = reason(e);
+                task.failureKind = pricingFailureKind(e);
             }
         }
         const changed = valid(ctx).flatMap((t) => t.changed);
         ctx.progress.total = changed.length;
-        const results = new Map<string, string | null>(
+        const results = new Map<string, LossPriceResult>(
             valid(ctx).flatMap((t) =>
                 t.targets.filter((p) => !t.changed.includes(p)).map((p) => [p.offer_id, null] as [string, null]),
             ),
@@ -169,7 +202,7 @@ export class SendLossPricesCommand implements IJobCommand<LossPriceContext> {
             try {
                 for (const [offer, error] of await ctx.adapter.send(batch)) results.set(offer, error);
             } catch (e) {
-                batch.forEach((p) => results.set(p.offer_id, reason(e)));
+                batch.forEach((p) => results.set(p.offer_id, { message: reason(e), kind: pricingFailureKind(e) }));
             }
             ctx.progress.done += batch.length;
         }
@@ -196,8 +229,16 @@ export class ConfirmLossPricesCommand implements IJobCommand<LossPriceContext> {
         ctx.progress.total = ctx.tasks.length;
         for (const task of ctx.tasks) {
             await jobCheckpoint(ctx);
-            if (!task.error && task.targets.some((p) => !ctx.adapter.matches(p, current.get(p.offer_id))))
-                task.error = 'Площадка ещё не подтвердила рассчитанные цены; задание оставлено для повтора';
+            if (!task.error)
+                try {
+                    if (task.targets.some((p) => !ctx.adapter.matches(p, current.get(p.offer_id)))) {
+                        task.error = 'Площадка ещё не подтвердила рассчитанные цены; задание оставлено для повтора';
+                        task.failureKind = 'temporary';
+                    }
+                } catch (error) {
+                    task.error = reason(error);
+                    task.failureKind = 'data';
+                }
             ctx.progress.done++;
         }
         return ctx;
@@ -210,7 +251,7 @@ export class CheckLossPricePromosCommand implements IJobCommand<LossPriceContext
     readonly weight = 5;
     async execute(ctx: LossPriceContext) {
         const all = targets(ctx);
-        const results = new Map<string, string | null>();
+        const results = new Map<string, LossPriceResult>();
         ctx.progress.total = all.length;
         for (const batch of chunk(all, ctx.adapter.promoBatchSize ?? 100)) {
             await jobCheckpoint(ctx);
@@ -218,7 +259,7 @@ export class CheckLossPricePromosCommand implements IJobCommand<LossPriceContext
                 for (const [offer, error] of await ctx.adapter.promos(batch.map((p) => p.offer_id)))
                     results.set(offer, error);
             } catch (e) {
-                batch.forEach((p) => results.set(p.offer_id, reason(e)));
+                batch.forEach((p) => results.set(p.offer_id, { message: reason(e), kind: pricingFailureKind(e) }));
             }
             ctx.progress.done += batch.length;
         }
@@ -237,7 +278,7 @@ export class FinishLossPriceTasksCommand implements IJobCommand<LossPriceContext
         for (const task of ctx.tasks) {
             for (const event of task.events) {
                 await jobCheckpoint(ctx);
-                await this.queue.finish(ctx.service, event, task.error);
+                if (!task.deferred) await this.queue.finish(ctx.service, event, task.error, task.failureKind);
             }
             ctx.progress.done++;
         }

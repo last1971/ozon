@@ -1,3 +1,7 @@
+import { notifyPricingInputs } from '../helpers/price/pricing-inputs-changed';
+import { pricingFailureKind } from '../helpers/price/pricing-error';
+import { calculatePriceBatch } from '../helpers/price/calculate-price-batch';
+import { jobCheckpoint } from '../job/job.checkpoint';
 import { productLossPriceFields } from '../helpers/price/marketplace.loss.input';
 import { calculateMarketplaceLossCosts } from '../helpers/price/marketplace.loss.costs';
 import { priceUpdateQueue } from '../helpers/price/price-update.queue';
@@ -246,6 +250,10 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
             ],
             !t,
         );
+        if (!t)
+            notifyPricingInputs(this.eventEmitter, { offers: [`${goodCode(perc)}-${getPieces(perc)}`] }, (error) =>
+                this.logger.error(`Не удалось уведомить очередь цен: ${String(error)}`),
+            );
     }
 
     async setWbData(data: GoodWbDto, t: FirebirdTransaction = null): Promise<void> {
@@ -268,6 +276,10 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
             values,
             !t,
         );
+        if (!t && (data.commission !== undefined || data.tariff !== undefined || data.wbCategoriesId !== undefined))
+            notifyPricingInputs(this.eventEmitter, { service: 'WB', offers: [String(data.id)] }, (error) =>
+                this.logger.error(`Не удалось уведомить очередь цен: ${String(error)}`),
+            );
     }
 
     async setAvitoData(data: GoodAvitoDto, t: FirebirdTransaction = null): Promise<void> {
@@ -684,7 +696,9 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         return priceUpdateQueue.run(service.priceUpdateKey, async () => {
             const { priceables, skipped } = await this.collectPriceables(service, skus, prices);
             const coeffs = service.getObtainCoeffs();
-            const sent = priceables.map((priceData) => calculatePrice(priceData, coeffs));
+            const calculated = await calculatePriceBatch(priceables, coeffs);
+            skipped.push(...calculated.skipped);
+            const sent = calculated.prices;
             const response = sent.length > 0 ? await service.updatePrices(sent) : null;
             return { coeffs, inputs: priceables, sent, skipped, response };
         });
@@ -694,10 +708,13 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         service: IPriceUpdateable | null,
         skus: string[],
         prices?: Map<string, UpdatePriceDto>,
+        onSkip?: (skip: PriceSkip) => void,
     ): Promise<IPriceable[]> {
         const { priceables, skipped } = await this.collectPriceables(service, skus, prices);
-        const unknownLoss = skipped.find((row) => row.reason === 'loss-data');
-        if (skus.length === 1 && unknownLoss) throw new Error(`${unknownLoss.offer_id}: ${unknownLoss.message}`);
+        skipped.forEach((row) => onSkip?.(row));
+        const unknownLoss = skipped.find((row) => row.reason === 'loss-data' || row.reason === 'pricing-data');
+        if (!onSkip && skus.length === 1 && unknownLoss)
+            throw new Error(`${unknownLoss.offer_id}: ${unknownLoss.message}`);
         return priceables;
     }
 
@@ -710,61 +727,93 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         skus: string[],
         prices?: Map<string, UpdatePriceDto>,
     ): Promise<{ priceables: IPriceable[]; skipped: PriceSkip[] }> {
+        const skipped: PriceSkip[] = [];
         const { goods, percents, products } = await this.priceCalculationHelper.preparePricesContext(
             service,
             skus,
             this,
+            null,
+            undefined,
+            (offer_id, error) =>
+                skipped.push({
+                    offer_id,
+                    reason: 'pricing-data',
+                    failureKind: pricingFailureKind(error),
+                    message: error instanceof Error ? error.message : String(error),
+                }),
         );
 
         await completePricePercents(skus, this, { goods, percents, prices });
 
         const priceables: IPriceable[] = [];
-        const skipped: PriceSkip[] = [];
+        for (const [index, product] of products.entries()) {
+            if (index % 50 === 0) await jobCheckpoint();
+            try {
+                const base = this.priceCalculationHelper.getPriceBase(product, goods, percents, prices);
+                const incoming_price = base.incoming_price;
+                if (!(incoming_price > 0)) {
+                    const reason = base.skipReason ?? 'no-base';
+                    skipped.push({ offer_id: product.getSku(), reason });
+                    if (reason === 'no-base') this.logger.warn(`${product.getSku()}: цену не считали — нет базы`);
+                } else {
+                    const gCode = goodCode({ offer_id: product.getSku() });
+                    const gCoeff = goodQuantityCoeff({ offer_id: product.getSku() });
+                    const { min_perc, perc, old_perc, adv_perc, packing_price, available_price, return_perc } =
+                        percents.find((p) => p.offer_id.toString() === gCode && p.pieces === gCoeff) || {
+                            adv_perc: 0,
+                            old_perc: this.configService.get<number>('PERC_MAX', 50),
+                            perc: this.configService.get<number>('PERC_NOR', 25),
+                            min_perc: this.configService.get<number>('PERC_MIN', 15),
+                            packing_price: this.configService.get<number>('SUM_PACK', 10),
+                            available_price: 0,
+                        };
 
-        for (const product of products) {
-            const base = this.priceCalculationHelper.getPriceBase(product, goods, percents, prices);
-            const incoming_price = base.incoming_price;
-            if (!(incoming_price > 0)) {
-                const reason = base.skipReason ?? 'no-base';
-                skipped.push({ offer_id: product.getSku(), reason });
-                if (reason === 'no-base') this.logger.warn(`${product.getSku()}: цену не считали — нет базы`);
-            } else {
-                const gCode = goodCode({ offer_id: product.getSku() });
-                const gCoeff = goodQuantityCoeff({ offer_id: product.getSku() });
-                const { min_perc, perc, old_perc, adv_perc, packing_price, available_price, return_perc } =
-                    percents.find((p) => p.offer_id.toString() === gCode && p.pieces === gCoeff) || {
-                        adv_perc: 0,
-                        old_perc: this.configService.get<number>('PERC_MAX', 50),
-                        perc: this.configService.get<number>('PERC_NOR', 25),
-                        min_perc: this.configService.get<number>('PERC_MIN', 15),
-                        packing_price: this.configService.get<number>('SUM_PACK', 10),
-                        available_price: 0,
-                    };
-
-                const losses = productLossPriceFields(product, goods);
-                try {
-                    calculateMarketplaceLossCosts(losses.lossCosts, 0);
-                } catch (error) {
-                    skipped.push({ offer_id: product.getSku(), reason: 'loss-data', message: error.message });
-                    continue;
+                    const losses = productLossPriceFields(product, goods);
+                    try {
+                        calculateMarketplaceLossCosts(losses.lossCosts, 0);
+                    } catch (error) {
+                        skipped.push({
+                            offer_id: product.getSku(),
+                            reason: 'loss-data',
+                            failureKind: 'data',
+                            message: error.message,
+                        });
+                        continue;
+                    }
+                    priceables.push({
+                        ...losses,
+                        ...ozonReturnPriceFields(product, return_perc),
+                        base_source: base.base_source,
+                        adv_perc,
+                        fbs_direct_flow_trans_max_amount: product.getTransMaxAmount(),
+                        incoming_price,
+                        available_price: base.available_price,
+                        min_perc,
+                        offer_id: product.getSku(),
+                        old_perc,
+                        perc,
+                        sales_percent: product.getSalesPercent(),
+                        sum_pack: packing_price,
+                    });
                 }
-                priceables.push({
-                    ...losses,
-                    ...ozonReturnPriceFields(product, return_perc),
-                    base_source: base.base_source,
-                    adv_perc,
-                    fbs_direct_flow_trans_max_amount: product.getTransMaxAmount(),
-                    incoming_price,
-                    available_price: base.available_price,
-                    min_perc,
+            } catch (error) {
+                skipped.push({
                     offer_id: product.getSku(),
-                    old_perc,
-                    perc,
-                    sales_percent: product.getSalesPercent(),
-                    sum_pack: packing_price,
+                    reason: 'pricing-data',
+                    failureKind: 'data',
+                    message: error instanceof Error ? error.message : String(error),
                 });
             }
         }
+        const found = new Set([...priceables, ...skipped].map((row) => row.offer_id));
+        for (const offer_id of skus)
+            if (!found.has(offer_id))
+                skipped.push({
+                    offer_id,
+                    reason: 'pricing-data',
+                    failureKind: 'data',
+                    message: 'Карточка товара не найдена в кабинете',
+                });
         return { priceables, skipped };
     }
 
@@ -877,7 +926,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
      * Обнуляет значение AVAILABLE_PRICE для всех товаров или указанного списка
      */
     async resetAvailablePrice(goodCodes?: string[], t?: FirebirdTransaction): Promise<void> {
-        return this.withTransaction(async (transaction) => {
+        await this.withTransaction(async (transaction) => {
             // Если goodCodes не указан или пустой, обнуляем для всех товаров
             if (!goodCodes || goodCodes.length === 0) {
                 await transaction.execute('UPDATE OZON_PERC SET AVAILABLE_PRICE = 0', []);
@@ -896,5 +945,9 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                 await transaction.execute(query, batch);
             }
         }, t);
+        if (!t)
+            notifyPricingInputs(this.eventEmitter, goodCodes?.length ? { codes: goodCodes } : {}, (error) =>
+                this.logger.error(`Не удалось уведомить очередь цен: ${String(error)}`),
+            );
     }
 }

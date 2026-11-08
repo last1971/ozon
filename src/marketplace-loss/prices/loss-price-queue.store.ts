@@ -1,3 +1,5 @@
+import { PricingFailureKind } from '../../helpers/price/pricing-error';
+import { lossPriceRetryDelay } from './loss-price.retry';
 import { Injectable, Logger, Optional } from '@nestjs/common';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FirebirdTransaction } from 'ts-firebird';
@@ -66,15 +68,23 @@ export class LossPriceQueueStore {
     pending(service: LossPriceMarket) {
         return this.journal.listUnhandledRows(service, LOSS_PRICE_KIND, LOSS_PRICE_PENDING);
     }
-    async finish(service: LossPriceMarket, event: MpEventRowDto, error?: string) {
+    async finish(
+        service: LossPriceMarket,
+        event: MpEventRowDto,
+        error?: string,
+        retryKind: PricingFailureKind = 'temporary',
+    ) {
         const key = { service, kind: LOSS_PRICE_KIND, state: LOSS_PRICE_PENDING, extId: event.extId } as const;
         if (!error) return this.journal.markHandled(key);
         const payload = event.payload as LossPricePayload;
+        const now = Date.now();
         await this.journal.updatePendingPayload(key, {
             ...payload,
             attempts: (Number.isSafeInteger(payload?.attempts) ? payload.attempts : 0) + 1,
             lastError: error,
-            attemptedAt: new Date().toISOString(),
+            attemptedAt: new Date(now).toISOString(),
+            retryKind,
+            nextAttemptAt: new Date(now + lossPriceRetryDelay(retryKind)).toISOString(),
         });
     }
 }

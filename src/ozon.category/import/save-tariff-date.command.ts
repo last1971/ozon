@@ -1,4 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { EventEmitter2 } from '@nestjs/event-emitter';
+import { notifyPricingInputs } from '../../helpers/price/pricing-inputs-changed';
+import { Injectable, Optional } from '@nestjs/common';
 import { IJobCommand } from '../../interfaces/i.job.context';
 import { jobCheckpoint } from '../../job/job.checkpoint';
 import { TariffImportContext } from './tariff-import.context';
@@ -7,6 +9,7 @@ import { TariffImportContext } from './tariff-import.context';
 export class SaveTariffDateCommand implements IJobCommand<TariffImportContext> {
     readonly phase = 'фиксация даты загрузки';
     readonly weight = 5;
+    constructor(@Optional() private readonly events?: EventEmitter2) {}
     async execute(context: TariffImportContext): Promise<TariffImportContext> {
         await jobCheckpoint(context);
         context.progress.total = 1;
@@ -33,6 +36,9 @@ export class SaveTariffDateCommand implements IJobCommand<TariffImportContext> {
         context.committing = true;
         await t.commit(true);
         context.transaction = undefined;
+        notifyPricingInputs(this.events, { service: 'OZON' }, (error) =>
+            context.logger?.error(`Тарифы сохранены, уведомление очереди цен не доставлено: ${String(error)}`),
+        );
         result.uploadedAt = uploadedAt;
         context.progress.done = 1;
         return context;

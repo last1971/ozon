@@ -9,7 +9,7 @@ import { ozonPricesMatch } from '../../helpers/price/ozon-prices-match';
 import { PromoSweepService } from '../../promos/price-lever/sweep/promo-sweep.service';
 import { JobService } from '../../job/job.service';
 import { PromoSweepReport } from '../../promos/price-lever/promo-price.types';
-import { LossPriceAdapter } from './loss-price.contracts';
+import { LossPriceAdapter, LossPriceResult } from './loss-price.contracts';
 
 @Injectable()
 export class OzonLossPriceAdapter implements LossPriceAdapter {
@@ -43,13 +43,18 @@ export class OzonLossPriceAdapter implements LossPriceAdapter {
     async send(targets: UpdatePriceDto[]) {
         const response = ozonResultsByOffer(await this.pricing.updatePrices(targets));
         return new Map(
-            targets.map((t): [string, string | null] => {
+            targets.map((t): [string, LossPriceResult] => {
                 const row = response.get(t.offer_id);
                 return [
                     t.offer_id,
                     row?.updated
                         ? null
-                        : row?.errors?.map((e) => e.message || e.code).join('; ') || 'Ozon не подтвердил приём цены',
+                        : {
+                              message:
+                                  row?.errors?.map((e) => e.message || e.code).join('; ') ||
+                                  'Ozon не подтвердил приём цены',
+                              kind: row ? 'data' : 'temporary',
+                          },
                 ];
             }),
         );
@@ -62,12 +67,15 @@ export class OzonLossPriceAdapter implements LossPriceAdapter {
         if (report.checked !== offers.length) throw new Error('Неполная сверка акций Ozon');
         const items = new Map(report.items.map((i) => [i.offerId, i]));
         return new Map(
-            offers.map((offer): [string, string | null] => {
+            offers.map((offer): [string, LossPriceResult] => {
                 const item = items.get(offer);
                 return [
                     offer,
                     item && (!item.ok || item.applied === false)
-                        ? item.notes.join('; ') || 'Акции Ozon не приведены к новой цене'
+                        ? {
+                              message: item.notes.join('; ') || 'Акции Ozon не приведены к новой цене',
+                              kind: item.ok ? 'temporary' : 'data',
+                          }
                         : null,
                 ];
             }),

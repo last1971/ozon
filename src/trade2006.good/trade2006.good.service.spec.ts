@@ -241,7 +241,7 @@ describe('Trade2006GoodService', () => {
         const sku = pieces === 1 ? '501328' : `501328-${pieces}`;
         mockPriceCalculationHelper.preparePricesContext.mockResolvedValue({
             goods: [{ code: 501328, price: 23.56, base_source: 'remaining-lots', free_stock: 1000 }],
-            percents: [1, 5, 10, 100].map(n => ({ offer_id: '501328', pieces: n, available_price: 23 * n, min_perc: 10, perc: 20, old_perc: 40 })),
+            percents: [1, 5, 10, 100].map(n => ({ offer_id: '501328', pieces: n, available_price: 23 * n, min_perc: 10, perc: 20, old_perc: 40, adv_perc: 0, packing_price: 0 })),
             products: [{ ...getProductsWithCoeffsFirst, getSku: () => sku }], codes: ['501328'],
         });
         const report = await service.repriceForService(priceUdateable, [sku]);
@@ -331,7 +331,7 @@ describe('Trade2006GoodService', () => {
         prices.set('1', { incoming_price: 100 } as UpdatePriceDto);
 
         await service.updatePriceForService(priceUdateable, ['1'], prices);
-        expect(mockPriceCalculationHelper.preparePricesContext).toHaveBeenCalledWith(priceUdateable, ['1'], service);
+        expect(mockPriceCalculationHelper.preparePricesContext).toHaveBeenCalledWith(priceUdateable, ['1'], service, null, undefined, expect.any(Function));
         expect(mockPriceCalculationHelper.getIncomingPrice).toHaveBeenCalled();
         expect(updatePrices).toHaveBeenCalled();
     });
@@ -1189,4 +1189,21 @@ describe('Trade2006GoodService', () => {
             expect(query).not.toHaveBeenCalled();
         });
     });
+    it('сохранённые настройки своей фасовки уведомляют очередь; внешняя транзакция не уведомляет до commit', async () => {
+        await service.setPercents({ offer_id: '123', pieces: 5, min_perc: 10 });
+        expect(emit).toHaveBeenCalledWith('pricing.inputs.changed', { offers: ['123-5'] });
+        emit.mockClear();
+        await service.setPercents({ offer_id: '123', pieces: 5, min_perc: 20 }, { execute } as any);
+        expect(emit).not.toHaveBeenCalled();
+    });
+    it('приход/сброс рыночной базы будит все фасовки кода после commit', async () => {
+        await service.resetAvailablePrice(['123']);
+        expect(emit).toHaveBeenCalledWith('pricing.inputs.changed', { codes: ['123'] });
+        expect(commit.mock.invocationCallOrder[0]).toBeLessThan(emit.mock.invocationCallOrder[0]);
+    });
+    it('сохранение только минимума ВБ не запускает повторный пересчёт своих же результатов', async () => {
+        await service.setWbData({ id: '123', minPrice: 200 } as any);
+        expect(emit).not.toHaveBeenCalled();
+    });
+
 });

@@ -5,6 +5,7 @@ import { MarketingActionDto } from '../../helpers/price/buyer.price.helper';
 
 export class PriceDto {
     ozon?: OzonPricingContext;
+    pricingError?: string;
     @ApiProperty({ description: 'Код товара Озон' })
     product_id: number;
     @ApiProperty({ description: 'Наш код товара' })

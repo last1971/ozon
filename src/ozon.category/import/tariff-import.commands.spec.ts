@@ -1,3 +1,5 @@
+import { SaveTariffDateCommand } from './save-tariff-date.command';
+import { PRICING_INPUTS_CHANGED } from '../../helpers/price/pricing-inputs-changed';
 import { makeTariffImport, tariffContext, logistics, logisticsName } from './tariff-import.fixtures';
 import { emptyProgress } from '../../interfaces/i.job.context';
 
@@ -168,4 +170,21 @@ describe('SaveTariffDateCommand', () => {
         expect(m.tx.execute).not.toHaveBeenCalled();
         expect(m.tx.commit).not.toHaveBeenCalled();
     });
+});
+
+it('изменение тарифов будит очередь только после успешного commit', async () => {
+    const m = await parsed();
+    await m.write.execute(m.context);
+    const events = { emit: jest.fn() };
+    await new SaveTariffDateCommand(events as any).execute(m.context);
+    expect(events.emit).toHaveBeenCalledWith(PRICING_INPUTS_CHANGED, { service: 'OZON' });
+    expect(m.tx.commit.mock.invocationCallOrder[0]).toBeLessThan(events.emit.mock.invocationCallOrder[0]);
+});
+it('неудачный commit тарифов не будит очередь', async () => {
+    const m = await parsed();
+    await m.write.execute(m.context);
+    m.tx.commit.mockRejectedValueOnce(new Error('commit failed'));
+    const events = { emit: jest.fn() };
+    await expect(new SaveTariffDateCommand(events as any).execute(m.context)).rejects.toThrow('commit failed');
+    expect(events.emit).not.toHaveBeenCalled();
 });

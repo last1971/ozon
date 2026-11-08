@@ -1,3 +1,4 @@
+import { PricingDataError } from './pricing-error';
 import { calculateMarketplaceLossCosts, calculateTariffReturnDelivery } from './marketplace.loss.costs';
 import { ozonDisplayPrice } from './ozon.display-price';
 import { priceTaxDetails } from './price.tax';
@@ -17,6 +18,10 @@ export interface PayResultDto {
     netProfitPercent?: number;
 }
 
+function assertPriceInputsAvailable(price: IPriceable): void {
+    if (price.pricingError) throw new PricingDataError(price.pricingError);
+}
+
 /**
  * Вычисляет фиксированные и динамические издержки
  */
@@ -24,6 +29,7 @@ export const calculateCosts = (
     price: IPriceable,
     percents: ObtainCoeffsDto,
 ): { fixedCosts: number; dynamicCosts: number } => {
+    assertPriceInputsAvailable(price);
     const ownReturnCost = price.lossCosts?.paidReturnDelivery !== undefined;
     const returnCosts = calculateTariffReturnDelivery(
         price.return_perc,
@@ -50,6 +56,7 @@ export const calculateCosts = (
  * Вычисляет сумму к оплате с учетом издержек
  */
 export const calculatePay = (price: IPriceable, percents: ObtainCoeffsDto, sum: number): PayResultDto => {
+    assertPriceInputsAvailable(price);
     if (price.ozon) {
         const input = ozonPricingInput(price, percents);
         const result = evaluateOzonPrice(input, Number(sum));
@@ -93,6 +100,7 @@ export const calculatePrice = (
     auto_action = AutoAction.ENABLED,
     price_strategy_enabled = AutoAction.DISABLED,
 ): UpdatePriceDto => {
+    assertPriceInputsAvailable(price);
     if (price.ozon) {
         const result = calculateOzonPrices(ozonPricingInput(price, percents));
         return {
