@@ -1,3 +1,4 @@
+import { formatMoscowShortDateTime } from '../../shared/moscow-time';
 import { buyerPrice, ozonActionFloor } from '../../helpers/price/buyer.price.helper';
 import { OzonActionSlot, PromoPricePlan, PromoPriceState, PromoPriceStep, PromoTarget } from './promo-price.types';
 
@@ -8,14 +9,7 @@ import { OzonActionSlot, PromoPricePlan, PromoPriceState, PromoPriceStep, PromoT
 const ACTION_LEAD_MS = 60 * 60 * 1000;
 const counts = (a: OzonActionSlot, now: Date): boolean =>
     !a.startsAt || Date.parse(a.startsAt) - ACTION_LEAD_MS <= now.getTime();
-const startText = (iso: string): string =>
-    new Date(iso).toLocaleString('ru-RU', {
-        timeZone: 'Europe/Moscow',
-        day: '2-digit',
-        month: '2-digit',
-        hour: '2-digit',
-        minute: '2-digit',
-    });
+const startText = formatMoscowShortDateTime;
 
 /** Цель в рублях: 'min' → min_price, 'normal' → price, число как есть. Неизвестная строка → ошибка. */
 export const targetRubles = (s: PromoPriceState, target: PromoTarget): number => {

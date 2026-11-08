@@ -1,3 +1,4 @@
+import { fromFirebirdTimestamp, FIREBIRD_TIMESTAMP_PARAM } from '../../firebird/firebird-time';
 import { SaveTariffDateCommand } from './save-tariff-date.command';
 import { PRICING_INPUTS_CHANGED } from '../../helpers/price/pricing-inputs-changed';
 import { makeTariffImport, tariffContext, logistics, logisticsName } from './tariff-import.fixtures';
@@ -146,9 +147,12 @@ describe('SaveTariffDateCommand', () => {
         m.context.progress = emptyProgress();
         m.context.result.uploadedAt = new Date(0);
         await m.saveDate.execute(m.context);
-        const args = m.tx.execute.mock.calls.find(([sql]) => sql.includes('UPLOADED_AT = ?'))[1];
+        const args = m.tx.execute.mock.calls.find(([sql]) => sql.includes('UPLOADED_AT ='))[1];
         expect(args[0]).toBe(logisticsName);
-        expect(args[2]).toBe(m.context.result.uploadedAt);
+        expect(fromFirebirdTimestamp(args[2]).toISOString()).toBe(m.context.result.uploadedAt.toISOString());
+        expect(m.tx.execute.mock.calls.find(([sql]) => sql.includes('UPLOADED_AT ='))[0]).toContain(
+            FIREBIRD_TIMESTAMP_PARAM,
+        );
         expect(m.context.result.uploadedAt.getTime()).toBeGreaterThan(0);
         expect(m.tx.commit).toHaveBeenCalledTimes(1);
         expect(m.context.transaction).toBeUndefined();

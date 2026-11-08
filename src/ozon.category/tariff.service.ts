@@ -1,3 +1,4 @@
+import { fromFirebirdTimestamp } from '../firebird/firebird-time';
 import { TariffImportService } from './import/tariff-import.service';
 import { TariffKind } from './import/tariff-import.context';
 import { Inject, Injectable, Logger, ServiceUnavailableException } from '@nestjs/common';
@@ -104,7 +105,7 @@ export class OzonTariffService {
     async info() {
         return this.transaction(async (t) => {
             const rows = await t.query(
-                'SELECT KIND, FILE_NAME, FILE_DATE, UPLOADED_AT, ROWS_COUNT, MATCHED_COUNT, MISSING_COUNT FROM OZON_TARIFF_SOURCE ORDER BY KIND',
+                'SELECT KIND, FILE_NAME, CAST(FILE_DATE AS VARCHAR(10)) AS FILE_DATE, UPLOADED_AT, CAST(UPLOADED_AT AS VARCHAR(32)) AS UPLOADED_AT_TEXT, ROWS_COUNT, MATCHED_COUNT, MISSING_COUNT FROM OZON_TARIFF_SOURCE ORDER BY KIND',
                 [],
                 false,
             );
@@ -119,7 +120,7 @@ export class OzonTariffService {
                     kind: String(r.KIND).trim(),
                     filename: r.FILE_NAME || null,
                     fileDate,
-                    uploadedAt: r.UPLOADED_AT || null,
+                    uploadedAt: fromFirebirdTimestamp(r.UPLOADED_AT_TEXT ?? r.UPLOADED_AT),
                     rows: r.ROWS_COUNT || 0,
                     matchedCount: r.MATCHED_COUNT,
                     retiredCount: r.MISSING_COUNT,

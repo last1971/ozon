@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatMoscowShortDateTime } from '@/helpers/moscow-time';
 import { computed, ref } from "vue";
 import { promoPriceStore, resultColor, resultLabel, stepIcon, stepText } from "@/stores/promoPrice";
 import type { OzonActionSlot, PromoStepResult, PromoTarget } from "@/contracts/promo-price.dto";
@@ -37,7 +38,7 @@ const percentValue = computed(() => (percent.value.trim() === '' ? undefined : N
 /** Акция ещё не началась — на цену покупателю пока не влияет. */
 const upcoming = (a: OzonActionSlot) => Boolean(a.startsAt && Date.parse(a.startsAt) > Date.now());
 const startText = (a: OzonActionSlot) =>
-    new Date(a.startsAt as string).toLocaleString("ru-RU", { day: "2-digit", month: "2-digit", hour: "2-digit", minute: "2-digit" });
+    formatMoscowShortDateTime(a.startsAt);
 
 const belowMin = computed(() => state.value && state.value.buyerPrice < state.value.minPrice);
 const formulaMismatch = computed(() => state.value && Math.abs(state.value.buyerPrice - state.value.buyerPriceCalc) > 1);

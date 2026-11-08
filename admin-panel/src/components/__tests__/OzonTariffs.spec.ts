@@ -64,6 +64,31 @@ beforeEach(() => {
 afterEach(() => kinds.forEach((kind) => useJob(kind).clear()));
 
 describe('Импорт тарифов через существующий useJob', () => {
+    it('показывает дату API в Москве, сохраняя календарную дату файла', async () => {
+        vi.mocked(axios.get).mockImplementation(async (url) => ({
+            data:
+                url === '/api/ozon-category/tariffs'
+                    ? [
+                          {
+                              kind: 'commissions',
+                              filename: 'commissions.xlsx',
+                              fileDate: '2026-11-07',
+                              uploadedAt: '2026-11-08T02:38:00.007Z',
+                              rows: 100,
+                              matchedCount: 100,
+                              retiredCount: 0,
+                              stale: false,
+                          },
+                      ]
+                    : [],
+        }));
+        const wrapper = await render(false);
+        expect(wrapper.text()).toContain('08.11.2026 05:38:00 МСК');
+        expect(wrapper.text()).toContain('2026-11-07');
+        expect(wrapper.text()).not.toContain('09:38');
+        wrapper.unmount();
+    });
+
     it('показывает результат и предупреждение после завершения job', async () => {
         vi.mocked(axios.post).mockResolvedValue({
             data: state({

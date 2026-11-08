@@ -1,3 +1,4 @@
+import { fromFirebirdTimestamp, toFirebirdTimestamp, FIREBIRD_TIMESTAMP_PARAM } from '../firebird/firebird-time';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { DateTime } from 'luxon';
 import { FirebirdPool, FirebirdTransaction } from 'ts-firebird';
@@ -221,11 +222,13 @@ export class MpEventService {
     async firstSeen(event: MpEventDto, t: FirebirdTransaction = null): Promise<Date | null> {
         return this.withTransaction(t, async (transaction) => {
             const rows = await transaction.query(
-                'SELECT FIRST_SEEN FROM MP_EVENT WHERE SERVICE = ? AND KIND = ? AND EXT_ID = ? AND STATE = ?',
+                'SELECT FIRST_SEEN, CAST(FIRST_SEEN AS VARCHAR(32)) AS FIRST_SEEN_TEXT FROM MP_EVENT WHERE SERVICE = ? AND KIND = ? AND EXT_ID = ? AND STATE = ?',
                 [event.service, event.kind, event.extId, event.state],
                 false,
             );
-            return rows.length && rows[0].FIRST_SEEN ? new Date(rows[0].FIRST_SEEN) : null;
+            return rows.length && rows[0].FIRST_SEEN
+                ? fromFirebirdTimestamp(rows[0].FIRST_SEEN_TEXT ?? rows[0].FIRST_SEEN)
+                : null;
         });
     }
 
@@ -294,7 +297,7 @@ export class MpEventService {
         const settled = Math.max(0, Math.floor(Number(settledMinutes) || 0));
         return this.withTransaction(t, async (transaction) => {
             const rows = await transaction.query(
-                'SELECT EXT_ID, POSTING, FIRST_SEEN FROM MP_EVENT' +
+                'SELECT EXT_ID, POSTING, FIRST_SEEN, CAST(FIRST_SEEN AS VARCHAR(32)) AS FIRST_SEEN_TEXT FROM MP_EVENT' +
                     ' WHERE SERVICE = ? AND KIND = ? AND HANDLED_AT IS NULL' +
                     (state ? ' AND STATE = ?' : '') +
                     (settled > 0 ? ` AND LAST_SEEN < DATEADD(-${settled} MINUTE TO CURRENT_TIMESTAMP)` : '') +
@@ -305,7 +308,7 @@ export class MpEventService {
             return rows.map((r) => ({
                 extId: String(r.EXT_ID),
                 posting: r.POSTING ? String(r.POSTING) : null,
-                firstSeen: new Date(r.FIRST_SEEN),
+                firstSeen: fromFirebirdTimestamp(r.FIRST_SEEN_TEXT ?? r.FIRST_SEEN),
             }));
         });
     }
@@ -320,7 +323,7 @@ export class MpEventService {
     ): Promise<MpEventRowDto[]> {
         return this.withTransaction(t, async (transaction) => {
             const rows = await transaction.query(
-                'SELECT EXT_ID, STATE, POSTING, FIRST_SEEN, PAYLOAD, CAST(LAST_SEEN AS VARCHAR(32)) AS EVENT_VERSION,' +
+                'SELECT EXT_ID, STATE, POSTING, FIRST_SEEN, CAST(FIRST_SEEN AS VARCHAR(32)) AS FIRST_SEEN_TEXT, PAYLOAD, CAST(LAST_SEEN AS VARCHAR(32)) AS EVENT_VERSION,' +
                     ' CASE WHEN OCTET_LENGTH(PAYLOAD) <= 8191 THEN CAST(PAYLOAD AS VARCHAR(8191)) ELSE NULL END AS PAYLOAD_TEXT FROM MP_EVENT' +
                     ' WHERE SERVICE = ? AND KIND = ? AND STATE = ? AND HANDLED_AT IS NULL' +
                     (settledMinutes > 0
@@ -373,18 +376,18 @@ export class MpEventService {
         const fallback = DateTime.now().minus({ day: defaultDays }).startOf('day');
         return this.withTransaction(t, async (transaction) => {
             const rows = await transaction.query(
-                'SELECT MAX(LAST_SEEN) AS LAST_SEEN FROM MP_EVENT WHERE SERVICE = ? AND KIND = ?',
+                'SELECT MAX(LAST_SEEN) AS LAST_SEEN, CAST(MAX(LAST_SEEN) AS VARCHAR(32)) AS LAST_SEEN_TEXT FROM MP_EVENT WHERE SERVICE = ? AND KIND = ?',
                 [service, kind],
                 false,
             );
-            const lastSeen = rows?.[0]?.LAST_SEEN;
+            const lastSeen = rows?.[0]?.LAST_SEEN_TEXT ?? rows?.[0]?.LAST_SEEN;
             if (!lastSeen) {
                 this.logger.log(`${service}/${kind}: журнал пуст, холодный старт — окно ${defaultDays} дн`);
                 return fallback.toJSDate();
             }
             // Журнал — источник истины: если он старше дефолтного окна, значит сервис
             // стоял дольше окна, и брать «сейчас минус N» нельзя — простой съест события.
-            return DateTime.fromJSDate(new Date(lastSeen)).minus({ day: overlapDays }).toJSDate();
+            return DateTime.fromJSDate(fromFirebirdTimestamp(lastSeen)).minus({ day: overlapDays }).toJSDate();
         });
     }
 
@@ -406,10 +409,10 @@ export class MpEventService {
     ): Promise<MpEventRowDto[]> {
         return this.withTransaction(t, async (transaction) => {
             const rows = await transaction.query(
-                'SELECT EXT_ID, STATE, POSTING, FIRST_SEEN, PAYLOAD FROM MP_EVENT' +
-                    ' WHERE SERVICE = ? AND KIND = ? AND STATE = ? AND FIRST_SEEN >= ? AND FIRST_SEEN < ?' +
+                'SELECT EXT_ID, STATE, POSTING, FIRST_SEEN, CAST(FIRST_SEEN AS VARCHAR(32)) AS FIRST_SEEN_TEXT, PAYLOAD FROM MP_EVENT' +
+                    ` WHERE SERVICE = ? AND KIND = ? AND STATE = ? AND FIRST_SEEN >= ${FIREBIRD_TIMESTAMP_PARAM} AND FIRST_SEEN < ${FIREBIRD_TIMESTAMP_PARAM}` +
                     ' ORDER BY FIRST_SEEN DESC',
-                [service, kind, state, from, to],
+                [service, kind, state, toFirebirdTimestamp(from), toFirebirdTimestamp(to)],
                 false,
             );
             return this.toRows(rows, transaction);
@@ -467,7 +470,7 @@ export class MpEventService {
         transaction: FirebirdTransaction,
     ): Promise<MpEventRowDto[]> {
         const rows = await transaction.query(
-            'SELECT EXT_ID, STATE, POSTING, FIRST_SEEN, PAYLOAD, CAST(LAST_SEEN AS VARCHAR(32)) AS EVENT_VERSION,' +
+            'SELECT EXT_ID, STATE, POSTING, FIRST_SEEN, CAST(FIRST_SEEN AS VARCHAR(32)) AS FIRST_SEEN_TEXT, PAYLOAD, CAST(LAST_SEEN AS VARCHAR(32)) AS EVENT_VERSION,' +
                 ' CASE WHEN OCTET_LENGTH(PAYLOAD) <= 8191 THEN CAST(PAYLOAD AS VARCHAR(8191)) ELSE NULL END AS PAYLOAD_TEXT FROM MP_EVENT' +
                 ` WHERE SERVICE = ? AND KIND = ? AND ${where} ORDER BY FIRST_SEEN DESC`,
             [service, kind, ...values],
@@ -490,7 +493,7 @@ export class MpEventService {
                 extId: String(r.EXT_ID),
                 state: String(r.STATE),
                 posting: r.POSTING ? String(r.POSTING) : null,
-                firstSeen: new Date(r.FIRST_SEEN),
+                firstSeen: fromFirebirdTimestamp(r.FIRST_SEEN_TEXT ?? r.FIRST_SEEN),
                 payload,
                 ...(r.EVENT_VERSION ? { version: String(r.EVENT_VERSION) } : {}),
             });

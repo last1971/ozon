@@ -361,12 +361,12 @@ describe('Сохранение статистики ВБ через общие �
             );
             expect(transaction.execute).toHaveBeenCalledWith(
                 expect.stringContaining('INSERT INTO MP_LOSS_STATS'),
-                ['WB', 123, 1, 1, 1, 0, 1, 0, 'READY', now, null],
+                ['WB', 123, 1, 1, 1, 0, 1, 0, 'READY', '2026-11-06 17:00:00.000', null],
                 false,
             );
             expect(transaction.execute).toHaveBeenCalledWith(
                 expect.stringContaining('UPDATE MP_LOSS_STATE SET'),
-                [now, '2026-08-08', '2026-11-06', 1, 'WB'],
+                ['2026-11-06 17:00:00.000', '2026-08-08', '2026-11-06', 1, 'WB'],
                 false,
             );
             expect(transaction.commit).toHaveBeenCalledTimes(1);

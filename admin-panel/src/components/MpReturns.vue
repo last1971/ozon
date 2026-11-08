@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatMoscowDateTime, formatMoscowDay } from '@/helpers/moscow-time';
 import { mpReturnsStore } from "@/stores/mpReturns";
 import UsernameField from "./UsernameField.vue";
 import { RETURN_SERVICES, type MpService, type ReturnCard, type ReturnRowStatus } from "@/contracts/mp-return.dto";
@@ -78,8 +79,8 @@ const STATUS: Record<ReturnRowStatus, { text: string; color: string }> = {
     problem: { text: 'проблема', color: 'warning' },
 };
 const INVOICE_STATUS: Record<number, string> = { 0: 'расформирован', 1: 'сформирован', 2: 'резерв', 3: 'в подборке', 4: 'подобран', 5: 'закрыт', 6: 'корзина' };
-const fmtDate = (d: string | null) => (d ? new Date(d).toLocaleDateString() : '—');
-const fmtDateTime = (d: string | null) => (d ? new Date(d).toLocaleString() : '—');
+const fmtDate = formatMoscowDay;
+const fmtDateTime = formatMoscowDateTime;
 </script>
 
 <template>

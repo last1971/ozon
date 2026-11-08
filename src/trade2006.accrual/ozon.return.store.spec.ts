@@ -36,7 +36,19 @@ describe('Ozon использует единое хранилище, настр�
         await store.replace(snapshot());
         const inserts = t.execute.mock.calls.filter(([sql]) => sql.startsWith('INSERT'));
         expect(inserts).toHaveLength(1);
-        expect(inserts[0][1]).toEqual(['OZON', 123, 5, 3, 1, 0, 1 / 3, 0, 'READY', at, 0.333333]);
+        expect(inserts[0][1]).toEqual([
+            'OZON',
+            123,
+            5,
+            3,
+            1,
+            0,
+            1 / 3,
+            0,
+            'READY',
+            '2026-11-05 09:38:00.000',
+            0.333333,
+        ]);
         expect(t.execute.mock.calls.every(([sql]) => !sql.includes('OZON_PERC'))).toBe(true);
         expect(t.commit).toHaveBeenCalledWith(true);
         expect(t.rollback).not.toHaveBeenCalled();
@@ -68,7 +80,9 @@ describe('Ozon использует единое хранилище, настр�
     });
     it('старый снимок не перезаписывает новый', async () => {
         const { store, t } = setup();
-        t.query.mockResolvedValue([{ CALCULATED_AT: new Date(at.getTime() + 1) }]);
+        t.query.mockResolvedValue([
+            { CALCULATED_AT_TEXT: new Date(at.getTime() + 1).toISOString(), CALCULATED_AT: new Date(at.getTime() + 1) },
+        ]);
         await expect(store.replace(snapshot())).rejects.toThrow('более новый');
         expect(t.execute.mock.calls.some(([sql]) => sql.startsWith('DELETE'))).toBe(false);
     });

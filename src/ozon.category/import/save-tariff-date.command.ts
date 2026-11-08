@@ -1,3 +1,4 @@
+import { toFirebirdTimestamp, FIREBIRD_TIMESTAMP_PARAM } from '../../firebird/firebird-time';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { notifyPricingInputs } from '../../helpers/price/pricing-inputs-changed';
 import { Injectable, Optional } from '@nestjs/common';
@@ -18,11 +19,11 @@ export class SaveTariffDateCommand implements IJobCommand<TariffImportContext> {
         if (!t || !result) throw new Error('Нет подготовленных тарифов для фиксации');
         const uploadedAt = new Date();
         await t.execute(
-            'UPDATE OZON_TARIFF_SOURCE SET FILE_NAME = ?, FILE_DATE = ?, UPLOADED_AT = ?, FILE_HASH = ?, ROWS_COUNT = ?, MATCHED_COUNT = ?, MISSING_COUNT = ? WHERE KIND = ?',
+            `UPDATE OZON_TARIFF_SOURCE SET FILE_NAME = ?, FILE_DATE = ?, UPLOADED_AT = ${FIREBIRD_TIMESTAMP_PARAM}, FILE_HASH = ?, ROWS_COUNT = ?, MATCHED_COUNT = ?, MISSING_COUNT = ? WHERE KIND = ?`,
             [
                 result.filename,
                 result.fileDate,
-                uploadedAt,
+                toFirebirdTimestamp(uploadedAt),
                 result.hash,
                 result.rows,
                 result.updated ?? null,

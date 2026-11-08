@@ -28,6 +28,35 @@ describe('MpEventService', () => {
         service = module.get(MpEventService);
     });
 
+    it('период возвратов и дата события не сдвигаются из-за пояса процесса', async () => {
+        query.mockResolvedValueOnce([
+            {
+                EXT_ID: 'r1',
+                STATE: 'ReturnedToSeller',
+                POSTING: 'p1',
+                FIRST_SEEN: new Date(2026, 10, 8, 4),
+                FIRST_SEEN_TEXT: '2026-11-08 04:00:00.0000',
+                PAYLOAD: null,
+            },
+        ]);
+        const rows = await service.listInState(
+            'OZON',
+            'RETURN',
+            'ReturnedToSeller',
+            new Date('2026-11-07T21:00:00Z'),
+            new Date('2026-11-08T21:00:00Z'),
+        );
+        expect(query.mock.calls[0][1]).toEqual([
+            'OZON',
+            'RETURN',
+            'ReturnedToSeller',
+            '2026-11-08 04:00:00.000',
+            '2026-11-09 04:00:00.000',
+        ]);
+        expect(query.mock.calls[0][0]).toContain('CAST(CAST(? AS VARCHAR(32)) AS TIMESTAMP)');
+        expect(rows).toHaveLength(1);
+        expect(rows[0].firstSeen.toISOString()).toBe('2026-11-07T21:00:00.000Z');
+    });
     describe('record', () => {
         it('новое событие → INSERT и true', async () => {
             query.mockResolvedValueOnce([]);
@@ -100,7 +129,7 @@ describe('MpEventService', () => {
             query.mockResolvedValueOnce([{ EXT_ID: '456', POSTING: '456', FIRST_SEEN: '2026-08-05T00:00:00' }]);
             const rows = await service.listUnhandled('OZON', 'CANCEL_WAIT');
             expect(query.mock.calls[0][0]).toContain('HANDLED_AT IS NULL');
-            expect(rows).toEqual([{ extId: '456', posting: '456', firstSeen: new Date('2026-08-05T00:00:00') }]);
+            expect(rows).toEqual([{ extId: '456', posting: '456', firstSeen: new Date('2026-08-04T17:00:00Z') }]);
         });
 
         it('listUnhandled с состоянием фильтрует по STATE (добор доставленного)', async () => {
@@ -116,7 +145,7 @@ describe('MpEventService', () => {
             const rows = await service.listSettledUnhandled('TRADE', 'INCOMING', 'pending', 15);
             expect(query.mock.calls[0][0]).toContain('LAST_SEEN < DATEADD(-15 MINUTE TO CURRENT_TIMESTAMP)');
             expect(query.mock.calls[0][1]).toEqual(['TRADE', 'INCOMING', 'pending']);
-            expect(rows[0]).toEqual({ extId: '10296', posting: null, firstSeen: new Date('2026-10-17T00:00:00') });
+            expect(rows[0]).toEqual({ extId: '10296', posting: null, firstSeen: new Date('2026-10-16T17:00:00Z') });
         });
 
         it('listSettledUnhandled с нулём — без условия по LAST_SEEN', async () => {
@@ -147,7 +176,7 @@ describe('MpEventService', () => {
 
         it('в журнале есть события → окно от последнего минус нахлёст', async () => {
             const lastSeen = DateTime.now().minus({ hour: 3 }).toJSDate();
-            query.mockResolvedValueOnce([{ LAST_SEEN: lastSeen }]);
+            query.mockResolvedValueOnce([{ LAST_SEEN_TEXT: lastSeen.toISOString(), LAST_SEEN: lastSeen }]);
             const from = await service.windowStart('OZON', 'RETURN', 45, 2);
             expect(DateTime.fromJSDate(from).toISO()).toBe(DateTime.fromJSDate(lastSeen).minus({ day: 2 }).toISO());
         });
@@ -155,7 +184,7 @@ describe('MpEventService', () => {
         it('простой дольше дефолтного окна → берём журнал, а не «сейчас минус N»', async () => {
             // сервис стоял 100 дней; «сейчас минус 45» проглотило бы 55 дней событий молча
             const lastSeen = DateTime.now().minus({ day: 100 }).toJSDate();
-            query.mockResolvedValueOnce([{ LAST_SEEN: lastSeen }]);
+            query.mockResolvedValueOnce([{ LAST_SEEN_TEXT: lastSeen.toISOString(), LAST_SEEN: lastSeen }]);
             const from = await service.windowStart('OZON', 'POSTING_FBS', 45, 2);
             expect(DateTime.fromJSDate(from) < DateTime.now().minus({ day: 45 })).toBe(true);
         });

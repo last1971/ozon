@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatMoscowTime } from '@/helpers/moscow-time';
 import { computed, onMounted, ref, watch } from 'vue';
 import axios from '@/axios.config';
 import { useJob } from '@/composable/useJob';
@@ -89,7 +90,7 @@ watch(
                 >
                 <template v-if="result">
                     <p v-if="result.expiresAt">
-                        Предпросмотр действует до {{ new Date(result.expiresAt).toLocaleTimeString('ru-RU') }}.
+                        Предпросмотр действует до {{ formatMoscowTime(result.expiresAt) }}.
                     </p>
                     <p v-if="result.sent && !running">
                         100% — задача завершена. Это не означает, что все площадки приняли цены. Результат каждой

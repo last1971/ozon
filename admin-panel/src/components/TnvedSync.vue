@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatMoscowTime } from '@/helpers/moscow-time';
 import JobProgress from "@/components/JobProgress.vue";
 import { tnvedSyncStore, TNVED_SYNC_JOB, GTIN_SYNC_JOB, TNVED_MISSING_JOB, type TnvedSyncReport, type MissingTnvedReport } from "@/stores/tnvedSync";
 import MarketplaceSelect from "@/components/MarketplaceSelect.vue";
@@ -165,7 +166,7 @@ async function resetProgress() {
                 <v-icon :icon="o.status === 'running' ? 'mdi-progress-clock' : o.status === 'failed' ? 'mdi-alert-circle' : 'mdi-check'" size="small" class="me-1" />
                 {{ marketOf(o) }} · {{ o.params.apply ? 'запись' : 'проверка' }} · {{ whose(o) }} ·
                 {{ o.status === 'running' ? `${o.progress.phase ?? ''} ${o.progress.done}${o.progress.total ? ' из ' + o.progress.total : ''}` : o.status }}
-                · {{ new Date(o.startedAt).toLocaleTimeString() }}
+                · {{ formatMoscowTime(o.startedAt) }}
             </div>
         </div>
 

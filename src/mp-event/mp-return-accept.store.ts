@@ -1,3 +1,4 @@
+import { fromFirebirdTimestamp, toFirebirdTimestamp, FIREBIRD_TIMESTAMP_PARAM } from '../firebird/firebird-time';
 import { Inject, Injectable } from '@nestjs/common';
 import { FirebirdPool, FirebirdTransaction, ISOLATION_READ_COMMITTED_READ_ONLY } from 'ts-firebird';
 import { RecordedWriteOff, lossDate } from '../helpers/price/marketplace.loss.stats';
@@ -52,7 +53,7 @@ export class MpReturnAcceptStore {
         try {
             const rows = await t.query(
                 `SELECT A.ID, A.EXT_ID, A.POSTING, A.SERVICE, A.GOODSCODE, A.UNITS, A.PIECES, A.QUAN,
-                        A.SPIS_CODE, A.SPIS_SS, A.SPIS_AT,
+                        A.SPIS_CODE, A.SPIS_SS, A.SPIS_AT, CAST(A.SPIS_AT AS VARCHAR(32)) AS SPIS_AT_TEXT,
                         CASE WHEN A.SPIS_SS = 1 THEN
                             (SELECT SUM(S.QUAN) FROM SPISSHOP S
                              WHERE S.SPISSHOPCODE = A.SPIS_CODE AND S.GOODSCODE = A.GOODSCODE)
@@ -62,9 +63,9 @@ export class MpReturnAcceptStore {
                         END AS DOC_QUAN
                  FROM MP_RETURN_ACCEPT A
                  WHERE A.SERVICE = ? AND A.DECISION = 'RETURN' AND A.SPIS_CODE IS NOT NULL
-                   AND A.SPIS_AT >= ? AND A.SPIS_AT < ?
+                   AND A.SPIS_AT >= ${FIREBIRD_TIMESTAMP_PARAM} AND A.SPIS_AT < ${FIREBIRD_TIMESTAMP_PARAM}
                  ORDER BY A.ID`,
-                [service, new Date(start), new Date(end)],
+                [service, toFirebirdTimestamp(new Date(start)), toFirebirdTimestamp(new Date(end))],
                 false,
             );
             return rows.map((r) => ({
@@ -78,7 +79,7 @@ export class MpReturnAcceptStore {
                 quan: r.QUAN,
                 spisCode: r.SPIS_CODE,
                 spisSs: r.SPIS_SS,
-                spisAt: r.SPIS_AT,
+                spisAt: fromFirebirdTimestamp(r.SPIS_AT_TEXT ?? r.SPIS_AT),
                 documentQuantity: r.DOC_QUAN ?? null,
             }));
         } finally {
@@ -93,7 +94,7 @@ export class MpReturnAcceptStore {
             for (let i = 0; i < extIds.length; i += 100) {
                 const part = extIds.slice(i, i + 100);
                 const rows = await transaction.query(
-                    `SELECT * FROM MP_RETURN_ACCEPT WHERE SERVICE = ? AND EXT_ID IN (${part.map(() => '?').join(',')})`,
+                    `SELECT A.*, CAST(A.SPIS_AT AS VARCHAR(32)) AS SPIS_AT_TEXT, CAST(A.CREATED_AT AS VARCHAR(32)) AS CREATED_AT_TEXT FROM MP_RETURN_ACCEPT A WHERE SERVICE = ? AND EXT_ID IN (${part.map(() => '?').join(',')})`,
                     [service, ...part],
                     false,
                 );
@@ -167,9 +168,9 @@ export class MpReturnAcceptStore {
             comment: r.COMMENT_TEXT ?? null,
             spisCode: r.SPIS_CODE ?? null,
             spisSs: r.SPIS_SS == null ? null : (Number(r.SPIS_SS) as 0 | 1),
-            spisAt: r.SPIS_AT ? new Date(r.SPIS_AT) : null,
+            spisAt: r.SPIS_AT ? fromFirebirdTimestamp(r.SPIS_AT_TEXT ?? r.SPIS_AT) : null,
             username: r.USERNAME ?? null,
-            createdAt: new Date(r.CREATED_AT),
+            createdAt: fromFirebirdTimestamp(r.CREATED_AT_TEXT ?? r.CREATED_AT),
         };
     }
 

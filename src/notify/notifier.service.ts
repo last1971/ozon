@@ -1,3 +1,4 @@
+import { formatMoscowDateTime } from '../shared/moscow-time';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
 import { ConfigService } from '@nestjs/config';
@@ -89,7 +90,7 @@ export class NotifierService {
     async test(topic: NotifyTopic, room?: string): Promise<{ ok: boolean; detail?: string }> {
         const message: NotifyMessage = {
             subject: `Проверка темы ${topic}`,
-            text: `Если вы это видите — маршрут и токен живые. ${new Date().toLocaleString('ru-RU')}`,
+            text: `Если вы это видите — маршрут и токен живые. ${formatMoscowDateTime(new Date())}`,
             notice: true,
         };
         if (room) {

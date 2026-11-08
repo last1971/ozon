@@ -27,6 +27,46 @@ function setup() {
     return { t, pool, store: new LossStatsStore(pool as any) };
 }
 describe('Единое хранилище снимков потерь', () => {
+    it('снимок проходит запись и чтение с тем же UTC API, периодом и количествами', async () => {
+        const { t, store } = setup();
+        const source = snapshot();
+        await store.replace(source);
+        const nativeAt = t.execute.mock.calls.find(([sql]) => sql.startsWith('INSERT INTO MP_LOSS_STATS'))[1][9];
+        expect(nativeAt).toBe('2026-11-06 17:00:00.000');
+        t.query
+            .mockResolvedValueOnce([
+                {
+                    CALCULATED_AT: new Date(2026, 10, 6, 17),
+                    CALCULATED_AT_TEXT: nativeAt,
+                    PERIOD_FROM: new Date(2026, 7, 8),
+                    PERIOD_FROM_TEXT: '2026-08-08',
+                    PERIOD_TO: new Date(2026, 10, 6),
+                    PERIOD_TO_TEXT: '2026-11-06',
+                    PRELIMINARY: 1,
+                },
+            ])
+            .mockResolvedValueOnce([
+                {
+                    GOODSCODE: 123,
+                    PIECES: 1,
+                    SOLD_UNITS: 10,
+                    RETURNED_UNITS: 1,
+                    WRITTEN_OFF_UNITS: 2,
+                    RETURN_RATE: 0.1,
+                    DEFECT_RATE: 0.2,
+                    DATA_STATE: 'READY',
+                    CALCULATED_AT: new Date(2026, 10, 6, 17),
+                    CALCULATED_AT_TEXT: nativeAt,
+                },
+            ]);
+        const restored = await store.read('WB');
+        expect(restored.calculatedAt.getTime()).toBe(source.calculatedAt.getTime());
+        expect(restored.period).toEqual(source.period);
+        expect(restored.rows[0]).toMatchObject(source.rows[0]);
+        expect(restored.rows[0].calculatedAt.getTime()).toBe(source.calculatedAt.getTime());
+        expect(JSON.parse(JSON.stringify(restored)).calculatedAt).toBe('2026-11-06T10:00:00.000Z');
+    });
+
     it('одна транзакция, блокировка площадки до удаления, commit после всех строк/метаданных', async () => {
         const { t, store } = setup();
         const events: string[] = [];
@@ -53,7 +93,7 @@ describe('Единое хранилище снимков потерь', () => {
             0.1,
             0.2,
             'READY',
-            snapshot().calculatedAt,
+            '2026-11-06 17:00:00.000',
             null,
         ]);
         expect(t.rollback).not.toHaveBeenCalled();
@@ -83,7 +123,7 @@ describe('Единое хранилище снимков потерь', () => {
         'равный/более новый снимок %s не затирается',
         async (at) => {
             const { t, store } = setup();
-            t.query.mockResolvedValue([{ CALCULATED_AT: new Date(at) }]);
+            t.query.mockResolvedValue([{ CALCULATED_AT_TEXT: at, CALCULATED_AT: new Date(at) }]);
             await expect(store.replace(snapshot())).rejects.toThrow('более новый');
             expect(t.execute).toHaveBeenCalledTimes(1);
             expect(t.commit).not.toHaveBeenCalled();
@@ -156,6 +196,7 @@ describe('Единое хранилище снимков потерь', () => {
         t.query
             .mockResolvedValueOnce([
                 {
+                    CALCULATED_AT_TEXT: snapshot().calculatedAt.toISOString(),
                     CALCULATED_AT: snapshot().calculatedAt,
                     PRELIMINARY: 1,
                     PERIOD_FROM: new Date(2026, 7, 8),
@@ -172,6 +213,7 @@ describe('Единое хранилище снимков потерь', () => {
                     RETURN_RATE: 0.1,
                     DEFECT_RATE: 0.2,
                     DATA_STATE: 'READY',
+                    CALCULATED_AT_TEXT: snapshot().calculatedAt.toISOString(),
                     CALCULATED_AT: snapshot().calculatedAt,
                 },
             ]);
@@ -184,14 +226,26 @@ describe('Единое хранилище снимков потерь', () => {
         const { store, t } = setup();
         expect(await store.read('WB')).toBeNull();
         t.query
-            .mockResolvedValueOnce([{ CALCULATED_AT: snapshot().calculatedAt, PRELIMINARY: 1 }])
+            .mockResolvedValueOnce([
+                {
+                    CALCULATED_AT_TEXT: snapshot().calculatedAt.toISOString(),
+                    CALCULATED_AT: snapshot().calculatedAt,
+                    PRELIMINARY: 1,
+                },
+            ])
             .mockResolvedValueOnce([]);
         expect(await store.read('WB')).toMatchObject({ rows: [] });
     });
     it('перенесённые старые проценты не получают выдуманные количества и период', async () => {
         const { store, t } = setup();
         t.query
-            .mockResolvedValueOnce([{ CALCULATED_AT: snapshot().calculatedAt, PRELIMINARY: 0 }])
+            .mockResolvedValueOnce([
+                {
+                    CALCULATED_AT_TEXT: snapshot().calculatedAt.toISOString(),
+                    CALCULATED_AT: snapshot().calculatedAt,
+                    PRELIMINARY: 0,
+                },
+            ])
             .mockResolvedValueOnce([
                 {
                     GOODSCODE: 123,
@@ -203,6 +257,7 @@ describe('Единое хранилище снимков потерь', () => {
                     APPLIED_RETURN_RATE: 0.25,
                     DEFECT_RATE: null,
                     DATA_STATE: 'MIGRATED',
+                    CALCULATED_AT_TEXT: snapshot().calculatedAt.toISOString(),
                     CALCULATED_AT: snapshot().calculatedAt,
                 },
             ]);
@@ -242,7 +297,13 @@ describe('Частичные снимки без загруженных возв
     it('читает NULL возвратов, сохраняя известный процент брака', async () => {
         const { store, t } = setup();
         t.query
-            .mockResolvedValueOnce([{ CALCULATED_AT: snapshot().calculatedAt, PRELIMINARY: 1 }])
+            .mockResolvedValueOnce([
+                {
+                    CALCULATED_AT_TEXT: snapshot().calculatedAt.toISOString(),
+                    CALCULATED_AT: snapshot().calculatedAt,
+                    PRELIMINARY: 1,
+                },
+            ])
             .mockResolvedValueOnce([
                 {
                     GOODSCODE: 123,
@@ -253,6 +314,7 @@ describe('Частичные снимки без загруженных возв
                     RETURN_RATE: null,
                     DEFECT_RATE: 0.2,
                     DATA_STATE: 'PARTIAL',
+                    CALCULATED_AT_TEXT: snapshot().calculatedAt.toISOString(),
                     CALCULATED_AT: snapshot().calculatedAt,
                 },
             ]);

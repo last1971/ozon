@@ -1,10 +1,11 @@
+import { moscowIsoDay } from '@/helpers/moscow-time';
 import { defineStore } from "pinia";
 import axios from "../axios.config";
 import type { MpService, ReturnAction, ReturnCard, ReturnRow } from "@/contracts/mp-return.dto";
 
 import { readUser } from "./username";
 
-const isoDay = (d: Date) => d.toISOString().slice(0, 10);
+const isoDay = moscowIsoDay;
 const daysAgo = (n: number) => isoDay(new Date(Date.now() - n * 86400000));
 
 /**

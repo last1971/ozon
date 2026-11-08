@@ -26,7 +26,7 @@ describe('NotifyRetryService', () => {
         await service.enqueue('!c:s', { subject: 'три', text: '3' });
         matrix.deliver.mockResolvedValueOnce({ ok: true }).mockResolvedValueOnce({ ok: false, status: 502 });
         expect(await service.retry()).toEqual({ sent: 1, dropped: 0, left: 2 });
-        expect(matrix.deliver.mock.calls[0][1].subject).toMatch(/^\(с \d\d:\d\d, доставлено с задержкой\) один$/);
+        expect(matrix.deliver.mock.calls[0][1].subject).toMatch(/^\(с \d\d:\d\d МСК, доставлено с задержкой\) один$/);
         expect(await service.size()).toBe(2);
         // следующий проход доставляет остаток
         matrix.deliver.mockResolvedValue({ ok: true });

@@ -33,7 +33,7 @@ describe('Чтение подтверждённых списаний возвр�
         expect(sql).toContain("A.DECISION = 'RETURN'");
         expect(sql).toContain('SPISSHOP');
         expect(sql).toContain('SPISSKLAD');
-        expect(params).toEqual(['WB', new Date('2026-08-08T00:00:00+03:00'), new Date('2026-11-06T00:00:00+03:00')]);
+        expect(params).toEqual(['WB', '2026-08-08 04:00:00.000', '2026-11-06 04:00:00.000']);
         expect(detach).toBe(false);
         expect(t.rollback).toHaveBeenCalledWith(true);
     });

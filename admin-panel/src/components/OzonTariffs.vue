@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatMoscowDateTime } from '@/helpers/moscow-time';
 import { computed, onMounted, ref, watch } from 'vue';
 import axios from '@/axios.config';
 import { useJob } from '@/composable/useJob';
@@ -61,7 +62,7 @@ const result = computed(() => {
 const missing = computed(() => completed.value?.result?.missingTypes ?? []);
 const retired = computed(() => completed.value?.result?.retiredTypes ?? []);
 const source = (kind: Kind) => sources.value.find((s) => s.kind === kind);
-const when = (value?: string | null) => (value ? new Date(value).toLocaleString('ru-RU') : '—');
+const when = formatMoscowDateTime;
 async function refresh() {
     try {
         sources.value = (await axios.get<Source[]>('/api/ozon-category/tariffs')).data;

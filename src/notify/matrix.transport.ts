@@ -1,3 +1,4 @@
+import { formatMoscowShortDateTime } from '../shared/moscow-time';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosError } from 'axios';
@@ -50,7 +51,7 @@ export class MatrixTransport implements INotifyTransport {
 
     /**
      * Тело события: plain body + HTML; длинное режется, хвост уходит письмом по той же теме.
-     * В первой строке — время события (Томск, время склада и серверов): в ленте Element
+     * В первой строке — время события (Москва, с пометкой МСК): в ленте Element
      * из десятков одинаковых заголовков не видно, какой когда пришёл и что уже прочитано
      * (жалоба владельца 06.10.2026).
      */
@@ -71,17 +72,9 @@ export class MatrixTransport implements INotifyTransport {
         };
     }
 
-    /** «06.10 14:38» по Томску — часовой пояс склада и обоих прод-узлов, не зависит от TZ процесса. */
+    /** Московское время явно помечено, независимо от TZ процесса. */
     static stamp(now: Date): string {
-        return now
-            .toLocaleString('ru-RU', {
-                timeZone: 'Asia/Tomsk',
-                day: '2-digit',
-                month: '2-digit',
-                hour: '2-digit',
-                minute: '2-digit',
-            })
-            .replace(',', '');
+        return formatMoscowShortDateTime(now);
     }
 
     static truncate(text: string): { body: string; cut: boolean } {

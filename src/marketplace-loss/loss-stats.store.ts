@@ -1,8 +1,13 @@
+import {
+    fromFirebirdTimestamp,
+    toFirebirdTimestamp,
+    FIREBIRD_TIMESTAMP_PARAM,
+    fromFirebirdDate,
+} from '../firebird/firebird-time';
 import { LossPriceQueueStore } from './prices/loss-price-queue.store';
 import { validateLossExpenses } from './loss-expenses';
 import { Inject, Injectable } from '@nestjs/common';
 import { FirebirdPool, ISOLATION_REPEATABLE_READ, ISOLATION_READ_COMMITTED_READ_ONLY } from 'ts-firebird';
-import { DateTime } from 'luxon';
 import { FIREBIRD } from '../firebird/firebird.module';
 import { calculateLossRates, lossPeriod, lossOfferKey } from '../helpers/price/marketplace.loss.stats';
 import { ozonReturnKey } from '../helpers/price/ozon.return.snapshot';
@@ -69,7 +74,7 @@ export class LossStatsStore implements ILossStatsStore {
                 rates.returnRate,
                 rates.defectRate,
                 state,
-                calculatedAt,
+                toFirebirdTimestamp(calculatedAt),
                 applied,
             ];
         });
@@ -88,11 +93,23 @@ export class LossStatsStore implements ILossStatsStore {
                 [service],
                 false,
             );
-            const old = await t.query('SELECT CALCULATED_AT FROM MP_LOSS_STATE WHERE SERVICE = ?', [service], false);
-            if (old[0]?.CALCULATED_AT && new Date(old[0].CALCULATED_AT).getTime() >= calculatedAt.getTime())
+            const old = await t.query(
+                'SELECT CALCULATED_AT, CAST(CALCULATED_AT AS VARCHAR(32)) AS CALCULATED_AT_TEXT FROM MP_LOSS_STATE WHERE SERVICE = ?',
+                [service],
+                false,
+            );
+            if (
+                old[0]?.CALCULATED_AT &&
+                fromFirebirdTimestamp(old[0].CALCULATED_AT_TEXT ?? old[0].CALCULATED_AT).getTime() >=
+                    calculatedAt.getTime()
+            )
                 throw new Error('Уже сохранён такой же или более новый снимок');
             if (this.priceQueue && (service === 'OZON' || service === 'WB')) {
-                const previous = await t.query('SELECT * FROM MP_LOSS_STATS WHERE SERVICE = ?', [service], false);
+                const previous = await t.query(
+                    'SELECT S.*, CAST(S.CALCULATED_AT AS VARCHAR(32)) AS CALCULATED_AT_TEXT FROM MP_LOSS_STATS S WHERE SERVICE = ?',
+                    [service],
+                    false,
+                );
                 changedOffers = await this.priceQueue.enqueueChanges(
                     service,
                     calculatedAt,
@@ -107,7 +124,7 @@ export class LossStatsStore implements ILossStatsStore {
             await t.execute('DELETE FROM MP_LOSS_STATS WHERE SERVICE = ?', [service], false);
             for (let i = 0; i < rows.length; i++) {
                 await t.execute(
-                    'INSERT INTO MP_LOSS_STATS (SERVICE, GOODSCODE, PIECES, SOLD_UNITS, RETURNED_UNITS, WRITTEN_OFF_UNITS, RETURN_RATE, DEFECT_RATE, DATA_STATE, CALCULATED_AT, APPLIED_RETURN_RATE) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)',
+                    `INSERT INTO MP_LOSS_STATS (SERVICE, GOODSCODE, PIECES, SOLD_UNITS, RETURNED_UNITS, WRITTEN_OFF_UNITS, RETURN_RATE, DEFECT_RATE, DATA_STATE, CALCULATED_AT, APPLIED_RETURN_RATE) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ${FIREBIRD_TIMESTAMP_PARAM}, ?)`,
                     rows[i],
                     false,
                 );
@@ -129,8 +146,8 @@ export class LossStatsStore implements ILossStatsStore {
                 if ((i + 1) % 50 === 0) await hooks.checkpoint?.(i + 1, rows.length);
             }
             await t.execute(
-                'UPDATE MP_LOSS_STATE SET CALCULATED_AT = ?, PERIOD_FROM = ?, PERIOD_TO = ?, PRELIMINARY = ? WHERE SERVICE = ?',
-                [calculatedAt, period.from, period.to, preliminary ? 1 : 0, service],
+                `UPDATE MP_LOSS_STATE SET CALCULATED_AT = ${FIREBIRD_TIMESTAMP_PARAM}, PERIOD_FROM = ?, PERIOD_TO = ?, PRELIMINARY = ? WHERE SERVICE = ?`,
+                [toFirebirdTimestamp(calculatedAt), period.from, period.to, preliminary ? 1 : 0, service],
                 false,
             );
             await hooks.checkpoint?.(rows.length, rows.length);
@@ -147,22 +164,29 @@ export class LossStatsStore implements ILossStatsStore {
         assertLossService(service);
         const t = await this.pool.getTransaction(LOSS_READ_ISOLATION);
         try {
-            const states = await t.query('SELECT * FROM MP_LOSS_STATE WHERE SERVICE = ?', [service], false);
-            const state = states[0];
-            if (!state?.CALCULATED_AT) return null;
-            const rows = await t.query(
-                'SELECT * FROM MP_LOSS_STATS WHERE SERVICE = ? ORDER BY GOODSCODE, PIECES',
+            const states = await t.query(
+                'SELECT S.*, CAST(S.CALCULATED_AT AS VARCHAR(32)) AS CALCULATED_AT_TEXT, CAST(S.PERIOD_FROM AS VARCHAR(10)) AS PERIOD_FROM_TEXT, CAST(S.PERIOD_TO AS VARCHAR(10)) AS PERIOD_TO_TEXT FROM MP_LOSS_STATE S WHERE SERVICE = ?',
                 [service],
                 false,
             );
-            const date = (value: Date) => DateTime.fromJSDate(value).toISODate();
+            const state = states[0];
+            if (!state?.CALCULATED_AT) return null;
+            const rows = await t.query(
+                'SELECT S.*, CAST(S.CALCULATED_AT AS VARCHAR(32)) AS CALCULATED_AT_TEXT FROM MP_LOSS_STATS S WHERE SERVICE = ? ORDER BY GOODSCODE, PIECES',
+                [service],
+                false,
+            );
+            const date = fromFirebirdDate;
             return {
                 service,
                 preliminary: state.PRELIMINARY === 1,
-                calculatedAt: new Date(state.CALCULATED_AT),
+                calculatedAt: fromFirebirdTimestamp(state.CALCULATED_AT_TEXT ?? state.CALCULATED_AT),
                 period:
                     state.PERIOD_FROM && state.PERIOD_TO
-                        ? { from: date(state.PERIOD_FROM), to: date(state.PERIOD_TO) }
+                        ? {
+                              from: date(state.PERIOD_FROM_TEXT ?? state.PERIOD_FROM),
+                              to: date(state.PERIOD_TO_TEXT ?? state.PERIOD_TO),
+                          }
                         : null,
                 rows: rows.map(decodeLossRow),
             };
@@ -192,7 +216,7 @@ function decodeLossRow(row: any): StoredLossRow {
         appliedReturnRate: row.APPLIED_RETURN_RATE ?? null,
         defectRate: row.DEFECT_RATE,
         state: String(row.DATA_STATE).trim() as StoredLossRow['state'],
-        calculatedAt: new Date(row.CALCULATED_AT),
+        calculatedAt: fromFirebirdTimestamp(row.CALCULATED_AT_TEXT ?? row.CALCULATED_AT),
         warnings:
             row.DATA_STATE === 'MIGRATED'
                 ? ['Перенесён процент; исходные количества неизвестны']

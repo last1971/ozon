@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatMoscowDateTime } from '@/helpers/moscow-time';
 import { computed, onMounted, ref, watch } from 'vue';
 import axios from '@/axios.config';
 import { useJob } from '@/composable/useJob';
@@ -44,7 +45,7 @@ const percent = (value: number | null | undefined) =>
 const money = (value: number | null | undefined) =>
     value == null ? 'нет данных' : value.toLocaleString('ru-RU', { maximumFractionDigits: 2 }) + ' ₽';
 const when = (value?: string) =>
-    value ? new Date(value).toLocaleString('ru-RU', { timeZone: 'Europe/Moscow' }) : 'нет данных';
+    formatMoscowDateTime(value, 'нет данных');
 const states = {
     MIGRATED: 'Перенесено без исходных количеств',
     NO_SALES: 'Нет продаж',

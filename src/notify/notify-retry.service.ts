@@ -1,3 +1,4 @@
+import { formatMoscowTime, formatMoscowDateTime } from '../shared/moscow-time';
 import { Inject, Injectable, Logger } from '@nestjs/common';
 import { CACHE_MANAGER, Cache } from '@nestjs/cache-manager';
 import { ConfigService } from '@nestjs/config';
@@ -67,7 +68,7 @@ export class NotifyRetryService {
                 dropped++;
                 continue;
             }
-            const at = new Date(item.ts).toTimeString().slice(0, 5);
+            const at = formatMoscowTime(item.ts);
             const delayed = { ...item.message, subject: `(с ${at}, доставлено с задержкой) ${item.message.subject}` };
             const result = await this.matrix.deliver(item.room, delayed);
             if (!result.ok) {
@@ -100,7 +101,7 @@ export class NotifyRetryService {
             if (await this.cache.get(NotifyRetryService.DOWN_ALERTED_KEY)) return;
             await this.cache.set(NotifyRetryService.DOWN_ALERTED_KEY, 1, 0);
             const targets = await this.routes.targets(NotifyTopic.DEV, 'mail');
-            const when = new Date(since).toLocaleString('ru-RU');
+            const when = formatMoscowDateTime(since);
             if (targets.length === 0) {
                 this.logger.error(`Matrix недоступен с ${when}, письмо слать некому (нет DEV/mail)`);
                 return;

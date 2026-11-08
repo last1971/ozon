@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { formatMoscowTime } from '@/helpers/moscow-time';
 import JobProgress from "@/components/JobProgress.vue";
 import { dictStore, DICT_CATEGORIES_JOB, DICT_TNVED_JOB, type DictReport } from "@/stores/dict";
 import MarketplaceSelect from "@/components/MarketplaceSelect.vue";
@@ -101,7 +102,7 @@ const statsOfMarket = computed(() => store.stats.find((s) => s.market === store.
             <div v-if="j.box.others.length" class="mt-2 text-body-2 text-medium-emphasis">
                 <div v-for="o in j.box.others" :key="o.id">
                     <v-icon :icon="o.status === 'running' ? 'mdi-progress-clock' : o.status === 'failed' ? 'mdi-alert-circle' : 'mdi-check'" size="small" class="me-1" />
-                    {{ marketOf(o) }} · {{ j.label }} · {{ whose(o) }} · <JobProgress :job="o" inline :done-text="o.status" /> · {{ new Date(o.startedAt).toLocaleTimeString() }}
+                    {{ marketOf(o) }} · {{ j.label }} · {{ whose(o) }} · <JobProgress :job="o" inline :done-text="o.status" /> · {{ formatMoscowTime(o.startedAt) }}
                 </div>
             </div>
         </template>
