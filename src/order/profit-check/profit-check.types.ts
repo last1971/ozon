@@ -51,6 +51,8 @@ export interface ProfitCheckPayload {
     lines: SaleLine[];
     /** Для lookup: откуда взята найденная цена (ставит шаг поиска). */
     priceOrigin?: SalePriceOrigin;
+    /** Диагностика существующего повтора в MP_EVENT, исходные цены не заменяются. */
+    check?: { completedLineKeys: string[]; retryReason?: string };
 }
 
 export type ProfitLevel = 'ok' | 'warn' | 'alert' | 'skip';
@@ -65,6 +67,9 @@ export interface LineVerdict extends SaleLine {
     cost: number | null;
     costSource: 'приход' | 'доступная цена' | null;
     reason?: string;
+    retryable?: boolean;
+    failureKind?: 'missing-base' | 'invalid-data' | 'temporary';
+    profitPercent?: number;
 }
 
 export interface ProfitCheckItem {
@@ -73,7 +78,11 @@ export interface ProfitCheckItem {
     payload: ProfitCheckPayload;
     /** ResolveSalePrices: наши цены получены, можно считать. */
     resolved: boolean;
-    /** ResolveSalePrices: цены пока нет, оставить в очереди до следующего прохода. */
+    /** Исходная запись до подстановки найденной цены продавца. */
+    originalPayload?: ProfitCheckPayload;
+    completedLineKeys?: string[];
+    retryReason?: string;
+    /** ResolveSalePrices: цены или данных пока нет, оставить в очереди до следующего прохода. */
     deferred: boolean;
     /** ResolveSalePrices: основной поиск не дал цену за lookupHours — дальше запасной источник. */
     expired?: boolean;
@@ -85,12 +94,13 @@ export interface ProfitCheckItem {
 /** Данные расчёта цены по артикулу — те же, что кормят пересчёт цен. */
 export interface PriceContext {
     priceables: Map<string, IPriceable>;
-    coeffs: ObtainCoeffsDto;
+    coeffs?: ObtainCoeffsDto;
+    issues?: Map<string, { reason: string; kind: NonNullable<LineVerdict['failureKind']> }>;
 }
 
 export interface ProfitCheckContext {
     warnPercent: number;
-    /** Сколько часов ждём цену у площадки, прежде чем сдаться. */
+    /** Сколько часов ждём появление цены до перехода к запасному источнику. Ошибки API не считаются отсутствием цены. */
     lookupHours: number;
     items: ProfitCheckItem[];
     /** LoadPriceContext: по площадке. */

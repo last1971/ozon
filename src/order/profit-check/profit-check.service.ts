@@ -124,7 +124,7 @@ export class ProfitCheckService {
                 const n = (l: string) => ctx.items.filter((i) => i.level === l).length;
                 this.logger.log(
                     `[profit-check] заказов ${ctx.items.length}: норма ${n('ok')}, предупреждений ${n('warn')}, тревог ${n('alert')}, ` +
-                        `не проверено ${n('skip')}, ждут цену ${ctx.items.filter((i) => i.deferred).length}`,
+                        `не проверено ${n('skip')}, ждут данные ${ctx.items.filter((i) => i.deferred).length}`,
                 );
             }
         } catch (e) {

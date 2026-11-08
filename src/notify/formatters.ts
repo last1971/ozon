@@ -64,7 +64,8 @@ export function profitCheckMessage(items: any[]): NotifyMessage {
         v.level === 'skip'
             ? `  ${v.offer_id} × ${v.units}: не проверено — ${v.reason}`
             : `  ${v.offer_id} × ${v.units}: цена ${fmt(v.pricePerUnit)}, мин ${fmt(v.minPrice)}, ` +
-              `себестоимость ${fmt(v.cost)} (${v.costSource}), прибыль ${fmt(v.profitPerUnit)} за шт, итого ${fmt(v.profitTotal)}`;
+              `себестоимость ${fmt(v.cost)} (${v.costSource}), прибыль ${fmt(v.profitPerUnit)} за шт, итого ${fmt(v.profitTotal)}` +
+              (v.profitPercent === undefined ? '' : ` (${v.profitPercent}% от базы)`);
     const block = (title: string, list: any[]) =>
         list.length
             ? [
@@ -74,6 +75,7 @@ export function profitCheckMessage(items: any[]): NotifyMessage {
                           head(i),
                           ...(i.verdicts ?? []).map(lineOf),
                           ...(i.reason && !i.verdicts ? [`  ${i.reason}`] : []),
+                          ...(i.deferred ? ['  Временный сбой: проверка будет повторена.'] : []),
                       ].join('\n'),
                   ),
               ]
@@ -88,7 +90,11 @@ export function profitCheckMessage(items: any[]): NotifyMessage {
         : warns.length
           ? `Заказы ниже минимальной цены: ${warns.length}`
           : `Прибыльность заказов: не проверено ${skips.length}`;
-    return { subject, text: parts.join('\n'), notice: alerts.length === 0 };
+    return {
+        subject,
+        text: ['Расчётная оценка по текущей себестоимости и тарифам; не финансовый итог заказа.', ...parts].join('\n'),
+        notice: alerts.length === 0,
+    };
 }
 
 /** Сколько строк списка показать в сообщении, остальное — «и ещё N». */

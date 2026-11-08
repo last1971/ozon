@@ -4,6 +4,7 @@ import { ExtraPriceService } from '../../../price/extra.price.service';
 import { GOOD_SERVICE, IGood } from '../../../interfaces/IGood';
 import { GoodServiceEnum } from '../../../good/good.service.enum';
 import { MpService } from '../../../mp-event/mp-event.service';
+import { pricingFailureKind } from '../../../helpers/price/pricing-error';
 import { PriceContext, ProfitCheckContext } from '../profit-check.types';
 
 const MP_TO_GOOD: Record<string, GoodServiceEnum> = {
@@ -41,15 +42,49 @@ export class LoadPriceContextCommand implements ICommandAsync<ProfitCheckContext
                 priceContexts.set(service, null);
                 continue;
             }
+            const pc: PriceContext = { priceables: new Map(), issues: new Map() };
+            priceContexts.set(service, pc);
+            const ids = [...skus];
             try {
-                const priceables = await this.goods.buildPriceables(priceService, [...skus]);
-                priceContexts.set(service, {
-                    priceables: new Map(priceables.map((p) => [p.offer_id, p])),
-                    coeffs: priceService.getObtainCoeffs(),
-                });
-            } catch (e) {
-                this.logger.warn(`${service}: данные расчёта не собраны — ${e.message}`);
-                priceContexts.set(service, null);
+                pc.coeffs = priceService.getObtainCoeffs();
+            } catch (error) {
+                for (const id of ids)
+                    pc.issues.set(id, {
+                        kind: pricingFailureKind(error) === 'temporary' ? 'temporary' : 'invalid-data',
+                        reason: `настройки расчёта недоступны: ${error.message}`,
+                    });
+                continue;
+            }
+            // Общий сборщик изолирует ошибку артикула через onSkip; сбой целой пачки
+            // не отменяет следующие пачки. Формулы и чтение тарифов остаются в сборщике.
+            for (let offset = 0; offset < ids.length; offset += 100) {
+                const batch = ids.slice(offset, offset + 100);
+                try {
+                    const rows = await this.goods.buildPriceables(priceService, batch, undefined, (skip) => {
+                        const missing = ['no-base', 'no-free-stock', 'not-in-stock'].includes(skip.reason);
+                        pc.issues.set(skip.offer_id, {
+                            kind: missing
+                                ? 'missing-base'
+                                : skip.failureKind === 'temporary'
+                                  ? 'temporary'
+                                  : 'invalid-data',
+                            reason:
+                                skip.message ??
+                                (missing ? 'нет себестоимости для расчёта' : 'некорректные данные расчёта'),
+                        });
+                    });
+                    for (const row of rows) {
+                        if (batch.includes(row.offer_id) && !pc.issues.has(row.offer_id))
+                            pc.priceables.set(row.offer_id, row);
+                    }
+                } catch (error) {
+                    this.logger.warn(`${service}: данные расчёта не собраны — ${error.message}`);
+                    for (const id of batch)
+                        pc.issues.set(id, {
+                            kind: pricingFailureKind(error) === 'temporary' ? 'temporary' : 'invalid-data',
+                            reason: `данные расчёта недоступны: ${error.message}`,
+                        });
+                }
             }
         }
         return { ...ctx, priceContexts };

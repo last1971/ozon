@@ -12,7 +12,14 @@ export class NotifyCommand implements ICommandAsync<ProfitCheckContext> {
     constructor(private readonly eventEmitter: EventEmitter2) {}
 
     async execute(ctx: ProfitCheckContext): Promise<ProfitCheckContext> {
-        const report = ctx.items.filter((i) => !i.deferred && i.level && i.level !== 'ok');
+        const report = ctx.items.filter(
+            (i) =>
+                i.level &&
+                i.level !== 'ok' &&
+                (!i.deferred ||
+                    i.verdicts?.some((v) => !v.retryable && v.level !== 'ok') ||
+                    (i.retryReason && i.retryReason !== i.payload.check?.retryReason)),
+        );
         if (report.length) this.eventEmitter.emit('profit.check', report);
         return ctx;
     }

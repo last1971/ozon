@@ -16,7 +16,14 @@ export class LoadPendingCommand implements ICommandAsync<ProfitCheckContext> {
             for (const r of rows) {
                 const payload = r.payload as ProfitCheckPayload | null;
                 if (!payload?.lines) continue;
-                items.push({ posting: r.extId, firstSeen: r.firstSeen, payload, resolved: false, deferred: false });
+                items.push({
+                    posting: r.extId,
+                    firstSeen: r.firstSeen,
+                    payload,
+                    originalPayload: payload,
+                    resolved: false,
+                    deferred: false,
+                });
             }
         }
         return { ...ctx, items, stopChain: items.length === 0 };

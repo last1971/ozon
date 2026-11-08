@@ -28,11 +28,21 @@ export function evaluateLine(
         cost: null,
         costSource: null,
     } as LineVerdict;
-    if (!priceable) return { ...base, level: 'skip', reason: 'нет себестоимости или наценок' };
+    if (!priceable)
+        return { ...base, level: 'skip', failureKind: 'missing-base', reason: 'нет себестоимости или наценок' };
     const available = toNumber(priceable.available_price);
     const cost = available > 0 ? available : toNumber(priceable.incoming_price);
-    if (!(cost > 0)) return { ...base, level: 'skip', reason: 'нет себестоимости' };
-    if (!(line.pricePerUnit > 0)) return { ...base, level: 'skip', reason: 'нет цены продажи' };
+    if (!Number.isFinite(cost))
+        return { ...base, level: 'skip', failureKind: 'invalid-data', reason: 'некорректная себестоимость' };
+    if (!(cost > 0)) return { ...base, level: 'skip', failureKind: 'missing-base', reason: 'нет себестоимости' };
+    base.cost = round2(cost);
+    base.costSource = available > 0 ? 'доступная цена' : 'приход';
+    if (!Number.isFinite(line.pricePerUnit))
+        return { ...base, level: 'skip', failureKind: 'invalid-data', reason: 'некорректная цена продажи' };
+    if (!(line.pricePerUnit > 0))
+        return { ...base, level: 'skip', failureKind: 'invalid-data', reason: 'нет цены продажи' };
+    if (!Number.isInteger(line.units) || line.units <= 0)
+        return { ...base, level: 'skip', failureKind: 'invalid-data', reason: 'некорректное количество' };
 
     let minPrice: number;
     let pay: ReturnType<typeof calculatePay>;
@@ -43,6 +53,7 @@ export function evaluateLine(
         return {
             ...base,
             level: 'skip',
+            failureKind: 'invalid-data',
             reason: `расчёт недоступен: ${e.message}`,
             cost: round2(cost),
             costSource: available > 0 ? 'доступная цена' : 'приход',
@@ -50,6 +61,9 @@ export function evaluateLine(
     }
     const profitPerUnit = pay.netProfit ?? pay.pay - cost;
     const profitTotal = profitPerUnit * line.units;
+    const profitPercent = pay.netProfitPercent ?? (profitPerUnit / cost) * 100;
+    if (!(minPrice > 0) || ![minPrice, profitPerUnit, profitTotal, profitPercent].every(Number.isFinite))
+        return { ...base, level: 'skip', failureKind: 'invalid-data', reason: 'некорректный результат расчёта' };
 
     let level: ProfitLevel = 'ok';
     if (profitPerUnit <= 0) level = 'alert';
@@ -60,6 +74,7 @@ export function evaluateLine(
         level,
         minPrice,
         profitPerUnit: round2(profitPerUnit),
+        profitPercent: round2(profitPercent),
         profitTotal: round2(profitTotal),
         cost: round2(cost),
         costSource: available > 0 ? 'доступная цена' : 'приход',

@@ -55,3 +55,13 @@ describe('profitCheckMessage', () => {
         expect(stat.text).not.toContain('из карточки');
     });
 });
+
+it('уведомление явно обозначает расчётную оценку, процент от базы и повтор временного сбоя', () => {
+    const m = profitCheckMessage([
+        item('alert', { deferred: true, verdicts: [{ ...item('alert').verdicts[0], profitPercent: -3.64 }] }),
+    ]);
+    expect(m.text).toContain('Расчётная оценка');
+    expect(m.text).toContain('не финансовый итог заказа');
+    expect(m.text).toContain('-3.64% от базы');
+    expect(m.text).toContain('проверка будет повторена');
+});

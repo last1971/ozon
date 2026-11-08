@@ -39,6 +39,11 @@ export class ResolveSalePricesCommand implements ICommandAsync<ProfitCheckContex
                 found = source ? await source.lookupSalePrices(refs) : new Map();
             } catch (e) {
                 this.logger.warn(`${service}: цены не получены — ${e.message}`);
+                for (const item of group) {
+                    item.deferred = true;
+                    item.retryReason = `временный сбой получения цены продажи: ${e.message}`;
+                }
+                continue;
             }
             for (const item of group) {
                 const lines = found.get(item.payload.externalId);

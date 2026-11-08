@@ -167,7 +167,9 @@ describe('ProfitCheckService', () => {
         it('Озон без прибыли → тревога с пушем, запись обработана, данные расчёта через единый сборщик', async () => {
             journal.listUnhandledRows.mockImplementation(async (s: string) => (s === 'OZON' ? [row()] : []));
             await service.run();
-            expect(goods.buildPriceables).toHaveBeenCalledWith(priceService, ['568615']);
+            expect(goods.buildPriceables).toHaveBeenCalledWith(
+                priceService, ['568615'], undefined, expect.any(Function),
+            );
             expect(emitter.emit).toHaveBeenCalledTimes(1);
             const [name, items] = emitter.emit.mock.calls[0];
             expect(name).toBe('profit.check');

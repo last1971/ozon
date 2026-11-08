@@ -695,12 +695,13 @@ export class WbOrderService implements IOrderable, ISalePriceFallback, IFboSales
             .minus({ hours: 1 })
             .toISO({ suppressMilliseconds: true, includeOffset: false });
         const wanted = new Set(refs.map((r) => r.externalId));
-        const rows: any[] = (await this.getOrders(dateFrom)) ?? [];
+        const rows = await this.getOrders(dateFrom);
+        if (!Array.isArray(rows)) throw new Error('WB: некорректный ответ статистики заказов');
         for (const row of rows) {
             const srid = String(row.srid ?? '');
             if (!wanted.has(srid)) continue;
             const price = Number(row.priceWithDisc);
-            if (!(price > 0)) continue;
+            if (!Number.isFinite(price) || !(price > 0)) continue;
             result.set(srid, [
                 ...(result.get(srid) ?? []),
                 { offer_id: String(row.supplierArticle), units: 1, pricePerUnit: price },
@@ -723,7 +724,8 @@ export class WbOrderService implements IOrderable, ISalePriceFallback, IFboSales
                 ...l,
                 pricePerUnit: Number(current.get(String(l.offer_id))?.discountedPrice),
             }));
-            if (lines.length && lines.every((l) => l.pricePerUnit > 0)) result.set(ref.externalId, lines);
+            if (lines.length && lines.every((l) => Number.isFinite(l.pricePerUnit) && l.pricePerUnit > 0))
+                result.set(ref.externalId, lines);
         }
         return result;
     }
