@@ -17,6 +17,7 @@ export function lossPriceRetryDue(
 ): boolean {
     const row = payload as LossPricePayload;
     if (force || matchesPricingInputs(row?.offerId, wake)) return true;
+    if (row?.waitingForStock === true) return false;
     if (!row?.lastError || !['data', 'temporary'].includes(row.retryKind)) return true;
     const attempted = Date.parse(row.attemptedAt),
         next = Date.parse(row.nextAttemptAt);

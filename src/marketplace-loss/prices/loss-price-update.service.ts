@@ -1,3 +1,4 @@
+import { CheckLossPriceStockCommand } from './check-loss-price-stock.command';
 import {
     PRICING_INPUTS_CHANGED,
     PricingInputsChanged,
@@ -51,8 +52,9 @@ export class LossPriceUpdateService implements OnApplicationBootstrap {
         confirm: ConfirmLossPricesCommand,
         promos: CheckLossPricePromosCommand,
         finish: FinishLossPriceTasksCommand,
+        stock: CheckLossPriceStockCommand,
     ) {
-        this.commands = [load, calculate, compare, send, confirm, promos, finish];
+        this.commands = [load, stock, calculate, compare, send, confirm, promos, finish];
     }
     require(service: string): LossPriceMarket {
         let key: LossPriceMarket;
@@ -108,10 +110,11 @@ export class LossPriceUpdateService implements OnApplicationBootstrap {
                 service: key,
                 processed: c.tasks.filter((task) => !task.deferred).length,
                 sent: c.sent,
-                completed: c.tasks.filter((t) => !t.error).length,
+                completed: c.tasks.filter((t) => !t.error && !t.waitingForStock && !t.deferred).length,
+                waitingStock: c.tasks.filter(t => t.waitingForStock).length,
                 pending: c.tasks
-                    .filter((t) => t.error)
-                    .map((t) => ({ offerId: t.offerId, error: t.error, ...(t.deferred ? { deferred: true } : {}) })),
+                    .filter((t) => t.error || t.waitingForStock)
+                    .map((t) => ({ offerId: t.offerId, error: t.waitingForStock ? 'Ожидание остатка' : t.error, ...(t.waitingForStock ? { waitingForStock: true } : {}), ...(t.deferred ? { deferred: true } : {}) })),
             }),
         });
         this.active.set(key, job.id);
@@ -155,7 +158,7 @@ export class LossPriceUpdateService implements OnApplicationBootstrap {
     }
     hasReady(service: string, rows: MpEventRowDto[]): boolean {
         const key = this.require(service);
-        return rows.some((row) => lossPriceRetryDue(row.payload, false, this.wakes.get(key)));
+        return rows.some((row) => (row.payload as { waitingForStock?: boolean })?.waitingForStock === true || lossPriceRetryDue(row.payload, false, this.wakes.get(key)));
     }
     @OnEvent('counts.changed')
     countsChanged(goods: { code: string | number }[]) {
@@ -173,7 +176,7 @@ export class LossPriceUpdateService implements OnApplicationBootstrap {
             if (change.service && change.service !== key) continue;
             this.wakes.set(key, mergePricingInputs(this.wakes.get(key), change));
             const context = this.contexts.get(key);
-            if (context?.tasks.some((task) => task.error && matchesPricingInputs(task.offerId, change)))
+            if (context?.tasks.some((task) => (task.error || task.waitingForStock) && matchesPricingInputs(task.offerId, change)))
                 this.rerun.add(key);
         }
     }

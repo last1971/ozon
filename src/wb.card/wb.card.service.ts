@@ -35,6 +35,60 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
     private skuNmIDPair: Map<string, string>;
     private productInfos: Map<string, ProductInfoDto>;
     private wbCards: Map<string, WbCardDto>;
+    private fboStocksCache?: { until: number; quantities: Map<string, number> };
+    private fboStocksLoading?: Promise<Map<string, number>>;
+
+    /** Доступные к продаже упаковки на складах WB. Товары в пути сюда не входят. */
+    async getFboStocks(offers: string[]): Promise<Map<string, number>> {
+        if (!offers.length) return new Map();
+        if (offers.some(offer => !this.getWbCard(offer))) await this.getAllWbCards();
+        let quantities = this.fboStocksCache?.until > Date.now() ? this.fboStocksCache.quantities : undefined;
+        if (!quantities) {
+            this.fboStocksLoading ??= this.loadFboStocks().then(values => {
+                this.fboStocksCache = { until: Date.now() + 60_000, quantities: values };
+                return values;
+            }).finally(() => { this.fboStocksLoading = undefined; });
+            quantities = await this.fboStocksLoading;
+        }
+        const result = new Map<string, number>();
+        for (const offer of offers) {
+            const card = this.getWbCard(offer);
+            // Отсутствующую карточку нельзя объявить товаром с нулевым остатком.
+            if (card) result.set(offer, quantities.get(String(card.nmID)) ?? 0);
+        }
+        return result;
+    }
+    private async loadFboStocks(): Promise<Map<string, number>> {
+        const result = new Map<string, number>(), seen = new Set<string>();
+        const limit = 250000;
+        for (let offset = 0; offset < limit * 10; offset += limit) {
+            const response = await this.readFboStockPage(limit, offset);
+            const rows = response?.data?.items;
+            if (response?.error || !Array.isArray(rows) || rows.length > limit)
+                throw new Error('WB не вернул достоверные остатки складов');
+            for (const [index, row] of rows.entries()) {
+                if (index % 1000 === 0) await new Promise<void>(resolve => setImmediate(resolve));
+                const nm = Number(row.nmId), size = Number(row.chrtId), warehouse = Number(row.warehouseId);
+                if (![nm, size].every(n => Number.isSafeInteger(n) && n > 0) || !Number.isSafeInteger(warehouse) ||
+                    !Number.isSafeInteger(row.quantity) || row.quantity < 0)
+                    throw new Error('Некорректная строка остатков WB');
+                const key = `${nm}:${size}:${warehouse}`;
+                if (seen.has(key)) throw new Error('Повтор строки остатков WB');
+                seen.add(key);
+                const total = (result.get(String(nm)) ?? 0) + row.quantity;
+                if (!Number.isSafeInteger(total)) throw new Error('Некорректная сумма остатков WB');
+                result.set(String(nm), total);
+            }
+            if (rows.length < limit) return result;
+        }
+        throw new Error('Не получены все страницы остатков WB');
+    }
+    @RateLimit(20100)
+    private readFboStockPage(limit: number, offset: number) {
+        return this.api.method('https://seller-analytics-api.wildberries.ru/api/analytics/v1/stocks-report/wb-warehouses',
+            'post', { limit, offset }, true);
+    }
+
     constructor(
         private api: WbApiService,
         private vault: VaultService,

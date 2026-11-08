@@ -9,9 +9,10 @@ export function lossPriceFields(
     statistics: LossPricingStatistics | undefined,
     good: GoodPriceDto | undefined,
     pieces: number,
+    marketplaceStock = 0,
 ): Pick<IPriceable, 'lossCosts'> {
     if (!statistics) return {};
-    const unit = good?.base_source === 'none' ? NaN : good?.price;
+    const unit = good?.base_source === 'none' ? NaN : good?.price ?? (marketplaceStock > 0 ? good?.purchase_price : null);
     const purchaseCost =
         typeof unit === 'number' && Number.isFinite(unit) && unit > 0 && Number.isSafeInteger(pieces) && pieces > 0
             ? unit * pieces
@@ -24,5 +25,6 @@ export function productLossPriceFields(product: IProductCoeffsable, goods: GoodP
         product.getLossStatistics?.() ?? product.getOzonPricing?.()?.lossStatistics,
         goods.find((good) => String(good.code) === goodCode({ offer_id })),
         goodQuantityCoeff({ offer_id }),
+        product.getMarketplaceStock?.() ?? 0,
     );
 }

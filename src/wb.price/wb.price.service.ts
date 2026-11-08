@@ -1,3 +1,4 @@
+import { pricingStocks, PricingStocks } from '../helpers/price/pricing-stock';
 import { addJobMetric, measureJobOperation, setJobActivity } from '../job/job.execution';
 import { wbPriceTask } from './wb-price-task';
 import { LossPricingService } from '../marketplace-loss/loss-pricing.service';
@@ -172,7 +173,11 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
         };
     }
 
-    async getProductsWithCoeffs(skus: string[]): Promise<IProductCoeffsable[]> {
+    async getPricingAvailability(offers: string[]) {
+        return pricingStocks(offers, this.goodService, ids => this.cardService.getFboStocks(ids));
+    }
+    async getProductsWithCoeffs(skus: string[], onError?: (offerId: string, error: unknown) => void, knownStocks?: PricingStocks): Promise<IProductCoeffsable[]> {
+        const stocks = knownStocks ?? await this.getPricingAvailability(skus);
         const [data, losses] = await Promise.all([this.goodService.getWbData(skus), this.losses.load('WB', skus)]);
         return data.map(
             (wbData) =>
@@ -180,6 +185,7 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
                     wbData,
                     this.configService.get<number>('WB_EXT_PERC', 0),
                     losses.get(wbData.id),
+                    stocks.get(wbData.id)?.state === 'available' ? (stocks.get(wbData.id) as { marketplace: number }).marketplace : 0,
                 ),
         );
     }
@@ -351,7 +357,9 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
         const snapshot = priceUpdateQueue.reader('wb');
         const current = await measureJobOperation('inputReadMs', () => this.currentPrices.getAll());
         if (articles === 'all') articles = [...current.keys()];
-        const wbData = await measureJobOperation('inputReadMs', () => this.goodService.getWbData(articles as string[]));
+        const stocks = await measureJobOperation('inputReadMs', () => this.getPricingAvailability(articles as string[]));
+        const active = articles.filter(offer => stocks.get(offer)?.state === 'available');
+        const wbData = active.length ? await measureJobOperation('inputReadMs', () => this.goodService.getWbData(active)) : [];
         const minPriceByArt = new Map(wbData.map((w) => [w.id, Number(w.minPrice)]));
 
         const data: WbPriceTask[] = [];
@@ -363,6 +371,12 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
 
         const planningStarted = performance.now();
         for (const article of articles) {
+            const stock = stocks.get(article);
+            if (stock?.state === 'empty') { skipped.push(article); continue; }
+            if (stock?.state !== 'available') {
+                errors.push(`${article}: ${stock?.state === 'unknown' ? stock.message : 'Не удалось проверить наличие товара'}`);
+                continue;
+            }
             const cur = current.get(article);
             if (!cur) {
                 missing.push(article);
@@ -459,7 +473,7 @@ export class WbPriceService implements IPriceUpdateable, IVatUpdateable {
                 // минимальная фасовки: не трогаем. Снижение в 3 раза и больше ВБ и сам кладёт в карантин.
                 if (base >= minPrice * WbPriceService.MAX_BASE_TO_MIN) {
                     throw new Error(
-                        `база ${base} в ${Math.floor(base / minPrice)} раз выше минимальной ${minPrice} — заглушка?`,
+                        `Базовая цена WB ${base} ₽ слишком высокая для минимальной цены ${minPrice} ₽. Снизьте базовую цену вручную в кабинете WB.`,
                     );
                 }
                 const discount = wbDiscountTo(base, minPrice);

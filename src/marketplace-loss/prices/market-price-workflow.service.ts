@@ -1,3 +1,4 @@
+import { CheckLossPriceStockCommand } from './check-loss-price-stock.command';
 import { randomUUID } from 'crypto';
 import { Inject, Injectable } from '@nestjs/common';
 import { emptyProgress, IJobCommand } from '../../interfaces/i.job.context';
@@ -29,8 +30,9 @@ export class MarketPriceWorkflowService {
         send: SendLossPricesCommand,
         confirm: ConfirmLossPricesCommand,
         promos: CheckLossPricePromosCommand,
+        stock: CheckLossPriceStockCommand,
     ) {
-        this.commands = [calculate, compare, send, confirm, promos];
+        this.commands = [stock, calculate, compare, send, confirm, promos];
     }
     async incoming(
         service: LossPriceMarket,
@@ -63,9 +65,9 @@ export class MarketPriceWorkflowService {
                 })),
             },
             result: (ctx) => {
-                ctx.progress.counters.pending = ctx.tasks.filter((t) => t.error).length;
-                ctx.progress.counters.completed = ctx.tasks.filter((t) => !t.error).length;
-                return ctx.tasks.map((t) => ({ offerId: t.offerId, ...(t.error ? { error: t.error } : {}) }));
+                ctx.progress.counters.pending = ctx.tasks.filter((t) => t.error || t.waitingForStock).length;
+                ctx.progress.counters.completed = ctx.tasks.filter((t) => !t.error && !t.waitingForStock).length;
+                return ctx.tasks.map((t) => ({ offerId: t.offerId, ...(t.waitingForStock ? { error: 'Ожидание остатка' } : t.error ? { error: t.error } : {}) }));
             },
         });
         const done = await this.jobs.whenDone(job.id);

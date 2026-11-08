@@ -80,3 +80,16 @@ describe('База цены своей фасовки', () => {
         ).toBe(115);
     });
 });
+
+describe('товар только на складе площадки', () => {
+    const row: any = { code: 123, price: null, purchase_price: 20, free_stock: 0, base_source: 'all-receipts' };
+    it('использует известный приход и умножает только на фасовку', () => {
+        expect(resolvePriceBase('123-5', 5, row, undefined, undefined, 2)).toMatchObject({ incoming_price: 100, base_source: 'all-receipts' });
+    });
+    it('без подтверждённого остатка не разрешает цену по старому приходу', () => {
+        expect(resolvePriceBase('123-5', 5, row).skipReason).toBe('no-free-stock');
+    });
+    it('не выдумывает закупку при отсутствии стоимости прихода', () => {
+        expect(resolvePriceBase('123', 1, { ...row, purchase_price: null }, undefined, undefined, 1).skipReason).toBe('no-base');
+    });
+});

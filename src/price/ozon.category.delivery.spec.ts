@@ -111,6 +111,7 @@ function setup(database = 'opt', weights = [3, 1], data = new Map<string, any>()
     const pricing = new OzonPricingService(categories as any, logistics, config, losses);
     const helper = new PriceCalculationHelper(config);
     const goods = new Trade2006GoodService(null, config, null, null, helper);
+    jest.spyOn(goods, 'in').mockImplementation(async codes => codes.map(code => ({ code, name: 'test', quantity: 100, reserve: 0 })));
     jest.spyOn(goods, 'prices').mockResolvedValue([
         { code: 123, name: 'Тестовый товар', price: 20, free_stock: 10, base_source: 'remaining-lots' },
     ]);

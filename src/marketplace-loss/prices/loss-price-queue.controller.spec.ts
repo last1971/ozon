@@ -1,3 +1,4 @@
+import { CheckLossPriceStockCommand } from './check-loss-price-stock.command';
 import { Test } from '@nestjs/testing';
 import { ConfigService } from '@nestjs/config';
 import request from 'supertest';
@@ -43,6 +44,7 @@ describe('API очереди и подключение к существующи
                     ConfirmLossPricesCommand,
                     CheckLossPricePromosCommand,
                     FinishLossPriceTasksCommand,
+                    CheckLossPriceStockCommand,
                 ].map((provide) => ({ provide, useValue: noop })),
             ],
         }).compile();

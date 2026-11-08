@@ -1,3 +1,4 @@
+import { CheckLossPriceStockCommand } from './check-loss-price-stock.command';
 import { ConfigService } from '@nestjs/config';
 import { JobService } from '../../job/job.service';
 import { calculatePrice } from '../../helpers/price/price.helpers';
@@ -29,6 +30,7 @@ function setup() {
         buildPriceables: jest.fn(async (_service, ids: string[], _prices?: any, _onSkip?: any) => ids.map(input)),
     };
     const adapter = {
+        availability: jest.fn(async (ids: string[]) => new Map(ids.map(id => [id, { state: 'available' as const, marketplace: 0 }]))),
         pricing: { getObtainCoeffs: () => coeffs },
         offers: jest.fn(async () => {
             throw Error('Нельзя обходить каталог');
@@ -51,6 +53,7 @@ function setup() {
         new SendLossPricesCommand(),
         new ConfirmLossPricesCommand(new ConfigService({ PRICE_VERIFY_DELAY_MS: 0 })),
         new CheckLossPricePromosCommand(),
+        new CheckLossPriceStockCommand(),
     );
     return { workflow, goods, adapter, current, jobs };
 }
@@ -102,6 +105,7 @@ it('отказ акции: следующий проход после перез
         new SendLossPricesCommand(),
         new ConfirmLossPricesCommand(new ConfigService({ PRICE_VERIFY_DELAY_MS: 0 })),
         new CheckLossPricePromosCommand(),
+        new CheckLossPriceStockCommand(),
     );
     expect(await restarted.incoming('OZON', ['123'])).toEqual([{ offerId: '123' }]);
     expect(s.adapter.send).toHaveBeenCalledTimes(1);

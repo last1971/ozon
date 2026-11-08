@@ -18,6 +18,7 @@ export class WbLossPriceAdapter implements LossPriceAdapter {
     async current(_offers: string[]): Promise<Map<string, unknown>> {
         return this.prices.getAll();
     }
+    availability(offers: string[]) { return this.pricing.getPricingAvailability(offers); }
     matches(target: UpdatePriceDto, actual: unknown) {
         if (!actual) return false;
         const current = actual as WbCurrentPrice;

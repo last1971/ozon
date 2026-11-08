@@ -1,3 +1,4 @@
+import { pricingStocks } from '../../../helpers/price/pricing-stock';
 import { measureJobOperation } from '../../../job/job.execution';
 import { jobCheckpoint } from '../../../job/job.checkpoint';
 import { lossPriceFields } from '../../../helpers/price/marketplace.loss.input';
@@ -34,6 +35,7 @@ export class EnrichWithPricingCommand implements IJobCommand<IPromoSweepContext>
         const states = context.collectedStates ?? context.states ?? [];
         context.pricingErrors = new Map();
         context.progress.counters.noBase ??= 0;
+        context.progress.counters.noStock ??= 0;
         context.progress.total = states.length;
         context.progress.done = 0;
         for (const state of states) {
@@ -51,11 +53,10 @@ export class EnrichWithPricingCommand implements IJobCommand<IPromoSweepContext>
         for (const batch of chunk(states, 100)) {
             if (context.stopChain) break;
             const offers = batch.map((s) => s.offerId);
-            const codes = [...new Set<string>(offers.map((offer_id) => String(goodCode({ offer_id }))))];
             let data: Awaited<ReturnType<typeof this.loadBatch>>;
             let batchError: unknown;
             try {
-                data = await measureJobOperation('inputReadMs', () => this.loadBatch(offers, codes));
+                data = await measureJobOperation('inputReadMs', () => this.loadBatch(offers));
             } catch (e) {
                 batchError = e;
             }
@@ -64,6 +65,13 @@ export class EnrichWithPricingCommand implements IJobCommand<IPromoSweepContext>
                 if (index % 25 === 0) await jobCheckpoint(context);
                 try {
                     if (batchError) throw batchError;
+                    const stock = data.stocks.get(state.offerId);
+                    if (stock?.state === 'empty') {
+                        context.progress.counters.noStock++;
+                        context.progress.done++;
+                        continue;
+                    }
+                    if (stock?.state !== 'available') throw new Error(stock?.state === 'unknown' ? stock.message : 'Не удалось проверить наличие товара');
                     const product = data.products.find((p) => p.offer_id === state.offerId);
                     const info = data.infos.find((p) => p.sku === state.offerId);
                     if (!product || !info) throw new Error('нет карточки Ozon');
@@ -78,6 +86,8 @@ export class EnrichWithPricingCommand implements IJobCommand<IPromoSweepContext>
                         pieces,
                         data.goods.find((g) => String(g.code) === code),
                         percent,
+                        undefined,
+                        info.fboCount,
                     );
                     if (base.base_source === 'none') throw new Error(`нет базы: ${base.skipReason}`);
                     if (!percent) throw new Error('нет наценок');
@@ -89,6 +99,7 @@ export class EnrichWithPricingCommand implements IJobCommand<IPromoSweepContext>
                                 ozon.lossStatistics,
                                 data.goods.find((g) => String(g.code) === code),
                                 pieces,
+                                info.fboCount,
                             ),
                             ozon,
                             offer_id: state.offerId,
@@ -136,15 +147,20 @@ export class EnrichWithPricingCommand implements IJobCommand<IPromoSweepContext>
         return context;
     }
 
-    private async loadBatch(offers: string[], codes: string[]) {
-        const [prices, infos, goods, percents] = await Promise.all([
-            this.products.getPrices({ offer_id: offers, visibility: ProductVisibility.ALL, limit: offers.length }),
-            this.products.infoList(offers),
+    private async loadBatch(offers: string[]) {
+        const infos = await this.products.infoList(offers);
+        if (!Array.isArray(infos) || new Set(infos.map(info => info.sku)).size !== infos.length ||
+            infos.some(info => !offers.includes(info.sku))) throw new Error('неполный ответ API Ozon');
+        const stocks = await pricingStocks(offers, this.goods, async () => new Map(infos.map(info => [info.sku, info.fboCount])));
+        const active = offers.filter(offer => stocks.get(offer)?.state === 'available');
+        const codes = [...new Set(active.map(offer_id => goodCode({ offer_id })))];
+        const [prices, goods, percents] = active.length ? await Promise.all([
+            this.products.getPrices({ offer_id: active, visibility: ProductVisibility.ALL, limit: active.length }),
             this.goods.prices(codes, null),
             this.goods.getPerc(codes, null),
-        ]);
-        if (!Array.isArray(prices?.items) || !Array.isArray(infos)) throw new Error('неполный ответ API Ozon');
-        await this.pricing.prepare(infos);
-        return { products: prices.items, infos, goods, percents };
+        ]) : [{ items: [] }, [], []];
+        if (!Array.isArray(prices?.items)) throw new Error('неполный ответ API Ozon');
+        if (active.length) await this.pricing.prepare(infos.filter(info => active.includes(info.sku)));
+        return { products: prices.items, infos, goods, percents, stocks };
     }
 }

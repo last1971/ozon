@@ -200,7 +200,7 @@ describe('Trade2006GoodService', () => {
                 RECEIPTS_PRICE: 70,
             },
         ]);
-        expect(await service.prices(['1'])).toEqual([{ code: 1, name: undefined, price: null, base_source: 'remaining-lots', free_stock: 0 }]);
+        expect(await service.prices(['1'])).toEqual([{ code: 1, name: undefined, price: null, purchase_price: 90, base_source: 'remaining-lots', free_stock: 0 }]);
     });
 
     it.each(['shop', 'sklad'])('prices: приходы соответствуют складу %s', async (storage) => {
@@ -331,7 +331,7 @@ describe('Trade2006GoodService', () => {
         prices.set('1', { incoming_price: 100 } as UpdatePriceDto);
 
         await service.updatePriceForService(priceUdateable, ['1'], prices);
-        expect(mockPriceCalculationHelper.preparePricesContext).toHaveBeenCalledWith(priceUdateable, ['1'], service, null, undefined, expect.any(Function));
+        expect(mockPriceCalculationHelper.preparePricesContext).toHaveBeenCalledWith(priceUdateable, ['1'], service, null, undefined, expect.any(Function), undefined);
         expect(mockPriceCalculationHelper.getIncomingPrice).toHaveBeenCalled();
         expect(updatePrices).toHaveBeenCalled();
     });

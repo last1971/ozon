@@ -70,6 +70,7 @@ const make = () => {
         return_perc: 0,
     };
     const goods = {
+        in: jest.fn(async codes => codes.map(code => ({ code, quantity: 100, reserve: 0 }))),
         prices: jest.fn().mockResolvedValue([{ code: 123, price: 20, free_stock: 10, base_source: 'remaining-lots' }]),
         getPerc: jest.fn().mockResolvedValue([row]),
         generatePercentsForService: jest.fn().mockResolvedValue([row]),
@@ -270,4 +271,33 @@ it('кеш расчёта не заменяет свежую цену и акц�
     await m.command.execute(failed);
     expect(failed.pricingErrors.get('123-5')).toBe('API 503');
     expect(failed.states[0].calcMinPrice).toBeUndefined();
+});
+
+describe('наличие до расчёта сверки Ozon', () => {
+    it('пустой товар не попадает в ошибки базы, тарифы и план', async () => {
+        const m = make(), ctx = context();
+        m.goods.in.mockResolvedValue([{ code: '123', quantity: 0, reserve: 0 }]);
+        m.goods.prices.mockResolvedValue([{ code: 123, price: null, free_stock: 0, base_source: 'remaining-lots' }]);
+        m.products.infoList.mockResolvedValue([{ sku: '123-5', typeId: 1, fboCount: 0 }] as any);
+        await m.command.execute(ctx);
+        expect(ctx.states).toEqual([]);
+        expect(ctx.progress.counters.noStock).toBe(1);
+        expect(ctx.progress.counters.noBase).toBe(0);
+        expect(ctx.pricingErrors.size).toBe(0);
+        expect(m.pricing.prepare).not.toHaveBeenCalled();
+        expect(m.goods.prices).not.toHaveBeenCalled();
+        expect(m.goods.getPerc).not.toHaveBeenCalled();
+        expect(m.products.getPrices).not.toHaveBeenCalled();
+        expect(m.pricing.load).not.toHaveBeenCalled();
+        expect(m.goods.generatePercentsForService).not.toHaveBeenCalled();
+    });
+    it('при нуле у нас и наличии FBO использует настоящий приход', async () => {
+        const m = make(), ctx = context();
+        m.goods.in.mockResolvedValue([{ code: '123', quantity: 0, reserve: 0 }]);
+        m.goods.prices.mockResolvedValue([{ code: 123, price: null, purchase_price: 20, free_stock: 0, base_source: 'all-receipts' }] as any);
+        m.products.infoList.mockResolvedValue([{ sku: '123-5', typeId: 1, fboCount: 2 }] as any);
+        await m.command.execute(ctx);
+        expect(ctx.states[0].calcMinPrice).toBe(200);
+        expect(ctx.progress.counters.noStock).toBe(0);
+    });
 });

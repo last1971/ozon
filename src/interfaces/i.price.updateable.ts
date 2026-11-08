@@ -1,3 +1,4 @@
+import type { PricingStocks } from '../helpers/price/pricing-stock';
 import { ObtainCoeffsDto } from '../helpers/dto/obtain.coeffs.dto';
 import { IProductCoeffsable } from './i.product.coeffsable';
 import { UpdatePriceDto } from '../price/dto/update.price.dto';
@@ -7,9 +8,11 @@ export interface IPriceUpdateable {
     readonly priceUpdateKey?: string;
     startUpdateAllPrices?(clientId?: string): import('../job/job.state.dto').JobStateDto;
     getObtainCoeffs(): ObtainCoeffsDto;
+    getPricingAvailability?(skus: string[]): Promise<PricingStocks>;
     getProductsWithCoeffs(
         skus: string[],
         onError?: (offerId: string, error: unknown) => void,
+        stocks?: PricingStocks,
     ): Promise<IProductCoeffsable[]>;
     updatePrices(updatePrices: UpdatePriceDto[]): Promise<any>;
     /** Пакетное чтение протокольных данных до поштучной записи (например, текущих цен WB). */

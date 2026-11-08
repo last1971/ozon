@@ -1,3 +1,4 @@
+import { CheckLossPriceStockCommand } from './check-loss-price-stock.command';
 import { lossExpensesPerSale } from '../loss-expenses';
 import { ConfigService } from '@nestjs/config';
 import { Logger } from '@nestjs/common';
@@ -67,6 +68,7 @@ function setup(offers = ['123'], service: 'WB' | 'OZON' = 'WB') {
     const queue = new LossPriceQueueStore(journal as any);
     const current = new Map<string, any>();
     const adapter = {
+        availability: jest.fn(async (ids: string[]) => new Map(ids.map(id => [id, { state: 'available' as const, marketplace: 0 }]))),
         pricing: { getObtainCoeffs: () => coeffs } as any,
         offers: jest.fn().mockResolvedValue(offers),
         current: jest.fn(async () => new Map(current)),
@@ -92,7 +94,7 @@ function setup(offers = ['123'], service: 'WB' | 'OZON' = 'WB') {
         },
     }));
     const stats = { read: jest.fn().mockResolvedValue({ service, rows }) };
-    const goods = { buildPriceables: jest.fn(async (_, ids) => ids.map((id) => input(id))) };
+    const goods = { buildPriceables: jest.fn(async (_, ids, _prices?: any, _onSkip?: any) => ids.map((id) => input(id))) };
     const config = new ConfigService({ SERVICES: [service.toLowerCase()], PRICE_VERIFY_DELAY_MS: 0 });
     const load = new LoadLossPriceTasksCommand(queue);
     const calculate = new CalculateLossPriceTargetsCommand(goods as any);
@@ -114,6 +116,7 @@ function setup(offers = ['123'], service: 'WB' | 'OZON' = 'WB') {
             confirm,
             promos,
             finish,
+            new CheckLossPriceStockCommand(),
         ),
     });
     const { worker, jobs } = makeWorker();
@@ -566,4 +569,70 @@ it('ожидание подтверждения цены не занимает �
     unblock();
     await confirming;
     expect(read).toHaveBeenCalled();
+});
+
+describe('ожидание остатка в общей цепочке', () => {
+    it.each(['WB', 'OZON'] as const)('%s: ноль → ожидание; повтор и перезапуск не считают цену; остаток → свежая цена и акции', async market => {
+        const s = setup(['123'], market);
+        s.adapter.availability.mockResolvedValue(new Map([['123', { state: 'empty', marketplace: 0 }]]) as any);
+        const done = await s.run();
+        expect(done.result).toMatchObject({ sent: 0, completed: 0, waitingStock: 1 });
+        expect([...s.pending.values()][0].payload).toMatchObject({ waitingForStock: true });
+        expect((([...s.pending.values()][0].payload) as any).lastError).toBeUndefined();
+        expect(s.goods.buildPriceables).not.toHaveBeenCalled();
+        expect(s.adapter.send).not.toHaveBeenCalled();
+        const saved = s.journal.updatePendingPayload.mock.calls.length;
+        expect(s.worker.hasReady(market, [...s.pending.values()] as any)).toBe(true);
+        await s.run();
+        const restarted = s.makeWorker();
+        await restarted.jobs.whenDone(restarted.worker.start(market, 'bootstrap').id);
+        expect(s.journal.updatePendingPayload).toHaveBeenCalledTimes(saved);
+        expect(s.goods.buildPriceables).not.toHaveBeenCalled();
+        s.adapter.availability.mockResolvedValue(new Map([['123', { state: 'available', marketplace: 2 }]]));
+        await s.run();
+        expect(s.goods.buildPriceables).toHaveBeenCalledTimes(1);
+        expect(s.adapter.send).toHaveBeenCalledTimes(1);
+        expect(s.adapter.promos).toHaveBeenCalledTimes(1);
+        expect(s.pending.size).toBe(0);
+    });
+    it('неизвестный остаток остаётся временной ошибкой, а не нулём', async () => {
+        const s = setup();
+        s.adapter.availability.mockRejectedValueOnce(Error('403'));
+        await s.run();
+        const payload: any = [...s.pending.values()][0].payload;
+        expect(payload.retryKind).toBe('temporary');
+        expect(payload.waitingForStock).not.toBe(true);
+        expect(s.goods.buildPriceables).not.toHaveBeenCalled();
+        expect(s.adapter.send).not.toHaveBeenCalled();
+    });
+    it('пачка: отсутствующий товар ждёт, доступный рассчитывается и отправляется', async () => {
+        const s = setup(['123', '456']);
+        s.adapter.availability.mockResolvedValue(new Map([
+            ['123', { state: 'empty', marketplace: 0 }], ['456', { state: 'available', marketplace: 0 }],
+        ]) as any);
+        await s.run();
+        expect(s.goods.buildPriceables.mock.calls[0][1]).toEqual(['456']);
+        expect(s.adapter.send.mock.calls[0][0].map(t => t.offer_id)).toEqual(['456']);
+        expect([...s.pending.values()].map(e => e.payload.offerId)).toEqual(['123']);
+    });
+    it('исчезновение остатка между проверкой и расчётом тоже переводит в ожидание', async () => {
+        const s = setup();
+        s.goods.buildPriceables.mockImplementationOnce(async (_a, ids, _p, onSkip) => {
+            onSkip({ offer_id: ids[0], reason: 'no-free-stock' });
+            return [];
+        });
+        await s.run();
+        expect((([...s.pending.values()][0].payload) as any).waitingForStock).toBe(true);
+        expect(s.adapter.send).not.toHaveBeenCalled();
+    });
+    it('у алиаса -1 есть складской остаток: пустой основной алиас не мешает расчёту', async () => {
+        const s = setup();
+        s.adapter.offers.mockResolvedValue(['123', '123-1']);
+        s.adapter.availability.mockResolvedValue(new Map([
+            ['123', { state: 'empty', marketplace: 0 }], ['123-1', { state: 'available', marketplace: 2 }],
+        ]) as any);
+        await s.run();
+        expect(s.goods.buildPriceables.mock.calls[0][1]).toEqual(['123-1']);
+        expect(s.pending.size).toBe(0);
+    });
 });

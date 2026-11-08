@@ -1,3 +1,4 @@
+import type { PricingStocks } from '../../helpers/price/pricing-stock';
 import { PricingSnapshot } from '../../helpers/price/price-update.queue';
 import type { PricingFailureKind } from '../../helpers/price/pricing-error';
 import type { PricingInputsChanged } from '../../helpers/price/pricing-inputs-changed';
@@ -14,6 +15,7 @@ export interface LossPricePayload {
     version: 1;
     offerId: string;
     calculatedAt: string;
+    waitingForStock?: boolean;
     attempts?: number;
     lastError?: string;
     attemptedAt?: string;
@@ -28,6 +30,7 @@ export interface LossPriceTask {
     error?: string;
     failureKind?: PricingFailureKind;
     deferred?: boolean;
+    waitingForStock?: boolean;
     snapshot?: PricingSnapshot;
 }
 /** Адаптер отвечает за протокол площадки, общая цепочка — за очередь и порядок фаз. */
@@ -36,6 +39,7 @@ export interface LossPriceAdapter {
     readonly pricing: IPriceUpdateable;
     readonly promoBatchSize?: number;
     offers(): Promise<string[]>;
+    availability(offers: string[]): Promise<PricingStocks>;
     current(offers: string[]): Promise<Map<string, unknown>>;
     matches(target: UpdatePriceDto, actual: unknown): boolean;
     persist(targets: UpdatePriceDto[]): Promise<void>;
@@ -51,6 +55,8 @@ export interface LossPriceContext extends IJobContext {
     service: LossPriceMarket;
     /** Адресный запуск использует уже сопоставленные артикулы, без обхода каталога. */
     offerIds?: string[];
+    catalog?: string[];
+    availableOffers?: string[];
     assertInputsCurrent?: (offerId: string) => Promise<void>;
     adapter: LossPriceAdapter;
     tasks: LossPriceTask[];

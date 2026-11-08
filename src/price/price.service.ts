@@ -1,3 +1,4 @@
+import { pricingStocks } from '../helpers/price/pricing-stock';
 import { jobCheckpoint } from '../job/job.checkpoint';
 import { PricingDataError } from '../helpers/price/pricing-error';
 import { lossPriceFields, productLossPriceFields } from '../helpers/price/marketplace.loss.input';
@@ -54,6 +55,13 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
         private ozonCategoryService: OzonCategoryService,
         private readonly ozonPricing: OzonPricingService,
     ) {}
+    async getPricingAvailability(offers: string[]) {
+        return pricingStocks(offers, this.goodService, async ids => {
+            const rows = await this.product.infoList(ids);
+            if (!Array.isArray(rows) || new Set(rows.map(row => row.sku)).size !== rows.length || rows.some(row => !ids.includes(row.sku))) throw new Error('Не получены остатки Ozon');
+            return new Map(rows.map(row => [row.sku, row.fboCount]));
+        });
+    }
     /**
      * Преобразует значение НДС Озона (строка как доля) в число (проценты)
      * '0.05' -> 5, '0.07' -> 7, '0.1' -> 10, '0.2' -> 20, '0.22' -> 22, остальное -> 0
@@ -220,6 +228,8 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                 pieces,
                 goods.find((g) => String(g.code) === code),
                 percent,
+                undefined,
+                info.fboCount,
             );
             // Ошибка другого поля не уничтожает уже прочитанную базу и снимок текущих цен.
             known.base = base.incoming_price ?? 0;
@@ -236,6 +246,7 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                         ozon.lossStatistics,
                         goods.find((g) => String(g.code) === code),
                         pieces,
+                        info.fboCount,
                     ),
                     ozon,
                     offer_id: offerId,

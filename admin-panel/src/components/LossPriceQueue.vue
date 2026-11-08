@@ -9,6 +9,7 @@ type QueueResult = {
     processed: number;
     completed: number;
     sent: number;
+    waitingStock?: number;
     pending: { offerId: string; error: string }[];
 };
 const jobs = Object.fromEntries(
@@ -16,7 +17,14 @@ const jobs = Object.fromEntries(
 );
 const selected = computed(() => jobs[props.service]);
 const job = computed(() => selected.value?.box.job);
-const pending = ref<{ extId: string; payload?: { offerId?: string; attempts?: number; lastError?: string } }[]>([]);
+const pending = ref<
+    {
+        extId: string;
+        payload?: { offerId?: string; attempts?: number; lastError?: string; waitingForStock?: boolean };
+    }[]
+>([]);
+const waitingStock = computed(() => pending.value.filter((event) => event.payload?.waitingForStock));
+const actionable = computed(() => pending.value.filter((event) => !event.payload?.waitingForStock));
 const loading = ref(false);
 const starting = ref(false);
 const readError = ref('');
@@ -81,14 +89,23 @@ watch(
         <p v-if="loading" role="status">Чтение очереди цен…</p>
         <p v-if="job?.status === 'done' && job.result">
             В последнем проходе: обработано {{ job.result.processed }}, завершено {{ job.result.completed }}, отправлено
-            цен {{ job.result.sent }}.
+            цен {{ job.result.sent }}. Ожидают остатка {{ job.result.waitingStock ?? 0 }}.
         </p>
         <p v-if="!loading && !readError">Незавершённых заданий: {{ pending.length }}.</p>
-        <v-alert v-if="pending.length" type="warning" class="my-2">
+        <v-alert v-if="waitingStock.length" type="info" class="my-2" data-waiting-stock>
+            Ожидают остатка: {{ waitingStock.length }}. Расчёт продолжится после появления товара.
+            <details>
+                <summary>Показать товары</summary>
+                <p v-for="event in waitingStock" :key="event.extId">
+                    {{ event.payload?.offerId ?? event.extId }}: ожидание остатка.
+                </p>
+            </details>
+        </v-alert>
+        <v-alert v-if="actionable.length" type="warning" class="my-2">
             Эти обновления ещё не завершены. Причины и число попыток указаны ниже.
             <details>
                 <summary>Показать задания</summary>
-                <p v-for="event in pending" :key="event.extId">
+                <p v-for="event in actionable" :key="event.extId">
                     {{ event.payload?.offerId ?? event.extId }}: {{ event.payload?.lastError ?? 'Ожидает обработки' }};
                     попыток {{ event.payload?.attempts ?? 0 }}.
                 </p>

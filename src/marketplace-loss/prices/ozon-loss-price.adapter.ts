@@ -38,6 +38,7 @@ export class OzonLossPriceAdapter implements LossPriceAdapter {
         }
         return result;
     }
+    availability(offers: string[]) { return this.pricing.getPricingAvailability(offers); }
     matches(target: UpdatePriceDto, actual: unknown) {
         return ozonPricesMatch(target, actual, 0);
     }

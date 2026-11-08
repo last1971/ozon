@@ -131,7 +131,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                                 AND pm2.quan > 0 AND pm2.price > 0) AS receipts_price
                     FROM goods g
                     JOIN name n ON g.namecode = n.namecode
-                    JOIN ${this.storageTable} s ON s.goodscode = g.goodscode
+                    LEFT JOIN ${this.storageTable} s ON s.goodscode = g.goodscode
                     LEFT JOIN (
                         SELECT goodscode, SUM(QUANSHOP) + SUM(QUANSKLAD) AS res
                         FROM RESERVEDPOS
@@ -156,6 +156,7 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                         price: good.FREE_STOCK > 0 && base ? Number(base.price) : null,
                         base_source: base?.source ?? 'none',
                         free_stock: Number(good.FREE_STOCK) || 0,
+                        ...(!(good.FREE_STOCK > 0) && base ? { purchase_price: Number(base.price) } : {}),
                     };
                 });
 
@@ -808,9 +809,20 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         prices?: Map<string, UpdatePriceDto>,
     ): Promise<{ priceables: IPriceable[]; skipped: PriceSkip[] }> {
         const skipped: PriceSkip[] = [];
+        const stocks = await service?.getPricingAvailability?.(skus);
+        const active = stocks ? skus.filter(offer => {
+            const stock = stocks.get(offer);
+            if (stock?.state === 'available') return true;
+            skipped.push(stock?.state === 'empty' ? { offer_id: offer, reason: 'no-free-stock' } : {
+                offer_id: offer, reason: 'pricing-data', failureKind: 'temporary',
+                message: stock?.state === 'unknown' ? stock.message : 'Не удалось проверить наличие товара',
+            });
+            return false;
+        }) : skus;
+        if (!active.length) return { priceables: [], skipped };
         const { goods, percents, products } = await this.priceCalculationHelper.preparePricesContext(
             service,
-            skus,
+            active,
             this,
             null,
             undefined,
@@ -821,9 +833,10 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
                     failureKind: pricingFailureKind(error),
                     message: error instanceof Error ? error.message : String(error),
                 }),
+            stocks,
         );
 
-        await completePricePercents(skus, this, { goods, percents, prices });
+        await completePricePercents(active, this, { goods, percents, prices });
 
         const priceables: IPriceable[] = [];
         for (const [index, product] of products.entries()) {

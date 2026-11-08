@@ -125,3 +125,27 @@ it('поздний ответ прежней площадки не заменя�
     await flushPromises();
     expect(w.text()).not.toContain('Нет тарифа');
 });
+
+it('ожидание остатка отдельно от ошибок; число попыток не вводит в заблуждение', async () => {
+    vi.mocked(axios.get).mockImplementation(async (url) => ({
+        data:
+            url === '/api/job'
+                ? []
+                : [...queued, { extId: '2:456', payload: { offerId: '456', waitingForStock: true, attempts: 3 } }],
+    }));
+    const w = await render();
+    const wait = w.find('[data-waiting-stock]');
+    expect(wait.attributes('data-alert')).toBe('info');
+    expect(wait.text()).toContain('456: ожидание остатка');
+    expect(wait.text()).not.toContain('попыток');
+    expect(w.find('[data-alert="warning"]').text()).toContain('Нет тарифа');
+    expect(w.find('[data-alert="warning"]').text()).not.toContain('456');
+});
+it('только пустые товары не вызывают предупреждение об ошибках', async () => {
+    vi.mocked(axios.get).mockImplementation(async (url) => ({
+        data: url === '/api/job' ? [] : [{ extId: '1:123', payload: { offerId: '123', waitingForStock: true } }],
+    }));
+    const w = await render();
+    expect(w.find('[data-alert="warning"]').exists()).toBe(false);
+    expect(w.text()).toContain('Ожидают остатка: 1');
+});

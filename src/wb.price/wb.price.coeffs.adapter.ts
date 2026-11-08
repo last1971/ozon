@@ -7,7 +7,10 @@ export class WbPriceCoeffsAdapter implements IProductCoeffsable {
         private goodWbDto: GoodWbDto,
         private wbExtPerc: number,
         private readonly losses?: LossPricingStatistics,
+        private readonly marketplaceStock = 0,
     ) {}
+
+    getMarketplaceStock() { return this.marketplaceStock; }
 
     getLossStatistics() {
         if (this.losses && this.losses.paidReturnDelivery === undefined)

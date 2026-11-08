@@ -38,7 +38,7 @@ describe('WbPriceService', () => {
                 },
                 {
                     provide: GOOD_SERVICE,
-                    useValue: { getWbData, updatePriceForService, repriceForService, setWbData, updateWbCategory },
+                    useValue: { in: jest.fn(async (codes) => codes.map(code => ({ code, quantity: 1000000, reserve: 0 }))), getWbData, updatePriceForService, repriceForService, setWbData, updateWbCategory },
                 },
                 {
                     provide: WbApiService,
@@ -397,7 +397,7 @@ describe('WbPriceService', () => {
 
             expect(uploadPayload()).toEqual([{ nmID: 1, price: 100, discount: 20 }]);
             expect(report.errors).toEqual([
-                expect.stringContaining('509331-10: база 93000 в 205 раз выше минимальной 452'),
+                expect.stringContaining('509331-10: Базовая цена WB 93000 ₽ слишком высокая для минимальной цены 452 ₽. Снизьте базовую цену вручную в кабинете WB.'),
             ]);
         });
 

@@ -68,6 +68,15 @@ export class LossPriceQueueStore {
     pending(service: LossPriceMarket) {
         return this.journal.listUnhandledRows(service, LOSS_PRICE_KIND, LOSS_PRICE_PENDING);
     }
+    async waitForStock(service: LossPriceMarket, event: MpEventRowDto) {
+        const payload = event.payload as LossPricePayload;
+        if (payload.waitingForStock === true) return;
+        await this.journal.updatePendingPayload(
+            { service, kind: LOSS_PRICE_KIND, state: LOSS_PRICE_PENDING, extId: event.extId },
+            { ...payload, waitingForStock: true, lastError: undefined, retryKind: undefined,
+                nextAttemptAt: undefined },
+        );
+    }
     async finish(
         service: LossPriceMarket,
         event: MpEventRowDto,
@@ -80,6 +89,7 @@ export class LossPriceQueueStore {
         const now = Date.now();
         await this.journal.updatePendingPayload(key, {
             ...payload,
+            waitingForStock: undefined,
             attempts: (Number.isSafeInteger(payload?.attempts) ? payload.attempts : 0) + 1,
             lastError: error,
             attemptedAt: new Date(now).toISOString(),

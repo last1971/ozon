@@ -54,6 +54,7 @@ const make = () => {
     };
     const helper = new PriceCalculationHelper(config);
     const goods = new Trade2006GoodService(null, config, null, null, helper);
+    jest.spyOn(goods, 'in').mockImplementation(async codes => codes.map(code => ({ code, name: 'test', quantity: 100, reserve: 0 })));
     jest.spyOn(goods, 'prices').mockResolvedValue([
         { code: 123, name: 'test', price: 20, free_stock: 10, base_source: 'remaining-lots' },
     ]);
@@ -281,4 +282,19 @@ it('снимок комиссии расходуется одним load, пос
     await m.loader.load(m.product, m.info);
     m.categories.getCommissions.mockResolvedValue({ fbs: m.bands.map((b) => ({ ...b, rate: 0.31 })), fbo: [] });
     expect((await m.loader.load(m.product, m.info)).schemes[0].commissions[0].rate).toBe(0.31);
+});
+
+it('FBO без нашего остатка: экран и общий расчёт используют одну известную себестоимость', async () => {
+    const m = make();
+    (m.goods.in as jest.Mock).mockResolvedValue([{ code: '123', quantity: 0, reserve: 0 }]);
+    (m.goods.prices as jest.Mock).mockResolvedValue([{ code: 123, price: null, purchase_price: 20, free_stock: 0, base_source: 'all-receipts' }]);
+    m.info.fbsCount = 0;
+    m.info.fboCount = 2;
+    const [built] = await m.goods.buildPriceables(m.priceService, ['123-5']);
+    const screen = await m.priceService.getOzonPricingResult('123-5');
+    expect(built.incoming_price).toBe(100);
+    expect(screen.error).toBeUndefined();
+    expect(screen.base).toBe(100);
+    expect(Number(calculatePrice(built, m.priceService.getObtainCoeffs()).min_price)).toBe(screen.min.price);
+    expect(m.products.setPrice).not.toHaveBeenCalled();
 });

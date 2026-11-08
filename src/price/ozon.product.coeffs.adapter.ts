@@ -26,6 +26,8 @@ export class OzonProductCoeffsAdapter implements IProductCoeffsable {
               : 'fbs';
     }
 
+    getMarketplaceStock(): number { return this.productInfo?.fboCount ?? 0; }
+
     getOzonPricing(): OzonPricingContext {
         return this.pricing;
     }

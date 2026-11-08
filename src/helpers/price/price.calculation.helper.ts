@@ -1,3 +1,4 @@
+import type { PricingStocks } from './pricing-stock';
 import { resolvePriceBase, ResolvedPriceBase } from './price.base';
 import { Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
@@ -96,6 +97,7 @@ export class PriceCalculationHelper {
         transaction: FirebirdTransaction = null,
         known?: PricesContextDto,
         onError?: (offerId: string, error: unknown) => void,
+        stocks?: PricingStocks,
     ): Promise<{
         codes: string[];
         goods: GoodPriceDto[];
@@ -106,7 +108,9 @@ export class PriceCalculationHelper {
         const goods = known ? known.goods : await goodService.prices(codes, transaction);
         const percents = known ? known.percents : await goodService.getPerc(codes, transaction);
         const products = service
-            ? onError
+            ? stocks
+                ? await service.getProductsWithCoeffs(skus, onError, stocks)
+                : onError
                 ? await service.getProductsWithCoeffs(skus, onError)
                 : await service.getProductsWithCoeffs(skus)
             : skus.map((sku) => new GenericProductCoeffsAdapter(sku));
@@ -129,6 +133,7 @@ export class PriceCalculationHelper {
             goods.find((g) => String(g.code) === code),
             percents.find((p) => String(p.offer_id) === code && Number(p.pieces ?? 1) === pieces),
             prices?.get(sku)?.incoming_price,
+            product.getMarketplaceStock?.() ?? 0,
         );
     }
 

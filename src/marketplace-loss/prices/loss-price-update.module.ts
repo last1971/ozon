@@ -1,3 +1,4 @@
+import { CheckLossPriceStockCommand } from './check-loss-price-stock.command';
 import { MarketPriceWorkflowService } from './market-price-workflow.service';
 import { Module, forwardRef } from '@nestjs/common';
 import { MarketplaceLossModule } from '../marketplace-loss.module';
@@ -40,6 +41,7 @@ import {
         WbLossPriceAdapter,
         LossPriceUpdateService,
         MarketPriceWorkflowService,
+        CheckLossPriceStockCommand,
         LoadLossPriceTasksCommand,
         CalculateLossPriceTargetsCommand,
         CompareLossPricesCommand,

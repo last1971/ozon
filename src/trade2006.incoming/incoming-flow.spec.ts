@@ -1,3 +1,4 @@
+import { CheckLossPriceStockCommand } from '../marketplace-loss/prices/check-loss-price-stock.command';
 import { ConfigService } from '@nestjs/config';
 import { ExtraPriceService } from '../price/extra.price.service';
 import { ExtraGoodService } from '../good/extra.good.service';
@@ -58,6 +59,7 @@ function setup() {
         ),
     };
     const adapter = {
+        availability: jest.fn(async (ids: string[]) => new Map(ids.map(id => [id, { state: 'available' as const, marketplace: 0 }]))),
         pricing: {
             getObtainCoeffs: () => ({ minMil: 0, percMil: 0, percEkv: 1, sumObtain: 0, sumLabel: 0, taxUnit: 6 }),
         },
@@ -86,6 +88,7 @@ function setup() {
             new SendLossPricesCommand(),
             new ConfirmLossPricesCommand(config),
             new CheckLossPricePromosCommand(),
+        new CheckLossPriceStockCommand(),
         );
         const extra = Object.assign(Object.create(ExtraPriceService.prototype), {
             services: new Map([[GoodServiceEnum.OZON, adapter.pricing]]),

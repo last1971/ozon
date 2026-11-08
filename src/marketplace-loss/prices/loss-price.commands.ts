@@ -1,3 +1,4 @@
+import { groupLossPriceOffers } from './loss-price.offers';
 import { setJobActivity } from '../../job/job.execution';
 import { priceUpdateQueue } from '../../helpers/price/price-update.queue';
 import { Inject, Injectable } from '@nestjs/common';
@@ -14,7 +15,7 @@ import { lossOfferKey } from '../../helpers/price/marketplace.loss.stats';
 import { LossPriceQueueStore } from './loss-price-queue.store';
 import { LossPriceContext, LossPricePayload, LossPriceTask, LossPriceResult } from './loss-price.contracts';
 
-const valid = (ctx: LossPriceContext) => ctx.tasks.filter((t) => !t.error);
+const valid = (ctx: LossPriceContext) => ctx.tasks.filter((t) => !t.error && !t.deferred && !t.waitingForStock);
 const targets = (ctx: LossPriceContext) => valid(ctx).flatMap((t) => t.targets);
 const reason = (e: unknown) => (e instanceof Error ? e.message : String(e));
 function rejectOffers(ctx: LossPriceContext, results: Map<string, LossPriceResult>) {
@@ -69,6 +70,11 @@ export class LoadLossPriceTasksCommand implements IJobCommand<LossPriceContext> 
         }
         ctx.tasks = [...grouped.values()];
         for (const task of ctx.tasks) {
+            if (!task.error && task.events.every(event => (event.payload as LossPricePayload)?.waitingForStock === true)) {
+                task.waitingForStock = true;
+                task.deferred = true;
+                continue;
+            }
             if (task.events.some((event) => lossPriceRetryDue(event.payload, ctx.forceRetry, ctx.wake))) continue;
             task.deferred = true;
             task.error =
@@ -92,15 +98,7 @@ export class CalculateLossPriceTargetsCommand implements IJobCommand<LossPriceCo
             ctx.service.toLowerCase(),
             valid(ctx).map((t) => t.offerId),
         );
-        const offers = new Map<string, string[]>();
-        for (const offer of new Set(ctx.offerIds ?? (await ctx.adapter.offers()))) {
-            try {
-                const key = lossOfferKey(offer);
-                offers.set(key, [...(offers.get(key) ?? []), offer]);
-            } catch {
-                /* Артикулы другого формата не привязываются к числовому коду статистики. */
-            }
-        }
+        const offers = groupLossPriceOffers(ctx.availableOffers ?? ctx.catalog ?? ctx.offerIds ?? await ctx.adapter.offers());
         const requested = new Map<string, LossPriceTask>();
         for (const task of valid(ctx)) {
             const actual = offers.get(task.offerId);
@@ -131,6 +129,10 @@ export class CalculateLossPriceTargetsCommand implements IJobCommand<LossPriceCo
                     const target = calculatedByOffer.get(offer);
                     if (!target) {
                         const failure = skipped.get(offer);
+                        if (failure?.reason === 'no-free-stock') {
+                            task.waitingForStock = true;
+                            continue;
+                        }
                         task.error =
                             failure?.message ||
                             (failure?.reason
@@ -149,7 +151,7 @@ export class CalculateLossPriceTargetsCommand implements IJobCommand<LossPriceCo
             }
             ctx.progress.done += batch.length;
         }
-        for (const task of ctx.tasks) if (task.error) task.targets = [];
+        for (const task of ctx.tasks) if (task.error || task.waitingForStock) task.targets = [];
         return ctx;
     }
 }
@@ -328,12 +330,14 @@ export class FinishLossPriceTasksCommand implements IJobCommand<LossPriceContext
         for (const task of ctx.tasks) {
             for (const event of task.events) {
                 await jobCheckpoint(ctx);
-                if (!task.deferred) await this.queue.finish(ctx.service, event, task.error, task.failureKind);
+                if (task.waitingForStock) await this.queue.waitForStock(ctx.service, event);
+                else if (!task.deferred) await this.queue.finish(ctx.service, event, task.error, task.failureKind);
             }
             ctx.progress.done++;
         }
-        ctx.progress.counters.completed = ctx.tasks.filter((t) => !t.error).length;
-        ctx.progress.counters.pending = ctx.tasks.filter((t) => t.error).length;
+        ctx.progress.counters.completed = ctx.tasks.filter((t) => !t.error && !t.deferred && !t.waitingForStock).length;
+        ctx.progress.counters.pending = ctx.tasks.filter((t) => t.error || t.waitingForStock).length;
+        ctx.progress.counters.waitingStock = ctx.tasks.filter((t) => t.waitingForStock).length;
         return ctx;
     }
 }
