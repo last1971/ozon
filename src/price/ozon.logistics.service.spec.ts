@@ -143,22 +143,18 @@ describe('Расходы Ozon для единого расчёта цены', ()
         ]);
         expect((await m.service.quote(m.product, m.info)).fbo.bands[0].amount).toBe(200);
     });
-    it.each(['acquiring', 'lastMile', 'firstMile', 'returnFlow'])(
-        'отсутствующий расход %s не заменяется нулём',
-        async (field) => {
-            const m = make();
-            if (field === 'acquiring') delete m.product.acquiring;
-            else
-                delete m.product.commissions[
-                    {
-                        lastMile: 'fbs_deliv_to_customer_amount',
-                        firstMile: 'fbs_first_mile_max_amount',
-                        returnFlow: 'fbs_return_flow_amount',
-                    }[field]
-                ];
-            await expect(m.service.quote(m.product, m.info)).rejects.toThrow('Нет');
-        },
-    );
+    it.each(['acquiring', 'lastMile', 'firstMile'])('отсутствующий расход %s не заменяется нулём', async (field) => {
+        const m = make();
+        if (field === 'acquiring') delete m.product.acquiring;
+        else
+            delete m.product.commissions[
+                {
+                    lastMile: 'fbs_deliv_to_customer_amount',
+                    firstMile: 'fbs_first_mile_max_amount',
+                }[field]
+            ];
+        await expect(m.service.quote(m.product, m.info)).rejects.toThrow('Нет');
+    });
     it('отклоняет чужой артикул, неверный порог и положительный эквайринг без цены', async () => {
         const m = make();
         await expect(m.service.quote(m.product, { ...m.info, sku: 'other' })).rejects.toThrow('Артикул');
@@ -195,4 +191,22 @@ describe('Пакетная подготовка FBO', () => {
         expect(quote.fbo.bands[0].amount).toBe(200);
         expect(m.products.fboStocks).toHaveBeenCalledTimes(1);
     });
+});
+
+it.each([undefined, null, ''])(
+    'неизвестный обратный тариф %s сохраняется неизвестным без предупреждения',
+    async (value) => {
+        const m = make();
+        m.product.commissions.fbs_return_flow_amount = value;
+        const warning = jest.spyOn(m.service as any, 'warn');
+        const result = await m.service.quote(m.product, m.info);
+        expect(result.fbs.returnFlow).toBeNull();
+        expect(result.fbs.bands[0].amount).toBe(20);
+        expect(warning).not.toHaveBeenCalled();
+    },
+);
+it.each([NaN, Infinity, -1])('повреждённый обратный тариф %s не считается отсутствующим', async (value) => {
+    const m = make();
+    m.product.commissions.fbs_return_flow_amount = value;
+    await expect(m.service.quote(m.product, m.info)).rejects.toThrow('Некорректный');
 });

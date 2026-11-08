@@ -15,7 +15,7 @@ export interface OzonSchemeLogistics {
     historySource: 'offer' | 'type' | 'cabinet' | 'none';
     lastMile: number;
     firstMile: number;
-    returnFlow: number;
+    returnFlow: number | null;
 }
 
 /** Источник расходов для этапа 6. Не выбирает цену и ничего не отправляет на Ozon. */
@@ -141,12 +141,13 @@ export class OzonLogisticsService {
             );
             for (const warning of new Set(bands.map((b) => b.warning).filter(Boolean)))
                 this.warn(warning, `${info.sku}/${scheme}`);
+            const returnFlow: unknown = commissions[`${scheme}_return_flow_amount`];
             schemes[scheme] = {
                 bands,
                 historySource: directions?.scope ?? 'none',
                 lastMile: money(commissions[`${scheme}_deliv_to_customer_amount`], 'последняя миля'),
                 firstMile: scheme === 'fbs' ? money(commissions.fbs_first_mile_max_amount, 'обработка FBS') : 0,
-                returnFlow: money(commissions[`${scheme}_return_flow_amount`], 'обратная логистика'),
+                returnFlow: returnFlow == null || returnFlow === '' ? null : money(returnFlow, 'обратная логистика'),
             };
         }
         return {

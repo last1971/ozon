@@ -196,14 +196,14 @@ describe('Результат единой формулы для экрана ц�
             if (missing === 'API') m.products.getPrices.mockRejectedValue(new Error('API недоступен'));
             expect(await m.service.getOzonPricingResult('123-5')).toMatchObject({
                 offerId: '123-5',
-                baseSource: 'none',
-                base: 0,
+                baseSource: missing === 'тариф' ? 'remaining-lots' : 'none',
+                base: missing === 'тариф' ? 100 : 0,
                 error: expect.any(String),
                 min: null,
                 normal: null,
                 max: null,
                 costs: null,
-                current: null,
+                current: ['товар', 'API'].includes(missing) ? null : { min: 800, normal: 900, max: 1000 },
             });
         },
     );
@@ -280,4 +280,73 @@ describe('Результат единой формулы для экрана ц�
             ).toBeGreaterThan(0);
         }
     });
+});
+
+it('ошибка тарифа сохраняет известную себестоимость и текущие цены', async () => {
+    const m = setup();
+    m.pricing.load.mockRejectedValue(new Error('Нет импортированных комиссий Ozon'));
+    expect(await m.service.getOzonPricingResult('123-5')).toMatchObject({
+        base: 100,
+        baseSource: 'remaining-lots',
+        current: { min: 800, normal: 900, max: 1000 },
+        min: null,
+        normal: null,
+        max: null,
+        error: 'Нет импортированных комиссий Ozon',
+    });
+});
+it('неизвестная доставка отказов не скрывает приход и не мешает расчёту', async () => {
+    const m = setup();
+    m.context.lossStatistics = {
+        defectRate: null,
+        cancellationDelivery: null,
+        sellerReturnDelivery: null,
+        confirmedDefectCompensation: 0,
+    };
+    const before = structuredClone(m.context.lossStatistics);
+    const result = await m.service.getOzonPricingResult('123-5');
+    expect(result.error).toBeUndefined();
+    expect(result).toMatchObject({
+        base: 100,
+        baseSource: 'remaining-lots',
+        costs: { cancellations: 0, sellerReturns: 0, defects: 0, returns: 20 },
+    });
+    expect(result.min.price).toBeGreaterThan(0);
+    expect(m.context.lossStatistics).toEqual(before);
+});
+
+it('сценарий 553019: имеющийся приход сохраняет базу при неизвестных отказах', async () => {
+    const m = setup();
+    m.good.code = 553019;
+    m.good.price = 1112.9848333333332;
+    m.good.free_stock = 49;
+    m.percent.offer_id = '553019';
+    m.percent.pieces = 1;
+    m.product.offer_id = '553019';
+    m.info.sku = '553019';
+    m.context.lossStatistics = {
+        defectRate: 0,
+        cancellationDelivery: null,
+        sellerReturnDelivery: 0,
+        confirmedDefectCompensation: 0,
+    };
+    const result = await m.service.getOzonPricingResult('553019');
+    expect(result.error).toBeUndefined();
+    expect(result.base).toBe(1112.9848333333332);
+    expect(result.baseSource).toBe('remaining-lots');
+    expect(result.costs.cancellations).toBe(0);
+    expect(result.min.price).toBeGreaterThan(result.base);
+    expect(m.context.lossStatistics.cancellationDelivery).toBeNull();
+});
+
+it.each([-1, NaN, Infinity])('неверный процент %s не скрывает прочитанную себестоимость', async (value) => {
+    const m = setup();
+    expect(await m.service.getOzonPricingResult('123-5', { min_perc: value })).toMatchObject({
+        base: 100,
+        baseSource: 'remaining-lots',
+        current: { min: 800, normal: 900, max: 1000 },
+        min: null,
+        error: 'Некорректное значение min_perc',
+    });
+    expect(m.pricing.load).not.toHaveBeenCalled();
 });

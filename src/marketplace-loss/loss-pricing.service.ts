@@ -13,18 +13,17 @@ export class LossPricingService {
         const result = new Map<string, LossPricingStatistics>();
         if (!offers.length) return result;
         const snapshot = await this.store.read(service);
-        // Переход со старых снимков: расходы начинают действовать после их проверенного пересчёта.
-        if (!snapshot?.rows.some((row) => row.expenses !== undefined)) return result;
-        const rows = new Map(snapshot.rows.map((row) => [lossOfferKey(row.offerId), row]));
+        const rows = new Map((snapshot?.rows ?? []).map((row) => [lossOfferKey(row.offerId), row]));
         for (const offer of offers) {
             const row = rows.get(lossOfferKey(offer));
             const statistics = row && lossExpensesPerSale(row);
             result.set(
                 offer,
                 statistics ?? {
-                    defectRate: null,
+                    // Известный брак сохраняется и в старом снимке без финансовых сумм.
+                    defectRate: row?.defectRate ?? null,
                     confirmedDefectCompensation: 0,
-                    paidReturnDelivery: null,
+                    ...(service === 'OZON' ? {} : { paidReturnDelivery: null }),
                     cancellationDelivery: null,
                     sellerReturnDelivery: null,
                 },

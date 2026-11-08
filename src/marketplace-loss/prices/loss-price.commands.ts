@@ -6,7 +6,6 @@ import { IJobCommand } from '../../interfaces/i.job.context';
 import { jobCheckpoint } from '../../job/job.checkpoint';
 import { calculatePrice } from '../../helpers/price/price.helpers';
 import { lossOfferKey } from '../../helpers/price/marketplace.loss.stats';
-import { LossStatsStore } from '../loss-stats.store';
 import { LossPriceQueueStore } from './loss-price-queue.store';
 import { LossPriceContext, LossPricePayload, LossPriceTask } from './loss-price.contracts';
 
@@ -64,14 +63,9 @@ export class LoadLossPriceTasksCommand implements IJobCommand<LossPriceContext> 
 export class CalculateLossPriceTargetsCommand implements IJobCommand<LossPriceContext> {
     readonly phase = 'Расчёт актуальных цен';
     readonly weight = 4;
-    constructor(
-        @Inject(GOOD_SERVICE) private readonly goods: IGood,
-        private readonly stats: LossStatsStore,
-    ) {}
+    constructor(@Inject(GOOD_SERVICE) private readonly goods: IGood) {}
     async execute(ctx: LossPriceContext) {
         if (!valid(ctx).length) return ctx;
-        const snapshot = await this.stats.read(ctx.service);
-        const rows = new Map((snapshot?.rows ?? []).map((row) => [lossOfferKey(row.offerId), row]));
         const offers = new Map<string, string[]>();
         for (const offer of new Set(await ctx.adapter.offers())) {
             try {
@@ -83,11 +77,6 @@ export class CalculateLossPriceTargetsCommand implements IJobCommand<LossPriceCo
         }
         const requested = new Map<string, LossPriceTask>();
         for (const task of valid(ctx)) {
-            const row = rows.get(task.offerId);
-            if (!row?.expenses || !(row.soldUnits > 0)) {
-                task.error = 'Нет полной актуальной статистики расходов или продаж';
-                continue;
-            }
             const actual = offers.get(task.offerId);
             if (!actual?.length) {
                 task.error = 'Товар этой фасовки не найден в кабинете';

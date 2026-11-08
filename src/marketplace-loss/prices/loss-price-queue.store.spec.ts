@@ -190,3 +190,17 @@ it('Nest инжектирует запись очереди и в общее х�
         await module.close();
     }
 });
+
+it.each(['OZON', 'WB'])(
+    'появление известной суммы после NULL создаёт задание %s в той же транзакции',
+    async (service) => {
+        const previous = row();
+        previous.expenses.cancellationDelivery = null;
+        const s = setup([raw(previous)]);
+        const next = row();
+        await s.store.replace(snapshot(service, [next]));
+        const inserts = s.transaction.execute.mock.calls.filter(([sql]) => sql.startsWith('INSERT INTO MP_EVENT'));
+        expect(inserts).toHaveLength(1);
+        expect(s.notify).toHaveBeenCalledWith(LOSS_SAVED_EVENT, service, ['123']);
+    },
+);

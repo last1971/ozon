@@ -28,9 +28,10 @@ const result = (): OzonPricingResultDto => ({
         lastMile: 0,
     },
 });
-const render = (data?: OzonPricingResultDto, loading = false) =>
+const render = (data?: OzonPricingResultDto, loading = false, editable = false) =>
     mount(OzonPricingResult, {
         props: { result: data, loading },
+        slots: editable ? { markup: '<span>Процент</span>' } : {},
         global: {
             stubs: {
                 VTable: { template: '<table><slot /></table>' },
@@ -140,4 +141,23 @@ describe('Отдельный блок расчётных цен', () => {
         expect(wrapper.text()).toContain('Расчёт ещё не загружен');
         expect(wrapper.find('table').exists()).toBe(false);
     });
+});
+
+it('при ошибке тарифа форма товара сохраняет известную базу и текущие цены', () => {
+    const wrapper = render(
+        {
+            ...result(),
+            min: null,
+            normal: null,
+            max: null,
+            costs: null,
+            error: 'Нет импортированных комиссий Ozon',
+        },
+        false,
+        true,
+    );
+    expect(wrapper.text()).toContain('Нет импортированных комиссий Ozon');
+    expect(wrapper.text()).toContain('База себестоимости: Остаточные партии — 100 ₽');
+    expect(wrapper.findAll('tbody tr')[0].text()).toContain('800 ₽');
+    expect(wrapper.text()).not.toContain('Нет базы');
 });

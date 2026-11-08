@@ -1,4 +1,8 @@
-import { calculateMarketplaceLossCosts, MarketplaceLossCostsInput } from './marketplace.loss.costs';
+import {
+    calculateMarketplaceLossCosts,
+    calculateTariffReturnDelivery,
+    MarketplaceLossCostsInput,
+} from './marketplace.loss.costs';
 import type { PriceBaseSource } from '../../good/dto/good.price.dto';
 import type { PriceBand } from '../../ozon.category/tariff.xlsx';
 import { priceInBand } from './ozon.logistics';
@@ -10,7 +14,7 @@ export interface OzonPriceScheme {
     logistics: (PriceBand & { amount: number; source?: string; warning?: string })[];
     lastMile: number;
     firstMile: number;
-    returnFlow: number;
+    returnFlow?: number | null;
 }
 /** Ставки — доли, наценки и налоги — проценты. Только данные, без запросов. */
 export interface OzonPricingContext {
@@ -95,11 +99,11 @@ function validate(input: OzonPricingInput) {
         'label',
         'handling',
         'taxPercent',
-        'returnRate',
     ] as const)
         nonnegative(input[key], key);
     for (const value of Object.values(input.markups)) nonnegative(value, 'наценка');
-    if (input.returnRate > 1 || input.acquiringRate >= 1 || input.taxPercent >= 100 || input.profitTaxRate >= 100)
+    calculateTariffReturnDelivery(input.returnRate, 0, 0);
+    if (input.acquiringRate >= 1 || input.taxPercent >= 100 || input.profitTaxRate >= 100)
         throw new Error('Некорректная ставка расходов');
     const discount = input.discountRate ?? 0;
     if (!Number.isFinite(discount) || discount < 0 || discount >= 1) throw new Error('Некорректная скидка');
@@ -111,7 +115,8 @@ function validate(input: OzonPricingInput) {
         for (const r of s.commissions)
             if (!Number.isFinite(r.rate) || r.rate < 0 || r.rate >= 1) throw new Error('Некорректная комиссия');
         for (const r of s.logistics) nonnegative(r.amount, 'доставка');
-        for (const key of ['lastMile', 'firstMile', 'returnFlow'] as const) nonnegative(s[key], key);
+        for (const key of ['lastMile', 'firstMile'] as const) nonnegative(s[key], key);
+        calculateTariffReturnDelivery(input.returnRate, 0, s.returnFlow);
     }
 }
 /** Единственное место суммирования расходов и вычисления прибыли Ozon. */
@@ -126,7 +131,7 @@ function evaluateScheme(
     if (!commission || !delivery) return null;
     const losses = calculateMarketplaceLossCosts(
         input.lossCosts,
-        input.returnRate * (delivery.amount + scheme.returnFlow),
+        calculateTariffReturnDelivery(input.returnRate, delivery.amount, scheme.returnFlow),
     );
     const costs = {
         ...(input.lossCosts

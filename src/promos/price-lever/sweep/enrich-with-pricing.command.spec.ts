@@ -227,3 +227,20 @@ describe('Обогащение сверки единым расчётом', () =
         expect(ctx.progress.done).toBe(2);
     });
 });
+
+it('неизвестные дополнительные расходы не исключают товар из сверки акций', async () => {
+    const m = make();
+    const statistics = {
+        defectRate: null,
+        cancellationDelivery: null,
+        sellerReturnDelivery: null,
+        confirmedDefectCompensation: 0,
+    };
+    Object.assign(m.ozon, { lossStatistics: statistics });
+    const ctx = context();
+    await m.command.execute(ctx);
+    expect(ctx.progress.counters.noBase).toBe(0);
+    expect(ctx.pricingErrors.size).toBe(0);
+    expect(ctx.states[0].calcMinPrice).toBe(200);
+    expect(statistics.defectRate).toBeNull();
+});

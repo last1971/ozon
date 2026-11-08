@@ -199,7 +199,22 @@ describe('Передача своей статистики в цену', () => {
     it('старые снимки не получают выдуманные нулевые суммы до финансового пересчёта', async () => {
         const s = snapshot();
         delete s.rows[0].expenses;
-        expect(await new LossPricingService({ read: async () => s } as any).load('WB', ['123-4'])).toEqual(new Map());
+        const result = await new LossPricingService({ read: async () => s } as any).load('WB', ['123-4']);
+        expect(result.get('123-4')).toMatchObject({
+            defectRate: 0.1,
+            paidReturnDelivery: null,
+            cancellationDelivery: null,
+            sellerReturnDelivery: null,
+        });
+        const input = lossPriceFields(result.get('123-4'), { price: 25 } as any, 4).lossCosts;
+        expect(calculateMarketplaceLossCosts(input, 999)).toMatchObject({
+            returns: 0,
+            cancellations: 0,
+            sellerReturns: 0,
+            defects: 10,
+            total: 10,
+        });
+        expect(s.rows[0].expenses).toBeUndefined();
     });
     it('пустой список не запрашивает БД, ошибка БД не выдаётся за нулевые потери', async () => {
         const store = { read: jest.fn().mockRejectedValue(Error('База недоступна')) };
@@ -208,4 +223,37 @@ describe('Передача своей статистики в цену', () => {
         expect(store.read).not.toHaveBeenCalled();
         await expect(reader.load('WB', ['123'])).rejects.toThrow('База недоступна');
     });
+});
+
+it.each(['OZON', 'WB'])(
+    'отсутствующая строка %s остаётся неизвестной, цена получает нулевые дополнительные потери',
+    async (service) => {
+        const s = snapshot();
+        s.service = service;
+        const reader = new LossPricingService({ read: async () => s } as any);
+        const result = await reader.load(service, ['999']);
+        const statistics = result.get('999');
+        expect(statistics).toMatchObject({ defectRate: null, cancellationDelivery: null, sellerReturnDelivery: null });
+        const costs = calculateMarketplaceLossCosts(
+            lossPriceFields(statistics, { price: 100 } as any, 1).lossCosts,
+            20,
+        );
+        expect(costs).toMatchObject({
+            cancellations: 0,
+            sellerReturns: 0,
+            defects: 0,
+            returns: service === 'OZON' ? 20 : 0,
+        });
+        if (service === 'OZON') expect(statistics).not.toHaveProperty('paidReturnDelivery');
+        else expect(statistics.paidReturnDelivery).toBeNull();
+        expect(s.rows).toHaveLength(1);
+    },
+);
+
+it.each(['OZON', 'WB'])('без снимка %s цена получает неизвестные поля, не подставляя чужие суммы', async (service) => {
+    const result = await new LossPricingService({ read: async () => null } as any).load(service, ['123-4']);
+    const statistics = result.get('123-4');
+    expect(statistics).toMatchObject({ defectRate: null, cancellationDelivery: null, sellerReturnDelivery: null });
+    const input = lossPriceFields(statistics, { price: 25 } as any, 4).lossCosts;
+    expect(calculateMarketplaceLossCosts(input, 20).total).toBe(service === 'OZON' ? 20 : 0);
 });

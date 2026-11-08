@@ -112,19 +112,13 @@ describe('Расходы на потери: одна точка расчёта',
             ).total,
         ).toBeCloseTo(0.65);
     });
-    it.each([
-        'defectRate',
-        'purchaseCost',
-        'paidReturnDelivery',
-        'cancellationDelivery',
-        'sellerReturnDelivery',
-    ] as const)('неизвестное %s не превращается в бесплатный расход', (field) => {
-        expect(() => calculateMarketplaceLossCosts(losses({ [field]: null }), 20)).toThrow('Нет корректных данных');
+    it('известный брак всё ещё требует закупочную стоимость', () => {
+        expect(() => calculateMarketplaceLossCosts(losses({ purchaseCost: null }), 20)).toThrow('закупочная стоимость');
     });
     it.each([NaN, Infinity, -1])('некорректная доля %s не проходит', (defectRate) => {
         expect(() => calculateMarketplaceLossCosts(losses({ defectRate }), 20)).toThrow();
     });
-    it.each([NaN, Infinity, -1, null])('неверное возмещение %s не применяется', (confirmedDefectCompensation) => {
+    it.each([NaN, Infinity, -1])('неверное возмещение %s не применяется', (confirmedDefectCompensation) => {
         expect(() => calculateMarketplaceLossCosts(losses({ confirmedDefectCompensation }), 20)).toThrow();
     });
     it('переполнение не выдаёт бесконечные цены', () => {
@@ -160,3 +154,73 @@ describe('Расходы на потери: одна точка расчёта',
         });
     });
 });
+
+describe('Неизвестные дополнительные расходы: согласованная политика', () => {
+    it.each([
+        'defectRate',
+        'confirmedDefectCompensation',
+        'paidReturnDelivery',
+        'cancellationDelivery',
+        'sellerReturnDelivery',
+    ] as const)('только неизвестное поле %s становится нулём без изменения входа', (field) => {
+        const known = losses({ paidReturnDelivery: 20 });
+        const source = { ...known, [field]: null };
+        const before = { ...source };
+        const expected = calculateMarketplaceLossCosts({ ...known, [field]: 0 }, 999);
+        expect(calculateMarketplaceLossCosts(source, 999)).toEqual(expected);
+        expect(source).toEqual(before);
+    });
+    it('все неизвестные потери дают ноль, но не уничтожают закупку', () => {
+        const source = losses({
+            defectRate: null,
+            paidReturnDelivery: null,
+            cancellationDelivery: null,
+            sellerReturnDelivery: null,
+        });
+        expect(calculateMarketplaceLossCosts(source, 999)).toEqual({
+            returns: 0,
+            cancellations: 0,
+            sellerReturns: 0,
+            defects: 0,
+            defectCompensation: 0,
+            total: 0,
+        });
+        expect(source.purchaseCost).toBe(100);
+        expect(source.defectRate).toBeNull();
+    });
+    it.each([undefined, ozon])('цена и прибыль используют одну политику неизвестных расходов, Ozon: %s', (market) => {
+        const unknown = losses({
+            defectRate: null,
+            paidReturnDelivery: null,
+            cancellationDelivery: null,
+            sellerReturnDelivery: null,
+        });
+        const p = price({ ozon: market, lossCosts: unknown });
+        const result = calculatePrice(p, coeffs);
+        const sale = Number(result.min_price);
+        const pay = calculatePay(p, coeffs, sale);
+        expect(pay.netProfit ?? pay.pay - p.incoming_price).toBeGreaterThanOrEqual(20 - 1e-8);
+        const known = price({ ozon: market, lossCosts: { ...unknown, cancellationDelivery: 30 } });
+        expect(Number(calculatePrice(known, coeffs).min_price)).toBeGreaterThan(sale);
+    });
+});
+
+it.each(['defectRate', 'confirmedDefectCompensation', 'cancellationDelivery', 'sellerReturnDelivery'] as const)(
+    'отсутствующее поле %s при расчёте равнозначно нулю',
+    (field) => {
+        const source = losses({ [field]: undefined });
+        expect(calculateMarketplaceLossCosts(source, 20)).toEqual(
+            calculateMarketplaceLossCosts(losses({ [field]: 0 }), 20),
+        );
+    },
+);
+it.each(['paidReturnDelivery', 'cancellationDelivery', 'sellerReturnDelivery', 'confirmedDefectCompensation'] as const)(
+    'нечисловые данные %s не маскируются нулём',
+    (field) => {
+        for (const value of [NaN, Infinity, '']) {
+            expect(() => calculateMarketplaceLossCosts(losses({ [field]: value } as any), 20)).toThrow(
+                'Нет корректных данных',
+            );
+        }
+    },
+);

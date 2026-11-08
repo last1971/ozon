@@ -126,12 +126,9 @@ describe('Возвраты в едином расчёте расходов', () 
     it.each([-0.1, 1.1, NaN, Infinity])('отклоняет долю %s', (return_perc) => {
         expect(() => calculateCosts({ ...price, return_perc }, coeffs)).toThrow('доля');
     });
-    it.each([undefined, null, -1, NaN, Infinity])(
-        'ненулевая доля требует корректного тарифа возврата: %s',
-        (return_flow_amount) => {
-            expect(() => calculateCosts({ ...price, return_flow_amount }, coeffs)).toThrow('тарифа');
-        },
-    );
+    it.each([-1, NaN, Infinity])('ненулевая доля требует корректного тарифа возврата: %s', (return_flow_amount) => {
+        expect(() => calculateCosts({ ...price, return_flow_amount }, coeffs)).toThrow('тарифа');
+    });
     it('нулевой тариф валиден, неверная прямая логистика блокирует расчёт', () => {
         expect(calculateCosts({ ...price, return_flow_amount: 0 }, coeffs).fixedCosts).toBe(125);
         expect(() => calculateCosts({ ...price, fbs_direct_flow_trans_max_amount: NaN }, coeffs)).toThrow();
@@ -152,13 +149,15 @@ describe('Возвраты в едином расчёте расходов', () 
             ),
         ).toEqual({});
     });
-    it('нет коэффициента в ответе Ozon — не выдумывает нулевой тариф', () => {
+    it('неизвестный тариф не блокирует цену и остаётся неизвестным во входе', () => {
         const adapter = new OzonProductCoeffsAdapter(
             { ...rawProduct, commissions: { ...rawProduct.commissions, fbs_return_flow_amount: undefined } },
             1,
             info,
         );
-        expect(() => calculateCosts({ ...price, ...ozonReturnPriceFields(adapter, 0.25) }, coeffs)).toThrow('тарифа');
+        const fields = ozonReturnPriceFields(adapter, 0.25);
+        expect(fields.return_flow_amount).toBeUndefined();
+        expect(calculateCosts({ ...price, ...fields }, coeffs).fixedCosts).toBe(100);
     });
     it('путь БД → buildPriceables → цена/прибыль совпадает с экраном', async () => {
         const { goods, market, service } = setup();
@@ -221,4 +220,32 @@ describe('Возвраты в едином расчёте расходов', () 
         await goods.setPercents({ offer_id: '123', pieces: 5, min_perc: 10, return_perc: 1 }, { ...t, execute } as any);
         expect(execute.mock.calls[0][0]).not.toMatch(/RETURN_PERC/);
     });
+});
+
+it.each([undefined, null])('неизвестная обратная доставка %s не начисляет частичный возврат', (reverse) => {
+    expect(calculateCosts({ ...price, return_flow_amount: reverse }, coeffs).fixedCosts).toBe(100);
+});
+it('сборщик, экран, отправляемая цена и прибыль принимают неизвестные потери по одной политике', async () => {
+    const { goods, market, service } = setup();
+    jest.spyOn(service, 'getObtainCoeffs').mockReturnValue(coeffs);
+    const [product] = await market.getProductsWithCoeffs();
+    const pricing = product.getOzonPricing();
+    pricing.lossStatistics = {
+        defectRate: null,
+        cancellationDelivery: null,
+        sellerReturnDelivery: null,
+        confirmedDefectCompensation: 0,
+    };
+    const before = structuredClone(pricing.lossStatistics);
+    const [built] = await goods.buildPriceables(market, ['123-5']);
+    const screen = (await service.index({ offer_id: ['123-5'] } as any)).data[0];
+    const result = await service.getOzonPricingResult('123-5');
+    expect(result.error).toBeUndefined();
+    expect(result.base).toBe(100);
+    expect(calculatePrice(built, coeffs)).toEqual(calculatePrice(screen, coeffs));
+    expect(Number(calculatePrice(built, coeffs).min_price)).toBe(result.min.price);
+    expect(
+        evaluateLine({ offer_id: '123-5', units: 1, pricePerUnit: result.min.price }, built, coeffs, 5).profitPerUnit,
+    ).toBeCloseTo(result.min.profit);
+    expect(pricing.lossStatistics).toEqual(before);
 });

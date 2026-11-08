@@ -47,7 +47,7 @@ export function lossExpensesPerSale(row: {
             : { paidReturnDelivery: perSale(expenses.paidReturnDelivery) }),
         cancellationDelivery: perSale(expenses.cancellationDelivery),
         sellerReturnDelivery: perSale(expenses.sellerReturnDelivery),
-        // При отсутствии продаж цена всё равно не вычисляется: остальные входы останутся NULL.
+        // Без продаж статистика остаётся неизвестной; подстановку для цены делает общий расчёт.
         confirmedDefectCompensation: perSale(expenses.confirmedDefectCompensation) ?? 0,
     };
 }

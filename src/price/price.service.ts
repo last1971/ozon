@@ -170,7 +170,9 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
     }
     /** Отдельный результат единой формулы; цены Ozon и наценки в БД не изменяются. */
     async getOzonPricingResult(offerId: string, preview: OzonPricingPreviewDto = {}): Promise<OzonPricingResultDto> {
-        const empty = Object.assign(new OzonPricingResultDto(), { offerId });
+        const known = Object.assign(new OzonPricingResultDto(), { offerId });
+        const current = (value: unknown) =>
+            value !== null && value !== undefined && Number.isFinite(Number(value)) ? Number(value) : null;
         try {
             const code = goodCode({ offer_id: offerId });
             const pieces = goodQuantityCoeff({ offer_id: offerId });
@@ -182,15 +184,26 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
             ]);
             const product = prices?.items?.find((p) => p.offer_id === offerId);
             const info = infos?.find((p) => p.sku === offerId);
+            if (product) {
+                known.current = {
+                    min: current(product.price.min_price),
+                    normal: current(product.price.price),
+                    max: current(product.price.old_price),
+                };
+            }
             if (!product || !info) throw new Error('Нет карточки Ozon');
             await completePricePercents([offerId], this.goodService, { goods, percents });
             const saved = percents.find((p) => String(p.offer_id) === code && Number(p.pieces ?? 1) === pieces);
             if (!saved) throw new Error('Нет базы или наценок для расчёта');
             const percent = { ...saved };
+            let previewError: Error | undefined;
             for (const key of ['min_perc', 'perc', 'old_perc', 'adv_perc', 'sum_pack', 'available_price'] as const) {
                 if (preview[key] === undefined) continue;
                 const value = Number(preview[key]);
-                if (!Number.isFinite(value) || value < 0) throw new Error(`Некорректное значение ${key}`);
+                if (!Number.isFinite(value) || value < 0) {
+                    previewError = new Error(`Некорректное значение ${key}`);
+                    break;
+                }
                 percent[key === 'sum_pack' ? 'packing_price' : key] = value;
             }
             const base = resolvePriceBase(
@@ -199,6 +212,10 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                 goods.find((g) => String(g.code) === code),
                 percent,
             );
+            // Ошибка другого поля не уничтожает уже прочитанную базу и снимок текущих цен.
+            known.base = base.incoming_price ?? 0;
+            known.baseSource = base.base_source;
+            if (previewError) throw previewError;
             if (base.base_source === 'none') throw new Error('Нет базы себестоимости');
             await this.ozonPricing.prepare([info]);
             const ozon = await this.ozonPricing.load(product, info);
@@ -235,8 +252,6 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                 targetProfit: r.targetProfit,
             });
             const { base: unusedBase, ...costs } = result.min.costs;
-            const current = (value: unknown) =>
-                value !== null && value !== undefined && Number.isFinite(Number(value)) ? Number(value) : null;
             const buyerPrice = current(product.price.marketing_seller_price);
             let buyer: OzonPricingResultDto['buyer'];
             if (buyerPrice !== null) {
@@ -296,15 +311,11 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                 normal: level(result.normal, input.markups.normal),
                 max: level(result.max, input.markups.max),
                 costs,
-                current: {
-                    min: current(product.price.min_price),
-                    normal: current(product.price.price),
-                    max: current(product.price.old_price),
-                },
+                current: known.current,
                 deadZoneFloor: ozonDeadZoneFloor(input, result),
             };
         } catch (e) {
-            return { ...empty, error: e instanceof Error ? e.message : String(e) };
+            return { ...known, error: e instanceof Error ? e.message : String(e) };
         }
     }
 

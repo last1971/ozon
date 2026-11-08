@@ -80,14 +80,13 @@ describe('Представление статистики потерь, без �
         });
         expect((await service.costs('WB', '123-5')).costs).toMatchObject({ returns: 0, defects: 0, total: 0 });
     });
-    it.each(['row', 'expenses', 'sales', 'unknown', 'tariff', 'purchase'])(
+    it.each(['row', 'expenses', 'sales', 'tariff', 'purchase'])(
         'не выдаёт отсутствующие сведения за бесплатную доставку/брак: %s',
         async (kind) => {
             const { service, snapshot, row, goods, prices } = setup();
             if (kind === 'row') snapshot.rows = [];
             if (kind === 'expenses') delete row.expenses;
             if (kind === 'sales') row.soldUnits = 0;
-            if (kind === 'unknown') row.expenses.cancellationDelivery = null;
             if (kind === 'tariff') delete row.expenses.paidReturnDelivery;
             if (kind === 'purchase') goods.prices.mockResolvedValue([]);
             const report = await service.costs('WB', '123-5');
@@ -100,8 +99,15 @@ describe('Представление статистики потерь, без �
         const { service, row, prices } = setup();
         row.expenses.paidReturnDelivery = null;
         const result = await service.costs('YANDEX', '123-5');
-        expect(result.costs).toBeNull();
-        expect(result.error).toContain('доставка оплаченных возвратов');
+        expect(result.costs).toMatchObject({
+            returns: 0,
+            cancellations: -1,
+            sellerReturns: 2,
+            defects: 9.5,
+            total: 10.5,
+        });
+        expect(result.error).toBeUndefined();
+        expect(row.expenses.paidReturnDelivery).toBeNull();
         expect(prices.getOzonPricingResult).not.toHaveBeenCalled();
     });
     it('Ozon: настоящий артикул -1, схема и все суммы взяты из существующего расчёта', async () => {
@@ -147,4 +153,22 @@ describe('Представление статистики потерь, без �
         await expect(service.costs('WB', '123-0')).rejects.toThrow('Некорректный артикул');
         expect(store.read).not.toHaveBeenCalled();
     });
+});
+
+it('неизвестный отказ в расходах цены считается нулём, исходная статистика остаётся неизвестной', async () => {
+    const { service, row, prices, store } = setup();
+    row.expenses.cancellationDelivery = null;
+    const report = await service.costs('WB', '123-5');
+    expect(report.error).toBeUndefined();
+    expect(report.costs).toEqual({
+        returns: 3,
+        cancellations: 0,
+        sellerReturns: 2,
+        defects: 9.5,
+        defectCompensation: 0.5,
+        total: 14.5,
+    });
+    expect(row.expenses.cancellationDelivery).toBeNull();
+    expect(prices.getOzonPricingResult).not.toHaveBeenCalled();
+    expect(store.replace).not.toHaveBeenCalled();
 });

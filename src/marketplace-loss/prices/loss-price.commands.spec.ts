@@ -95,7 +95,7 @@ function setup(offers = ['123'], service: 'WB' | 'OZON' = 'WB') {
     const goods = { buildPriceables: jest.fn(async (_, ids) => ids.map((id) => input(id))) };
     const config = new ConfigService({ SERVICES: [service.toLowerCase()], PRICE_VERIFY_DELAY_MS: 0 });
     const load = new LoadLossPriceTasksCommand(queue);
-    const calculate = new CalculateLossPriceTargetsCommand(goods as any, stats as any);
+    const calculate = new CalculateLossPriceTargetsCommand(goods as any);
     const compare = new CompareLossPricesCommand(),
         send = new SendLossPricesCommand();
     const confirm = new ConfirmLossPricesCommand(config),
@@ -170,24 +170,18 @@ describe('Каждая команда очереди цен', () => {
         expect(s.ctx.tasks[0].targets).toEqual([calculatePrice(input('123-1'), coeffs)]);
         expect(s.goods.buildPriceables).toHaveBeenCalledWith(s.adapter.pricing, ['123-1']);
     });
-    it.each(['row', 'expenses', 'sales', 'card', 'base', 'partial'])(
-        'не отправляет при неполных данных: %s',
-        async (kind) => {
-            const s = setup();
-            if (kind === 'row') s.stats.read.mockResolvedValue({ service: 'WB', rows: [] });
-            if (kind === 'expenses') delete s.rows[0].expenses;
-            if (kind === 'sales') s.rows[0].soldUnits = 0;
-            if (kind === 'card') s.adapter.offers.mockResolvedValue([]);
-            if (kind === 'base') s.goods.buildPriceables.mockRejectedValue(new Error('Нет базы'));
-            if (kind === 'partial') s.goods.buildPriceables.mockResolvedValue([]);
-            const done = await s.run();
-            expect(done.status).toBe('done');
-            expect((done.result as any).pending).toHaveLength(1);
-            expect(s.pending.size).toBe(1);
-            expect(s.adapter.send).not.toHaveBeenCalled();
-            expect(s.adapter.promos).not.toHaveBeenCalled();
-        },
-    );
+    it.each(['card', 'base', 'partial'])('не отправляет при неполных данных: %s', async (kind) => {
+        const s = setup();
+        if (kind === 'card') s.adapter.offers.mockResolvedValue([]);
+        if (kind === 'base') s.goods.buildPriceables.mockRejectedValue(new Error('Нет базы'));
+        if (kind === 'partial') s.goods.buildPriceables.mockResolvedValue([]);
+        const done = await s.run();
+        expect(done.status).toBe('done');
+        expect((done.result as any).pending).toHaveLength(1);
+        expect(s.pending.size).toBe(1);
+        expect(s.adapter.send).not.toHaveBeenCalled();
+        expect(s.adapter.promos).not.toHaveBeenCalled();
+    });
     it('сравнение пропускает стоящие суммы, но сохраняет новый пол ВБ', async () => {
         const s = setup();
         s.current.set('123', calculatePrice(input(), coeffs));
@@ -362,4 +356,50 @@ it('внешняя ошибка загрузки не теряет задани�
     expect(s.pending.size).toBe(1);
     expect((await s.run()).status).toBe('done');
     expect(s.pending.size).toBe(0);
+});
+
+it.each(['row', 'expenses', 'sales'])('очередь рассчитывает цену без полной статистики: %s', async (missing) => {
+    const s = setup();
+    if (missing === 'row') s.stats.read.mockResolvedValue({ service: 'WB', rows: [] });
+    if (missing === 'expenses') delete s.rows[0].expenses;
+    if (missing === 'sales') s.rows[0].soldUnits = 0;
+    s.goods.buildPriceables.mockImplementation(async (_, ids) =>
+        ids.map((id) => ({
+            ...input(id),
+            lossCosts: {
+                purchaseCost: 100,
+                defectRate: null,
+                paidReturnDelivery: null,
+                cancellationDelivery: null,
+                sellerReturnDelivery: null,
+                confirmedDefectCompensation: 0,
+            },
+        })),
+    );
+    const result = await s.run();
+    expect(result.status).toBe('done');
+    expect((result.result as any).completed).toBe(1);
+    expect(s.pending.size).toBe(0);
+    expect(s.adapter.send).toHaveBeenCalledTimes(1);
+});
+
+it('неизвестный отказ становится известным: цена пересчитывается, статистика не затирается нулём', async () => {
+    const s = setup();
+    s.rows[0].expenses.cancellationDelivery = null;
+    s.goods.buildPriceables.mockImplementation(async (_, ids) =>
+        ids.map((id) => ({
+            ...input(id),
+            lossCosts: { purchaseCost: 100, ...lossExpensesPerSale(s.rows[0] as any) },
+        })),
+    );
+    await s.run();
+    const before = Number(s.current.get('123').min_price);
+    expect(s.rows[0].expenses.cancellationDelivery).toBeNull();
+    s.rows[0].expenses.cancellationDelivery = 100;
+    const next = event('123', new Date(at.getTime() + 1000));
+    s.pending.set(next.extId, next);
+    await s.run();
+    expect(Number(s.current.get('123').min_price)).toBeGreaterThan(before);
+    expect(s.pending.size).toBe(0);
+    expect(s.adapter.send).toHaveBeenCalledTimes(2);
 });
