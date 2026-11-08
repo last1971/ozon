@@ -105,7 +105,7 @@ export class OzonTariffService {
     async info() {
         return this.transaction(async (t) => {
             const rows = await t.query(
-                'SELECT KIND, FILE_NAME, CAST(FILE_DATE AS VARCHAR(10)) AS FILE_DATE, UPLOADED_AT, CAST(UPLOADED_AT AS VARCHAR(32)) AS UPLOADED_AT_TEXT, ROWS_COUNT, MATCHED_COUNT, MISSING_COUNT FROM OZON_TARIFF_SOURCE ORDER BY KIND',
+                'SELECT KIND, FILE_NAME, CAST(FILE_DATE AS VARCHAR(32)) AS FILE_DATE, UPLOADED_AT, CAST(UPLOADED_AT AS VARCHAR(32)) AS UPLOADED_AT_TEXT, ROWS_COUNT, MATCHED_COUNT, MISSING_COUNT FROM OZON_TARIFF_SOURCE ORDER BY KIND',
                 [],
                 false,
             );

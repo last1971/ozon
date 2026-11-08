@@ -165,7 +165,7 @@ export class LossStatsStore implements ILossStatsStore {
         const t = await this.pool.getTransaction(LOSS_READ_ISOLATION);
         try {
             const states = await t.query(
-                'SELECT S.*, CAST(S.CALCULATED_AT AS VARCHAR(32)) AS CALCULATED_AT_TEXT, CAST(S.PERIOD_FROM AS VARCHAR(10)) AS PERIOD_FROM_TEXT, CAST(S.PERIOD_TO AS VARCHAR(10)) AS PERIOD_TO_TEXT FROM MP_LOSS_STATE S WHERE SERVICE = ?',
+                'SELECT S.*, CAST(S.CALCULATED_AT AS VARCHAR(32)) AS CALCULATED_AT_TEXT, CAST(S.PERIOD_FROM AS VARCHAR(32)) AS PERIOD_FROM_TEXT, CAST(S.PERIOD_TO AS VARCHAR(32)) AS PERIOD_TO_TEXT FROM MP_LOSS_STATE S WHERE SERVICE = ?',
                 [service],
                 false,
             );
