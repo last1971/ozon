@@ -393,6 +393,57 @@ describe('Trade2006InvoiceService', () => {
         });
     });
 
+    describe('findByPostings — общий поиск списка возвратов', () => {
+        it('точное совпадение, отмена и закрытый счёт; номер -1 не цепляет -11', async () => {
+            const t = {
+                query: jest.fn().mockResolvedValue([
+                    { PRIM: 'order-1 отмена FBO', SCODE: 1, STATUS: 1 },
+                    { PRIM: 'order-11', SCODE: 11, STATUS: 4 },
+                    { PRIM: 'order-2 закрыт', SCODE: 2, STATUS: 5 },
+                    { PRIM: 'order-3 отмена', SCODE: 30, STATUS: 1 },
+                    { PRIM: 'order-3', SCODE: 3, STATUS: 4 },
+                ]),
+            };
+            const result = await service.findByPostings(
+                ['order-1', 'order-11', 'order-2', 'order-3', 'absent'],
+                t as any,
+            );
+            expect(result.get('order-1')).toMatchObject({ invoice: { id: 1 }, cancelled: true });
+            expect(result.get('order-11')).toMatchObject({ invoice: { id: 11 }, cancelled: false });
+            expect(result.get('order-2')).toMatchObject({ invoice: { id: 2 }, closed: true });
+            expect(result.get('order-3').invoice.id).toBe(3);
+            expect(result.has('absent')).toBe(false);
+            expect(t.query).toHaveBeenCalledTimes(1);
+        });
+
+        it('без точного совпадения дубли проверяются прежним одиночным методом', async () => {
+            const t = {
+                query: jest
+                    .fn()
+                    .mockResolvedValueOnce([
+                        { PRIM: 'p отмена', SCODE: 1 },
+                        { PRIM: 'p закрыт', SCODE: 2 },
+                    ])
+                    .mockResolvedValueOnce([
+                        { PRIM: 'p закрыт', SCODE: 2 },
+                        { PRIM: 'p отмена', SCODE: 1 },
+                    ]),
+            };
+            expect((await service.findByPostings(['p'], t as any)).get('p').invoice.id).toBe(2);
+            expect(t.query).toHaveBeenCalledTimes(2);
+        });
+
+        it('повторы и пустые номера убраны, группы ограничены 40 номерами', async () => {
+            const t = { query: jest.fn().mockResolvedValue([]) };
+            const postings = Array.from({ length: 81 }, (_, i) => `p${i}`);
+            await service.findByPostings([...postings, ...postings, ''], t as any);
+            expect(t.query.mock.calls.map((c) => c[1].length)).toEqual([80, 80, 2]);
+            t.query.mockClear();
+            expect(await service.findByPostings([], t as any)).toEqual(new Map());
+            expect(t.query).not.toHaveBeenCalled();
+        });
+    });
+
     it('Test pickupInvoice', async () => {
         await service.pickupInvoice({ id: 1, date: new Date(), remark: '1', buyerId: 1, status: 3 });
         expect(execute.mock.calls[0]).toEqual(['UPDATE PODBPOS SET QUANSHOP= QUANSHOPNEED WHERE SCODE = ?', [1], true]);

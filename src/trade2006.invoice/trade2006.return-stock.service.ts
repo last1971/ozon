@@ -1,3 +1,4 @@
+import { chunk } from 'lodash';
 import { Inject, Injectable } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { FirebirdPool, FirebirdTransaction } from 'ts-firebird';
@@ -25,53 +26,78 @@ export class Trade2006ReturnStockService implements IReturnStock {
     }
 
     async getLines(scode: number, t: FirebirdTransaction): Promise<ReturnInvoiceLine[]> {
+        return (await this.getLinesMany([scode], t)).get(scode) ?? [];
+    }
+
+    async getLinesMany(scodes: number[], t: FirebirdTransaction): Promise<Map<number, ReturnInvoiceLine[]>> {
+        const result = new Map<number, ReturnInvoiceLine[]>();
         const shop = this.storageSS() === 1;
-        const rows = await t.query(
-            'SELECT r.REALPRICECODE, r.GOODSCODE, r.QUAN, r.PIECES, n.NAME, pp.PODBPOSCODE, ' +
-                (shop
-                    ? 'pp.QUANSHOP AS PICKED, pp.QUANSHOPNEED AS NEED, '
-                    : 'pp.QUANSKLAD AS PICKED, pp.QUANSKLADNEED AS NEED, ') +
-                'COALESCE((SELECT SUM(f.QUAN) FROM REALPRICEF f WHERE f.REALPRICECODE = r.REALPRICECODE), 0) - ' +
-                'COALESCE((SELECT SUM(d.QUAN) FROM SF_VOZVR v JOIN SFDETAIL_VOZVR d ON d.SF_VOZVR_ID = v.ID ' +
-                'WHERE v.WIRED = 1 AND d.REALPRICECODE = r.REALPRICECODE), 0) AS SHIPPED ' +
-                'FROM REALPRICE r ' +
-                'LEFT JOIN PODBPOS pp ON pp.REALPRICECODE = r.REALPRICECODE AND pp.SKLAD_ID IS NULL ' +
-                'LEFT JOIN GOODS g ON g.GOODSCODE = r.GOODSCODE ' +
-                'LEFT JOIN NAME n ON n.NAMECODE = g.NAMECODE ' +
-                'WHERE r.SCODE = ? ORDER BY r.REALPRICECODE',
-            [scode],
-            false,
-        );
-        return rows.map((r: any) => ({
-            realpricecode: Number(r.REALPRICECODE),
-            goodscode: String(r.GOODSCODE),
-            name: r.NAME ?? null,
-            quantity: Number(r.QUAN) || 0,
-            pieces: Number(r.PIECES) > 0 ? Number(r.PIECES) : null,
-            podbposcode: r.PODBPOSCODE ?? null,
-            picked: Number(r.PICKED) || 0,
-            need: Number(r.NEED) || 0,
-            shipped: Math.max(0, Number(r.SHIPPED) || 0),
-        }));
+        for (const part of chunk([...new Set(scodes)], 100)) {
+            const rows = await t.query(
+                'SELECT r.SCODE, r.REALPRICECODE, r.GOODSCODE, r.QUAN, r.PIECES, n.NAME, pp.PODBPOSCODE, ' +
+                    (shop
+                        ? 'pp.QUANSHOP AS PICKED, pp.QUANSHOPNEED AS NEED, '
+                        : 'pp.QUANSKLAD AS PICKED, pp.QUANSKLADNEED AS NEED, ') +
+                    'COALESCE((SELECT SUM(f.QUAN) FROM REALPRICEF f WHERE f.REALPRICECODE = r.REALPRICECODE), 0) - ' +
+                    'COALESCE((SELECT SUM(d.QUAN) FROM SF_VOZVR v JOIN SFDETAIL_VOZVR d ON d.SF_VOZVR_ID = v.ID ' +
+                    'WHERE v.WIRED = 1 AND d.REALPRICECODE = r.REALPRICECODE), 0) AS SHIPPED ' +
+                    'FROM REALPRICE r ' +
+                    'LEFT JOIN PODBPOS pp ON pp.REALPRICECODE = r.REALPRICECODE AND pp.SKLAD_ID IS NULL ' +
+                    'LEFT JOIN GOODS g ON g.GOODSCODE = r.GOODSCODE ' +
+                    'LEFT JOIN NAME n ON n.NAMECODE = g.NAMECODE ' +
+                    `WHERE r.SCODE IN (${part.map(() => '?').join(',')}) ORDER BY r.SCODE, r.REALPRICECODE`,
+                part,
+                false,
+            );
+            for (const r of rows) {
+                const key = Number(r.SCODE);
+                const lines = result.get(key) ?? [];
+                lines.push({
+                    realpricecode: Number(r.REALPRICECODE),
+                    goodscode: String(r.GOODSCODE),
+                    name: r.NAME ?? null,
+                    quantity: Number(r.QUAN) || 0,
+                    pieces: Number(r.PIECES) > 0 ? Number(r.PIECES) : null,
+                    podbposcode: r.PODBPOSCODE ?? null,
+                    picked: Number(r.PICKED) || 0,
+                    need: Number(r.NEED) || 0,
+                    shipped: Math.max(0, Number(r.SHIPPED) || 0),
+                });
+                result.set(key, lines);
+            }
+        }
+        return result;
     }
 
     async getLineCodes(realpricecode: number, t: FirebirdTransaction): Promise<ReturnLineCode[]> {
-        // Маркировка выключена (магазин) — таблицы MARKCODES нет.
-        if (!isMarkCodesEnabled(this.configService)) return [];
-        const rows = await t.query(
-            'SELECT KI, COALESCE(QUANTITY, 1) AS QUANTITY, STATUS, TRANSFER_TYPE, RETIRE_REASON, CHZ_SENT_AT ' +
-                'FROM MARKCODES WHERE REALPRICECODE = ? ORDER BY MARKCODE',
-            [realpricecode],
-            false,
-        );
-        return rows.map((r: any) => ({
-            ki: String(r.KI),
-            quantity: Number(r.QUANTITY) || 1,
-            status: Number(r.STATUS),
-            transferType: Number(r.TRANSFER_TYPE),
-            retireReason: r.RETIRE_REASON == null ? null : Number(r.RETIRE_REASON),
-            chzSent: r.CHZ_SENT_AT != null,
-        }));
+        return (await this.getLineCodesMany([realpricecode], t)).get(realpricecode) ?? [];
+    }
+
+    async getLineCodesMany(realpricecodes: number[], t: FirebirdTransaction): Promise<Map<number, ReturnLineCode[]>> {
+        const result = new Map<number, ReturnLineCode[]>();
+        if (!isMarkCodesEnabled(this.configService)) return result;
+        for (const part of chunk([...new Set(realpricecodes)], 100)) {
+            const rows = await t.query(
+                'SELECT REALPRICECODE, KI, COALESCE(QUANTITY, 1) AS QUANTITY, STATUS, TRANSFER_TYPE, RETIRE_REASON, CHZ_SENT_AT ' +
+                    `FROM MARKCODES WHERE REALPRICECODE IN (${part.map(() => '?').join(',')}) ORDER BY REALPRICECODE, MARKCODE`,
+                part,
+                false,
+            );
+            for (const r of rows) {
+                const key = Number(r.REALPRICECODE);
+                const codes = result.get(key) ?? [];
+                codes.push({
+                    ki: String(r.KI),
+                    quantity: Number(r.QUANTITY) || 1,
+                    status: Number(r.STATUS),
+                    transferType: Number(r.TRANSFER_TYPE),
+                    retireReason: r.RETIRE_REASON == null ? null : Number(r.RETIRE_REASON),
+                    chzSent: r.CHZ_SENT_AT != null,
+                });
+                result.set(key, codes);
+            }
+        }
+        return result;
     }
 
     async hasPicked(scode: number, t: FirebirdTransaction): Promise<boolean> {

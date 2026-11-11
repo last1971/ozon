@@ -45,7 +45,13 @@ describe('WbReturnSource', () => {
     ) => {
         const api = { method: jest.fn(async () => report) };
         const cards = { getWbCardByNmId: jest.fn((nmId: number) => (nmId === card.nmID ? card : null)) };
-        const invoiceService = { findByPosting: jest.fn(async (p: string) => (invoices[p] ? ({} as any) : null)) };
+        const t = { commit: jest.fn(), rollback: jest.fn() };
+        const invoiceService = {
+            getReadTransaction: jest.fn(async () => t),
+            findByPostings: jest.fn(
+                async (postings: string[]) => new Map(postings.filter((p) => invoices[p]).map((p) => [p, {} as any])),
+            ),
+        };
         const config = { get: jest.fn(() => services) };
         const reportService = new WbGoodsReturnReportService(api as any);
         const source = new WbReturnSource(reportService, cards as any, invoiceService as any, config as any);
@@ -100,11 +106,13 @@ describe('WbReturnSource', () => {
     });
 
     it('список — только «Выдано» с датой забора в окне', async () => {
-        const { source } = make();
+        const { source, invoiceService } = make();
         expect((await source.listReceived(new Date('2026-10-01'), new Date('2026-10-20'))).map((l) => l.extId)).toEqual(
             ['58572006177'],
         );
         expect(await source.listReceived(new Date('2026-10-10'), new Date('2026-10-20'))).toEqual([]);
+        expect(invoiceService.getReadTransaction).not.toHaveBeenCalled();
+        expect(invoiceService.findByPostings).not.toHaveBeenCalled();
     });
 
     it.each([

@@ -48,6 +48,8 @@ export interface IReturnStock {
     /** Сторона подбора инсталляции: 0 — склад, 1 — магазин. */
     storageSS(): 0 | 1;
     getLines(scode: number, t: FirebirdTransaction): Promise<ReturnInvoiceLine[]>;
+    getLinesMany(scodes: number[], t: FirebirdTransaction): Promise<Map<number, ReturnInvoiceLine[]>>;
+    getLineCodesMany(realpricecodes: number[], t: FirebirdTransaction): Promise<Map<number, ReturnLineCode[]>>;
     /** Коды на строке счёта. Маркировка выключена (магазин) — всегда пусто. */
     getLineCodes(realpricecode: number, t: FirebirdTransaction): Promise<ReturnLineCode[]>;
     /** На счёте осталось хоть что-то подобранное. */

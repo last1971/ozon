@@ -7,6 +7,8 @@ import { IInvoice, INVOICE_SERVICE } from '../../interfaces/IInvoice';
 import { ReturnScan } from '../../helpers/return-scan.parser';
 import { ReturnLineDto } from '../dto/return-line.dto';
 import { IReturnSource } from './i.return.source';
+import { candidatePostings, resolveCandidates, ReturnCandidate } from '../return-candidate';
+import { inTransaction } from '../../helpers/transaction';
 import {
     WbGoodsReturnReportService,
     WbGoodsReturnRow,
@@ -33,13 +35,13 @@ export class WbReturnSource implements IReturnSource {
         private readonly config: ConfigService,
     ) {}
 
-    async listReceived(from: Date, to: Date): Promise<ReturnLineDto[]> {
+    async listReceived(from: Date, to: Date): Promise<ReturnCandidate[]> {
         if (!this.enabled()) return [];
         const rows = (await this.report.rows()).filter((r) => {
             const at = wbReturnCompletedAt(r)?.toJSDate();
             return at && at >= from && at < to;
         });
-        return this.toLines(rows);
+        return this.toCandidates(rows);
     }
 
     async find(scan: ReturnScan): Promise<ReturnLineDto[]> {
@@ -56,22 +58,29 @@ export class WbReturnSource implements IReturnSource {
         return this.config.get<GoodServiceEnum[]>('SERVICES', []).includes(GoodServiceEnum.WB);
     }
 
-    /** По очереди: на строку до двух поисков счёта. */
-    private async toLines(rows: WbGoodsReturnRow[]): Promise<ReturnLineDto[]> {
-        const lines: ReturnLineDto[] = [];
-        for (const row of rows) {
-            const { posting, schema } = await this.postingOf(row);
-            lines.push(toReturnLine(row, this.cards.getWbCardByNmId(row.nmId), posting, schema));
-        }
-        return lines;
+    /** Отчёт сначала отбирается по журналу приёма; поиск счетов выполняет общий список. */
+    private toCandidates(rows: WbGoodsReturnRow[]): ReturnCandidate[] {
+        return rows.map((row) => ({
+            ...toReturnLine(row, this.cards.getWbCardByNmId(row.nmId), String(row.orderId), null),
+            postingCandidates: [
+                { posting: String(row.orderId), schema: 'FBS' },
+                ...(row.srid ? [{ posting: row.srid, schema: 'FBO' }] : []),
+            ],
+        }));
     }
 
-    private async postingOf(row: WbGoodsReturnRow): Promise<{ posting: string; schema: string | null }> {
-        const orderId = String(row.orderId);
-        if (await this.invoiceService.findByPosting(orderId, null)) return { posting: orderId, schema: 'FBS' };
-        if (row.srid && (await this.invoiceService.findByPosting(row.srid, null)))
-            return { posting: row.srid, schema: 'FBO' };
-        return { posting: orderId, schema: null };
+    /** Скан и приём по-прежнему получают разрешённые номера; одно чтение на всю посылку. */
+    private async toLines(rows: WbGoodsReturnRow[]): Promise<ReturnLineDto[]> {
+        const candidates = this.toCandidates(rows);
+        if (!candidates.length) return [];
+        return inTransaction(
+            () => this.invoiceService.getReadTransaction(),
+            async (t) =>
+                resolveCandidates(
+                    candidates,
+                    await this.invoiceService.findByPostings(candidatePostings(candidates), t),
+                ),
+        );
     }
 }
 

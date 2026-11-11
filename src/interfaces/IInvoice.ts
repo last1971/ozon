@@ -14,6 +14,8 @@ import { InvoiceMatchDto } from '../invoice/dto/invoice.match.dto';
 
 export interface IInvoice {
     getTransaction(): Promise<FirebirdTransaction>;
+    getReadTransaction(): Promise<FirebirdTransaction>;
+    findByPostings(postings: string[], t: FirebirdTransaction): Promise<Map<string, InvoiceMatchDto>>;
     create(invoice: InvoiceCreateDto, t: FirebirdTransaction): Promise<InvoiceDto>;
     isExists(remark: string, t: FirebirdTransaction): Promise<boolean>;
     /** Счёт по номеру отправления вместе с пометкой (' отмена', ' отмена FBO', ' закрыт'). */

@@ -4,6 +4,7 @@ describe('pingDatabase', () => {
     const transaction = () => ({
         query: jest.fn().mockResolvedValue([{ 1: 1 }]),
         commit: jest.fn().mockResolvedValue(undefined),
+        rollback: jest.fn().mockResolvedValue(undefined),
     });
 
     it('живой пул — ok, транзакция закрыта с отсоединением', async () => {
@@ -24,6 +25,7 @@ describe('pingDatabase', () => {
 
         expect(result.ok).toBe(false);
         expect(result.error).toContain('50 мс');
+        expect(result.phase).toBe('acquire');
     });
 
     it('опоздавшее соединение после таймаута возвращается в пул', async () => {
@@ -48,5 +50,47 @@ describe('pingDatabase', () => {
 
     it('база не настроена — не ok', async () => {
         expect((await pingDatabase(null, 1000)).ok).toBe(false);
+    });
+
+    it.each(['query', 'release'] as const)(
+        'таймаут на этапе %s: позднее завершение освобождает подключение',
+        async (phase) => {
+            const t = transaction();
+            let complete: (v?: any) => void;
+            const pending = new Promise((resolve) => {
+                complete = resolve;
+            });
+            (phase === 'query' ? t.query : t.commit).mockImplementationOnce(() => pending as any);
+            const result = await pingDatabase({ getTransaction: async () => t } as any, 20);
+            expect(result).toMatchObject({ ok: false, phase });
+            expect(result.timings[phase]).toBeGreaterThanOrEqual(15);
+            const snapshot = JSON.stringify(result);
+            complete([]);
+            await new Promise((r) => setImmediate(r));
+            expect(t.commit).toHaveBeenCalledWith(true);
+            expect(JSON.stringify(result)).toBe(snapshot);
+        },
+    );
+
+    it('ошибка SELECT сохраняет свой этап даже после освобождения подключения', async () => {
+        const t = transaction();
+        t.query.mockRejectedValueOnce(new Error('query failed'));
+        expect(await pingDatabase({ getTransaction: async () => t } as any, 1000)).toMatchObject({
+            ok: false,
+            error: 'query failed',
+            phase: 'query',
+        });
+        expect(t.commit).toHaveBeenCalledWith(true);
+    });
+
+    it('ошибка освобождения не маскируется успешным SELECT; выполняется rollback', async () => {
+        const t = transaction();
+        t.commit.mockRejectedValueOnce(new Error('close failed'));
+        expect(await pingDatabase({ getTransaction: async () => t } as any, 1000)).toMatchObject({
+            ok: false,
+            error: 'close failed',
+            phase: 'release',
+        });
+        expect(t.rollback).toHaveBeenCalledWith(true);
     });
 });

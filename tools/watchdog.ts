@@ -3,6 +3,7 @@ import { exec } from 'child_process';
 import { promisify } from 'util';
 import * as dotenv from 'dotenv';
 import { hostname } from 'os';
+import { dbHealthFailure } from '../src/firebird/db-health-failure';
 
 // Загружаем переменные окружения из .env файла
 dotenv.config();
@@ -87,8 +88,9 @@ class Watchdog {
             });
             return null;
         } catch (error) {
-            const data = error.response?.data;
-            return `база: ${data?.error ?? data?.message?.error ?? error.message}`;
+            const failure = dbHealthFailure(error.response?.data, error.message);
+            console.error(`[${new Date().toISOString()}] DB health: ${JSON.stringify(failure.details)}`);
+            return failure.reason;
         }
     }
 

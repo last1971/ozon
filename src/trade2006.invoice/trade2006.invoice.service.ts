@@ -17,7 +17,7 @@ import { chunk, flatten, toNumber } from 'lodash';
 import { EventEmitter2 } from '@nestjs/event-emitter';
 import { InvoiceGetDto } from '../invoice/dto/invoice.get.dto';
 import { InvoiceLineDto } from '../invoice/dto/invoice.line.dto';
-import { ISOLATION_READ_UNCOMMITTED } from 'node-firebird';
+import { ISOLATION_READ_UNCOMMITTED, ISOLATION_READ_COMMITTED_READ_ONLY } from 'node-firebird';
 import { Cron } from '@nestjs/schedule';
 import { ISuppliable } from '../interfaces/i.suppliable';
 import { SupplyDto } from '../supply/dto/supply.dto';
@@ -57,6 +57,31 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
     async getTransaction(): Promise<FirebirdTransaction> {
         return this.pool.getTransaction();
     }
+    async getReadTransaction(): Promise<FirebirdTransaction> {
+        return this.pool.getTransaction(ISOLATION_READ_COMMITTED_READ_ONLY);
+    }
+
+    /** Общий поиск для чтения возвратов: сохраняет границу номера и правила одиночного поиска. */
+    async findByPostings(postings: string[], t: FirebirdTransaction): Promise<Map<string, InvoiceMatchDto>> {
+        const matches = new Map<string, InvoiceMatchDto>();
+        for (const part of chunk([...new Set(postings.filter(Boolean))], 40)) {
+            const rows = await t.query(
+                `SELECT * FROM S WHERE ${part.map(() => '(PRIM = ? OR PRIM STARTING WITH ?)').join(' OR ')}`,
+                part.flatMap((posting) => [posting, posting + ' ']),
+            );
+            for (const posting of part) {
+                const found = rows.filter((r) => r.PRIM === posting || (r.PRIM ?? '').startsWith(posting + ' '));
+                // При дублях без точного совпадения сохраняем прежний выбор и предупреждение.
+                const match =
+                    found.length > 1 && !found.some((r) => (r.PRIM ?? '').trim() === posting)
+                        ? await this.findByPosting(posting, t)
+                        : this.matchPosting(posting, found);
+                if (match) matches.set(posting, match);
+            }
+        }
+        return matches;
+    }
+
     async create(invoice: InvoiceCreateDto, t: FirebirdTransaction = null): Promise<InvoiceDto> {
         const transaction = t ?? (await this.pool.getTransaction());
         try {
@@ -173,6 +198,10 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             [postingNumber, postingNumber + ' '],
             !t,
         );
+        return this.matchPosting(postingNumber, rows, requireUnique);
+    }
+
+    private matchPosting(postingNumber: string, rows: any[], requireUnique = false): InvoiceMatchDto | null {
         // Статистике нельзя брать произвольный счёт при дублях. Боевые вызовы сохраняют прежний выбор.
         if (!rows.length || (requireUnique && rows.length !== 1)) return null;
         const invoices = InvoiceDto.map(rows);

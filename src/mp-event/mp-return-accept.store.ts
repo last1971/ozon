@@ -87,6 +87,21 @@ export class MpReturnAcceptStore {
         }
     }
 
+    /** Для списка непринятых нужны только идентификаторы, без чтения BLOB с марками. */
+    async findRecordedIds(service: MpService, extIds: string[], t: FirebirdTransaction): Promise<Set<string>> {
+        const result = new Set<string>();
+        const ids = [...new Set(extIds)];
+        for (let i = 0; i < ids.length; i += 100) {
+            const part = ids.slice(i, i + 100);
+            const rows = await t.query(
+                `SELECT EXT_ID FROM MP_RETURN_ACCEPT WHERE SERVICE = ? AND EXT_ID IN (${part.map(() => '?').join(',')})`,
+                [service, ...part],
+            );
+            for (const row of rows) result.add(String(row.EXT_ID));
+        }
+        return result;
+    }
+
     async findMany(service: MpService, extIds: string[], t: FirebirdTransaction = null): Promise<ReturnAcceptRecord[]> {
         if (!extIds.length) return [];
         return this.withTransaction(t, async (transaction) => {

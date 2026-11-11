@@ -20,6 +20,7 @@ import { ReturnCardDto, ReturnRowDto } from './dto/return-card.dto';
 import { AcceptReturnDto, ReturnActionResultDto, WriteOffReturnDto } from './dto/return-request.dto';
 import { AcceptContext } from './commands/return.contexts';
 import { MarkScanPool } from './mark-scan.pool';
+import { candidatePostings, resolveCandidates } from './return-candidate';
 
 /** Блокировка записи кроном возвратов (раз в 5 минут правит те же коды). */
 const LOCK_ERROR = /deadlock|lock conflict|concurrent update/i;
@@ -55,20 +56,22 @@ export class MpReturnService {
             : DateTime.now().minus({ days: DEFAULT_DAYS }).startOf('day');
         const end = (to ? DateTime.fromISO(to) : DateTime.now()).plus({ days: 1 }).startOf('day');
         if (!start.isValid || !end.isValid) throw new BadRequestException('Неверный период');
-        const lines = await source.listReceived(start.toJSDate(), end.toJSDate());
+        const candidates = await source.listReceived(start.toJSDate(), end.toJSDate());
+        if (!candidates.length) return [];
         const rows = await this.read(async (t) => {
+            const ids = candidates.map((l) => l.extId);
+            const recordedIds = onlyPending ? await this.store.findRecordedIds(service, ids, t) : new Set<string>();
+            const selected = onlyPending ? candidates.filter((l) => !recordedIds.has(l.extId)) : candidates;
+            if (!selected.length) return [];
             const records = new Map(
-                (
-                    await this.store.findMany(
-                        service,
-                        lines.map((l) => l.extId),
-                        t,
-                    )
-                ).map((r) => [r.extId, r]),
+                (onlyPending ? [] : await this.store.findMany(service, ids, t)).map((r) => [r.extId, r]),
             );
+            const matches = await this.invoiceService.findByPostings(candidatePostings(selected), t);
+            const lines = resolveCandidates(selected, matches);
+            const cards = await this.builder.buildMany(lines, t, records, matches);
             const result: ReturnRowDto[] = [];
-            for (const line of lines) {
-                const card = await this.builder.build(line, t, records.get(line.extId) ?? null);
+            for (const card of cards) {
+                const line = card.line;
                 result.push({
                     line,
                     invoiceNumber: card.invoice?.number ?? null,
@@ -80,7 +83,7 @@ export class MpReturnService {
                 });
             }
             return result;
-        });
+        }, true);
         return onlyPending ? rows.filter((r) => r.status === 'pending' || r.status === 'blocked') : rows;
     }
 
@@ -200,8 +203,11 @@ export class MpReturnService {
         return lines;
     }
 
-    private read<T>(fn: (t: FirebirdTransaction) => Promise<T>): Promise<T> {
-        return inTransaction(() => this.invoiceService.getTransaction(), fn);
+    private read<T>(fn: (t: FirebirdTransaction) => Promise<T>, readOnly = false): Promise<T> {
+        return inTransaction(
+            () => (readOnly ? this.invoiceService.getReadTransaction() : this.invoiceService.getTransaction()),
+            fn,
+        );
     }
 
     /** Одна транзакция на кнопку: любой отказ или сбой — откат целиком, кладовщику — понятный текст. */

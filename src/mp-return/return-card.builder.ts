@@ -1,7 +1,8 @@
 import { Inject, Injectable } from '@nestjs/common';
 import { FirebirdTransaction } from 'ts-firebird';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
-import { IReturnStock, RETURN_STOCK, ReturnInvoiceLine } from '../interfaces/i.return.stock';
+import { IReturnStock, RETURN_STOCK, ReturnInvoiceLine, ReturnLineCode } from '../interfaces/i.return.stock';
+import { InvoiceMatchDto } from '../invoice/dto/invoice.match.dto';
 import { MpReturnAcceptStore, ReturnAcceptRecord } from '../mp-event/mp-return-accept.store';
 import { goodCode, goodQuantityCoeff } from '../helpers';
 import { isDonorMark } from '../helpers/order.cancellation.constants';
@@ -30,9 +31,61 @@ export class ReturnCardBuilder {
         const record = accepted === undefined ? await this.acceptStore.find(line.service, line.extId, t) : accepted;
         const coeff = line.offerId ? goodQuantityCoeff({ offer_id: line.offerId }) : 1;
         const match = line.posting ? await this.invoiceService.findByPosting(line.posting, t) : null;
+        const invoiceLine = match
+            ? pickInvoiceLine(await this.stock.getLines(match.invoice.id, t), line.offerId, coeff)
+            : null;
+        const codes = invoiceLine ? await this.stock.getLineCodes(invoiceLine.realpricecode, t) : [];
+        return this.assemble(line, record, match, invoiceLine, codes);
+    }
 
+    /** Только чтение списка. Приём вызывает build() заново в своей транзакции. */
+    async buildMany(
+        lines: ReturnLineDto[],
+        t: FirebirdTransaction,
+        records: Map<string, ReturnAcceptRecord>,
+        matches: Map<string, InvoiceMatchDto>,
+    ): Promise<ReturnCardDto[]> {
+        const ids = [
+            ...new Set(
+                lines.flatMap((line) => {
+                    const match = matches.get(line.posting);
+                    return match ? [match.invoice.id] : [];
+                }),
+            ),
+        ];
+        const byInvoice = await this.stock.getLinesMany(ids, t);
+        const selected = lines.map((line) => {
+            const match = matches.get(line.posting) ?? null;
+            const coeff = line.offerId ? goodQuantityCoeff({ offer_id: line.offerId }) : 1;
+            const invoiceLine = match
+                ? pickInvoiceLine(byInvoice.get(match.invoice.id) ?? [], line.offerId, coeff)
+                : null;
+            return { line, match, invoiceLine };
+        });
+        const codes = await this.stock.getLineCodesMany(
+            [...new Set(selected.flatMap((s) => (s.invoiceLine ? [s.invoiceLine.realpricecode] : [])))],
+            t,
+        );
+        return selected.map(({ line, match, invoiceLine }) =>
+            this.assemble(
+                line,
+                records.get(line.extId) ?? null,
+                match,
+                invoiceLine,
+                invoiceLine ? (codes.get(invoiceLine.realpricecode) ?? []) : [],
+            ),
+        );
+    }
+
+    private assemble(
+        line: ReturnLineDto,
+        record: ReturnAcceptRecord | null,
+        match: InvoiceMatchDto | null,
+        invoiceLine: ReturnInvoiceLine | null,
+        codes: ReturnLineCode[],
+    ): ReturnCardDto {
+        const coeff = line.offerId ? goodQuantityCoeff({ offer_id: line.offerId }) : 1;
         let invoice: ReturnInvoiceViewDto | null = null;
-        let invoiceLine: ReturnInvoiceLine | null = null;
         if (match) {
             const inv = match.invoice;
             invoice = {
@@ -44,9 +97,7 @@ export class ReturnCardBuilder {
                 mark: match.mark ?? '',
                 isDonor: isDonorMark(match.mark),
             };
-            invoiceLine = pickInvoiceLine(await this.stock.getLines(inv.id, t), line.offerId, coeff);
         }
-        const codes = invoiceLine ? await this.stock.getLineCodes(invoiceLine.realpricecode, t) : [];
         const pieces = invoiceLine?.pieces ?? coeff;
         const quan = line.units * pieces;
         const marksRequired = codes.length > 0;
