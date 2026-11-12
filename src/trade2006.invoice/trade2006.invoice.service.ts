@@ -40,7 +40,7 @@ import {
 import { FBO_INVOICE_IGK } from '../helpers/fbo.invoice.constants';
 import { InvoiceMatchDto } from '../invoice/dto/invoice.match.dto';
 import { GtdResolver } from '../gtd/gtd.resolver';
-import { RETURN_STATE, TO_SELLER_TRANSIT_STATES } from '../mp-decision/mp-decision.types';
+import { boundMarkCodeFilter, donorPartyCoverageSql, sellerReturnExistsSql } from '../helpers/donor-protection.sql';
 
 @Injectable()
 export class Trade2006InvoiceService extends WithTransactions(class {}) implements IInvoice, ISuppliable {
@@ -788,20 +788,9 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
     /** Откуда берутся доноры — счёт с подборкой. */
     private static readonly PODBPOS_SOURCE = 'FROM PODBPOS pp JOIN S s ON s.SCODE = pp.SCODE ';
 
-    /** Возврат к продавцу запрещает повторную продажу со счёта-донора.
-     * POSTING извлекается из PRIM, чтобы читать MP_EVENT по IDX_MP_EVENT_POSTING.
-     * Даже обработанное событие остаётся запретом до ручного разбора возврата.
-     */
-    private static readonly SELLER_RETURN_EXISTS =
-        'EXISTS (SELECT 1 FROM MP_EVENT e WHERE e.POSTING = ' +
-        "SUBSTRING(s.PRIM FROM 1 FOR POSITION(' ' IN s.PRIM || ' ') - 1) " +
-        "AND e.SERVICE IN ('WB', 'OZON') AND e.KIND = 'RETURN' AND e.STATE IN (" +
-        [...TO_SELLER_TRANSIT_STATES, RETURN_STATE.RECEIVED_BY_SELLER].map((state) => `'${state}'`).join(', ') +
-        '))';
-
     /** Одно правило для автоматического и ручного поиска доноров. */
     private donorAliveWhere(): string {
-        return `s.STATUS = 1 AND pp.QUAN${this.quanAttr()} > 0 AND NOT (${Trade2006InvoiceService.SELLER_RETURN_EXISTS})`;
+        return `s.STATUS = 1 AND pp.QUAN${this.quanAttr()} > 0 AND NOT (${sellerReturnExistsSql()})`;
     }
 
     /**
@@ -1221,16 +1210,17 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         try {
             // Коды уже перенесены DonorTransferService. Оставшиеся коды, включая TT=0,
             // должны оставаться обеспечены подборкой исходного счёта.
-            const bound = isMarkCodesEnabled(this.configService)
+            const marksEnabled = isMarkCodesEnabled(this.configService);
+            const bound = marksEnabled
                 ? '(SELECT COALESCE(SUM(COALESCE(m.QUANTITY, 1)), 0) FROM MARKCODES m ' +
-                  'WHERE m.REALPRICECODE = pp.REALPRICECODE AND m.REALPRICEFCODE IS NULL ' +
-                  'AND m.SHOPLOGCODE IS NULL AND m.SPISID IS NULL ' +
-                  'AND m.SPISSKLADCODE IS NULL AND m.SPISSHOPCODE IS NULL)'
+                  'LEFT JOIN PR_META party ON party.ID = m.PR_META_IN_ID ' +
+                  `WHERE m.REALPRICECODE = pp.REALPRICECODE AND ${boundMarkCodeFilter()} ` +
+                  `AND (party.S_S = ${this.getStorageSS()} OR party.ID IS NULL))`
                 : '0';
             const [source] = await t.query(
-                `SELECT pp.QUAN${this.quanAttr()} AS PICKED, ${bound} AS BOUND, ` +
+                `SELECT pp.REALPRICECODE, pp.QUAN${this.quanAttr()} AS PICKED, ${bound} AS BOUND, ` +
                     '(SELECT COUNT(*) FROM S s WHERE s.SCODE = pp.SCODE AND ' +
-                    Trade2006InvoiceService.SELLER_RETURN_EXISTS +
+                    sellerReturnExistsSql() +
                     ') AS RETURNING FROM PODBPOS pp WHERE pp.PODBPOSCODE = ? WITH LOCK',
                 [oldPodbposcode],
                 false,
@@ -1253,6 +1243,35 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
                 take,
                 this.getStorageSS(),
             ]);
+            if (marksEnabled) {
+                const parties = await t.query(donorPartyCoverageSql(), [source.REALPRICECODE, newRpc], false);
+                for (const party of parties) {
+                    if (
+                        party.PR_META_IN_ID == null ||
+                        party.PARTY_STORAGE == null ||
+                        party.PARTY_TYPE !== 0 ||
+                        party.PARTY_GOOD !== party.MARK_GOOD
+                    ) {
+                        throw new Error(
+                            `У марки строки ${party.REALPRICECODE} отсутствует корректная приходная партия`,
+                        );
+                    }
+                    const marked = Number(party.MARK_QUANTITY);
+                    const picked = Number(party.FIFO_QUANTITY);
+                    if (
+                        !Number.isSafeInteger(marked) ||
+                        marked <= 0 ||
+                        !Number.isSafeInteger(picked) ||
+                        picked < marked
+                    ) {
+                        throw new Error(
+                            `Марки не обеспечены своей партией: строка ${party.REALPRICECODE}, ` +
+                                `партия ${party.PR_META_IN_ID}, марок на ${party.MARK_QUANTITY} шт., ` +
+                                `в подборе из неё ${party.FIFO_QUANTITY} шт.`,
+                        );
+                    }
+                }
+            }
             if (!transaction) await t.commit(true);
         } catch (error) {
             if (!transaction) await t.rollback(true);

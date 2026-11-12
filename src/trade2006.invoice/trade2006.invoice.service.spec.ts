@@ -809,7 +809,7 @@ describe('Trade2006InvoiceService', () => {
         it('migratePodbpos — EXECUTE PROCEDURE PODBPOS_MIGRATE_QTY (s_s из конфига)', async () => {
             get.mockImplementation((_key, def) => def);
             const t = {
-                query: jest.fn().mockResolvedValue([{ PICKED: 10, BOUND: 0, RETURNING: 0 }]),
+                query: jest.fn().mockResolvedValue([{ REALPRICECODE: 100, PICKED: 10, BOUND: 0, RETURNING: 0 }]),
                 execute: jest.fn(),
                 commit: jest.fn(),
             };
@@ -830,7 +830,10 @@ describe('Trade2006InvoiceService', () => {
 
             it('марка с TT=0 осталась на доноре: товар не уезжает без неё', async () => {
                 const t = {
-                    query: jest.fn().mockResolvedValue([{ PICKED: 1, BOUND: 1, RETURNING: 0 }]),
+                    query: jest
+                        .fn()
+                        .mockResolvedValueOnce([{ REALPRICECODE: 100, PICKED: 1, BOUND: 1, RETURNING: 0 }])
+                        .mockResolvedValue([]),
                     execute: jest.fn(),
                 };
                 await expect(service.migratePodbpos(1001, 999, 900, '444', 1, t as any)).rejects.toThrow(
@@ -844,7 +847,10 @@ describe('Trade2006InvoiceService', () => {
 
             it('частичный перенос разрешён, если оставшимся маркам хватает товара', async () => {
                 const t = {
-                    query: jest.fn().mockResolvedValue([{ PICKED: 3, BOUND: 2, RETURNING: 0 }]),
+                    query: jest
+                        .fn()
+                        .mockResolvedValueOnce([{ REALPRICECODE: 100, PICKED: 3, BOUND: 2, RETURNING: 0 }])
+                        .mockResolvedValue([]),
                     execute: jest.fn(),
                 };
                 await service.migratePodbpos(1001, 999, 900, '444', 1, t as any);
@@ -853,7 +859,10 @@ describe('Trade2006InvoiceService', () => {
 
             it('коды перенесены первыми: полный перенос товара разрешён', async () => {
                 const t = {
-                    query: jest.fn().mockResolvedValue([{ PICKED: 1, BOUND: 0, RETURNING: 0 }]),
+                    query: jest
+                        .fn()
+                        .mockResolvedValueOnce([{ REALPRICECODE: 100, PICKED: 1, BOUND: 0, RETURNING: 0 }])
+                        .mockResolvedValue([]),
                     execute: jest.fn(),
                 };
                 await service.migratePodbpos(1001, 999, 900, '444', 1, t as any);
@@ -862,7 +871,10 @@ describe('Trade2006InvoiceService', () => {
 
             it('возврат к продавцу появился после выбора донора: перенос запрещён', async () => {
                 const t = {
-                    query: jest.fn().mockResolvedValue([{ PICKED: 1, BOUND: 0, RETURNING: 1 }]),
+                    query: jest
+                        .fn()
+                        .mockResolvedValueOnce([{ REALPRICECODE: 100, PICKED: 1, BOUND: 0, RETURNING: 1 }])
+                        .mockResolvedValue([]),
                     execute: jest.fn(),
                 };
                 await expect(service.migratePodbpos(1001, 999, 900, '444', 1, t as any)).rejects.toThrow(
@@ -874,7 +886,10 @@ describe('Trade2006InvoiceService', () => {
             it('без маркировки таблица MARKCODES не читается, возврат всё равно защищён', async () => {
                 get.mockImplementation((_key, def) => def);
                 const t = {
-                    query: jest.fn().mockResolvedValue([{ PICKED: 1, BOUND: 0, RETURNING: 0 }]),
+                    query: jest
+                        .fn()
+                        .mockResolvedValueOnce([{ REALPRICECODE: 100, PICKED: 1, BOUND: 0, RETURNING: 0 }])
+                        .mockResolvedValue([]),
                     execute: jest.fn(),
                 };
                 await service.migratePodbpos(1001, 999, 900, '444', 1, t as any);
@@ -900,8 +915,90 @@ describe('Trade2006InvoiceService', () => {
                     expect(sql).toContain('e.POSTING = SUBSTRING(s.PRIM');
                     expect(sql).toContain("'MovingToSeller'");
                     expect(sql).toContain("'ReceivedBySeller'");
-                    expect(sql).not.toContain("e.STATE IN ('ReturnedToOzon'");
+                    expect(sql).toContain("'ArrivedAtReturnPlace'");
+                    expect(sql).toContain('market.EXT_ID = e.EXT_ID');
+                    expect(sql).toContain('observed.LAST_SEEN');
                 }
+            });
+        });
+
+        describe('партии после переноса донора', () => {
+            const source = { REALPRICECODE: 100, PICKED: 2, BOUND: 1, RETURNING: 0 };
+            const covered = (rpc: number, pmi: number, qty = 1) => ({
+                REALPRICECODE: rpc,
+                PR_META_IN_ID: pmi,
+                MARK_GOOD: 444,
+                PARTY_GOOD: 444,
+                PARTY_TYPE: 0,
+                PARTY_STORAGE: 0,
+                MARK_QUANTITY: qty,
+                FIFO_QUANTITY: qty,
+            });
+            beforeEach(() => get.mockImplementation((key, def) => (key === 'MARK_CODES_ENABLED' ? true : def)));
+
+            it.each([100, 900])(
+                'общие количества сходятся, но на строке %s марка осталась без своей партии',
+                async (rpc) => {
+                    const rows = [covered(100, 10), covered(900, 20)].map((p) =>
+                        p.REALPRICECODE === rpc ? { ...p, FIFO_QUANTITY: 0 } : p,
+                    );
+                    const t = {
+                        query: jest.fn().mockResolvedValueOnce([source]).mockResolvedValueOnce(rows),
+                        execute: jest.fn(),
+                    };
+                    await expect(service.migratePodbpos(1001, 999, 900, '444', 1, t as any)).rejects.toThrow(
+                        'Марки не обеспечены своей партией',
+                    );
+                    expect(t.query.mock.calls[1][1]).toEqual([100, 900]);
+                },
+            );
+
+            it('частичный перенос проходит, если партии обеспечены на обеих строках', async () => {
+                const rows = [covered(100, 10), covered(900, 20)];
+                const t = {
+                    query: jest.fn().mockResolvedValueOnce([source]).mockResolvedValueOnce(rows),
+                    execute: jest.fn(),
+                };
+                await service.migratePodbpos(1001, 999, 900, '444', 1, t as any);
+                expect(t.execute).toHaveBeenCalledTimes(1);
+            });
+
+            it.each([{ PR_META_IN_ID: null }, { PARTY_TYPE: 1 }, { PARTY_GOOD: 555 }, { PARTY_STORAGE: null }])(
+                'неизвестная или чужая приходная партия отклоняется: %j',
+                async (invalid) => {
+                    const t = {
+                        query: jest
+                            .fn()
+                            .mockResolvedValueOnce([source])
+                            .mockResolvedValueOnce([{ ...covered(100, 10), ...invalid }]),
+                        execute: jest.fn(),
+                    };
+                    await expect(service.migratePodbpos(1001, 999, 900, '444', 1, t as any)).rejects.toThrow(
+                        'корректная приходная партия',
+                    );
+                },
+            );
+
+            it('остаток другой стороны склада не включается в общий лимит текущей стороны', async () => {
+                const t = {
+                    query: jest
+                        .fn()
+                        .mockResolvedValueOnce([{ ...source, PICKED: 1, BOUND: 0 }])
+                        .mockResolvedValueOnce([{ ...covered(100, 10), PARTY_STORAGE: 1 }]),
+                    execute: jest.fn(),
+                };
+                await service.migratePodbpos(1001, 999, 900, '444', 1, t as any);
+                expect(t.query.mock.calls[0][0]).toContain('party.S_S = 1 OR party.ID IS NULL');
+                expect(t.query.mock.calls[1][0]).toContain('po.S_S = party.S_S');
+            });
+
+            it('ошибка партийной проверки откатывает собственную транзакцию', async () => {
+                query
+                    .mockResolvedValueOnce([source])
+                    .mockResolvedValueOnce([{ ...covered(100, 10), FIFO_QUANTITY: 0 }]);
+                await expect(service.migratePodbpos(1001, 999, 900, '444', 1)).rejects.toThrow('своей партией');
+                expect(rollback).toHaveBeenCalledWith(true);
+                expect(commit).not.toHaveBeenCalled();
             });
         });
 
