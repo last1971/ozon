@@ -40,6 +40,7 @@ import {
 import { FBO_INVOICE_IGK } from '../helpers/fbo.invoice.constants';
 import { InvoiceMatchDto } from '../invoice/dto/invoice.match.dto';
 import { GtdResolver } from '../gtd/gtd.resolver';
+import { RETURN_STATE, TO_SELLER_TRANSIT_STATES } from '../mp-decision/mp-decision.types';
 
 @Injectable()
 export class Trade2006InvoiceService extends WithTransactions(class {}) implements IInvoice, ISuppliable {
@@ -787,9 +788,20 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
     /** Откуда берутся доноры — счёт с подборкой. */
     private static readonly PODBPOS_SOURCE = 'FROM PODBPOS pp JOIN S s ON s.SCODE = pp.SCODE ';
 
-    /** Донор жив: счёт сформирован и по товару что-то подобрано. Одно место на все поиски доноров. */
+    /** Возврат к продавцу запрещает повторную продажу со счёта-донора.
+     * POSTING извлекается из PRIM, чтобы читать MP_EVENT по IDX_MP_EVENT_POSTING.
+     * Даже обработанное событие остаётся запретом до ручного разбора возврата.
+     */
+    private static readonly SELLER_RETURN_EXISTS =
+        'EXISTS (SELECT 1 FROM MP_EVENT e WHERE e.POSTING = ' +
+        "SUBSTRING(s.PRIM FROM 1 FOR POSITION(' ' IN s.PRIM || ' ') - 1) " +
+        "AND e.SERVICE IN ('WB', 'OZON') AND e.KIND = 'RETURN' AND e.STATE IN (" +
+        [...TO_SELLER_TRANSIT_STATES, RETURN_STATE.RECEIVED_BY_SELLER].map((state) => `'${state}'`).join(', ') +
+        '))';
+
+    /** Одно правило для автоматического и ручного поиска доноров. */
     private donorAliveWhere(): string {
-        return `s.STATUS = 1 AND pp.QUAN${this.quanAttr()} > 0`;
+        return `s.STATUS = 1 AND pp.QUAN${this.quanAttr()} > 0 AND NOT (${Trade2006InvoiceService.SELLER_RETURN_EXISTS})`;
     }
 
     /**
@@ -1105,7 +1117,11 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
             // доноров (счёт 84661, 16.10.2026). Целые упаковки проверяет перенос (fbo-mark-migration);
             // фасовку донорам проставляет DonorPiecesService по составу поставки Озона.
             `WHERE pp.GOODSCODE = ? AND pp.SKLAD_ID IS NULL AND (rp.PIECES IS NULL OR rp.PIECES = ?) AND ${this.donorAliveWhere()} AND (${containingClauses})`;
-        const rows = await t.query(sql, [nominal, nominal, nominal, ...prims, goodscode, nominal, ...prims], !transaction);
+        const rows = await t.query(
+            sql,
+            [nominal, nominal, nominal, ...prims, goodscode, nominal, ...prims],
+            !transaction,
+        );
         const all = rows.map((r) => ({
             podbposcode: r.PODBPOSCODE,
             scode: r.SCODE,
@@ -1152,7 +1168,7 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         const sql =
             `SELECT FIRST 1 pp.PODBPOSCODE, pp.SCODE, pp.REALPRICECODE, pp.QUAN${attribute} AS QUANAVAIL, ${lvlCase} ` +
             Trade2006InvoiceService.PODBPOS_SOURCE +
-            `WHERE pp.GOODSCODE = ? AND pp.QUAN${attribute} >= ? AND s.STATUS = 1 AND (${containing}) ORDER BY LVL`;
+            `WHERE pp.GOODSCODE = ? AND pp.QUAN${attribute} >= ? AND ${this.donorAliveWhere()} AND (${containing}) ORDER BY LVL`;
         const rows = await t.query(sql, [...prims, goodscode, quantity, ...prims], !transaction);
         if (rows.length === 0) return null;
         const r = rows[0];
@@ -1202,15 +1218,46 @@ export class Trade2006InvoiceService extends WithTransactions(class {}) implemen
         transaction: FirebirdTransaction = null,
     ): Promise<void> {
         const t = transaction ?? (await this.getTransaction());
-        await t.execute('EXECUTE PROCEDURE PODBPOS_MIGRATE_QTY (?, ?, ?, ?, ?, ?)', [
-            oldPodbposcode,
-            newScode,
-            newRpc,
-            gc,
-            take,
-            this.getStorageSS(),
-        ]);
-        if (!transaction) await t.commit(true);
+        try {
+            // Коды уже перенесены DonorTransferService. Оставшиеся коды, включая TT=0,
+            // должны оставаться обеспечены подборкой исходного счёта.
+            const bound = isMarkCodesEnabled(this.configService)
+                ? '(SELECT COALESCE(SUM(COALESCE(m.QUANTITY, 1)), 0) FROM MARKCODES m ' +
+                  'WHERE m.REALPRICECODE = pp.REALPRICECODE AND m.REALPRICEFCODE IS NULL ' +
+                  'AND m.SHOPLOGCODE IS NULL AND m.SPISID IS NULL ' +
+                  'AND m.SPISSKLADCODE IS NULL AND m.SPISSHOPCODE IS NULL)'
+                : '0';
+            const [source] = await t.query(
+                `SELECT pp.QUAN${this.quanAttr()} AS PICKED, ${bound} AS BOUND, ` +
+                    '(SELECT COUNT(*) FROM S s WHERE s.SCODE = pp.SCODE AND ' +
+                    Trade2006InvoiceService.SELLER_RETURN_EXISTS +
+                    ') AS RETURNING FROM PODBPOS pp WHERE pp.PODBPOSCODE = ? WITH LOCK',
+                [oldPodbposcode],
+                false,
+            );
+            if (!source) throw new Error('Подборка счёта-донора больше не существует');
+            if (Number(source.RETURNING) > 0) {
+                throw new Error('Со счёта-донора оформлен возврат к продавцу — перенос запрещён');
+            }
+            if (Number(source.BOUND) > Number(source.PICKED) - take) {
+                throw new Error(
+                    `Перенос оставит марки без товара: подобрано ${source.PICKED}, ` +
+                        `переносится ${take}, оставшимся маркам нужно ${source.BOUND} шт.`,
+                );
+            }
+            await t.execute('EXECUTE PROCEDURE PODBPOS_MIGRATE_QTY (?, ?, ?, ?, ?, ?)', [
+                oldPodbposcode,
+                newScode,
+                newRpc,
+                gc,
+                take,
+                this.getStorageSS(),
+            ]);
+            if (!transaction) await t.commit(true);
+        } catch (error) {
+            if (!transaction) await t.rollback(true);
+            throw error;
+        }
     }
 
     // Зачистка фантомного резерва счёта Б: create() (S.STATUS 0->3) через RESERVPOS6

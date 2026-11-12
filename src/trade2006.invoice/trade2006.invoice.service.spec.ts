@@ -807,7 +807,12 @@ describe('Trade2006InvoiceService', () => {
         });
 
         it('migratePodbpos — EXECUTE PROCEDURE PODBPOS_MIGRATE_QTY (s_s из конфига)', async () => {
-            const t = { execute: jest.fn(), commit: jest.fn() };
+            get.mockImplementation((_key, def) => def);
+            const t = {
+                query: jest.fn().mockResolvedValue([{ PICKED: 10, BOUND: 0, RETURNING: 0 }]),
+                execute: jest.fn(),
+                commit: jest.fn(),
+            };
             await service.migratePodbpos(1001, 999, 900, '444', 10, t as any);
             expect(t.execute).toHaveBeenCalledWith('EXECUTE PROCEDURE PODBPOS_MIGRATE_QTY (?, ?, ?, ?, ?, ?)', [
                 1001,
@@ -818,6 +823,86 @@ describe('Trade2006InvoiceService', () => {
                 1,
             ]);
             expect(t.commit).not.toHaveBeenCalled();
+        });
+
+        describe('защита переноса возвратного товара', () => {
+            beforeEach(() => get.mockImplementation((key, def) => (key === 'MARK_CODES_ENABLED' ? true : def)));
+
+            it('марка с TT=0 осталась на доноре: товар не уезжает без неё', async () => {
+                const t = {
+                    query: jest.fn().mockResolvedValue([{ PICKED: 1, BOUND: 1, RETURNING: 0 }]),
+                    execute: jest.fn(),
+                };
+                await expect(service.migratePodbpos(1001, 999, 900, '444', 1, t as any)).rejects.toThrow(
+                    'оставит марки без товара',
+                );
+                expect(t.execute).not.toHaveBeenCalled();
+                expect(t.query.mock.calls[0][0]).toContain('WITH LOCK');
+                expect(t.query.mock.calls[0][0]).toContain('m.REALPRICECODE = pp.REALPRICECODE');
+                expect(t.query.mock.calls[0][0]).not.toContain('m.TRANSFER_TYPE');
+            });
+
+            it('частичный перенос разрешён, если оставшимся маркам хватает товара', async () => {
+                const t = {
+                    query: jest.fn().mockResolvedValue([{ PICKED: 3, BOUND: 2, RETURNING: 0 }]),
+                    execute: jest.fn(),
+                };
+                await service.migratePodbpos(1001, 999, 900, '444', 1, t as any);
+                expect(t.execute).toHaveBeenCalledTimes(1);
+            });
+
+            it('коды перенесены первыми: полный перенос товара разрешён', async () => {
+                const t = {
+                    query: jest.fn().mockResolvedValue([{ PICKED: 1, BOUND: 0, RETURNING: 0 }]),
+                    execute: jest.fn(),
+                };
+                await service.migratePodbpos(1001, 999, 900, '444', 1, t as any);
+                expect(t.execute).toHaveBeenCalledTimes(1);
+            });
+
+            it('возврат к продавцу появился после выбора донора: перенос запрещён', async () => {
+                const t = {
+                    query: jest.fn().mockResolvedValue([{ PICKED: 1, BOUND: 0, RETURNING: 1 }]),
+                    execute: jest.fn(),
+                };
+                await expect(service.migratePodbpos(1001, 999, 900, '444', 1, t as any)).rejects.toThrow(
+                    'возврат к продавцу',
+                );
+                expect(t.execute).not.toHaveBeenCalled();
+            });
+
+            it('без маркировки таблица MARKCODES не читается, возврат всё равно защищён', async () => {
+                get.mockImplementation((_key, def) => def);
+                const t = {
+                    query: jest.fn().mockResolvedValue([{ PICKED: 1, BOUND: 0, RETURNING: 0 }]),
+                    execute: jest.fn(),
+                };
+                await service.migratePodbpos(1001, 999, 900, '444', 1, t as any);
+                expect(t.query.mock.calls[0][0]).not.toContain('MARKCODES');
+                expect(t.query.mock.calls[0][0]).toContain('MP_EVENT');
+                expect(t.execute).toHaveBeenCalledTimes(1);
+            });
+
+            it('собственная транзакция откатывается при запрете переноса', async () => {
+                query.mockResolvedValueOnce([{ PICKED: 1, BOUND: 1, RETURNING: 0 }]);
+                await expect(service.migratePodbpos(1001, 999, 900, '444', 1)).rejects.toThrow(
+                    'оставит марки без товара',
+                );
+                expect(rollback).toHaveBeenCalledWith(true);
+                expect(execute).not.toHaveBeenCalled();
+            });
+
+            it('возвраты к продавцу исключены из обычного и legacy-поиска доноров', async () => {
+                const t = { query: jest.fn().mockResolvedValue([]) };
+                await service.findFboPodbposCandidates('444', ['W'], 1, t as any);
+                await service.findFboPodbposDonor('444', ['W'], 1, t as any);
+                for (const [sql] of t.query.mock.calls) {
+                    expect(sql).toContain('e.POSTING = SUBSTRING(s.PRIM');
+                    expect(sql).toContain("'MovingToSeller'");
+                    expect(sql).toContain("'ReceivedBySeller'");
+                    expect(sql).not.toContain("e.STATE IN ('ReturnedToOzon'");
+                }
+            });
         });
 
         it('clearInvoiceReserve — DELETE RESERVEDPOS + зануление need + удаление пустых строк', async () => {

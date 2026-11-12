@@ -1,8 +1,6 @@
 import { Inject, Injectable, Logger } from '@nestjs/common';
-import { EventEmitter2 } from '@nestjs/event-emitter';
 import { FirebirdTransaction } from 'ts-firebird';
 import { IInvoice, INVOICE_SERVICE } from '../interfaces/IInvoice';
-import { NotifyTopic } from '../notify/notify.types';
 
 /** Строка донора: подборка и строка счёта, откуда едет товар. */
 export interface DonorLineRef {
@@ -26,12 +24,12 @@ export interface TransferResult {
     stuck: number; // кодов застряло на доноре (их штуки остались там же)
 }
 
-/** Перенос подборки не прошёл: уехавшие коды возвращены (кроме orphaned — они повисли на приёмнике). */
+/** Кандидат пропущен: все изменения его кодов и подборки откатились до savepoint. */
 export class DonorTransferError extends Error {
     constructor(
         message: string,
         readonly donor: DonorLineRef,
-        readonly orphaned: string[],
+        readonly orphaned: string[] = [],
     ) {
         super(message);
     }
@@ -49,12 +47,30 @@ export class DonorTransferError extends Error {
 export class DonorTransferService {
     private readonly logger = new Logger(DonorTransferService.name);
 
-    constructor(
-        @Inject(INVOICE_SERVICE) private readonly invoiceService: IInvoice,
-        private readonly eventEmitter: EventEmitter2,
-    ) {}
+    constructor(@Inject(INVOICE_SERVICE) private readonly invoiceService: IInvoice) {}
 
     async transfer(
+        donor: DonorLineRef,
+        take: number,
+        target: TransferTarget,
+        t: FirebirdTransaction,
+    ): Promise<TransferResult> {
+        if (!t) throw new Error('Перенос донора требует общей транзакции');
+        await t.execute('SAVEPOINT FBO_DONOR_TRANSFER', [], false);
+        try {
+            const result = await this.transferCandidate(donor, take, target, t);
+            await t.execute('RELEASE SAVEPOINT FBO_DONOR_TRANSFER', [], false);
+            return result;
+        } catch (error) {
+            // Включая уже перенесённые марки и изменения внутри хранимых процедур.
+            // Если сам откат не прошёл, ошибка наружу: весь вызывающий сценарий обязан откатиться.
+            await t.execute('ROLLBACK TO SAVEPOINT FBO_DONOR_TRANSFER', [], false);
+            await t.execute('RELEASE SAVEPOINT FBO_DONOR_TRANSFER', [], false);
+            throw error;
+        }
+    }
+
+    private async transferCandidate(
         donor: DonorLineRef,
         take: number,
         target: TransferTarget,
@@ -102,32 +118,10 @@ export class DonorTransferService {
                 t,
             );
         } catch (e) {
-            // Перенос штук не прошёл (гонка/партийный учёт) — возвращаем уже переехавшие коды назад.
             this.logger.warn(
-                `FBO migration: перенос подборки не прошёл (PODBPOS ${donor.podbposcode}, take=${rest}): ${e.message}`,
+                `FBO migration: перенос подборки запрещён (PODBPOS ${donor.podbposcode}, take=${rest}): ${e.message}`,
             );
-            const orphaned: string[] = [];
-            for (const ki of migrated) {
-                try {
-                    await this.invoiceService.migrateMarkCode(
-                        ki,
-                        target.realpricecode,
-                        donor.realpricecode,
-                        gc,
-                        s_s,
-                        t,
-                    );
-                } catch (e2) {
-                    orphaned.push(ki);
-                    this.eventEmitter.emit(
-                        'error.message',
-                        'FBO migration: КМ завис на счёте продажи без подборки — нужен ручной разбор',
-                        `КМ ${ki}, GOODSCODE ${gc}, RPC ${target.realpricecode} (SCODE ${target.scode}): ${e2.message}`,
-                        NotifyTopic.MARKING,
-                    );
-                }
-            }
-            throw new DonorTransferError(e.message, donor, orphaned);
+            throw new DonorTransferError(e.message, donor);
         }
 
         // 3) Цепочка донор→приёмник (аудит).

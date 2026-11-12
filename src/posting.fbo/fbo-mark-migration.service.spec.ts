@@ -4,6 +4,7 @@ import { FboMarkMigrationService } from './fbo-mark-migration.service';
 import { INVOICE_SERVICE } from '../interfaces/IInvoice';
 import { DonorTransferService } from './donor-transfer.service';
 import { NotifyTopic } from '../notify/notify.types';
+import { FirebirdTransaction } from 'ts-firebird';
 
 // S12: при FBO-переезде вместе с подборкой едут коды маркировки (TT=2/3),
 // кратно номиналу, по кандидату строго «сначала коды, потом подборка».
@@ -18,6 +19,8 @@ describe('FboMarkMigrationService', () => {
     const getStorageSS = jest.fn();
     const logMigrationLink = jest.fn();
     const emit = jest.fn();
+    const execute = jest.fn();
+    const t = { execute } as unknown as FirebirdTransaction;
 
     const SCODE_B = 500;
     const POSTING = 'P-1';
@@ -38,8 +41,10 @@ describe('FboMarkMigrationService', () => {
             getStorageSS,
             logMigrationLink,
             emit,
+            execute,
         ].forEach((m) => m.mockReset());
         getStorageSS.mockReturnValue(1);
+        execute.mockResolvedValue(undefined);
         migrateMarkCode.mockResolvedValue(undefined);
         migratePodbpos.mockResolvedValue(undefined);
         clearInvoiceReserve.mockResolvedValue(undefined);
@@ -92,20 +97,20 @@ describe('FboMarkMigrationService', () => {
             ['W'],
             [line(900)],
             SCODE_B,
-            null,
+            t,
             POSTING,
         );
 
         expect(shortages).toEqual([]);
-        expect(clearInvoiceReserve).toHaveBeenCalledWith(SCODE_B, null);
-        expect(findFboPodbposCandidates).toHaveBeenCalledWith('444', ['W'], 5, null, expect.any(Function));
-        expect(findLiveMigratableCodes).toHaveBeenCalledWith(100, 5, null);
+        expect(clearInvoiceReserve).toHaveBeenCalledWith(SCODE_B, t);
+        expect(findFboPodbposCandidates).toHaveBeenCalledWith('444', ['W'], 5, t, expect.any(Function));
+        expect(findLiveMigratableCodes).toHaveBeenCalledWith(100, 5, t);
         expect(migrateMarkCode.mock.calls).toEqual([
-            ['KI-3', 100, 900, '444', 1, null],
-            ['KI-1', 100, 900, '444', 1, null],
-            ['KI-2', 100, 900, '444', 1, null],
+            ['KI-3', 100, 900, '444', 1, t],
+            ['KI-1', 100, 900, '444', 1, t],
+            ['KI-2', 100, 900, '444', 1, t],
         ]);
-        expect(migratePodbpos).toHaveBeenCalledWith(1001, SCODE_B, 900, '444', 15, null);
+        expect(migratePodbpos).toHaveBeenCalledWith(1001, SCODE_B, 900, '444', 15, t);
         // цепочка донор→приёмник записана
         expect(logMigrationLink).toHaveBeenCalledWith(
             {
@@ -117,7 +122,7 @@ describe('FboMarkMigrationService', () => {
                 targetScode: SCODE_B,
                 targetRpc: 900,
             },
-            null,
+            t,
         );
         // порядок: все коды до подборки
         const podbOrder = migratePodbpos.mock.invocationCallOrder[0];
@@ -139,7 +144,7 @@ describe('FboMarkMigrationService', () => {
             ['W'],
             [line(900, '444', 1)],
             SCODE_B,
-            null,
+            t,
             POSTING,
         );
 
@@ -175,13 +180,13 @@ describe('FboMarkMigrationService', () => {
             ['W'],
             [line(900)],
             SCODE_B,
-            null,
+            t,
             POSTING,
         );
 
         expect(shortages).toEqual([]);
         expect(migrateMarkCode).toHaveBeenCalledTimes(1);
-        expect(migratePodbpos).toHaveBeenCalledWith(1001, SCODE_B, 900, '444', 15, null);
+        expect(migratePodbpos).toHaveBeenCalledWith(1001, SCODE_B, 900, '444', 15, t);
         expect(emit).toHaveBeenCalledWith(
             'error.message',
             expect.stringContaining('без кодов'),
@@ -210,13 +215,13 @@ describe('FboMarkMigrationService', () => {
             ['W'],
             [line(901, '777', 2)],
             SCODE_B,
-            null,
+            t,
             POSTING,
         );
 
         expect(shortages).toEqual([]);
         expect(migrateMarkCode).not.toHaveBeenCalled();
-        expect(migratePodbpos).toHaveBeenCalledWith(1001, SCODE_B, 901, '777', 2, null);
+        expect(migratePodbpos).toHaveBeenCalledWith(1001, SCODE_B, 901, '777', 2, t);
         expect(emit).not.toHaveBeenCalled();
     });
 
@@ -241,13 +246,13 @@ describe('FboMarkMigrationService', () => {
             ['W'],
             [line(901, '777', 2)],
             SCODE_B,
-            null,
+            t,
             POSTING,
         );
 
         expect(shortages).toEqual([]);
         expect(migrateMarkCode).not.toHaveBeenCalled();
-        expect(migratePodbpos).toHaveBeenCalledWith(1001, SCODE_B, 901, '777', 2, null);
+        expect(migratePodbpos).toHaveBeenCalledWith(1001, SCODE_B, 901, '777', 2, t);
         expect(emit).toHaveBeenCalledWith(
             'error.message',
             expect.stringContaining('выведенный код'),
@@ -275,7 +280,7 @@ describe('FboMarkMigrationService', () => {
             ['W'],
             [line(901, '777-2', 2)],
             SCODE_B,
-            null,
+            t,
             POSTING,
         );
 
@@ -292,7 +297,7 @@ describe('FboMarkMigrationService', () => {
             ['W'],
             [line(901, '777', 5)],
             SCODE_B,
-            null,
+            t,
             POSTING,
         );
 
@@ -321,7 +326,7 @@ describe('FboMarkMigrationService', () => {
             ['W'],
             [line(902, '444', 1)],
             SCODE_B,
-            null,
+            t,
             POSTING,
         );
 
@@ -364,23 +369,22 @@ describe('FboMarkMigrationService', () => {
             ['A', 'B'],
             [line(900, '444', 10)],
             SCODE_B,
-            null,
+            t,
             POSTING,
         );
 
         expect(shortages).toEqual([]);
-        // компенсация: KI-A1/KI-A2 вернулись со строки Б на строку А
+        expect(execute).toHaveBeenCalledWith('ROLLBACK TO SAVEPOINT FBO_DONOR_TRANSFER', [], false);
+        // Изменения кандидата A откатываются до savepoint; затем пробуем кандидата B.
         expect(migrateMarkCode.mock.calls).toEqual([
-            ['KI-A1', 100, 900, '444', 1, null],
-            ['KI-A2', 100, 900, '444', 1, null],
-            ['KI-A1', 900, 100, '444', 1, null],
-            ['KI-A2', 900, 100, '444', 1, null],
-            ['KI-B1', 200, 900, '444', 1, null],
-            ['KI-B2', 200, 900, '444', 1, null],
+            ['KI-A1', 100, 900, '444', 1, t],
+            ['KI-A2', 100, 900, '444', 1, t],
+            ['KI-B1', 200, 900, '444', 1, t],
+            ['KI-B2', 200, 900, '444', 1, t],
         ]);
         expect(migratePodbpos.mock.calls).toEqual([
-            [1001, SCODE_B, 900, '444', 10, null],
-            [2002, SCODE_B, 900, '444', 10, null],
+            [1001, SCODE_B, 900, '444', 10, t],
+            [2002, SCODE_B, 900, '444', 10, t],
         ]);
     });
 
@@ -408,12 +412,12 @@ describe('FboMarkMigrationService', () => {
             ['W'],
             [line(900)],
             SCODE_B,
-            null,
+            t,
             POSTING,
         );
 
         // 2 кода уехали (10 шт), штуки застрявшего кода (5) остались на А
-        expect(migratePodbpos).toHaveBeenCalledWith(1001, SCODE_B, 900, '444', 10, null);
+        expect(migratePodbpos).toHaveBeenCalledWith(1001, SCODE_B, 900, '444', 10, t);
         expect(shortages).toEqual([{ goodscode: '444', quantity: 5 }]);
     });
 
@@ -424,7 +428,7 @@ describe('FboMarkMigrationService', () => {
                 ['W'],
                 [{ goodCode: '444', quantity: 1, price: '1' }],
                 SCODE_B,
-                null,
+                t,
                 POSTING,
             ),
         ).rejects.toThrow('нет realpricecode');
@@ -466,15 +470,15 @@ describe('FboMarkMigrationService', () => {
             ['P'],
             [line(901, '111', 1), line(902, '222', 1)],
             SCODE_B,
-            null,
+            t,
             POSTING,
         );
 
         expect(shortages).toEqual([]);
-        expect(findFboPodbposCandidates.mock.calls[0]).toEqual(['111', ['P'], 1, null, expect.any(Function)]);
-        expect(findFboPodbposCandidates.mock.calls[1]).toEqual(['222', ['P'], 1, null, expect.any(Function)]);
-        expect(migratePodbpos.mock.calls[0]).toEqual([1001, SCODE_B, 901, '111', 1, null]);
-        expect(migratePodbpos.mock.calls[1]).toEqual([2002, SCODE_B, 902, '222', 1, null]);
+        expect(findFboPodbposCandidates.mock.calls[0]).toEqual(['111', ['P'], 1, t, expect.any(Function)]);
+        expect(findFboPodbposCandidates.mock.calls[1]).toEqual(['222', ['P'], 1, t, expect.any(Function)]);
+        expect(migratePodbpos.mock.calls[0]).toEqual([1001, SCODE_B, 901, '111', 1, t]);
+        expect(migratePodbpos.mock.calls[1]).toEqual([2002, SCODE_B, 902, '222', 1, t]);
     });
 
     it('quanAvail > need → take = need, не лишнего', async () => {
@@ -496,11 +500,11 @@ describe('FboMarkMigrationService', () => {
             ['P'],
             [line(903, '999', 2)],
             SCODE_B,
-            null,
+            t,
             POSTING,
         );
 
         expect(shortages).toEqual([]);
-        expect(migratePodbpos).toHaveBeenCalledWith(1001, SCODE_B, 903, '999', 2, null);
+        expect(migratePodbpos).toHaveBeenCalledWith(1001, SCODE_B, 903, '999', 2, t);
     });
 });
