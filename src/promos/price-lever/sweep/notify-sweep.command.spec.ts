@@ -17,4 +17,17 @@ describe('NotifySweepCommand — уведомление о применённо�
         await cmd.execute(ctx({ apply: true }));
         expect(emit).not.toHaveBeenCalled();
     });
+
+    it('все шаги уже стояли (changed: false) — молчим', async () => {
+        const unchanged = { applied: true, results: [{ step: {}, status: 'ok', reason: 'уже стоит', changed: false }] };
+        await cmd.execute(ctx({ apply: true, results: [unchanged, unchanged] }));
+        expect(emit).not.toHaveBeenCalled();
+    });
+
+    it('часть шагов реально изменена — событие', async () => {
+        const changed   = { applied: true, results: [{ step: {}, status: 'ok', changed: true }] };
+        const unchanged = { applied: true, results: [{ step: {}, status: 'ok', changed: false }] };
+        await cmd.execute(ctx({ apply: true, results: [unchanged, changed] }));
+        expect(emit).toHaveBeenCalledWith(OZON_PROMO_SWEEP_EVENT, { selected: 1 });
+    });
 });

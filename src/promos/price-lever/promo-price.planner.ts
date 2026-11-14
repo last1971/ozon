@@ -92,7 +92,7 @@ export const planPromoPrice = (
         const to = Math.min(a.maxActionPrice, Math.max(floor, need));
         kept.push(to);
         if (to < need) notes.push(`«${a.title}»: лимит ${a.maxActionPrice} не даёт поднять цену до цели`);
-        if (!a.participant || a.actionPrice !== to) {
+        if (!a.participant || Math.abs(a.actionPrice - to) > 1) {
             steps.push({
                 kind: 'ozon-set',
                 actionId: a.actionId,

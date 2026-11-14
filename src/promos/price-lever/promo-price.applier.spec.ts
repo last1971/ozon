@@ -140,11 +140,12 @@ describe('PromoPriceApplier — исполнение шагов плана', () 
         ]);
     });
 
-    it('поставить цену в Ozon-акции — update с ценой шага и стоком слота', async () => {
+    it('поставить цену в Ozon-акции — update с ценой шага и стоком слота; changed: true', async () => {
         const set: PromoPriceStep = { kind: 'ozon-set', actionId: 1977747, title: 'Эластичный', from: 967, to: 1256 };
         const res = await applier.apply(plan([set]));
         expect(update).toHaveBeenCalledWith(1977747, [{ productId: 77, actionPrice: 1256, stock: 2 }]);
         expect(res.results[0].status).toBe('ok');
+        expect(res.results[0].changed).toBe(true);
     });
 
     it('снятие не прошло → повышение процента ПРОПУЩЕНО (двойная скидка), понижение выполняется', async () => {
@@ -169,11 +170,11 @@ describe('PromoPriceApplier — исполнение шагов плана', () 
         expect(res.results[0].reason).toBe('stock');
     });
 
-    it('цена в акции уже стоит («no changes») — ok «уже стоит», процент после него повышается', async () => {
+    it('цена в акции уже стоит («no changes») — ok «уже стоит», changed: false, процент после него повышается', async () => {
         update.mockResolvedValue(okUpdate({ unchanged: [77] }));
         const set: PromoPriceStep = { kind: 'ozon-set', actionId: 1977747, title: 'Эластичный', from: 967, to: 1256 };
         const res = await applier.apply(plan([set, raise]));
-        expect(res.results[0]).toMatchObject({ status: 'ok', reason: 'уже стоит' });
+        expect(res.results[0]).toMatchObject({ status: 'ok', reason: 'уже стоит', changed: false });
         expect(res.results[1].status).toBe('ok');
         expect(res.applied).toBe(true);
     });

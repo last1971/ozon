@@ -92,6 +92,8 @@ export interface PromoStepResult {
     step: PromoPriceStep;
     status: 'ok' | 'rejected' | 'skipped';
     reason?: string;
+    /** true — Ozon подтвердил реальное изменение; false — «уже стоит», фактически ничего не менялось. */
+    changed?: boolean;
 }
 
 /** План, который применили: шаги в порядке выполнения с итогом каждого. */

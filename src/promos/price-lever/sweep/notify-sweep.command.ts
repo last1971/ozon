@@ -7,8 +7,9 @@ import { IPromoSweepContext } from './promo-sweep.context';
 export const OZON_PROMO_SWEEP_EVENT = 'ozon.promo.sweep';
 
 /**
- * Последний шаг: при применении, если хоть один товар поменяли, — событие с отчётом.
- * Без изменений молчим: крон идёт раз в 30 минут, непрошедшие повторялись бы каждый прогон.
+ * Последний шаг: при применении, если хоть один шаг реально изменил цену, — событие с отчётом.
+ * Без изменений молчим: крон идёт раз в час, повторы «уже стоит» не должны давать уведомление.
+ * results без поля changed (старый путь) считаются изменёнными для обратной совместимости.
  */
 @Injectable()
 export class NotifySweepCommand implements IJobCommand<IPromoSweepContext> {
@@ -18,7 +19,10 @@ export class NotifySweepCommand implements IJobCommand<IPromoSweepContext> {
     constructor(private readonly events: EventEmitter2) {}
 
     async execute(context: IPromoSweepContext): Promise<IPromoSweepContext> {
-        if (context.apply && (context.results ?? []).some((r) => r.applied)) {
+        const anyChanged = (context.results ?? []).some(
+            (r) => r.applied && (r.results === undefined || r.results.some((s) => s.changed ?? true)),
+        );
+        if (context.apply && anyChanged) {
             this.events.emit(OZON_PROMO_SWEEP_EVENT, context.report);
         }
         return context;

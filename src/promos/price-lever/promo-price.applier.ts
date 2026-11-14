@@ -142,8 +142,8 @@ export class PromoPriceApplier {
             const res = await this.api.update(step.actionId, [
                 { productId: plan.productId, actionPrice: step.to, stock },
             ]);
-            if (res.added.includes(plan.productId)) return { step, status: 'ok' };
-            if (res.unchanged.includes(plan.productId)) return { step, status: 'ok', reason: 'уже стоит' };
+            if (res.added.includes(plan.productId)) return { step, status: 'ok', changed: true };
+            if (res.unchanged.includes(plan.productId)) return { step, status: 'ok', reason: 'уже стоит', changed: false };
             const rejected = res.rejected.find((r) => r.productId === plan.productId);
             if (rejected) return { step, status: 'rejected', reason: rejected.reason };
             if (res.removed.includes(plan.productId)) {
