@@ -47,20 +47,10 @@ describe('planPromoPrice — план цены через акции (без в�
         expect(plan.notes.join()).toContain('лимит 245');
     });
 
-    it('383367 «минимальная»: Ozon-акция уже на 1₽ от дна — шаг не создаётся, closest=true', () => {
-        // actionPrice=226, to=225, |226-225|=1 ≤ 1 — в допуске, менять нет смысла
+    it('383367 «минимальная»: цена акции = пол 225 → покупателю 214 ≥ 213', () => {
         const plan = planPromoPrice(state(), 'min');
-        expect(plan.steps).toEqual([]);
-        expect(plan.buyerAfter).toBe(214); // kept=[225], round(225×0.95)=214
-        expect(plan.ok).toBe(true);
-        expect(plan.closest).toBe(true); // шаг вниз (224) уведёт ниже цели
-    });
-
-    it('383367 «минимальная»: Ozon-акция на 2₽ от дна — шаг создаётся', () => {
-        // actionPrice=227, to=225, |227-225|=2 > 1 — за допуском, меняем
-        const plan = planPromoPrice(state({ ozonActions: [elastic({ actionPrice: 227 })] }), 'min');
         expect(plan.steps).toEqual([
-            { kind: 'ozon-set', actionId: 1977747, title: 'Эластичный бустинг', from: 227, to: 225 },
+            { kind: 'ozon-set', actionId: 1977747, title: 'Эластичный бустинг', from: 226, to: 225 },
         ]);
         expect(plan.buyerAfter).toBe(214);
         expect(plan.ok).toBe(true);
