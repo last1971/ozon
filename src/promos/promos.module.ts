@@ -35,6 +35,6 @@ import { NotifySweepCommand } from './price-lever/sweep/notify-sweep.command';
         PromoSweepService,
     ],
     controllers: [PromosController],
-    exports: [PromosService, OzonSellerActionsApi, PromoSweepService],
+    exports: [PromosService, OzonSellerActionsApi, PromoSweepService, PromoPriceService],
 })
 export class PromosModule {}

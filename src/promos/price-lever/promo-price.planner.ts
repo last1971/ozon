@@ -147,6 +147,7 @@ export const planPromoPrice = (
         floor,
         steps,
         buyerBefore: s.buyerPrice,
+        baseAfter: Math.min(s.price, ...kept),
         buyerAfter,
         ok: buyerAfter >= eff && !inDeadZone,
         closest: !steps.length && next !== null && buyerAfter > t && next < t,

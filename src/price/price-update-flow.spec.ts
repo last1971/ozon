@@ -20,6 +20,7 @@ const plan = (id: string): PromoPricePlan => ({
     percent: 10,
     floor: 100,
     buyerBefore: 200,
+    baseAfter: 200,
     buyerAfter: 180,
     ok: true,
     closest: false,

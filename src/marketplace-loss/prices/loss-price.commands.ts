@@ -310,6 +310,20 @@ export class CheckLossPricePromosCommand implements IJobCommand<LossPriceContext
                     ? await ctx.adapter.promos(offers, snapshots, ctx.assertInputsCurrent)
                     : await ctx.adapter.promos(offers, snapshots);
                 for (const [offer, error] of response) results.set(offer, error);
+                const accepted = batch.filter((p) => response.has(p.offer_id) && response.get(p.offer_id) === null);
+                if (accepted.length && ctx.adapter.verifyPromos) {
+                    setJobActivity(ctx.service.toLowerCase(), 'Подтверждение итоговой цены с акциями');
+                    try {
+                        const verified = await ctx.adapter.verifyPromos(accepted);
+                        for (const p of accepted)
+                            results.set(p.offer_id, verified.has(p.offer_id)
+                                ? verified.get(p.offer_id)
+                                : { message: 'Нет подтверждения итоговой цены', kind: 'temporary' });
+                    } catch (e) {
+                        // Ошибка чтения не подменяет уже полученный отказ акции у других товаров.
+                        accepted.forEach((p) => results.set(p.offer_id, { message: reason(e), kind: pricingFailureKind(e) }));
+                    }
+                }
             } catch (e) {
                 batch.forEach((p) => results.set(p.offer_id, { message: reason(e), kind: pricingFailureKind(e) }));
             }

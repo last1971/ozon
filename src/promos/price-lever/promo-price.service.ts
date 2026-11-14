@@ -104,7 +104,13 @@ export class PromoPriceService {
                 throw new Error('Неполный ответ цен Ozon: сверка всего каталога остановлена');
             items.push(...rows);
         }
-        return this.toStates(items, await this.snapshot());
+        return this.statesForPrices(items);
+    }
+
+    /** Свежий снимок акций для уже прочитанных цен: один обход акций на всю пачку. */
+    async statesForPrices(items: ProductPriceDto[]): Promise<PromoPriceState[]> {
+        if (!items.length) return [];
+        return this.toStates(items, await this.snapshot(new Set(items.map((i) => i.product_id))));
     }
 
     private toStates(items: ProductPriceDto[], snapshot: PromoSnapshot): PromoPriceState[] {

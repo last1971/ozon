@@ -78,6 +78,8 @@ export interface PromoPricePlan {
     floor: number;
     steps: PromoPriceStep[];
     buyerBefore: number;
+    /** Цена до нашего процента после выполнения плана. */
+    baseAfter: number;
     buyerAfter: number;
     /** Итог не ниже min_price. */
     ok: boolean;

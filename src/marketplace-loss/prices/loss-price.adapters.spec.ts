@@ -14,14 +14,16 @@ describe('Адаптер Ozon', () => {
             listAllOfferIds: jest.fn().mockResolvedValue(['123-1']),
             getPrices: jest.fn().mockResolvedValue({ items: [{ offer_id: '123', price: target }] }),
         };
+        const promoPrices = { statesForPrices: jest.fn().mockResolvedValue([]) };
         const sweep = { start: jest.fn().mockReturnValue({ id: 'sweep' }) };
         const jobs = { whenDone: jest.fn().mockResolvedValue({ status: 'done', result: { checked: 1, items: [] } }) };
         return {
             pricing,
             products,
+            promoPrices,
             sweep,
             jobs,
-            adapter: new OzonLossPriceAdapter(pricing as any, products as any, sweep as any, jobs as any),
+            adapter: new OzonLossPriceAdapter(pricing as any, products as any, sweep as any, jobs as any, promoPrices as any),
         };
     };
     it('сравнивает все три суммы без рублёвого допуска, отсутствие ответа не считается совпадением', async () => {
@@ -58,7 +60,11 @@ describe('Адаптер Ozon', () => {
     });
     it('читает цены пакетами и не подменяет повреждённый ответ пустым', async () => {
         const s = setup();
+        s.products.getPrices.mockImplementation(async (arg?: any) => ({
+            items: arg.offer_id.map((offer_id: string) => ({ offer_id, price: target })),
+        }));
         await s.adapter.current(Array.from({ length: 1001 }, (_, i) => String(i + 1)));
+        expect(s.promoPrices.statesForPrices).toHaveBeenCalledTimes(1);
         expect(s.products.getPrices.mock.calls.map(([arg]) => arg.offer_id.length)).toEqual([1000, 1]);
         s.products.getPrices.mockResolvedValueOnce({ items: null });
         await expect(s.adapter.current(['123'])).rejects.toThrow('не вернул');

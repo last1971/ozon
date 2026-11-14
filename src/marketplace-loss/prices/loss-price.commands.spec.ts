@@ -636,3 +636,27 @@ describe('ожидание остатка в общей цепочке', () => {
         expect(s.pending.size).toBe(0);
     });
 });
+
+describe('Подтверждение результата акций', () => {
+    it('частичный ответ оставляет неподтверждённый товар в очереди', async () => {
+        const s = setup(['123', '456'], 'OZON');
+        const verify = jest.fn(async () => new Map([['123', null]]));
+        Object.assign(s.adapter, { verifyPromos: verify });
+        await s.run();
+        expect(verify.mock.calls).toHaveLength(1);
+        expect(s.pending.size).toBe(1);
+        expect([...s.pending.values()][0].payload).toMatchObject({ offerId: '456', lastError: 'Нет подтверждения итоговой цены' });
+    });
+    it('сбой чтения итоговой цены не стирает исходный отказ акции другого товара', async () => {
+        const s = setup(['123', '456'], 'OZON');
+        s.adapter.promos.mockResolvedValueOnce(new Map([
+            ['123', null], ['456', { message: 'Лимит акции', kind: 'data' }],
+        ]) as any);
+        const verify = jest.fn(async () => { throw Error('Сбой чтения Ozon'); });
+        Object.assign(s.adapter, { verifyPromos: verify });
+        await s.run();
+        const errors = new Map([...s.pending.values()].map((row) => [row.payload.offerId, row.payload['lastError']]));
+        expect(errors.get('123')).toBe('Сбой чтения Ozon');
+        expect(errors.get('456')).toBe('Лимит акции');
+    });
+});

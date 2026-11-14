@@ -43,6 +43,8 @@ export interface LossPriceAdapter {
     current(offers: string[]): Promise<Map<string, unknown>>;
     matches(target: UpdatePriceDto, actual: unknown): boolean;
     persist(targets: UpdatePriceDto[]): Promise<void>;
+    /** Подтверждение итоговой цены после акций свежим чтением площадки. */
+    verifyPromos?(targets: UpdatePriceDto[]): Promise<Map<string, LossPriceResult>>;
     send(targets: UpdatePriceDto[], current?: Map<string, unknown>): Promise<Map<string, LossPriceResult>>;
     promos(
         offers: string[],

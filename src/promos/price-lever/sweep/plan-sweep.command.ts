@@ -32,6 +32,7 @@ export class PlanSweepCommand implements IJobCommand<IPromoSweepContext> {
                 floor: s.minPrice,
                 steps: [],
                 buyerBefore: s.buyerPrice,
+                baseAfter: s.price,
                 buyerAfter: s.buyerPrice,
                 ok: false,
                 closest: false,

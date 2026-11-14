@@ -12,6 +12,9 @@ import { PromoSweepService } from '../../promos/price-lever/sweep/promo-sweep.se
 import { JobService } from '../../job/job.service';
 import { PromoSweepReport } from '../../promos/price-lever/promo-price.types';
 import { LossPriceAdapter, LossPriceResult } from './loss-price.contracts';
+import { PromoPriceService } from '../../promos/price-lever/promo-price.service';
+import { ProductPriceDto } from '../../price/dto/product.price.dto';
+import { ozonPromoPricesMatch } from './ozon-promo-prices-match';
 
 @Injectable()
 export class OzonLossPriceAdapter implements LossPriceAdapter {
@@ -21,28 +24,52 @@ export class OzonLossPriceAdapter implements LossPriceAdapter {
         private readonly products: ProductService,
         private readonly sweep: PromoSweepService,
         private readonly jobs: JobService,
+        private readonly promoPrices: PromoPriceService,
     ) {}
     offers() {
         return this.products.listAllOfferIds();
     }
     async current(offers: string[]): Promise<Map<string, unknown>> {
         const result = new Map<string, unknown>();
-        for (const part of chunk(offers, 1000)) {
+        const rows: ProductPriceDto[] = [];
+        for (const part of chunk([...new Set(offers)], 1000)) {
             const response = await this.products.getPrices({
                 offer_id: part,
                 visibility: ProductVisibility.ALL,
                 limit: part.length,
             });
             if (!Array.isArray(response?.items)) throw new Error('Ozon не вернул текущие цены');
-            for (const item of response.items) result.set(item.offer_id, item.price);
+            const found = new Set(response.items.map((item) => item.offer_id));
+            if (found.size !== response.items.length || found.size !== part.length || part.some((id) => !found.has(id)))
+                throw new Error('Неполный ответ текущих цен Ozon');
+            rows.push(...response.items);
         }
+        const states = new Map((await this.promoPrices.statesForPrices(rows)).map((s) => [s.offerId, s]));
+        for (const item of rows) result.set(item.offer_id, { ...item.price, promoState: states.get(item.offer_id) });
         return result;
     }
-    availability(offers: string[]) { return this.pricing.getPricingAvailability(offers); }
+    availability(offers: string[]) {
+        return this.pricing.getPricingAvailability(offers);
+    }
     matches(target: UpdatePriceDto, actual: unknown) {
-        return ozonPricesMatch(target, actual, 0);
+        // /v5 возвращает и цену, установленную акцией. Повтор прихода не должен сбрасывать её к normal.
+        return ozonPricesMatch(target, actual, 0) || ozonPromoPricesMatch(target, actual);
     }
     async persist(_targets: UpdatePriceDto[]) {}
+    async verifyPromos(targets: UpdatePriceDto[]): Promise<Map<string, LossPriceResult>> {
+        const current = await this.current(targets.map((t) => t.offer_id));
+        return new Map(
+            targets.map((t): [string, LossPriceResult] => [
+                t.offer_id,
+                ozonPromoPricesMatch(t, current.get(t.offer_id))
+                    ? null
+                    : {
+                          message: 'Ozon ещё не подтвердил итоговую цену с акциями; задание оставлено для повтора',
+                          kind: 'temporary',
+                      },
+            ]),
+        );
+    }
     async send(targets: UpdatePriceDto[]) {
         const response = ozonResultsByOffer(await this.pricing.updatePrices(targets));
         return new Map(
