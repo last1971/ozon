@@ -84,9 +84,17 @@ export class ApplySweepCommand implements IJobCommand<IPromoSweepContext> {
             return { ...original, notes: [...original.notes, `Повтор: не удалось рассчитать минимум: ${enrichResult.reason}`] };
         }
 
+        // Если минимум Ozon выше расчётного — акция не может опуститься ниже minPrice,
+        // пока repriceForService не обновит прайс-лист. Не пытаемся.
+        if (freshState.calcMinPrice !== undefined && freshState.minPrice > freshState.calcMinPrice) {
+            return {
+                ...original,
+                notes: [...original.notes, `Повтор: минимум Ozon (${freshState.minPrice} ₽) выше расчётного (${freshState.calcMinPrice} ₽) — ждём обновления цены`],
+            };
+        }
+
         // Если цель сверки больше не выбирает этот товар — скидка уже правильная.
-        // Проверяем снимок перед тем как сообщить об успехе: если данные изменились за время чтения,
-        // assertCurrent бросит и мы вернём ошибку вместо ложного «всё хорошо».
+        // Проверяем снимок и актуальность прихода перед тем как сообщить об успехе.
         const freshForSelect = { ...freshState, minPrice: freshState.calcMinPrice ?? freshState.minPrice };
         if (!goal.selects(freshForSelect)) {
             try {
@@ -94,6 +102,7 @@ export class ApplySweepCommand implements IJobCommand<IPromoSweepContext> {
                     'ozon',
                     async () => {
                         priceUpdateQueue.assertCurrent(snapshot);
+                        await context.assertInputsCurrent?.(offerId);
                         return {
                             ...goal.plan(freshState),
                             results: [],

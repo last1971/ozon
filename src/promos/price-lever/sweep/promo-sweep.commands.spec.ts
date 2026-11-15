@@ -290,6 +290,23 @@ describe('сверка акций — команды цепочки', () => {
                 expect(c.results?.[0].notes.some((n) => n.includes('данные изменились за время проверки'))).toBe(true);
             });
 
+            it('минимум Ozon выше расчётного — ждём обновления цены через прайс-лист', async () => {
+                // minPrice=300, calcMinPrice=250 → акция не может опуститься ниже 300 до обновления
+                const freshState = state(1, { minPrice: 300, buyerPrice: 290, calcMinPrice: 250 });
+                const apply = jest.fn().mockResolvedValueOnce(staleResult());
+                const enrichOne = jest.fn().mockResolvedValue({ status: 'ready' });
+
+                const c = await new ApplySweepCommand(
+                    { apply } as any,
+                    { states: jest.fn().mockResolvedValue([freshState]) } as any,
+                    { enrichOne } as any,
+                ).execute(ctx({ apply: true, goal: 'below-min', plans: [stalePlan()] }));
+
+                expect(apply).toHaveBeenCalledTimes(1);
+                expect(c.results?.[0].applied).toBe(false);
+                expect(c.results?.[0].notes.some((n) => n.includes('ждём обновления цены'))).toBe(true);
+            });
+
             it('план после перечтения не обеспечивает минимальную прибыль → скидку не отправляем', async () => {
                 // calcMinPrice=250 > price=230 → buyerAfter≈214 < eff=250 → plan.ok=false
                 const freshState = state(1, { calcMinPrice: 250, price: 230 });
