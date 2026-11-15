@@ -25,8 +25,8 @@ const priced = (s: PromoPriceState) => s.minPrice > 0 && s.buyerPrice > 0;
 const belowMin: SweepGoal = {
     kind: 'below-min',
     title: 'ниже минимальной',
-    selects: (s) => priced(s) && s.buyerPrice < s.minPrice,
-    plan: (s) => planPromoPrice(s, 'min', s.seller?.minPercent),
+    selects: (s) => priced(s) && s.buyerPrice < (s.calcMinPrice ?? s.minPrice),
+    plan: (s) => planPromoPrice(s, s.calcMinPrice ?? s.minPrice, s.seller?.minPercent),
 };
 
 /** Решение 20.10: цена покупателю ≠ цели в обе стороны; процент подбирает планировщик. */

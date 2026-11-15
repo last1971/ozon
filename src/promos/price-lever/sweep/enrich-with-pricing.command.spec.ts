@@ -179,9 +179,10 @@ describe('Обогащение сверки единым расчётом', () =
         expect(ctx.plans[0].target).toBe(200);
         expect(ctx.checked).toBe(1);
     });
-    it('below-min отбирает товар если цена покупателя ниже Ozon minPrice', async () => {
+    it('below-min отбирает товар если цена покупателя ниже расчётного минимума', async () => {
         const m = make();
-        const s = { ...state(), minPrice: 200, buyerPrice: 180 };
+        // minPrice Ozon=100 (устарел), calcMinPrice после расчёта >180, buyerPrice=180 → ниже расчётного
+        const s = { ...state(), minPrice: 100, buyerPrice: 180 };
         const ctx = { ...context([s]), goal: 'below-min' as const };
         await m.command.execute(ctx);
         expect(ctx.states).toEqual([{ ...s, calcMinPrice: expect.any(Number) }]);
