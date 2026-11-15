@@ -1,3 +1,4 @@
+import { priceUpdateQueue, PricePlanStaleError } from '../../../helpers/price/price-update.queue';
 import { emptyProgress } from '../../../interfaces/i.job.context';
 import { PromoPricePlan, PromoPriceState } from '../promo-price.types';
 import { ApplySweepCommand } from './apply-sweep.command';
@@ -120,7 +121,7 @@ describe('сверка акций — команды цепочки', () => {
 
         it('без apply — исполнителя не зовём', async () => {
             const apply = jest.fn();
-            await new ApplySweepCommand({ apply } as any).execute(ctx({ plans: [plan(1)] }));
+            await new ApplySweepCommand({ apply } as any, {} as any, {} as any).execute(ctx({ plans: [plan(1)] }));
             expect(apply).not.toHaveBeenCalled();
         });
 
@@ -128,7 +129,7 @@ describe('сверка акций — команды цепочки', () => {
             const apply = jest
                 .fn()
                 .mockImplementation(async (p) => ({ ...p, results: [], applied: p.productId === 1 }));
-            const c = await new ApplySweepCommand({ apply } as any).execute(
+            const c = await new ApplySweepCommand({ apply } as any, {} as any, {} as any).execute(
                 ctx({ apply: true, plans: [plan(1), plan(2, 0), plan(3)] }),
             );
             expect(apply).toHaveBeenCalledTimes(2);
@@ -141,8 +142,170 @@ describe('сверка акций — команды цепочки', () => {
                 context.stopChain = true;
                 return { ...p, results: [], applied: true };
             });
-            await new ApplySweepCommand({ apply } as any).execute(context);
+            await new ApplySweepCommand({ apply } as any, {} as any, {} as any).execute(context);
             expect(apply).toHaveBeenCalledTimes(1);
+        });
+
+        describe('повтор при устаревшем плане', () => {
+            const stalePlan = (): PromoPricePlan =>
+                ({
+                    offerId: '1',
+                    productId: 1,
+                    steps: [{ kind: 'percent', actionId: 4376619, sku: 10, from: 21, to: 7 }],
+                    state: state(1),
+                    target: 213, percent: 7, floor: 213,
+                    buyerBefore: 200, baseAfter: 255, buyerAfter: 237,
+                    ok: true, closest: false, notes: [],
+                }) as unknown as PromoPricePlan;
+
+            const staleResult = (over = {}) => ({
+                ...stalePlan(),
+                results: [{ step: stalePlan().steps[0], status: 'skipped', reason: 'устарел' }],
+                applied: false, stale: true, attempted: false,
+                ...over,
+            });
+
+            it('устаревший план без отправки → перечитать, пересчитать, применить', async () => {
+                const retryResult = { ...stalePlan(), results: [{ step: stalePlan().steps[0], status: 'ok' }], applied: true, attempted: true };
+                const apply = jest.fn()
+                    .mockResolvedValueOnce(staleResult())
+                    .mockResolvedValueOnce(retryResult);
+                const freshState = state(1);
+                const states = jest.fn().mockResolvedValue([freshState]);
+                const enrichOne = jest.fn().mockResolvedValue({ status: 'ready' });
+
+                const c = await new ApplySweepCommand(
+                    { apply } as any,
+                    { states } as any,
+                    { enrichOne } as any,
+                ).execute(ctx({ apply: true, goal: 'below-min', plans: [stalePlan()] }));
+
+                expect(apply).toHaveBeenCalledTimes(2);
+                expect(states).toHaveBeenCalledWith(['1']);
+                expect(enrichOne).toHaveBeenCalledWith(freshState);
+                expect(c.results?.[0].applied).toBe(true);
+                expect(c.results?.[0].notes[0]).toBe('Повтор после устаревшего плана');
+                expect(c.progress.counters).toMatchObject({ appliedOk: 1 });
+            });
+
+            it('нет остатков при повторе → скидку не отправляем, причина в отчёте', async () => {
+                const apply = jest.fn().mockResolvedValueOnce(staleResult());
+                const enrichOne = jest.fn().mockResolvedValue({ status: 'no-stock' });
+
+                const c = await new ApplySweepCommand(
+                    { apply } as any,
+                    { states: jest.fn().mockResolvedValue([state(1)]) } as any,
+                    { enrichOne } as any,
+                ).execute(ctx({ apply: true, goal: 'below-min', plans: [stalePlan()] }));
+
+                expect(apply).toHaveBeenCalledTimes(1);
+                expect(c.results?.[0].applied).toBe(false);
+                expect(c.results?.[0].notes.some((n) => n.includes('нет остатков'))).toBe(true);
+            });
+
+            it('ошибка расчёта минимума при повторе → скидку не отправляем', async () => {
+                const apply = jest.fn().mockResolvedValueOnce(staleResult());
+                const enrichOne = jest.fn().mockResolvedValue({ status: 'error', reason: 'нет базы: товар не в прайсе' });
+
+                const c = await new ApplySweepCommand(
+                    { apply } as any,
+                    { states: jest.fn().mockResolvedValue([state(1)]) } as any,
+                    { enrichOne } as any,
+                ).execute(ctx({ apply: true, goal: 'below-min', plans: [stalePlan()] }));
+
+                expect(apply).toHaveBeenCalledTimes(1);
+                expect(c.results?.[0].applied).toBe(false);
+                expect(c.results?.[0].notes.some((n) => n.includes('нет базы'))).toBe(true);
+            });
+
+            it('данные изменились снова при повторе → причина в отчёте, третьей попытки нет', async () => {
+                const apply = jest.fn()
+                    .mockResolvedValueOnce(staleResult())
+                    .mockResolvedValueOnce(staleResult({ notes: ['Повтор после устаревшего плана'] }));
+                const enrichOne = jest.fn().mockResolvedValue({ status: 'ready' });
+
+                const c = await new ApplySweepCommand(
+                    { apply } as any,
+                    { states: jest.fn().mockResolvedValue([state(1)]) } as any,
+                    { enrichOne } as any,
+                ).execute(ctx({ apply: true, goal: 'below-min', plans: [stalePlan()] }));
+
+                expect(apply).toHaveBeenCalledTimes(2);
+                expect(c.results?.[0].applied).toBe(false);
+                expect(c.progress.counters).toMatchObject({ appliedFailed: 1 });
+            });
+
+            it('отправка уже началась (attempted: true) — не повторяем', async () => {
+                const apply = jest.fn().mockResolvedValueOnce(staleResult({ attempted: true }));
+
+                const c = await new ApplySweepCommand(
+                    { apply } as any,
+                    { states: jest.fn() } as any,
+                    { enrichOne: jest.fn() } as any,
+                ).execute(ctx({ apply: true, goal: 'below-min', plans: [stalePlan()] }));
+
+                expect(apply).toHaveBeenCalledTimes(1);
+                expect(c.results?.[0].applied).toBe(false);
+            });
+
+            it('цель больше не выбирает товар после перечтения → скидка уже на месте', async () => {
+                // buyerPrice 215 >= calcMinPrice 215 → belowMin.selects с calcMinPrice = false
+                const freshState = state(1, { buyerPrice: 215, calcMinPrice: 215 });
+                const apply = jest.fn().mockResolvedValueOnce(staleResult());
+                const enrichOne = jest.fn().mockResolvedValue({ status: 'ready' });
+
+                const c = await new ApplySweepCommand(
+                    { apply } as any,
+                    { states: jest.fn().mockResolvedValue([freshState]) } as any,
+                    { enrichOne } as any,
+                ).execute(ctx({ apply: true, goal: 'below-min', plans: [stalePlan()] }));
+
+                expect(apply).toHaveBeenCalledTimes(1);
+                expect(c.results?.[0].applied).toBe(true);
+                expect(c.results?.[0].notes[0]).toContain('скидка уже на месте');
+            });
+
+            it('скидка уже на месте, но данные изменились за время проверки → не сообщаем об успехе', async () => {
+                // calcMinPrice делает товар «в норме», но снимок устаревает во время run()
+                const freshState = state(1, { buyerPrice: 215, calcMinPrice: 215 });
+                const apply = jest.fn().mockResolvedValueOnce(staleResult());
+                const enrichOne = jest.fn().mockResolvedValue({ status: 'ready' });
+                // Имитируем изменение данных между capture и assertCurrent:
+                // мокаем priceUpdateQueue.run так, чтобы он бросал PricePlanStaleError
+                const runSpy = jest.spyOn(priceUpdateQueue, 'run').mockRejectedValueOnce(new PricePlanStaleError('тест'));
+
+                let c: IPromoSweepContext;
+                try {
+                    c = await new ApplySweepCommand(
+                        { apply } as any,
+                        { states: jest.fn().mockResolvedValue([freshState]) } as any,
+                        { enrichOne } as any,
+                    ).execute(ctx({ apply: true, goal: 'below-min', plans: [stalePlan()] }));
+                } finally {
+                    runSpy.mockRestore();
+                }
+
+                expect(apply).toHaveBeenCalledTimes(1);
+                expect(c.results?.[0].applied).toBe(false);
+                expect(c.results?.[0].notes.some((n) => n.includes('данные изменились за время проверки'))).toBe(true);
+            });
+
+            it('план после перечтения не обеспечивает минимальную прибыль → скидку не отправляем', async () => {
+                // calcMinPrice=250 > price=230 → buyerAfter≈214 < eff=250 → plan.ok=false
+                const freshState = state(1, { calcMinPrice: 250, price: 230 });
+                const apply = jest.fn().mockResolvedValueOnce(staleResult());
+                const enrichOne = jest.fn().mockResolvedValue({ status: 'ready' });
+
+                const c = await new ApplySweepCommand(
+                    { apply } as any,
+                    { states: jest.fn().mockResolvedValue([freshState]) } as any,
+                    { enrichOne } as any,
+                ).execute(ctx({ apply: true, goal: 'below-min', plans: [stalePlan()] }));
+
+                expect(apply).toHaveBeenCalledTimes(1);
+                expect(c.results?.[0].applied).toBe(false);
+                expect(c.results?.[0].notes.some((n) => n.includes('минимальную прибыль'))).toBe(true);
+            });
         });
     });
 

@@ -1,4 +1,4 @@
-import { priceUpdateQueue, PricingSnapshot } from '../../helpers/price/price-update.queue';
+import { priceUpdateQueue, PricingSnapshot, PricePlanStaleError } from '../../helpers/price/price-update.queue';
 import { SerialTaskOptions } from '../../helpers/serial-task.queue';
 import { ProductService } from '../../product/product.service';
 import { ProductVisibility } from '../../product/product.visibility';
@@ -36,6 +36,7 @@ export class PromoPriceApplier {
     ) {}
 
     async apply(plan: PromoPricePlan, options: PromoApplyOptions = {}): Promise<PromoPriceApplyResult> {
+        const tracker = { attempted: false };
         try {
             return await priceUpdateQueue.run(
                 'ozon',
@@ -52,23 +53,21 @@ export class PromoPriceApplier {
                             limit: 1,
                         });
                         const row = current?.items?.find((p) => p.offer_id === plan.offerId);
+                        if (!row || Number(row.product_id) !== plan.productId)
+                            throw new Error('Товар не найден в ответе Ozon или несовпадение product_id. Подготовьте цены заново.');
                         if (
-                            !row ||
-                            Number(row.product_id) !== plan.productId ||
                             (['price', 'min_price', 'old_price', 'marketing_seller_price'] as const).some(
                                 (key, i) =>
                                     Number(row.price?.[key]) !==
-                                    [plan.state.price, plan.state.minPrice, plan.state.oldPrice, plan.state.buyerPrice][
-                                        i
-                                    ],
+                                    [plan.state.price, plan.state.minPrice, plan.state.oldPrice, plan.state.buyerPrice][i],
                             )
                         )
-                            throw new Error('Текущая цена Ozon изменилась. План устарел; требуется новая сверка.');
+                            throw new PricePlanStaleError('Цена Ozon изменилась. План устарел; требуется новая сверка.');
                     }
                     plan = await refreshPromoPlan(plan, this.api);
                     await assertCurrent();
                     try {
-                        return await this.executePlan(plan);
+                        return await this.executePlan(plan, tracker);
                     } finally {
                         if (plan.steps.length)
                             priceUpdateQueue.changed('ozon', [plan.offerId, `#product:${plan.productId}`]);
@@ -80,6 +79,8 @@ export class PromoPriceApplier {
             return {
                 ...plan,
                 applied: false,
+                attempted: tracker.attempted,
+                stale: error instanceof PricePlanStaleError,
                 notes: [...plan.notes, `Изменение пропущено: ${error.message}`],
                 results: plan.steps.map((step) => ({
                     step,
@@ -89,13 +90,13 @@ export class PromoPriceApplier {
             };
         }
     }
-    private async executePlan(plan: PromoPricePlan): Promise<PromoPriceApplyResult> {
+    private async executePlan(plan: PromoPricePlan, tracker: { attempted: boolean }): Promise<PromoPriceApplyResult> {
         const results: PromoStepResult[] = [];
         const ozonSteps = plan.steps.filter((s) => s.kind !== 'percent');
         const percentSteps = plan.steps.filter((s): s is Step<'percent'> => s.kind === 'percent');
 
         for (const step of ozonSteps) {
-            results.push(await this.runOzon(step as Step<'ozon-set'> | Step<'ozon-remove'>, plan));
+            results.push(await this.runOzon(step as Step<'ozon-set'> | Step<'ozon-remove'>, plan, tracker));
         }
         const ozonFailed = results.some((r) => r.status !== 'ok');
         for (const step of percentSteps) {
@@ -108,7 +109,7 @@ export class PromoPriceApplier {
                 });
                 continue;
             }
-            results.push(await this.runPercent(step));
+            results.push(await this.runPercent(step, tracker));
         }
 
         const applied = results.every((r) => r.status === 'ok');
@@ -116,16 +117,18 @@ export class PromoPriceApplier {
             `${plan.offerId}: ${results.map((r) => `${r.step.kind}:${r.status}`).join(', ') || 'шагов нет'} ` +
                 `→ покупателю ${plan.buyerBefore} → ${plan.buyerAfter}`,
         );
-        return { ...plan, results, applied };
+        return { ...plan, results, applied, attempted: true };
     }
 
     private async runOzon(
         step: Step<'ozon-set'> | Step<'ozon-remove'>,
         plan: PromoPricePlan,
+        tracker: { attempted: boolean },
     ): Promise<PromoStepResult> {
         const slot = plan.state.ozonActions.find((a) => a.actionId === step.actionId);
         const stock = slot?.stock ?? 0;
         try {
+            tracker.attempted = true;
             if (step.kind === 'ozon-remove') {
                 const res = await this.promos.remove(
                     { id: step.actionId, is_voucher_action: Boolean(slot?.isVoucher) },
@@ -155,8 +158,9 @@ export class PromoPriceApplier {
         }
     }
 
-    private async runPercent(step: Step<'percent'>): Promise<PromoStepResult> {
+    private async runPercent(step: Step<'percent'>, tracker: { attempted: boolean }): Promise<PromoStepResult> {
         try {
+            tracker.attempted = true;
             const res = await this.sellerApi.setPercent(step.actionId, [{ sku: step.sku, percent: step.to }]);
             if (res.applied.length) return { step, status: 'ok' };
             return { step, status: 'rejected', reason: res.rejected[0]?.reason || 'Ozon не принял процент' };

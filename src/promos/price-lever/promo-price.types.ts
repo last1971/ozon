@@ -103,6 +103,10 @@ export interface PromoPriceApplyResult extends PromoPricePlan {
     results: PromoStepResult[];
     /** Все шаги прошли. */
     applied: boolean;
+    /** true — хотя бы один запрос к Ozon начат (даже если завершился ошибкой). */
+    attempted?: boolean;
+    /** true — план отклонён из-за устаревших данных до начала отправки (PricePlanStaleError). */
+    stale?: boolean;
 }
 
 /** Товар в отчёте сверки «ниже минимума»: план без полного состояния (отчёт на сотни строк). */

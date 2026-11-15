@@ -193,7 +193,7 @@ describe('Обогащение сверки единым расчётом', () =
         const apply = jest.fn();
         await m.command.execute(ctx);
         await new PlanSweepCommand().execute(ctx);
-        await new ApplySweepCommand({ apply } as any).execute(ctx);
+        await new ApplySweepCommand({ apply } as any, {} as any, {} as any).execute(ctx);
         await new BuildSweepReportCommand().execute(ctx);
         expect(apply).not.toHaveBeenCalled();
         expect(ctx.report.unfixable).toBe(1);
@@ -210,7 +210,7 @@ describe('Обогащение сверки единым расчётом', () =
         await m.command.execute(ctx);
         await new PlanSweepCommand().execute(ctx);
         expect(ctx.plans[0].steps.length).toBeGreaterThan(0);
-        await new ApplySweepCommand({ apply } as any).execute(ctx);
+        await new ApplySweepCommand({ apply } as any, {} as any, {} as any).execute(ctx);
         expect(apply).not.toHaveBeenCalled();
     });
     it('пустой список и остановленная задача не загружают данные', async () => {

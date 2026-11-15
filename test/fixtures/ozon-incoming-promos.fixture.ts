@@ -233,7 +233,7 @@ export function setup(saved?: OzonIncomingFixtureState, options: { legacyCompari
             new CollectSweepCommand(promoPrices),
             enrich,
             new PlanSweepCommand(),
-            new ApplySweepCommand(applier),
+            new ApplySweepCommand(applier, promoPrices, enrich),
             new BuildSweepReportCommand(),
             new NotifySweepCommand(events as any),
         );

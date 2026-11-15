@@ -66,7 +66,7 @@ it('реальный sweep пропускает ручную отправку м
         pricingSnapshots: snapshots,
         progress: emptyProgress(),
     };
-    const sweep = new ApplySweepCommand(applier).execute(context);
+    const sweep = new ApplySweepCommand(applier, {} as any, {} as any).execute(context);
     while (!order.length) await new Promise(setImmediate);
     const coeffs = { minMil: 0, percMil: 0, percEkv: 1, sumObtain: 0, sumLabel: 0, taxUnit: 6 };
     const ozon = {

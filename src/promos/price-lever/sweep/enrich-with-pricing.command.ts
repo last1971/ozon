@@ -17,6 +17,7 @@ import { completePricePercents } from '../../../helpers/price/price.percents';
 import { ozonPricingInput } from '../../../helpers/price/ozon.pricing.input';
 import { calculateOzonPrices, ozonDeadZoneFloor } from '../../../helpers/price/ozon.pricing';
 import { IPromoSweepContext } from './promo-sweep.context';
+import { PromoPriceState } from '../promo-price.types';
 import { sweepGoal } from './sweep-goal';
 
 @Injectable()
@@ -42,14 +43,7 @@ export class EnrichWithPricingCommand implements IJobCommand<IPromoSweepContext>
             delete state.calcMinPrice;
             delete state.deadZoneFloor;
         }
-        const coeffs = {
-            sumLabel: Number(this.config.get('SUM_LABEL', 13)),
-            sumObtain: Number(this.config.get('SUM_OBTAIN', 25)),
-            taxUnit: Number(this.config.get('TAX_UNIT', 6)),
-            minMil: 0,
-            percMil: 0,
-            percEkv: 0, // Для Ozon эти расходы поступают из API в pricing.load.
-        };
+        const coeffs = this.buildCoeffs();
         for (const batch of chunk(states, 100)) {
             if (context.stopChain) break;
             const offers = batch.map((s) => s.offerId);
@@ -72,63 +66,11 @@ export class EnrichWithPricingCommand implements IJobCommand<IPromoSweepContext>
                         continue;
                     }
                     if (stock?.state !== 'available') throw new Error(stock?.state === 'unknown' ? stock.message : 'Не удалось проверить наличие товара');
-                    const product = data.products.find((p) => p.offer_id === state.offerId);
-                    const info = data.infos.find((p) => p.sku === state.offerId);
-                    if (!product || !info) throw new Error('нет карточки Ozon');
-                    const code = goodCode({ offer_id: state.offerId });
-                    const pieces = goodQuantityCoeff({ offer_id: state.offerId });
-                    await completePricePercents([state.offerId], this.goods, data);
-                    const percent = data.percents.find(
-                        (p) => String(p.offer_id) === code && Number(p.pieces ?? 1) === pieces,
-                    );
-                    const base = resolvePriceBase(
-                        state.offerId,
-                        pieces,
-                        data.goods.find((g) => String(g.code) === code),
-                        percent,
-                        undefined,
-                        info.fboCount,
-                    );
-                    if (base.base_source === 'none') throw new Error(`нет базы: ${base.skipReason}`);
-                    if (!percent) throw new Error('нет наценок');
-                    const ozon = await measureJobOperation('prepareMs', () => this.pricing.load(product, info));
-                    const input = ozonPricingInput(
-                        {
-                            ...base,
-                            ...lossPriceFields(
-                                ozon.lossStatistics,
-                                data.goods.find((g) => String(g.code) === code),
-                                pieces,
-                                info.fboCount,
-                            ),
-                            ozon,
-                            offer_id: state.offerId,
-                            min_perc: percent.min_perc,
-                            perc: percent.perc,
-                            old_perc: percent.old_perc,
-                            adv_perc: percent.adv_perc ?? 0,
-                            sum_pack: percent.packing_price ?? Number(this.config.get('SUM_PACK', 10)),
-                            return_perc: percent.return_perc ?? 0,
-                            sales_percent: 0,
-                            fbs_direct_flow_trans_max_amount: 0, // Общие поля не используются формулой Ozon.
-                        },
-                        coeffs,
-                    );
-                    const cached = this.calculations
-                        ? await this.calculations.calculate(state.offerId, input, {
-                              product,
-                              info,
-                              goods: data.goods.find((g) => String(g.code) === code),
-                              percent,
-                              pieces,
-                          })
-                        : undefined;
-                    const result = cached ? undefined : calculateOzonPrices(input);
-                    state.calcMinPrice = cached ? cached.minPrice : result.min.salePrice;
-                    const floor = cached ? cached.deadZoneFloor : ozonDeadZoneFloor(input, result);
-                    const counter = cached?.cacheHit ? 'calculationCacheHit' : 'calculationCacheMiss';
+                    const { calcMinPrice, deadZoneFloor, cacheHit } = await this.calculateForItem(state, data, coeffs, measureJobOperation);
+                    state.calcMinPrice = calcMinPrice;
+                    if (deadZoneFloor !== undefined) state.deadZoneFloor = deadZoneFloor;
+                    const counter = cacheHit ? 'calculationCacheHit' : 'calculationCacheMiss';
                     context.progress.counters[counter] = (context.progress.counters[counter] ?? 0) + 1;
-                    if (floor !== undefined) state.deadZoneFloor = floor;
                 } catch (e) {
                     context.progress.counters.noBase++;
                     context.pricingErrors.set(state.offerId, e instanceof Error ? e.message : String(e));
@@ -145,6 +87,92 @@ export class EnrichWithPricingCommand implements IJobCommand<IPromoSweepContext>
         );
         context.progress.counters.selected = context.states.length;
         return context;
+    }
+
+    /** Результат обогащения одного товара. */
+    async enrichOne(
+        state: PromoPriceState,
+    ): Promise<{ status: 'ready' } | { status: 'no-stock' } | { status: 'error'; reason: string }> {
+        delete state.calcMinPrice;
+        delete state.deadZoneFloor;
+        let data: Awaited<ReturnType<typeof this.loadBatch>>;
+        try {
+            data = await this.loadBatch([state.offerId]);
+        } catch (e) {
+            return { status: 'error', reason: e instanceof Error ? e.message : String(e) };
+        }
+        const stock = data.stocks.get(state.offerId);
+        if (stock?.state === 'empty') return { status: 'no-stock' };
+        if (stock?.state !== 'available')
+            return { status: 'error', reason: stock?.state === 'unknown' ? stock.message : 'Не удалось проверить наличие товара' };
+        try {
+            const { calcMinPrice, deadZoneFloor } = await this.calculateForItem(state, data, this.buildCoeffs());
+            state.calcMinPrice = calcMinPrice;
+            if (deadZoneFloor !== undefined) state.deadZoneFloor = deadZoneFloor;
+            return { status: 'ready' };
+        } catch (e) {
+            return { status: 'error', reason: e instanceof Error ? e.message : String(e) };
+        }
+    }
+
+    private buildCoeffs() {
+        return {
+            sumLabel: Number(this.config.get('SUM_LABEL', 13)),
+            sumObtain: Number(this.config.get('SUM_OBTAIN', 25)),
+            taxUnit: Number(this.config.get('TAX_UNIT', 6)),
+            minMil: 0,
+            percMil: 0,
+            percEkv: 0, // Для Ozon эти расходы поступают из API в pricing.load.
+        };
+    }
+
+    private async calculateForItem(
+        state: PromoPriceState,
+        data: Awaited<ReturnType<typeof this.loadBatch>>,
+        coeffs: ReturnType<typeof this.buildCoeffs>,
+        measure: <T>(key: string, fn: () => Promise<T>) => Promise<T> = (_, fn) => fn(),
+    ): Promise<{ calcMinPrice: number; deadZoneFloor: number | undefined; cacheHit: boolean }> {
+        const product = data.products.find((p) => p.offer_id === state.offerId);
+        const info = data.infos.find((p) => p.sku === state.offerId);
+        if (!product || !info) throw new Error('нет карточки Ozon');
+        const code = goodCode({ offer_id: state.offerId });
+        const pieces = goodQuantityCoeff({ offer_id: state.offerId });
+        await completePricePercents([state.offerId], this.goods, data);
+        const percent = data.percents.find((p) => String(p.offer_id) === code && Number(p.pieces ?? 1) === pieces);
+        const base = resolvePriceBase(
+            state.offerId, pieces, data.goods.find((g) => String(g.code) === code), percent, undefined, info.fboCount,
+        );
+        if (base.base_source === 'none') throw new Error(`нет базы: ${base.skipReason}`);
+        if (!percent) throw new Error('нет наценок');
+        const ozon = await measure('prepareMs', () => this.pricing.load(product, info));
+        const input = ozonPricingInput(
+            {
+                ...base,
+                ...lossPriceFields(ozon.lossStatistics, data.goods.find((g) => String(g.code) === code), pieces, info.fboCount),
+                ozon,
+                offer_id: state.offerId,
+                min_perc: percent.min_perc,
+                perc: percent.perc,
+                old_perc: percent.old_perc,
+                adv_perc: percent.adv_perc ?? 0,
+                sum_pack: percent.packing_price ?? Number(this.config.get('SUM_PACK', 10)),
+                return_perc: percent.return_perc ?? 0,
+                sales_percent: 0,
+                fbs_direct_flow_trans_max_amount: 0,
+            },
+            coeffs,
+        );
+        const cached = this.calculations
+            ? await this.calculations.calculate(state.offerId, input, {
+                  product, info, goods: data.goods.find((g) => String(g.code) === code), percent, pieces,
+              })
+            : undefined;
+        const result = cached ? undefined : calculateOzonPrices(input);
+        return {
+            calcMinPrice: cached ? cached.minPrice : result.min.salePrice,
+            deadZoneFloor: cached ? cached.deadZoneFloor : ozonDeadZoneFloor(input, result),
+            cacheHit: Boolean(cached?.cacheHit),
+        };
     }
 
     private async loadBatch(offers: string[]) {
