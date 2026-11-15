@@ -83,7 +83,7 @@ export class EnrichWithPricingCommand implements IJobCommand<IPromoSweepContext>
         context.states = states.filter(
             (s) =>
                 context.pricingErrors.has(s.offerId) ||
-                (s.calcMinPrice !== undefined && goal.selects({ ...s, minPrice: s.calcMinPrice })),
+                (s.calcMinPrice !== undefined && goal.selects(s)),
         );
         context.progress.counters.selected = context.states.length;
         return context;

@@ -95,8 +95,7 @@ export class ApplySweepCommand implements IJobCommand<IPromoSweepContext> {
 
         // Если цель сверки больше не выбирает этот товар — скидка уже правильная.
         // Проверяем снимок и актуальность прихода перед тем как сообщить об успехе.
-        const freshForSelect = { ...freshState, minPrice: freshState.calcMinPrice ?? freshState.minPrice };
-        if (!goal.selects(freshForSelect)) {
+        if (!goal.selects(freshState)) {
             try {
                 return await priceUpdateQueue.run(
                     'ozon',

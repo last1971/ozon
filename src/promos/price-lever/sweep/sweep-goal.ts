@@ -1,4 +1,4 @@
-import { planPromoPrice, targetRubles } from '../promo-price.planner';
+import { planPromoPrice } from '../promo-price.planner';
 import { PromoPricePlan, PromoPriceState } from '../promo-price.types';
 
 /** Цель сверки акций: что ищем и к чему приводим. */
@@ -30,12 +30,16 @@ const belowMin: SweepGoal = {
 };
 
 /** Решение 20.10: цена покупателю ≠ цели в обе стороны; процент подбирает планировщик. */
-const toTarget = (target: 'min' | 'normal', title: string): SweepGoal => ({
-    kind: target,
-    title,
-    selects: (s) => priced(s) && Math.abs(s.buyerPrice - targetRubles(s, target)) > TOLERANCE_RUB,
-    plan: (s) => planPromoPrice(s, target),
-});
+const toTarget = (target: 'min' | 'normal', title: string): SweepGoal => {
+    const effectiveTarget = (s: PromoPriceState): number =>
+        target === 'min' ? (s.calcMinPrice ?? s.minPrice) : s.price;
+    return {
+        kind: target,
+        title,
+        selects: (s) => priced(s) && Math.abs(s.buyerPrice - effectiveTarget(s)) > TOLERANCE_RUB,
+        plan: (s) => planPromoPrice(s, effectiveTarget(s)),
+    };
+};
 
 const GOALS: Record<SweepGoalKind, SweepGoal> = {
     'below-min': belowMin,
