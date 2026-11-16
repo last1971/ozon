@@ -1,4 +1,4 @@
-import { BadRequestException, NotFoundException } from '@nestjs/common';
+import { BadRequestException, ConflictException, NotFoundException } from '@nestjs/common';
 import { LoadShortageLineCommand } from './load-shortage-line.command';
 import { AssertNotMarkedCommand } from './assert-not-marked.command';
 import { BuildPeresortDocCommand } from './build-peresort-doc.command';
@@ -89,9 +89,12 @@ describe('BuildPeresortDocCommand', () => {
 });
 
 describe('PickupLineCommand', () => {
-    const stock = { ensurePodbLine: jest.fn(), updatePodb: jest.fn() };
+    const stock = { getLines: jest.fn(), ensurePodbLine: jest.fn(), updatePodb: jest.fn() };
     const cmd = new PickupLineCommand(stock as any);
-    beforeEach(() => [stock.ensurePodbLine, stock.updatePodb].forEach((m) => m.mockReset()));
+    beforeEach(() => {
+        Object.values(stock).forEach((m) => m.mockReset());
+        stock.getLines.mockResolvedValue([line()]);
+    });
 
     it('строка подборки есть: «подобрано» +недобор, «нужно» не трогаем (уже знает)', async () => {
         await cmd.execute(ctx({ line: line() as any, quantity: 1 }));
@@ -103,9 +106,52 @@ describe('PickupLineCommand', () => {
     });
 
     it('строки подборки нет: сперва пустая строка, «нужно» — до количества строки', async () => {
+        stock.getLines.mockResolvedValue([line({ podbposcode: null, picked: 0, need: 0 })]);
         await cmd.execute(ctx({ line: line({ podbposcode: null, picked: 0, need: 0 }) as any, quantity: 2 }));
         expect(stock.ensurePodbLine).toHaveBeenCalledWith({ scode: 500, goodscode: '557614', realpricecode: 900 }, t);
         expect(stock.updatePodb).toHaveBeenCalledWith(expect.objectContaining({ deltaQuan: 2, deltaNeed: 2 }), t);
+    });
+    it.each([
+        [0, 5, 0],
+        [2, 5, 0],
+        [2, 5, 2],
+        [0, 0, 0],
+        [0, 2, 0],
+        [5, 5, 0],
+    ])('приход: заявка %i → %i, уже подобрано %i; итог ровно 5', async (oldNeed, freshNeed, picked) => {
+        const state = line({ quantity: 5, need: oldNeed, picked, podbposcode: oldNeed ? 11 : null });
+        const neighbour = line({ realpricecode: 901, quantity: 10, need: 10, picked: 3 });
+        stock.getLines.mockImplementation(async () => [{ ...state }, { ...neighbour }]);
+        const loaded = await new LoadShortageLineCommand(stock as any).execute(ctx());
+        // Побочный эффект приходной процедуры между шагами цепочки.
+        state.need = freshNeed;
+        state.podbposcode = freshNeed ? 11 : null;
+        stock.updatePodb.mockImplementation(async (p) => {
+            expect(p.realpricecode).toBe(900);
+            state.need += p.deltaNeed;
+            state.picked += p.deltaQuan;
+        });
+        await cmd.execute(loaded);
+        expect(state).toMatchObject({ need: 5, picked: 5 });
+        expect(neighbour).toMatchObject({ need: 10, picked: 3 });
+        expect(stock.getLines).toHaveBeenLastCalledWith(500, t);
+        await expect(new LoadShortageLineCommand(stock as any).execute(ctx())).rejects.toThrow(/недобора нет/);
+    });
+
+    it.each([
+        [],
+        [line(), line()],
+        [line({ goodscode: 'other' })],
+        [line({ quantity: 3 })],
+        [line({ picked: 2 })],
+        [line({ shipped: 1 })],
+        [line({ pieces: 2 })],
+        [line({ need: 4 })],
+    ])('изменённая или повреждённая строка: отказ без записи (%j)', async (...fresh) => {
+        stock.getLines.mockResolvedValue(fresh);
+        await expect(cmd.execute(ctx({ line: line() as any, quantity: 1 }))).rejects.toBeInstanceOf(ConflictException);
+        expect(stock.ensurePodbLine).not.toHaveBeenCalled();
+        expect(stock.updatePodb).not.toHaveBeenCalled();
     });
 });
 

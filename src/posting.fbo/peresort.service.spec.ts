@@ -97,4 +97,15 @@ describe('PeresortService', () => {
         expect(commit).not.toHaveBeenCalled();
         expect(emit).not.toHaveBeenCalled();
     });
+    it('ошибка проверки после прихода → откат всей операции, без закрытия недобора', async () => {
+        const { service, cmds } = await build({ pickup: step('pickup', {}, new Error('Состояние строки изменилось')) });
+        await expect(service.apply('P-1', { scode: 500, realpricecode: 900, username: 'x' })).rejects.toThrow(
+            'Состояние строки изменилось',
+        );
+        expect(cmds.createDoc.execute).toHaveBeenCalled();
+        expect(cmds.close.execute).not.toHaveBeenCalled();
+        expect(rollback).toHaveBeenCalledWith(true);
+        expect(commit).not.toHaveBeenCalled();
+        expect(emit).not.toHaveBeenCalled();
+    });
 });
