@@ -93,22 +93,29 @@ export class ApplySweepCommand implements IJobCommand<IPromoSweepContext> {
             };
         }
 
-        // Если цель сверки больше не выбирает этот товар — скидка уже правильная.
+        const freshPlan: PromoPricePlan = goal.plan(freshState);
+        const closestWithoutChanges = freshPlan.ok && freshPlan.closest && !freshPlan.steps.length;
+
+        // Цель достигнута или безопасно приблизиться к ней больше нельзя.
         // Проверяем снимок и актуальность прихода перед тем как сообщить об успехе.
-        if (!goal.selects(freshState)) {
+        if (!goal.selects(freshState) || closestWithoutChanges) {
             try {
                 return await priceUpdateQueue.run(
                     'ozon',
                     async () => {
                         priceUpdateQueue.assertCurrent(snapshot);
                         await context.assertInputsCurrent?.(offerId);
+                        priceUpdateQueue.assertCurrent(snapshot);
+                        if (context.stopChain) throw new Error('Задача остановлена');
                         return {
-                            ...goal.plan(freshState),
+                            ...freshPlan,
                             results: [],
                             applied: true,
                             attempted: false,
                             stale: false,
-                            notes: ['Повтор: скидка уже на месте после перечтения данных'],
+                            notes: [...freshPlan.notes, closestWithoutChanges
+                                ? 'Повтор: ближайшая безопасная цена уже установлена'
+                                : 'Повтор: скидка уже на месте после перечтения данных'],
                         } as PromoPriceApplyResult;
                     },
                     { priority: 'background' },
@@ -118,9 +125,6 @@ export class ApplySweepCommand implements IJobCommand<IPromoSweepContext> {
                 return { ...original, notes: [...original.notes, `Повтор: данные изменились за время проверки: ${reason}`] };
             }
         }
-
-        // Новый план по свежим данным
-        const freshPlan: PromoPricePlan = goal.plan(freshState);
 
         // Нельзя обеспечить минимальную прибыль — не отправляем
         if (!freshPlan.ok) {

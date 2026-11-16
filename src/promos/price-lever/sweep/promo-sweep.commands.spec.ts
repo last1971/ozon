@@ -6,6 +6,7 @@ import { BuildSweepReportCommand } from './build-sweep-report.command';
 import { CollectSweepCommand } from './collect-sweep.command';
 import { PlanSweepCommand } from './plan-sweep.command';
 import { IPromoSweepContext } from './promo-sweep.context';
+import { NotifySweepCommand } from './notify-sweep.command';
 
 describe('сверка акций — команды цепочки', () => {
     const ctx = (over: Partial<IPromoSweepContext> = {}): IPromoSweepContext => ({
@@ -164,6 +165,37 @@ describe('сверка акций — команды цепочки', () => {
                 applied: false, stale: true, attempted: false,
                 ...over,
             });
+
+            it.each(['success', 'snapshot', 'inputs', 'cancel'])(
+                'closest без записи: %s', async (scenario) => {
+                    // 1000 с 1% = 990; следующий процент даёт 980 < минимума 981.
+                    const freshState = state(1, { price: 1000, minPrice: 981, calcMinPrice: 981,
+                        buyerPrice: 990, buyerPriceCalc: 990,
+                        seller: { ...state(1).seller!, minPercent: 1, percent: 1 } });
+                    const apply = jest.fn().mockResolvedValueOnce(staleResult());
+                    const context = ctx({ apply: true, goal: 'min', plans: [stalePlan()] });
+                    context.assertInputsCurrent = jest.fn(async () => {
+                        if (scenario === 'snapshot') priceUpdateQueue.changed('ozon', ['1']);
+                        if (scenario === 'inputs') throw new Error('Приход изменился');
+                        if (scenario === 'cancel') context.stopChain = true;
+                    });
+                    await new ApplySweepCommand(
+                        { apply } as any,
+                        { states: jest.fn().mockResolvedValue([freshState]) } as any,
+                        { enrichOne: jest.fn().mockResolvedValue({ status: 'ready' }) } as any,
+                    ).execute(context);
+                    expect(apply).toHaveBeenCalledTimes(1);
+                    expect(context.assertInputsCurrent).toHaveBeenCalledWith('1');
+                    expect(context.results?.[0].applied).toBe(scenario === 'success');
+                    if (scenario === 'success') {
+                        expect(context.results?.[0]).toMatchObject({ closest: true, ok: true,
+                            steps: [], results: [], attempted: false, stale: false });
+                    }
+                    const emit = jest.fn();
+                    await new NotifySweepCommand({ emit } as any).execute(context);
+                    expect(emit).not.toHaveBeenCalled();
+                },
+            );
 
             it('устаревший план без отправки → перечитать, пересчитать, применить', async () => {
                 const retryResult = { ...stalePlan(), results: [{ step: stalePlan().steps[0], status: 'ok' }], applied: true, attempted: true };
