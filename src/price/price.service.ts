@@ -1,3 +1,8 @@
+import { ModuleRef } from '@nestjs/core';
+import { resolveOzonBaseTarget } from '../helpers/price/ozon-base-target';
+import type { PromoPriceService } from '../promos/price-lever/promo-price.service';
+import { OZON_PRICE_TRANSITIONS, OZON_PROMO_STATE_READER } from '../promos/price-lever/transition.tokens';
+import type { OzonPriceTransitionService } from '../promos/price-lever/ozon-price-transition.service';
 import { pricingStocks } from '../helpers/price/pricing-stock';
 import { jobCheckpoint } from '../job/job.checkpoint';
 import { PricingDataError } from '../helpers/price/pricing-error';
@@ -44,6 +49,7 @@ import { OzonCategoryService } from '../ozon.category/ozon.category.service';
 @Injectable()
 export class PriceService implements IPriceUpdateable, IVatUpdateable {
     readonly priceUpdateKey = 'ozon';
+    @Inject(ModuleRef) private readonly moduleRef: ModuleRef;
     @Inject(BulkPriceJobService) private readonly bulk: BulkPriceJobService;
     private logger = new Logger(PriceService.name);
     constructor(
@@ -346,8 +352,29 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
         }
     }
 
+    async prepareReviewPrices(prices: UpdatePriceDto[]): Promise<UpdatePriceDto[]> {
+        const offers = prices.filter(p => p.ozonCalculated).map(p => p.offer_id);
+        if (!offers.length) return prices;
+        const reader = this.moduleRef.get<PromoPriceService>(OZON_PROMO_STATE_READER, { strict: false });
+        const states = new Map((await reader.allStates(offers)).map(state => [state.offerId, state]));
+        return prices.map(price => {
+            if (!price.ozonCalculated) return price;
+            const state = states.get(price.offer_id);
+            if (!state) throw new Error(`Ozon не вернул условия акций для ${price.offer_id}`);
+            // Once the operator sees the quote, only these exact prices may be sent.
+            const { ozonCalculated, ...approved } = resolveOzonBaseTarget(price, state);
+            return approved;
+        });
+    }
+
     async update(prices: UpdatePricesDto): Promise<any> {
-        return this.product.setPrice(prices);
+        const economic = prices.prices.filter(p => p.price !== undefined || p.min_price !== undefined || p.old_price !== undefined);
+        if (!economic.length) return this.product.setPrice(prices);
+        const service = this.moduleRef.get<OzonPriceTransitionService>(OZON_PRICE_TRANSITIONS, { strict: false });
+        const result = await service.updateBases(economic);
+        const other = prices.prices.filter(p => !economic.includes(p));
+        if (other.length) result.push(...(await this.product.setPrice({ prices: other })).result);
+        return { result };
     }
 
     async updateVat(offerIds: string[], vat: number): Promise<any> {

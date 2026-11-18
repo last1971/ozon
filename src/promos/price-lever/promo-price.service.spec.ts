@@ -4,6 +4,7 @@ import { OzonPromosApi } from '../promos.api';
 import { OzonSellerActionsApi } from '../seller-actions.api';
 import { PromoPriceApplier } from './promo-price.applier';
 import { PromoPriceService } from './promo-price.service';
+import { EnrichWithPricingCommand } from './sweep/enrich-with-pricing.command';
 
 describe('PromoPriceService — состояние товара из обоих контуров акций', () => {
     let service: PromoPriceService;
@@ -13,6 +14,7 @@ describe('PromoPriceService — состояние товара из обоих 
     const sellerListAll = jest.fn();
     const getPrices = jest.fn();
     const applierApply = jest.fn();
+    const enrichOne = jest.fn();
 
     /** 383367 из v5 живьём 19.10. */
     const v5item = {
@@ -47,9 +49,14 @@ describe('PromoPriceService — состояние товара из обоих 
 
     beforeEach(async () => {
         [listActions, listAll, activeAction, sellerListAll, getPrices, applierApply].forEach((m) => m.mockReset());
+        enrichOne.mockReset().mockImplementation(async (state) => {
+            state.calcMinPrice = 211;
+            return { status: 'ready' };
+        });
         const module = await Test.createTestingModule({
             providers: [
                 PromoPriceService,
+                { provide: EnrichWithPricingCommand, useValue: { enrichOne } },
                 { provide: OzonPromosApi, useValue: { listActions, listAll } },
                 { provide: OzonSellerActionsApi, useValue: { activeAction, listAll: sellerListAll } },
                 { provide: ProductService, useValue: { getPrices } },
@@ -139,8 +146,22 @@ describe('PromoPriceService — состояние товара из обоих 
         applierApply.mockImplementation(async (p: any) => ({ ...p, results: [], applied: true }));
         const [res] = await service.apply(['383367'], 'min');
         expect(getPrices).toHaveBeenCalledTimes(1);
-        expect(applierApply).toHaveBeenCalledWith(expect.objectContaining({ offerId: '383367', target: 213 }), expect.objectContaining({ priority: 'manual', snapshot: expect.any(Object) }));
+        expect(applierApply).toHaveBeenCalledWith(expect.objectContaining({ offerId: '383367', target: 211 }), expect.objectContaining({ priority: 'manual', snapshot: expect.any(Object) }));
         expect(res.applied).toBe(true);
+    });
+
+    it('различает отсутствие остатков и ошибку расчёта по каждому артикулу', async () => {
+        getPrices.mockResolvedValue({ items: [v5item, { ...v5item, offer_id: '383368', product_id: 2 }] });
+        listActions.mockResolvedValue([]);
+        activeAction.mockResolvedValue(null);
+        enrichOne
+            .mockResolvedValueOnce({ status: 'no-stock' })
+            .mockResolvedValueOnce({ status: 'error', reason: 'нет базы' });
+        const plans = await service.plans(['383367', '383368'], 'min');
+        expect(plans).toMatchObject([
+            { offerId: '383367', ok: false, steps: [], notes: ['Нет остатков'] },
+            { offerId: '383368', ok: false, steps: [], notes: ['Расчёт недоступен: нет базы'] },
+        ]);
     });
 
     it('allInActionsStates: участники Ozon-акций и нашей акции, кандидаты — нет; цены пачками по product_id', async () => {

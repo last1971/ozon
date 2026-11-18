@@ -3,6 +3,25 @@ import { Injectable } from '@nestjs/common';
 import { IJobCommand } from '../../../interfaces/i.job.context';
 import { IPromoSweepContext } from './promo-sweep.context';
 import { sweepGoal } from './sweep-goal';
+import { PromoPricePlan, PromoPriceState } from '../promo-price.types';
+
+export function unavailablePromoPlan(s: PromoPriceState, reason: string): PromoPricePlan {
+    return {
+        offerId: s.offerId,
+        productId: s.productId,
+        state: s,
+        target: s.minPrice,
+        percent: s.seller?.isActive ? s.seller.percent : 0,
+        floor: s.minPrice,
+        steps: [],
+        buyerBefore: s.buyerPrice,
+        baseAfter: s.price,
+        buyerAfter: s.buyerPrice,
+        ok: false,
+        closest: false,
+        notes: [reason],
+    };
+}
 
 /** План на каждый отобранный товар — тем правилом, что задаёт цель сверки. */
 @Injectable()
@@ -23,21 +42,7 @@ export class PlanSweepCommand implements IJobCommand<IPromoSweepContext> {
                 context.plans.push(goal.plan(s));
                 continue;
             }
-            context.plans.push({
-                offerId: s.offerId,
-                productId: s.productId,
-                state: s,
-                target: s.minPrice,
-                percent: s.seller?.isActive ? s.seller.percent : 0,
-                floor: s.minPrice,
-                steps: [],
-                buyerBefore: s.buyerPrice,
-                baseAfter: s.price,
-                buyerAfter: s.buyerPrice,
-                ok: false,
-                closest: false,
-                notes: [`Расчёт недоступен: ${error}`],
-            });
+            context.plans.push(unavailablePromoPlan(s, `Расчёт недоступен: ${error}`));
         }
         return context;
     }

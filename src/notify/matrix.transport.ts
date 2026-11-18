@@ -2,7 +2,7 @@ import { formatMoscowShortDateTime } from '../shared/moscow-time';
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import axios, { AxiosError } from 'axios';
-import { randomBytes } from 'crypto';
+import { createHash, randomBytes } from 'crypto';
 import { INotifyTransport, NotifyMessage } from './notify.types';
 
 export const MATRIX_MAX_LENGTH = 4000;
@@ -41,9 +41,12 @@ export class MatrixTransport implements INotifyTransport {
             return { ok: false, error: 'MATRIX_HOMESERVER / MATRIX_ACCESS_TOKEN не заданы' };
         }
         const content = MatrixTransport.content(message);
+        const txn = message.deliveryKey
+            ? createHash('sha256').update(JSON.stringify([roomId, message.deliveryKey])).digest('hex')
+            : `ozon-${Date.now()}-${randomBytes(4).toString('hex')}`;
         let last: { ok: boolean; status?: number; error?: string } = { ok: false };
         for (let attempt = 0; attempt < 2; attempt++) {
-            last = await this.put(roomId, content);
+            last = await this.put(roomId, content, txn);
             if (last.ok || !(last.status === 429 || (last.status ?? 0) >= 500)) break;
         }
         return last;
@@ -91,8 +94,8 @@ export class MatrixTransport implements INotifyTransport {
     private async put(
         roomId: string,
         content: Record<string, any>,
+        txn: string,
     ): Promise<{ ok: boolean; status?: number; error?: string }> {
-        const txn = `ozon-${Date.now()}-${randomBytes(4).toString('hex')}`;
         const url = `${this.homeserver}/_matrix/client/v3/rooms/${encodeURIComponent(roomId)}/send/m.room.message/${txn}`;
         try {
             const response = await axios.put(url, content, {

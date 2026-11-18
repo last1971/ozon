@@ -28,8 +28,13 @@ describe('Адаптер Ozon', () => {
     };
     it('сравнивает все три суммы без рублёвого допуска, отсутствие ответа не считается совпадением', async () => {
         const { adapter } = setup();
-        expect(adapter.matches(target, { ...target, price: 250 })).toBe(true);
-        expect(adapter.matches(target, { ...target, min_price: 199 })).toBe(false);
+        const promoState = {offerId: target.offer_id, price: 250, buyerPrice: 200, buyerPriceCalc: 200, ozonActions: []};
+        expect(adapter.matches(target, { ...target, promoState, price: 250 })).toBe(true);
+        expect(adapter.matches(target, { ...target, promoState, min_price: 199 })).toBe(false);
+        expect(adapter.matches(target, { ...target, price: 250 })).toBe(false);
+        expect(adapter.matches(target, {...target, promoState:{...promoState, ozonActions:[
+            {actionId:1, participant:true, actionPrice:250, startsAt:null},
+        ], buyerPrice:200, minPrice:200, oldPrice:400}})).toBe(false);
         expect(adapter.matches(target, null)).toBe(false);
         expect(ozonPricesMatch(target, { ...target, min_price: 199 })).toBe(true); // прежняя сверка сохраняет свой допуск
         expect(ozonPricesMatch(target, { ...target, price: undefined })).toBe(false);

@@ -111,6 +111,13 @@ describe('planPromoPrice — план цены через акции (без в�
         expect(plan.buyerAfter).toBe(242);
     });
 
+    it('сохраняет статус кандидата, если даже обязательная скидка опустит покупателя ниже минимума', () => {
+        const s = state({price: 130, minPrice: 128, buyerPrice: 130, buyerPriceCalc: 130,
+            seller: seller({isActive: false, minPercent: 5}), ozonActions: []});
+        expect(planPromoPrice(s, 'min')).toMatchObject({ok: true, closest: true, percent: 0, buyerAfter: 130, steps: []});
+        expect(planPromoPrice(s, 'min', 5).ok).toBe(false);
+    });
+
     it('кандидат Ozon-акции с подходящим лимитом добавляется (from: null)', () => {
         const plan = planPromoPrice(state({ ozonActions: [elastic({ participant: false, actionPrice: 0 })] }), 'min');
         expect(plan.steps[0]).toEqual({
@@ -283,13 +290,103 @@ describe('planPromoPrice — план цены через акции (без в�
             const plan = planPromoPrice(s, 'min');
             expect(plan.percent).toBe(10);
             expect(plan.notes.join()).toContain('уводит ниже дна');
-            // round(255*0.90)=round(229.5)=230 ≥ 228
-            expect(plan.buyerAfter).toBe(230);
+            // Ozon при 229,50 ₽ показывает 229 ₽, выше минимума 228 ₽.
+            expect(plan.buyerAfter).toBe(229);
             expect(plan.ok).toBe(true);
         });
     });
 
     describe('мёртвая зона: цена покупателю не должна попасть в (300; deadZoneFloor]', () => {
+        const pack = (over: Partial<PromoPriceState> = {}) => state({
+            offerId: '563967-4', price: 672, minPrice: 298, calcMinPrice: 298,
+            deadZoneFloor: 627, buyerPrice: 302, buyerPriceCalc: 302,
+            seller: seller({ percent: 55 }),
+            ozonActions: [elastic({ participant: false, actionPrice: 0, maxActionPrice: 300 })],
+            ...over,
+        });
+
+        it('563967-4: 55 % дают 302, 56 % ниже минимума — переходит на 6 % и 632 рубля', () => {
+            const plan = planPromoPrice(pack(), 'min');
+            expect(plan).toMatchObject({ ok: true, target: 298, buyerAfter: 632, percent: 6 });
+            expect(plan.steps).toEqual([expect.objectContaining({ kind: 'percent', from: 55, to: 6 })]);
+            const repeat = planPromoPrice(pack({ seller: seller({ percent: 6 }), buyerPrice: 632 }), 'min');
+            expect(repeat).toMatchObject({ ok: true, closest: true, buyerAfter: 632, steps: [] });
+        });
+
+        it('доступная цена на нижней границе тарифа предпочтительнее перехода на 632', () => {
+            const plan = planPromoPrice(pack({ price: 666, buyerPrice: 300 }), 'min');
+            expect(plan).toMatchObject({ ok: true, buyerAfter: 300, percent: 55, steps: [] });
+        });
+
+        it('можно достигнуть 300 скидкой продавца поверх фиксированной цены промокода', () => {
+            const plan = planPromoPrice(pack({ buyerPrice: 180, ozonActions: [
+                elastic({ isVoucher: true, participant: true, actionPrice: 400, maxActionPrice: 0 }),
+            ] }), 'min');
+            expect(plan).toMatchObject({ ok: true, target: 298, buyerAfter: 300, percent: 25 });
+            expect(plan.steps).toEqual([expect.objectContaining({ kind: 'percent', to: 25 })]);
+        });
+
+        it('не включает кандидата в нашу акцию поверх промокода ради новой скидки', () => {
+            const plan = planPromoPrice(pack({ seller: seller({ isActive: false }), buyerPrice: 400,
+                ozonActions: [elastic({ isVoucher: true, actionPrice: 400, maxActionPrice: 0 })],
+            }), 'min');
+            expect(plan).toMatchObject({ ok: true, buyerAfter: 672, percent: 0 });
+            expect(plan.steps).toEqual([expect.objectContaining({ kind: 'ozon-remove' })]);
+        });
+
+        it('только снимает ограничивающую акцию, когда второй шаг по проценту опасен', () => {
+            const plan = planPromoPrice(pack({ seller: seller({ percent: 5 }), buyerPrice: 284, ozonActions: [
+                elastic({ participant: true, actionPrice: 299, maxActionPrice: 300 }),
+            ] }), 'min');
+            expect(plan).toMatchObject({ ok: true, buyerAfter: 638, percent: 5 });
+            expect(plan.steps.map(step => step.kind)).toEqual(['ozon-remove']);
+        });
+
+        it('не меняет акции, если один из двух связанных шагов может оставить убыточную цену', () => {
+            const plan = planPromoPrice(pack({ buyerPrice: 135, ozonActions: [
+                elastic({ participant: true, actionPrice: 299, maxActionPrice: 300 }),
+            ] }), 'min');
+            expect(plan).toMatchObject({ ok: false, buyerAfter: 135, steps: [] });
+        });
+
+        it('снимает две акции с пониженным лимитом и меняет процент, если безопасен любой порядок', () => {
+            const plan = planPromoPrice(pack({
+                seller: seller({ percent: 5 }),
+                buyerPrice: 637,
+                ozonActions: [
+                    elastic({ actionId: 1, actionPrice: 670, maxActionPrice: 300 }),
+                    elastic({ actionId: 2, actionPrice: 671, maxActionPrice: 300 }),
+                ],
+            }), 'min');
+            expect(plan).toMatchObject({ ok: true, buyerAfter: 632, percent: 6 });
+            expect(plan.steps.map(step => step.kind)).toEqual(['ozon-remove', 'ozon-remove', 'percent']);
+        });
+
+        it('сохраняет заданный процент при недостижимой безопасной цене', () => {
+            const plan = planPromoPrice(pack({ seller: seller({ percent: 6 }), buyerPrice: 632 }), 'min', 55);
+            expect(plan).toMatchObject({ ok: false, closest: false, buyerAfter: 632, percent: 6, steps: [] });
+        });
+
+        it('заданные 5 % сохраняются при выходе из промокода, верхняя граница допустима', () => {
+            const plan = planPromoPrice(pack({ price: 660, buyerPrice: 304, seller: seller({ percent: 5 }),
+                ozonActions: [elastic({ isVoucher: true, actionPrice: 320 })],
+            }), 'min', 5);
+            expect(plan).toMatchObject({ ok: true, percent: 5, buyerAfter: 627 });
+            expect(plan.steps).toEqual([expect.objectContaining({ kind: 'ozon-remove' })]);
+        });
+
+        it('кандидата можно оставить без нашей скидки, если только базовая цена безопасна', () => {
+            const plan = planPromoPrice(pack({ price: 635, buyerPrice: 635, seller: seller({ isActive: false }),
+                ozonActions: [], calcMinPrice: 300,
+            }), 'min');
+            expect(plan).toMatchObject({ ok: true, percent: 0, buyerAfter: 635, closest: true, steps: [] });
+        });
+
+        it('верхняя ступень недостижима даже при минимальной скидке — записи нет', () => {
+            const plan = planPromoPrice(pack({ deadZoneFloor: 645, seller: seller({ percent: 10 }) }), 'min');
+            expect(plan).toMatchObject({ ok: false, closest: false, steps: [] });
+        });
+
         it('цель 320 в мёртвой зоне (300, 350] — поднимается до deadZoneFloor=350', () => {
             const s = state({
                 price: 500,

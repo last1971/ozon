@@ -1,237 +1,194 @@
-import { ProductService } from '../../product/product.service';
-import { Test } from '@nestjs/testing';
-import { OzonPromosApi } from '../promos.api';
-import { PromosService } from '../promos.service';
-import { OzonSellerActionsApi } from '../seller-actions.api';
+import { buyerPrice } from '../../helpers/price/buyer.price.helper';
+import { AutoAction, UpdatePriceDto } from '../../price/dto/update.price.dto';
 import { PromoPriceApplier } from './promo-price.applier';
-import { PromoPricePlan, PromoPriceStep } from './promo-price.types';
+import { planPromoPrice } from './promo-price.planner';
+import { PromoPriceState } from './promo-price.types';
+import { OzonPriceTransitionService } from './ozon-price-transition.service';
 
-describe('PromoPriceApplier — исполнение шагов плана', () => {
-    let applier: PromoPriceApplier;
-    const update = jest.fn();
-    const setPercent = jest.fn();
-    const remove = jest.fn();
-    const calls: string[] = [];
-
-    const okUpdate = (over: any = {}) => ({
-        added: [],
-        removed: [],
-        unchanged: [],
-        rejected: [],
-        warnings: [],
-        ...over,
-    });
-    /** 532100 живьём: выкинуть из эластичного (967/1256), наш 5 → 14 %. */
-    const plan = (steps: PromoPriceStep[], over: Partial<PromoPricePlan> = {}): PromoPricePlan =>
-        ({
-            offerId: '532100',
-            productId: 77,
-            target: 1943,
-            percent: 14,
-            floor: 2046,
-            steps,
-            buyerBefore: 919,
-            buyerAfter: 1965,
-            ok: true,
-            notes: [],
-            state: {
-                offerId: '532100',
-                productId: 77,
-                oldPrice: 2500,
-                price: 2300,
-                minPrice: 1943,
-                buyerPrice: 919,
-                ozonActions: [
-                    {
-                        actionId: 1977747,
-                        title: 'Эластичный',
-                        isVoucher: false,
-                        participant: true,
-                        actionPrice: 967,
-                        maxActionPrice: 1256,
-                        stock: 2,
-                    },
-                    {
-                        actionId: 9,
-                        title: 'Промокод',
-                        isVoucher: true,
-                        participant: true,
-                        actionPrice: 900,
-                        maxActionPrice: 0,
-                        stock: 0,
-                    },
-                ],
-            },
-            ...over,
-        }) as PromoPricePlan;
-    const removeStep: PromoPriceStep = {
-        kind: 'ozon-remove',
-        actionId: 1977747,
-        title: 'Эластичный',
-        from: 967,
-        reason: 'лимит',
+function fixture() {
+    const offer = '539124-5';
+    const target: UpdatePriceDto = {
+        offer_id: offer,
+        price: '822',
+        old_price: '1030',
+        min_price: '297',
+        currency_code: 'RUB',
+        ozonDeadZoneFloor: 718,
+        auto_action_enabled: AutoAction.ENABLED,
     };
-    const raise: PromoPriceStep = { kind: 'percent', actionId: 4376619, sku: 2720248572, from: 5, to: 14 };
-
-    beforeEach(async () => {
-        [update, setPercent, remove].forEach((m) => m.mockReset());
-        calls.length = 0;
-        update.mockImplementation(async () => (calls.push('update'), okUpdate({ added: [77] })));
-        setPercent.mockImplementation(
-            async (_: number, p: any[]) => (calls.push('percent'), { applied: p, rejected: [] }),
+    const state: PromoPriceState = {
+        offerId: offer,
+        productId: 11,
+        price: 808,
+        oldPrice: 1012,
+        minPrice: 294,
+        buyerPrice: 299,
+        buyerPriceCalc: 299,
+        calcMinPrice: 297,
+        deadZoneFloor: 718,
+        calculationKey: 'economics',
+        autoActionEnabled: true,
+        seller: { actionId: 2, title: 'Скидка', minPercent: 5, percent: 63, sku: 11, isActive: true },
+        ozonActions: [],
+    };
+    let serial = 0;
+    let delayed = false;
+    let afterWrite: (() => void) | undefined;
+    const writes: string[] = [];
+    const prices: number[] = [];
+    const notices = [];
+    const saved = new Map<string, any>();
+    const versions = new Map<string, string>();
+    const reserve = (offer: string, payload: any) => {
+        const row = { token: String(++serial), payload: structuredClone(payload) };
+        saved.set(offer, row);
+        versions.set(offer, row.token);
+        return row;
+    };
+    const journal = {
+        versions: async () => new Map(versions),
+        pending: async (offer: string) => saved.get(offer),
+        outstanding: async () => new Map(saved),
+        claim: async (offer: string, payload: any, _stream: unknown, version: string | null) =>
+            saved.has(offer) || (versions.get(offer) ?? null) !== version ? null : reserve(offer, payload),
+        advance: async (offer: string, token: string, payload: any) =>
+            saved.get(offer)?.token === token ? reserve(offer, payload) : null,
+        finish: async (offer: string, token: string, _stream: any, notice: any) => {
+            if (saved.get(offer)?.token !== token) return false;
+            if (notice) notices.push(notice);
+            versions.set(offer, String(++serial));
+            return saved.delete(offer);
+        },
+    };
+    function apply(write: string, effect: () => void) {
+        expect(saved.size).toBe(1);
+        writes.push(write);
+        const flush = () => {
+            effect();
+            const actions = state.ozonActions.filter((s) => s.participant).map((s) => s.actionPrice);
+            state.buyerPrice = state.buyerPriceCalc = buyerPrice(state.price, actions, state.seller.percent);
+            prices.push(state.buyerPrice);
+        };
+        if (delayed) afterWrite = flush;
+        else flush();
+    }
+    const reader = { allStates: async () => [structuredClone(state)] };
+    const products = {
+        setPrice: jest.fn(async ({ prices: [row] }) => {
+            apply('base', () =>
+                Object.assign(state, {
+                    price: Number(row.price),
+                    minPrice: Number(row.min_price),
+                    oldPrice: Number(row.old_price),
+                }),
+            );
+            return { result: [{ offer_id: offer, updated: true }] };
+        }),
+    };
+    const seller = {
+        setPercent: jest.fn(async (_id, rows) => {
+            apply('percent ' + rows[0].percent, () => {
+                state.seller.percent = rows[0].percent;
+            });
+            return { applied: rows };
+        }),
+    };
+    const ops = { update: jest.fn(), deactivate: jest.fn() };
+    const create = () =>
+        new OzonPriceTransitionService(
+            { get: () => reader } as any,
+            { enrichBatch: async () => undefined } as any,
+            journal as any,
+            products as any,
+            ops as any,
+            seller as any,
         );
-        remove.mockImplementation(async () => (calls.push('remove'), { success_ids: [77], failed: [] }));
-        const module = await Test.createTestingModule({
-            providers: [
-                PromoPriceApplier,
-                {
-                    provide: ProductService,
-                    useValue: {
-                        getPrices: async () => ({
-                            items: [
-                                {
-                                    offer_id: '532100',
-                                    product_id: 77,
-                                    price: {
-                                        old_price: '2500',
-                                        price: '2300',
-                                        min_price: '1943',
-                                        marketing_seller_price: '919',
-                                    },
-                                },
-                            ],
-                        }),
-                    },
-                },
-                {
-                    provide: OzonPromosApi,
-                    useValue: {
-                        update,
-                        currentProduct: jest.fn(async (actionId, productId, participant) => ({
-                            id: productId,
-                            maxActionPrice: 1256,
-                            actionPrice: 967,
-                            stock: 2,
-                            participant,
-                        })),
-                    },
-                },
-                { provide: OzonSellerActionsApi, useValue: { setPercent } },
-                { provide: PromosService, useValue: { remove } },
-            ],
-        }).compile();
-        applier = module.get(PromoPriceApplier);
-    });
+    return {
+        state,
+        target,
+        writes,
+        prices,
+        notices,
+        create,
+        saved,
+        seller,
+        ops,
+        delay: () => {
+            delayed = true;
+        },
+        deliver: () => {
+            delayed = false;
+            afterWrite?.();
+            afterWrite = undefined;
+        },
+    };
+}
 
-    it('сначала Ozon-акции, потом процент — даже если в плане процент первым', async () => {
-        const res = await applier.apply(plan([raise, removeStep]));
-        expect(calls).toEqual(['remove', 'percent']);
-        expect(res.applied).toBe(true);
-        expect(res.results.map((r) => r.status)).toEqual(['ok', 'ok']);
+describe('Ozon price writer with real planner and independent readback', () => {
+    it('changes 539124-5 only through profitable states and a repeated import does not write', async () => {
+        const f = fixture();
+        for (let i = 0; i < 2; i++) expect((await f.create().updateBases([f.target]))[0].updated).toBe(true);
+        expect(f.writes).toEqual(['percent 11', 'base', 'percent 12']);
+        expect(f.prices).toEqual([719, 732, 723]);
+        expect(f.notices).toHaveLength(1);
+        expect(f.notices[0]).toMatchObject({ buyerBefore: 299, observedBuyerPrice: 723, verification: 'confirmed' });
     });
-
-    it('выкинуть — единым правилом PromosService.remove ценой пола; промокодная — с признаком voucher', async () => {
-        await applier.apply(plan([removeStep, { ...removeStep, actionId: 9, title: 'Промокод', from: 900 }]));
-        expect(remove).toHaveBeenNthCalledWith(1, { id: 1977747, is_voucher_action: false }, [
-            { productId: 77, actionPrice: 2046, stock: 2 },
-        ]);
-        expect(remove).toHaveBeenNthCalledWith(2, { id: 9, is_voucher_action: true }, [
-            { productId: 77, actionPrice: 2046, stock: 0 },
-        ]);
+    it('two callers and a restart wait for the existing request before continuing', async () => {
+        const f = fixture();
+        f.delay();
+        const results = await Promise.all([f.create().updateBases([f.target]), f.create().updateBases([f.target])]);
+        expect(results.map((r) => r[0].errors[0].code)).toEqual(['transition_pending', 'transition_pending']);
+        await f.create().resume();
+        expect(f.writes).toEqual(['percent 11']);
+        f.deliver();
+        await f.create().resume();
+        expect(f.prices).toEqual([719, 732, 723]);
+        expect(f.notices).toHaveLength(1);
+        expect(f.saved.size).toBe(0);
     });
-
-    it('поставить цену в Ozon-акции — update с ценой шага и стоком слота; changed: true', async () => {
-        const set: PromoPriceStep = { kind: 'ozon-set', actionId: 1977747, title: 'Эластичный', from: 967, to: 1256 };
-        const res = await applier.apply(plan([set]));
-        expect(update).toHaveBeenCalledWith(1977747, [{ productId: 77, actionPrice: 1256, stock: 2 }]);
-        expect(res.results[0].status).toBe('ok');
-        expect(res.results[0].changed).toBe(true);
+    it('stops before a second write if costs have changed during the delay', async () => {
+        const f = fixture();
+        f.delay();
+        await f.create().updateBases([f.target]);
+        f.deliver();
+        f.state.calculationKey = 'new cost';
+        await f.create().resume();
+        expect(f.writes).toEqual(['percent 11']);
+        expect(f.notices).toHaveLength(0);
     });
-
-    it('снятие не прошло → повышение процента ПРОПУЩЕНО (двойная скидка), понижение выполняется', async () => {
-        remove.mockResolvedValue({ success_ids: [], failed: [{ productId: 77, reason: 'нельзя' }] });
-        const lower: PromoPriceStep = { ...raise, sku: 1, from: 21, to: 5 };
-        const res = await applier.apply(plan([removeStep, raise, lower]));
-        expect(res.results).toEqual([
-            { step: removeStep, status: 'rejected', reason: 'нельзя' },
-            { step: raise, status: 'skipped', reason: expect.stringContaining('двойная скидка') },
-            { step: lower, status: 'ok' },
-        ]);
-        expect(setPercent).toHaveBeenCalledTimes(1);
-        expect(setPercent).toHaveBeenCalledWith(4376619, [{ sku: 1, percent: 5 }]);
-        expect(res.applied).toBe(false);
+    it('uses the same lock for manual promotion and base writes', async () => {
+        const f = fixture();
+        f.delay();
+        await f.create().updateBases([f.target]);
+        const manual = planPromoPrice(f.state, 'normal');
+        const r = await new PromoPriceApplier(f.create()).apply(manual);
+        expect(r.verification).toBe('pending');
+        expect(f.writes).toEqual(['percent 11']);
     });
-
-    it('добавление в нашу акцию (from: null) — тоже повышение, при сбое Ozon пропускается', async () => {
-        update.mockResolvedValue(okUpdate({ rejected: [{ productId: 77, reason: 'stock' }] }));
-        const set: PromoPriceStep = { kind: 'ozon-set', actionId: 1977747, title: 'Эластичный', from: null, to: 2046 };
-        const res = await applier.apply(plan([set, { ...raise, from: null }]));
-        expect(res.results.map((r) => r.status)).toEqual(['rejected', 'skipped']);
-        expect(res.results[0].reason).toBe('stock');
+    it('cannot send the next step after a timeout, even on restart', async () => {
+        const f = fixture();
+        f.seller.setPercent.mockRejectedValueOnce(new Error('timeout'));
+        expect((await f.create().updateBases([f.target]))[0].errors[0].code).toBe('transition_pending');
+        await f.create().resume();
+        expect(f.seller.setPercent).toHaveBeenCalledTimes(1);
+        expect(f.writes).toEqual([]);
     });
-
-    it('цена в акции уже стоит («no changes») — ok «уже стоит», changed: false, процент после него повышается', async () => {
-        update.mockResolvedValue(okUpdate({ unchanged: [77] }));
-        const set: PromoPriceStep = { kind: 'ozon-set', actionId: 1977747, title: 'Эластичный', from: 967, to: 1256 };
-        const res = await applier.apply(plan([set, raise]));
-        expect(res.results[0]).toMatchObject({ status: 'ok', reason: 'уже стоит', changed: false });
-        expect(res.results[1].status).toBe('ok');
-        expect(res.applied).toBe(true);
-    });
-
-    it('update исключил товар вместо смены цены — rejected с понятной причиной', async () => {
-        update.mockResolvedValue(okUpdate({ removed: [77] }));
-        const set: PromoPriceStep = { kind: 'ozon-set', actionId: 1977747, title: 'Эластичный', from: 967, to: 1256 };
-        expect((await applier.apply(plan([set]))).results[0].reason).toContain('исключил');
-    });
-
-    it('процент отклонён (code5) и исключение API — rejected, не падение', async () => {
-        setPercent.mockResolvedValueOnce({
+    it('waits for a new plan after a definite refusal', async () => {
+        const f = fixture();
+        f.seller.setPercent.mockResolvedValueOnce({
             applied: [],
-            rejected: [{ sku: 2720248572, reason: 'no activated products found' }],
+            rejected: [{ sku: 11, reason: 'discount rejected' }],
+        } as any);
+        expect((await f.create().updateBases([f.target]))[0]).toMatchObject({
+            updated: false,
+            errors: [{ code: 'transition_blocked', message: 'discount rejected' }],
         });
-        let res = await applier.apply(plan([raise]));
-        expect(res.results[0]).toEqual({ step: raise, status: 'rejected', reason: 'no activated products found' });
-        update.mockRejectedValue(new Error('timeout'));
-        const set: PromoPriceStep = { kind: 'ozon-set', actionId: 1977747, title: 'Эластичный', from: 967, to: 1256 };
-        res = await applier.apply(plan([set]));
-        expect(res.results[0]).toEqual({ step: set, status: 'rejected', reason: 'timeout' });
+        expect(f.saved.size).toBe(0);
     });
-
-    it('ошибка свежих условий не отправляет ни цену, ни последующее повышение процента', async () => {
-        jest.spyOn(applier['api'], 'currentProduct').mockRejectedValueOnce(new Error('rate limit'));
-        const set: PromoPriceStep = { kind: 'ozon-set', actionId: 1977747, title: 'Эластичный', from: 967, to: 1256 };
-        const res = await applier.apply(plan([set, raise]));
-        expect(res.applied).toBe(false);
-        expect(res.results.every((r) => r.status === 'skipped')).toBe(true);
-        expect(calls).toEqual([]);
+    it('rejects unmodelled changes in Ozon auto-enrollment before touching the discount', async () => {
+        const f = fixture();
+        f.state.autoActionEnabled = false;
+        expect((await f.create().updateBases([f.target]))[0].updated).toBe(false);
+        expect(f.writes).toEqual([]);
     });
-
-    it('шагов нет — applied: true, в API не ходим', async () => {
-        const res = await applier.apply(plan([]));
-        expect(res.applied).toBe(true);
-        expect(calls).toEqual([]);
-    });
-    it('частичный результат сохраняет принятый шаг Ozon и отказ процента без обещания отката', async () => {
-        setPercent.mockImplementationOnce(async () => {
-            calls.push('percent');
-            return { applied: [], rejected: [{ reason: 'code5' }] };
-        });
-        const result = await applier.apply(plan([removeStep, raise]));
-        expect(calls).toEqual(['remove', 'percent']);
-        expect(result.applied).toBe(false);
-        expect(result.results.map((r) => r.status)).toEqual(['ok', 'rejected']);
-        expect(remove).toHaveBeenCalledTimes(1);
-    });
-    it('ожидает асинхронную проверку версии прихода и не применяет устаревший план', async () => {
-        const result = await applier.apply(plan([raise, removeStep]), {
-            assertCurrent: async () => { throw new Error('Приход изменился'); },
-        });
-        expect(result.applied).toBe(false);
-        expect(result.notes.join('; ')).toContain('Приход изменился');
-        expect(update).not.toHaveBeenCalled();
-        expect(remove).not.toHaveBeenCalled();
-        expect(setPercent).not.toHaveBeenCalled();
-    });
-
 });

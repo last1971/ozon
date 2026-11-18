@@ -198,7 +198,7 @@ describe('ProductService', () => {
     it('исправляет только зачёркнутую цену; отказ API не теряется и не обрушает пачку', async () => {
         const input = { offer_id: 'x', price: '950', old_price: '1000', min_price: '900', currency_code: 'RUB' };
         method.mockResolvedValueOnce({ result: null, error: { message: 'rate limit' } });
-        const result = await service.setPrice({ prices: [input] });
+        const result = await service.setPrice({ prices: [{ ...input, ozonDeadZoneFloor: 900, ozonCalculated: true }] });
         expect(method).toHaveBeenLastCalledWith('/v1/product/import/prices', {
             prices: [{ ...input, old_price: '1001' }],
         });

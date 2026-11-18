@@ -139,8 +139,10 @@ const resultOf = (i: number): PromoStepResult | undefined => applied.value?.resu
                     <div v-if="!plan.steps.length" class="text-medium-emphasis">Менять нечего</div>
                     <v-alert v-if="applied" density="compact" variant="tonal" class="my-1"
                              :type="applied.applied ? 'success' : 'warning'">
-                        {{ applied.applied ? 'Все шаги выполнены' : 'Выполнено не всё — см. шаги' }}.
-                        Ozon обновляет цену покупателю не сразу — проверьте кнопкой «Обновить».
+                        <template v-if="applied.verification === 'pending'">Ожидает подтверждения Ozon.</template>
+                        <template v-else-if="applied.applied">Изменение подтверждено Ozon.</template>
+                        <template v-else>План не применён.</template>
+                        <template v-if="applied.observedBuyerPrice != null"> Цена при последней проверке {{ applied.observedBuyerPrice }} ₽.</template>
                     </v-alert>
                     <v-list density="compact" class="py-0">
                         <v-list-item v-for="(s, i) in (applied ? applied.results.map((r) => r.step) : plan.steps)" :key="i"
@@ -153,7 +155,7 @@ const resultOf = (i: number): PromoStepResult | undefined => applied.value?.resu
                             </template>
                         </v-list-item>
                     </v-list>
-                    <div v-for="(n, i) in plan.notes" :key="'n' + i" class="text-caption text-medium-emphasis">{{ n }}</div>
+                    <div v-for="(n, i) in (applied?.notes ?? plan.notes)" :key="'n' + i" class="text-caption text-medium-emphasis">{{ n }}</div>
                 </v-card-text>
             </v-card>
         </template>

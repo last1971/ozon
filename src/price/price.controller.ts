@@ -86,7 +86,8 @@ export class PriceController {
         const pricesMap = new Map<string, UpdatePriceDto>();
         prices.prices.forEach((price) => {
             skus.push(price.offer_id);
-            pricesMap.set(price.offer_id, price);
+            const { ozonCalculated, ...manual } = price;
+            pricesMap.set(price.offer_id, manual);
         });
         return this.extraService.updatePriceForServices(skus, pricesMap);
     }

@@ -1,4 +1,4 @@
-import { planPromoPrice } from '../promo-price.planner';
+import { inPromoDeadZone, planPromoPrice } from '../promo-price.planner';
 import { PromoPricePlan, PromoPriceState } from '../promo-price.types';
 
 /** Цель сверки акций: что ищем и к чему приводим. */
@@ -21,11 +21,12 @@ export interface SweepGoal {
 
 const priced = (s: PromoPriceState) => s.minPrice > 0 && s.buyerPrice > 0;
 
-/** Решение 19.10: только ниже min_price; наш процент — ровно минимум акции, цель min. */
+/** Проверка нижней границы тарифа; наш процент — минимум акции, цель min. */
 const belowMin: SweepGoal = {
     kind: 'below-min',
     title: 'ниже минимальной',
-    selects: (s) => priced(s) && s.buyerPrice < (s.calcMinPrice ?? s.minPrice),
+    selects: (s) =>
+        priced(s) && (s.buyerPrice < (s.calcMinPrice ?? s.minPrice) || inPromoDeadZone(s.buyerPrice, s.deadZoneFloor)),
     plan: (s) => planPromoPrice(s, s.calcMinPrice ?? s.minPrice, s.seller?.minPercent),
 };
 
@@ -36,7 +37,11 @@ const toTarget = (target: 'min' | 'normal', title: string): SweepGoal => {
     return {
         kind: target,
         title,
-        selects: (s) => priced(s) && Math.abs(s.buyerPrice - effectiveTarget(s)) > TOLERANCE_RUB,
+        selects: (s) =>
+            priced(s) &&
+            (s.buyerPrice < (s.calcMinPrice ?? s.minPrice) ||
+                Math.abs(s.buyerPrice - effectiveTarget(s)) > TOLERANCE_RUB ||
+                inPromoDeadZone(s.buyerPrice, s.deadZoneFloor)),
         plan: (s) => planPromoPrice(s, effectiveTarget(s)),
     };
 };

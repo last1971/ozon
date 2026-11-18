@@ -21,7 +21,9 @@ describe('сообщения «к минимальной»', () => {
     it('Озон: применено и не прошло с причиной; товары без шагов не считаются', () => {
         const m = ozonPromoSweepMessage({
             items: [
-                { offerId: '513498', steps: [{}], applied: true },
+                { offerId: '513498', steps: [{}], applied: true, verification: 'confirmed' },
+                { offerId: 'pending', steps: [{}], applied: true, verification: 'pending' },
+                { offerId: 'unchanged', steps: [{}], applied: true, verification: 'unchanged' },
                 { offerId: '552293', steps: [{}], applied: false, results: [{ status: 'rejected', reason: 'лимит' }] },
                 { offerId: '542774', steps: [] },
             ],
@@ -33,6 +35,8 @@ describe('сообщения «к минимальной»', () => {
         expect(m.subject).toBe('Озон акции к минимальной: применено 1, не прошло 1');
         expect(m.text).toContain('552293: лимит');
         expect(m.text).not.toContain('542774');
+        expect(m.text).not.toContain('pending');
+        expect(m.text).not.toContain('unchanged');
     });
 
     it('длинный список режется на 20 строк с хвостом «и ещё»', () => {

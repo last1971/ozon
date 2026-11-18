@@ -2,6 +2,11 @@ import { buyerPrice, ozonActionFloor, ozonPriceActions } from './buyer.price.hel
 
 describe('buyer price helper — наложение акций Ozon и нашей', () => {
     describe('buyerPrice', () => {
+        it.each([
+            [310, 294], [1810, 1719], [890, 845], [1010, 959], [230, 218], [1325, 1259],
+        ])('при скидке 5%% цена акции %i даёт подтверждённые Ozon %i ₽', (base, actual) => {
+            expect(buyerPrice(base, [], 5)).toBe(actual);
+        });
         it('383367 живьём: price 255, эластичный бустинг 226, наш 5 % → 215', () => {
             expect(buyerPrice(255, [226], 5)).toBe(215);
         });

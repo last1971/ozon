@@ -1,5 +1,7 @@
 import { ozonPromoPricesMatch } from './ozon-promo-prices-match';
 import { PromoPriceState } from '../../promos/price-lever/promo-price.types';
+import { calculatePrice } from '../../helpers/price/price.helpers';
+import { IPriceable } from '../../interfaces/i.priceable';
 
 const now = new Date('2026-11-14T14:01:05Z');
 const normal = { offer_id: '535776', currency_code: 'RUB', price: '699', old_price: '837', min_price: '279' };
@@ -7,6 +9,7 @@ const state = (over: Partial<PromoPriceState> = {}): PromoPriceState => ({
     offerId: '535776',
     productId: 1,
     price: 294,
+    confirmedBase: 699,
     minPrice: 279,
     oldPrice: 837,
     buyerPrice: 279,
@@ -28,6 +31,34 @@ const state = (over: Partial<PromoPriceState> = {}): PromoPriceState => ({
 });
 const actual = (s = state()) => ({ price: s.price, min_price: s.minPrice, old_price: s.oldPrice, promoState: s });
 
+it('563967-4: подтверждает 632 при повторном приходе, учитывает следующий приход и тариф', () => {
+    const low = { min: 0, max: 300, minIncluded: true, maxIncluded: true };
+    const high = { min: 300, max: null, minIncluded: false, maxIncluded: false };
+    const input: IPriceable = {
+        offer_id: '563967-4', incoming_price: 100, available_price: 0, sales_percent: 0,
+        min_perc: 10, perc: 55, old_perc: 145, adv_perc: 0, sum_pack: 0, fbs_direct_flow_trans_max_amount: 0,
+        ozon: {
+            minProfitRub: 0, minMarkupPercent: 0, acquiringRate: 0, vatRate: 0, profitTaxRate: 0,
+            schemes: [{ scheme: 'fbs', firstMile: 0, lastMile: 0,
+                commissions: [{ ...low, rate: 0 }, { ...high, rate: 0 }],
+                logistics: [{ ...low, amount: 188 }, { ...high, amount: 517 }],
+            }],
+        },
+    };
+    const coeffs = { minMil: 0, percMil: 0, percEkv: 0, sumObtain: 0, sumLabel: 0, taxUnit: 0 };
+    const target = calculatePrice(input, coeffs);
+    expect(target).toMatchObject({ price: '672', old_price: '762', min_price: '298', ozonDeadZoneFloor: 627 });
+    const s = state({
+        offerId: input.offer_id, price: 672, oldPrice: 762, minPrice: 298,
+        buyerPrice: 632, buyerPriceCalc: 632, seller: { ...state().seller, percent: 6 }, ozonActions: [],
+    });
+    expect(ozonPromoPricesMatch(target, actual(s), now)).toBe(true);
+    expect(ozonPromoPricesMatch(target, actual({ ...s, buyerPrice: 302, buyerPriceCalc: 302,
+        seller: { ...s.seller, percent: 55 } }), now)).toBe(false);
+    const changed = calculatePrice({ ...input, incoming_price: 110 }, coeffs);
+    expect(ozonPromoPricesMatch(changed, actual(s), now)).toBe(false);
+});
+
 it.each([
     ['503760', 265, 233, 233, 233, 774, 0],
     ['488434-2', 683, 285, 271, 270, 812, 5],
@@ -40,6 +71,7 @@ it.each([
         Object.assign(s, {
             offerId: String(offer),
             price,
+            confirmedBase: Number(reference),
             buyerPrice: buyer,
             buyerPriceCalc: buyer,
             minPrice: min,
@@ -119,4 +151,21 @@ it('более дорогая вторая акция не вызывает по
     const s = state();
     s.ozonActions.push({ ...s.ozonActions[0], actionId: 3, actionPrice: 350 });
     expect(ozonPromoPricesMatch(normal, actual(s), now)).toBe(true);
+});
+
+it('повтор прихода подтверждает фактическую цену с обязательной скидкой по исходному расчёту', () => {
+    const target = {...normal, ozonCalculated: true, price: '130', old_price: '151', min_price: '128'};
+    const s = state({price: 135, confirmedBase: 135, oldPrice: 156, minPrice: 128, buyerPrice: 128, buyerPriceCalc: 128});
+    s.ozonActions = [{...s.ozonActions[0], actionPrice: 135, maxActionPrice: 195}];
+    expect(ozonPromoPricesMatch(target, actual(s), now)).toBe(true);
+    expect(ozonPromoPricesMatch({...target, ozonCalculated:false}, actual(s), now)).toBe(false);
+    expect(ozonPromoPricesMatch(target, actual({...s, oldPrice: 151}), now)).toBe(false);
+});
+
+it('акция может скрывать большую базовую цену даже когда видимая равна целевой', () => {
+    const s = state({confirmedBase:undefined, price:294});
+    const target = {...normal, price:'294'};
+    expect(ozonPromoPricesMatch(target, actual(s), now)).toBe(false);
+    expect(ozonPromoPricesMatch(target, actual({...s, confirmedBase:699}), now)).toBe(false);
+    expect(ozonPromoPricesMatch(target, actual({...s, confirmedBase:294}), now)).toBe(true);
 });

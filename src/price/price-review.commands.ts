@@ -58,6 +58,7 @@ export class PreparePriceReviewCommand implements IJobCommand<PriceReviewContext
             const warnings = [...new Set(inputs.flatMap((input) => input.ozon?.warnings ?? []))];
             if (warnings.length) entry.warnings = warnings;
             entry.prices = inputs.map((input) => calculatePrice(input, service.getObtainCoeffs()));
+            if (service.prepareReviewPrices) entry.prices = await service.prepareReviewPrices(entry.prices);
             if (!entry.prices.length) entry.error = 'Товар не найден или нет базы для расчёта';
             if (
                 entry.prices.some(

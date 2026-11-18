@@ -1,3 +1,8 @@
+import { OZON_PROMO_STATE_READER, OZON_PRICE_TRANSITIONS } from './price-lever/transition.tokens';
+import { LegacyPromoActionWriter } from './legacy-promo-action-writer';
+import { FirebirdModule } from '../firebird/firebird.module';
+import { OzonTransitionJournal } from './price-lever/ozon-transition-journal';
+import { OzonPriceTransitionService } from './price-lever/ozon-price-transition.service';
 import { GoodModule } from '../good/good.module';
 import { EnrichWithPricingCommand } from './price-lever/sweep/enrich-with-pricing.command';
 import { Module, forwardRef } from '@nestjs/common';
@@ -19,13 +24,18 @@ import { PromoSweepService } from './price-lever/sweep/promo-sweep.service';
 import { NotifySweepCommand } from './price-lever/sweep/notify-sweep.command';
 
 @Module({
-    imports: [OzonApiModule, ProductModule, forwardRef(() => PriceModule), GoodModule, JobModule],
+    imports: [FirebirdModule, OzonApiModule, ProductModule, forwardRef(() => PriceModule), GoodModule, JobModule],
     providers: [
         OzonPromosApi,
         OzonSellerActionsApi,
         PromosService,
         PromoPriceService,
+        { provide: OZON_PROMO_STATE_READER, useExisting: PromoPriceService },
+        { provide: OZON_PRICE_TRANSITIONS, useExisting: OzonPriceTransitionService },
         PromoPriceApplier,
+        OzonTransitionJournal,
+        OzonPriceTransitionService,
+        LegacyPromoActionWriter,
         CollectSweepCommand,
         EnrichWithPricingCommand,
         PlanSweepCommand,
@@ -35,6 +45,6 @@ import { NotifySweepCommand } from './price-lever/sweep/notify-sweep.command';
         PromoSweepService,
     ],
     controllers: [PromosController],
-    exports: [PromosService, OzonSellerActionsApi, PromoSweepService, PromoPriceService],
+    exports: [OzonPriceTransitionService, PromosService, OzonSellerActionsApi, PromoSweepService, PromoPriceService],
 })
 export class PromosModule {}

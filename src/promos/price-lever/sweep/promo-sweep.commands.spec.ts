@@ -48,7 +48,8 @@ describe('сверка акций — команды цепочки', () => {
             buyerAfter: 255,
             steps: [{ kind: 'ozon-remove', actionId: 5, title: 'Акция', from: 200, reason: 'свежий лимит ниже пола' }],
             notes: ['План пересчитан'],
-            results: [],
+            results: [{ step: { kind: 'ozon-remove' }, status: 'ok', changed: true }],
+            verification: 'confirmed',
             applied: true,
         } as any;
         const result = await new BuildSweepReportCommand().execute(
@@ -93,6 +94,14 @@ describe('сверка акций — команды цепочки', () => {
         expect(c.states?.map((s) => s.productId)).toEqual([1, 3]);
     });
 
+    it.each(['min', 'below-min'] as const)('цель %s: отклонение на рубль за границу тарифа требует сверки', async (goal) => {
+        const allStates = jest.fn().mockResolvedValue([300, 301].map((buyerPrice) =>
+            state(buyerPrice, { price: 672, buyerPrice, minPrice: 300, calcMinPrice: 300, deadZoneFloor: 627 }),
+        ));
+        const c = await new CollectSweepCommand({ allStates } as any).execute(ctx({ goal }));
+        expect(c.states?.map(s => s.buyerPrice)).toEqual([301]);
+    });
+
     it('plan «ниже минимальной»: цель min, процент — минимум акции товара (7), а не 5 и не текущие 21', async () => {
         const c = await new PlanSweepCommand().execute(ctx({ states: [state(1)] }));
         expect(c.plans?.[0].steps).toEqual([{ kind: 'percent', actionId: 4376619, sku: 10, from: 21, to: 7 }]);
@@ -114,6 +123,18 @@ describe('сверка акций — команды цепочки', () => {
     });
 
     describe('apply', () => {
+        const executor = (apply: jest.Mock) => ({
+            apply,
+            applyBatch: async (plans, optionsFor) => {
+                const results = [];
+                for (const plan of plans) {
+                    const options = optionsFor(plan);
+                    if (options.shouldStop()) break;
+                    results.push(await apply(plan, options));
+                }
+                return results;
+            },
+        });
         const plan = (productId: number, steps = 1) =>
             ({
                 productId,
@@ -122,7 +143,7 @@ describe('сверка акций — команды цепочки', () => {
 
         it('без apply — исполнителя не зовём', async () => {
             const apply = jest.fn();
-            await new ApplySweepCommand({ apply } as any, {} as any, {} as any).execute(ctx({ plans: [plan(1)] }));
+            await new ApplySweepCommand(executor(apply) as any, {} as any, {} as any).execute(ctx({ plans: [plan(1)] }));
             expect(apply).not.toHaveBeenCalled();
         });
 
@@ -130,7 +151,7 @@ describe('сверка акций — команды цепочки', () => {
             const apply = jest
                 .fn()
                 .mockImplementation(async (p) => ({ ...p, results: [], applied: p.productId === 1 }));
-            const c = await new ApplySweepCommand({ apply } as any, {} as any, {} as any).execute(
+            const c = await new ApplySweepCommand(executor(apply) as any, {} as any, {} as any).execute(
                 ctx({ apply: true, plans: [plan(1), plan(2, 0), plan(3)] }),
             );
             expect(apply).toHaveBeenCalledTimes(2);
@@ -143,7 +164,7 @@ describe('сверка акций — команды цепочки', () => {
                 context.stopChain = true;
                 return { ...p, results: [], applied: true };
             });
-            await new ApplySweepCommand({ apply } as any, {} as any, {} as any).execute(context);
+            await new ApplySweepCommand(executor(apply) as any, {} as any, {} as any).execute(context);
             expect(apply).toHaveBeenCalledTimes(1);
         });
 
@@ -180,7 +201,7 @@ describe('сверка акций — команды цепочки', () => {
                         if (scenario === 'cancel') context.stopChain = true;
                     });
                     await new ApplySweepCommand(
-                        { apply } as any,
+                        executor(apply) as any,
                         { states: jest.fn().mockResolvedValue([freshState]) } as any,
                         { enrichOne: jest.fn().mockResolvedValue({ status: 'ready' }) } as any,
                     ).execute(context);
@@ -207,7 +228,7 @@ describe('сверка акций — команды цепочки', () => {
                 const enrichOne = jest.fn().mockResolvedValue({ status: 'ready' });
 
                 const c = await new ApplySweepCommand(
-                    { apply } as any,
+                    executor(apply) as any,
                     { states } as any,
                     { enrichOne } as any,
                 ).execute(ctx({ apply: true, goal: 'below-min', plans: [stalePlan()] }));
@@ -225,7 +246,7 @@ describe('сверка акций — команды цепочки', () => {
                 const enrichOne = jest.fn().mockResolvedValue({ status: 'no-stock' });
 
                 const c = await new ApplySweepCommand(
-                    { apply } as any,
+                    executor(apply) as any,
                     { states: jest.fn().mockResolvedValue([state(1)]) } as any,
                     { enrichOne } as any,
                 ).execute(ctx({ apply: true, goal: 'below-min', plans: [stalePlan()] }));
@@ -240,7 +261,7 @@ describe('сверка акций — команды цепочки', () => {
                 const enrichOne = jest.fn().mockResolvedValue({ status: 'error', reason: 'нет базы: товар не в прайсе' });
 
                 const c = await new ApplySweepCommand(
-                    { apply } as any,
+                    executor(apply) as any,
                     { states: jest.fn().mockResolvedValue([state(1)]) } as any,
                     { enrichOne } as any,
                 ).execute(ctx({ apply: true, goal: 'below-min', plans: [stalePlan()] }));
@@ -257,7 +278,7 @@ describe('сверка акций — команды цепочки', () => {
                 const enrichOne = jest.fn().mockResolvedValue({ status: 'ready' });
 
                 const c = await new ApplySweepCommand(
-                    { apply } as any,
+                    executor(apply) as any,
                     { states: jest.fn().mockResolvedValue([state(1)]) } as any,
                     { enrichOne } as any,
                 ).execute(ctx({ apply: true, goal: 'below-min', plans: [stalePlan()] }));
@@ -271,7 +292,7 @@ describe('сверка акций — команды цепочки', () => {
                 const apply = jest.fn().mockResolvedValueOnce(staleResult({ attempted: true }));
 
                 const c = await new ApplySweepCommand(
-                    { apply } as any,
+                    executor(apply) as any,
                     { states: jest.fn() } as any,
                     { enrichOne: jest.fn() } as any,
                 ).execute(ctx({ apply: true, goal: 'below-min', plans: [stalePlan()] }));
@@ -287,7 +308,7 @@ describe('сверка акций — команды цепочки', () => {
                 const enrichOne = jest.fn().mockResolvedValue({ status: 'ready' });
 
                 const c = await new ApplySweepCommand(
-                    { apply } as any,
+                    executor(apply) as any,
                     { states: jest.fn().mockResolvedValue([freshState]) } as any,
                     { enrichOne } as any,
                 ).execute(ctx({ apply: true, goal: 'below-min', plans: [stalePlan()] }));
@@ -309,7 +330,7 @@ describe('сверка акций — команды цепочки', () => {
                 let c: IPromoSweepContext;
                 try {
                     c = await new ApplySweepCommand(
-                        { apply } as any,
+                        executor(apply) as any,
                         { states: jest.fn().mockResolvedValue([freshState]) } as any,
                         { enrichOne } as any,
                     ).execute(ctx({ apply: true, goal: 'below-min', plans: [stalePlan()] }));
@@ -329,7 +350,7 @@ describe('сверка акций — команды цепочки', () => {
                 const enrichOne = jest.fn().mockResolvedValue({ status: 'ready' });
 
                 const c = await new ApplySweepCommand(
-                    { apply } as any,
+                    executor(apply) as any,
                     { states: jest.fn().mockResolvedValue([freshState]) } as any,
                     { enrichOne } as any,
                 ).execute(ctx({ apply: true, goal: 'below-min', plans: [stalePlan()] }));
@@ -346,7 +367,7 @@ describe('сверка акций — команды цепочки', () => {
                 const enrichOne = jest.fn().mockResolvedValue({ status: 'ready' });
 
                 const c = await new ApplySweepCommand(
-                    { apply } as any,
+                    executor(apply) as any,
                     { states: jest.fn().mockResolvedValue([freshState]) } as any,
                     { enrichOne } as any,
                 ).execute(ctx({ apply: true, goal: 'below-min', plans: [stalePlan()] }));
@@ -392,9 +413,9 @@ describe('сверка акций — команды цепочки', () => {
             goal: 'below-min',
             checked: 600,
             selected: 5,
-            keptInOzon: 1,
-            removedFromOzon: 1,
-            percentChanged: 2,
+            keptInOzon: 0,
+            removedFromOzon: 0,
+            percentChanged: 0,
             unfixable: 1,
             closest: 1,
             nothingToDo: 1,

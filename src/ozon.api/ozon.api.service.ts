@@ -94,6 +94,10 @@ export class OzonApiService {
 
         this.logger.error(formatAxiosError(error, { url, method, body }));
 
+        const status = error.response?.status;
+        if (/\/v\d+\/(product\/import\/prices|actions\/products\/(?:update|deactivate)|seller-actions\/products\/add)$/.test(url) &&
+            (!status || status >= 500 || status === 408 || status === 429))
+            throw new Error(`Ozon не подтвердил запись (${status ?? 'нет HTTP-ответа'})`);
         return {
             result: null,
             error: {

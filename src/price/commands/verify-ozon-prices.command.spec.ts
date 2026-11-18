@@ -82,6 +82,12 @@ describe('VerifyOzonPricesCommand (сверка после отправки це
         expect(emit.mock.calls[0][2]).toContain('551444: посчитали 900/1800/450 — на Озоне нет данных');
     });
 
+    it('не повторяет управляемый импорт после подтверждения акционной цены или при задержке', async () => {
+        await command.execute(ctx({ result: sent.map((p, i) => ({ offer_id: p.offer_id, updated: !i, transition: i ? 'pending' : 'done' })) }));
+        expect(getPrices).not.toHaveBeenCalled();
+        expect(updatePrices).not.toHaveBeenCalled();
+    });
+
     it('Озону ничего не отправляли — не читаем', async () => {
         await command.execute({
             skus: [],

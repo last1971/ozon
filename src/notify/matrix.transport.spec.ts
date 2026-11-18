@@ -78,3 +78,15 @@ describe('MatrixTransport', () => {
         );
     });
 });
+
+it('повтор доставки подтверждённой операции посылает тот же Matrix transaction id', async () => {
+    mockedAxios.put.mockReset().mockResolvedValue({ status: 200 });
+    const transport = new MatrixTransport(config({ MATRIX_HOMESERVER: 'https://example.org', MATRIX_ACCESS_TOKEN: 'x' }));
+    const message = { subject: 'Цена', text: '640', deliveryKey: 'receipt-563967-4' };
+    await transport.deliver('!r:s', message);
+    await transport.deliver('!r:s', message);
+    await transport.deliver('!other:s', message);
+    const urls = mockedAxios.put.mock.calls.map(call => call[0]);
+    expect(urls[0]).toBe(urls[1]);
+    expect(urls[0].split('/').pop()).not.toBe(urls[2].split('/').pop());
+});

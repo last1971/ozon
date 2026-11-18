@@ -60,7 +60,7 @@ const make = () => {
         offer_id: '123-5',
         volume_weight: 0.9,
         acquiring: 5,
-        price: { price: '500' },
+        price: { price: '500', marketing_seller_price: '500' },
         commissions: {},
     };
     for (const scheme of ['fbs', 'fbo'])
@@ -75,6 +75,24 @@ const make = () => {
     return { service, routes, tariffs, products, cache, data, config, product, info, rows };
 };
 describe('Расходы Ozon для единого расчёта цены', () => {
+    it.each([
+        [710, 263, 2.63, 0.01],
+        [710, 618, 6.18, 0.01],
+        [1325, 1259, 12.59, 0.01],
+        [710, 263, 3.29, 0.0125],
+        [710, 618, 7.73, 0.0125],
+        [20000, 10000, 123.45, 123.45 / 10000],
+    ])('эквайринг при цене %d и акционной %d: %d ₽', async (base, seller, amount, rate) => {
+        const m = make();
+        m.product.price = { price: base, marketing_seller_price: seller };
+        m.product.acquiring = amount;
+        expect(await m.service.quote(m.product, m.info)).toMatchObject({ acquiringReferencePrice: seller, acquiringRate: rate });
+    });
+    it('при отсутствии цены продавца не выводит ставку из цены до скидок', async () => {
+        const m = make();
+        delete m.product.price.marketing_seller_price;
+        await expect(m.service.quote(m.product, m.info)).rejects.toThrow('эквайринга');
+    });
     it('возвращает обе ступени и расходы каждой схемы, без умножения на фасовку', async () => {
         const m = make();
         const result = await m.service.quote(m.product, m.info);
@@ -162,7 +180,7 @@ describe('Расходы Ozon для единого расчёта цены', ()
         await expect(m.service.quote(m.product, { ...m.info, sku: 'other' })).rejects.toThrow('Артикул');
         m.config.get.mockReturnValueOnce(0);
         await expect(m.service.quote(m.product, m.info)).rejects.toThrow('MIN_UNITS');
-        m.product.price.price = 0;
+        m.product.price.marketing_seller_price = 0;
         await expect(m.service.quote(m.product, m.info)).rejects.toThrow('положительной цены');
         m.product.acquiring = 0;
         expect((await m.service.quote(m.product, m.info)).acquiringRate).toBe(0);

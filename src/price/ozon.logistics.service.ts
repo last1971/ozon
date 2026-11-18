@@ -102,7 +102,7 @@ export class OzonLogisticsService {
         }
         const tariff = await this.tariffs.logistics(info.volumeWeight ?? product.volume_weight);
         const acquiringAmount = money(product.acquiring, 'эквайринг');
-        const acquiringReferencePrice = money(product.price.price, 'цена для эквайринга');
+        const acquiringReferencePrice = money(product.price.marketing_seller_price, 'цена продавца со скидками для эквайринга');
         if (acquiringReferencePrice <= 0 && acquiringAmount > 0)
             throw new PricingDataError('Нет положительной цены для ставки эквайринга');
         const commissions = product.commissions;
@@ -144,10 +144,20 @@ export class OzonLogisticsService {
             ...schemes,
             acquiringAmount,
             acquiringReferencePrice,
-            acquiringRate: acquiringReferencePrice > 0 ? acquiringAmount / acquiringReferencePrice : 0,
+            acquiringRate: acquiringRate(acquiringAmount, acquiringReferencePrice),
             tariffRevision: tariff.revision,
             historyFrom: history?.from ?? null,
             historyTo: history?.to ?? null,
         };
     }
+}
+
+/** Сумма из API округлена до копейки. Ставку в базисных пунктах используем, только если она даёт ту же сумму. */
+function acquiringRate(amount: number, price: number): number {
+    if (amount === 0) return 0;
+    const rate = amount / price;
+    const basisPoints = Math.round(rate * 10_000);
+    const chargedKopecks = Math.round(amount * 100);
+    const priceKopecks = Math.round(price * 100);
+    return Math.round(priceKopecks * basisPoints / 10_000) === chargedKopecks ? basisPoints / 10_000 : rate;
 }

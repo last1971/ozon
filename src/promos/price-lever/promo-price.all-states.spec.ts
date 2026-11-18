@@ -12,7 +12,9 @@ const make = () => {
         listAllOfferIds: jest.fn().mockResolvedValue(['1', '2']),
         getPrices: jest.fn().mockImplementation(async ({ offer_id }) => ({ items: offer_id.map(item) })),
     };
-    const service = new PromoPriceService(api as any, seller as any, products as any, { apply: jest.fn() } as any);
+    const service = new PromoPriceService(
+        api as any, seller as any, products as any, { apply: jest.fn() } as any, { enrichOne: jest.fn() } as any,
+    );
     return { service, api, seller, products };
 };
 describe('Состояния всего кабинета Ozon', () => {

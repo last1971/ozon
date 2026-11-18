@@ -19,6 +19,8 @@ export enum NotifyTopic {
 export type NotifyChannel = 'mail' | 'matrix';
 
 export interface NotifyMessage {
+    /** Постоянный ключ доставки для повторной отправки одной и той же квитанции. */
+    deliveryKey?: string;
     subject: string;
     /** Plain-текст: тело сообщения Matrix и письмо без шаблона. */
     text: string;

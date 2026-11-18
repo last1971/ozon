@@ -40,6 +40,9 @@ export interface SellerSlot {
 export interface PromoPriceState {
     offerId: string;
     productId: number;
+    /** Последняя подтверждённая базовая цена из журнала этого магазина. */
+    confirmedBase?: number;
+    autoActionEnabled?: boolean;
     oldPrice: number;
     price: number;
     minPrice: number;
@@ -54,6 +57,8 @@ export interface PromoPriceState {
      * Если задана — используется как пол вместо minPrice (Ozon API).
      */
     calcMinPrice?: number;
+    /** Снимок входов расчёта для продолжения сохранённой операции после рестарта. */
+    calculationKey?: string;
     /**
      * Нижняя граница мёртвой зоны P300: цена покупателю должна быть ≤ 300 или ≥ deadZoneFloor.
      * Задаётся, когда minPrice и calcMinPrice обеих ступеней разделены мёртвой зоной (300; P300].
@@ -63,7 +68,7 @@ export interface PromoPriceState {
 
 /** Шаг плана. from = null — товара там ещё нет (добавление). */
 export type PromoPriceStep =
-    | { kind: 'ozon-set'; actionId: number; title: string; from: number | null; to: number }
+    | { kind: 'ozon-set'; actionId: number; title: string; from: number | null; to: number; stock?: number }
     | { kind: 'ozon-remove'; actionId: number; title: string; from: number; reason: string }
     | { kind: 'percent'; actionId: number; sku: number; from: number | null; to: number };
 
@@ -98,8 +103,14 @@ export interface PromoStepResult {
     changed?: boolean;
 }
 
+export interface PromoReadback {
+    /** Итог повторного чтения цены и участия в акциях после отправки шагов. */
+    verification?: 'confirmed' | 'unchanged' | 'pending';
+    observedBuyerPrice?: number;
+}
+
 /** План, который применили: шаги в порядке выполнения с итогом каждого. */
-export interface PromoPriceApplyResult extends PromoPricePlan {
+export interface PromoPriceApplyResult extends PromoPricePlan, PromoReadback {
     results: PromoStepResult[];
     /** Все шаги прошли. */
     applied: boolean;
@@ -110,7 +121,7 @@ export interface PromoPriceApplyResult extends PromoPricePlan {
 }
 
 /** Товар в отчёте сверки «ниже минимума»: план без полного состояния (отчёт на сотни строк). */
-export interface PromoSweepItem {
+export interface PromoSweepItem extends PromoReadback {
     offerId: string;
     productId: number;
     price: number;
@@ -151,5 +162,6 @@ export interface PromoSweepReport {
     nothingToDo: number;
     /** При применении: товаров, где не все шаги прошли. */
     failed: number;
+    pendingConfirmation?: number;
     items: PromoSweepItem[];
 }

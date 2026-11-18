@@ -1,322 +1,144 @@
-import { Test, TestingModule } from '@nestjs/testing';
+import { Test } from '@nestjs/testing';
 import { PriceService } from '../price/price.service';
 import { ProductService } from '../product/product.service';
+import { LegacyPromoActionWriter } from './legacy-promo-action-writer';
 import { OzonPromosApi } from './promos.api';
 import { FitProductsStrategy, PromosService } from './promos.service';
-import { ActionProduct } from './promos.types';
 import { OzonSellerActionsApi } from './seller-actions.api';
 
-describe('PromosService — правила участия в акциях', () => {
+describe('PromosService', () => {
+    const listActions = jest.fn(),
+        listAll = jest.fn(),
+        index = jest.fn(),
+        counts = jest.fn(),
+        prices = jest.fn();
+    const activeSeller = jest.fn(),
+        sellerList = jest.fn(),
+        apply = jest.fn();
     let service: PromosService;
-    const listActions = jest.fn();
-    const listAll = jest.fn();
-    const update = jest.fn();
-    const deactivate = jest.fn();
-    const index = jest.fn();
-    const getFreeProductCount = jest.fn();
-    const getProductsPrices = jest.fn();
-    const activeAction = jest.fn();
-    const sellerListAll = jest.fn();
-    /** Наша seller-акция: товар productId с процентом percent. */
-    const sellerPercents = (entries: [number, number][]) => {
-        activeAction.mockResolvedValue({ id: 4376619, minPercent: 5 });
-        sellerListAll.mockResolvedValue(
-            entries.map(([productId, percent]) => ({ productId, sku: productId * 10, percent, isActive: true })),
-        );
-    };
-
-    const product = (id: number, over: Partial<ActionProduct> = {}): ActionProduct => ({
-        id,
-        price: 0,
-        actionPrice: 0,
-        maxActionPrice: 0,
-        stock: 0,
-        minStock: 0,
-        ...over,
-    });
-    const okUpdate = (over: any = {}) => ({ added: [], removed: [], unchanged: [], rejected: [], warnings: [], ...over });
-    const boosting = { id: 1, is_voucher_action: false } as any;
-    const voucher = { id: 2, is_voucher_action: true } as any;
-
     beforeEach(async () => {
-        [
-            listActions,
-            listAll,
-            update,
-            deactivate,
-            index,
-            getFreeProductCount,
-            getProductsPrices,
-            activeAction,
-            sellerListAll,
-        ].forEach((m) => m.mockReset());
-        update.mockResolvedValue(okUpdate());
-        deactivate.mockResolvedValue([]);
-        activeAction.mockResolvedValue(null); // по умолчанию нашей акции нет → пол = min_price
-        const module: TestingModule = await Test.createTestingModule({
+        jest.resetAllMocks();
+        listActions.mockResolvedValue([{ id: 1 }]);
+        activeSeller.mockResolvedValue(null);
+        apply.mockImplementation(async (_, intents) => ({
+            added: intents.filter((i) => i.mode === 'add').map((i) => i.productId),
+            removed: intents.filter((i) => i.mode !== 'add').map((i) => i.productId),
+            failed: [],
+        }));
+        const module = await Test.createTestingModule({
             providers: [
                 PromosService,
-                { provide: OzonPromosApi, useValue: { listActions, listAll, update, deactivate } },
-                { provide: OzonSellerActionsApi, useValue: { activeAction, listAll: sellerListAll } },
+                { provide: OzonPromosApi, useValue: { listActions, listAll } },
+                { provide: OzonSellerActionsApi, useValue: { activeAction: activeSeller, listAll: sellerList } },
                 { provide: PriceService, useValue: { index } },
-                { provide: ProductService, useValue: { getFreeProductCount, getProductsPrices } },
+                { provide: ProductService, useValue: { getProductsPrices: prices, getFreeProductCount: counts } },
+                { provide: LegacyPromoActionWriter, useValue: { apply } },
             ],
         }).compile();
         service = module.get(PromosService);
     });
-
-    describe('unfitProductsRemoval', () => {
-        const inAction = [
-            product(1, { actionPrice: 50, stock: 3 }), // цена акции ниже минимальной → снять
-            product(2, { actionPrice: 100 }), // в норме
-            product(3, { actionPrice: 150 }), // ниже минимальной → снять
-            product(4, { actionPrice: 100 }), // нет остатка → снять
-        ];
-        const prices = [
-            { id: 1, price: { min_price: 60 } },
-            { id: 2, price: { min_price: 90 } },
-            { id: 3, price: { min_price: 170 } },
-            { id: 4, price: { min_price: 90 } },
-        ] as any;
-        const counts = [1, 1, 1, 0].map((count, i) => ({ id: i + 1, count }));
-
-        it('бустинг/сток: снятие через update нашей минимальной ценой', async () => {
-            listActions.mockResolvedValue([boosting]);
-            listAll.mockResolvedValue(inAction);
-            getProductsPrices.mockResolvedValue(prices);
-            getFreeProductCount.mockResolvedValue(counts);
-            update.mockResolvedValue(okUpdate({ removed: [1, 3, 4] }));
-
-            expect(await service.unfitProductsRemoval(1)).toBe(3);
-            expect(listAll).toHaveBeenCalledWith('products', 1);
-            expect(update.mock.calls.flatMap(([, rows]) => rows)).toEqual([
-                { productId: 1, actionPrice: 60, stock: 3 },
-                { productId: 3, actionPrice: 170, stock: 0 },
-                { productId: 4, actionPrice: 90, stock: 0 },
-            ]);
-            expect(deactivate).not.toHaveBeenCalled();
-        });
-
-        it('наш процент поверх: пол = min_price / (1 − %) — товар на min_price снимается, цена снятия = пол', async () => {
-            listActions.mockResolvedValue([boosting]);
-            // 528757 живьём: эластичный 211 при min 211 и наших 5 % → покупателю 200
-            listAll.mockResolvedValue([product(2, { actionPrice: 211, stock: 1 }), product(5, { actionPrice: 211 })]);
-            getProductsPrices.mockResolvedValue([
-                { id: 2, price: { min_price: 211 } },
-                { id: 5, price: { min_price: 211 } },
-            ] as any);
-            getFreeProductCount.mockResolvedValue([
-                { id: 2, count: 1 },
-                { id: 5, count: 1 },
-            ]);
-            sellerPercents([[2, 5]]); // товар 5 в нашей акции не участвует → пол 211, остаётся
-            update.mockResolvedValue(okUpdate({ removed: [2] }));
-
-            expect(await service.unfitProductsRemoval(1)).toBe(1);
-            expect(update).toHaveBeenCalledWith(1, [{ productId: 2, actionPrice: 223, stock: 1 }]);
-            expect(sellerListAll).toHaveBeenCalledWith('list', 4376619);
-        });
-
-        it('Ozon отклонил снятие ценой (эластичный бустинг) — принудительно deactivate; не снятые — в failed', async () => {
-            listActions.mockResolvedValue([boosting]);
-            listAll.mockResolvedValue(inAction);
-            getProductsPrices.mockResolvedValue(prices);
-            getFreeProductCount.mockResolvedValue(counts);
-            const reason = 'DiscountPercent must be greater or equal than 45.0328, but actual is 10.4595';
-            update.mockResolvedValue(
-                okUpdate({
-                    removed: [4],
-                    rejected: [
-                        { productId: 1, reason },
-                        { productId: 3, reason },
-                    ],
-                }),
-            );
-            deactivate.mockResolvedValue([1]);
-
-            expect(await service.unfitProductsRemoval(1)).toBe(2);
-            expect(deactivate.mock.calls).toEqual([[1, [1]], [1, [3]]]);
-        });
-
-        it('снятие «уже стоит» (товара в акции нет) — снят, без принудительного deactivate', async () => {
-            listActions.mockResolvedValue([boosting]);
-            listAll.mockResolvedValue(inAction);
-            getProductsPrices.mockResolvedValue(prices);
-            getFreeProductCount.mockResolvedValue(counts);
-            update.mockResolvedValue(okUpdate({ removed: [1, 4], unchanged: [3] }));
-
-            expect(await service.unfitProductsRemoval(1)).toBe(3);
-            expect(deactivate).not.toHaveBeenCalled();
-        });
-
-        it('промокоды: снятие принудительно через deactivate', async () => {
-            listActions.mockResolvedValue([voucher]);
-            listAll.mockResolvedValue(inAction);
-            getProductsPrices.mockResolvedValue(prices);
-            getFreeProductCount.mockResolvedValue(counts);
-            deactivate.mockResolvedValue([1, 3, 4]);
-
-            expect(await service.unfitProductsRemoval(2)).toBe(3);
-            expect(deactivate.mock.calls).toEqual([[2, [1]], [2, [3]], [2, [4]]]);
-            expect(update).not.toHaveBeenCalled();
-        });
-
-        it('снимать нечего → в API не ходим', async () => {
-            listActions.mockResolvedValue([boosting]);
-            listAll.mockResolvedValue([product(2, { actionPrice: 100 })]);
-            getProductsPrices.mockResolvedValue([{ id: 2, price: { min_price: 90 } }]);
-            getFreeProductCount.mockResolvedValue([{ id: 2, count: 1 }]);
-
-            expect(await service.unfitProductsRemoval(1)).toBe(0);
-            expect(update).not.toHaveBeenCalled();
-        });
-
-        it('неизвестная акция → ошибка, а не тихий ноль', async () => {
-            listActions.mockResolvedValue([boosting]);
-            await expect(service.unfitProductsRemoval(777)).rejects.toThrow('777');
-        });
-
-        it('ошибка API пробрасывается', async () => {
-            listActions.mockResolvedValue([boosting]);
-            listAll.mockResolvedValue(inAction);
-            getProductsPrices.mockResolvedValue(prices);
-            getFreeProductCount.mockResolvedValue(counts);
-            update.mockRejectedValue(new Error('API Error'));
-            await expect(service.unfitProductsRemoval(1)).rejects.toThrow('API Error');
-        });
+    const product = (id: number, actionPrice: number, maxActionPrice = 1000) => ({
+        id,
+        actionPrice,
+        maxActionPrice,
+        stock: id,
     });
+    const price = (id: number, min_price: number) => ({ id, price: { min_price } });
+    const stock = (id: number, count: number) => ({ id, count });
+    const percent = (entries: [number, number][]) => {
+        activeSeller.mockResolvedValue({ id: 42, minPercent: 5 });
+        sellerList.mockResolvedValue(entries.map(([productId, percent]) => ({ productId, percent, isActive: true })));
+    };
 
-    describe('fitProductsAddition', () => {
-        const candidates = [
-            product(1, { maxActionPrice: 50, actionPrice: 45, stock: 10 }),
-            product(2, { maxActionPrice: 100, actionPrice: 85, stock: 20 }),
-            product(3, { maxActionPrice: 150, actionPrice: 100, stock: 30 }), // мин. цена выше предельной → мимо
-        ];
-        const prices = [
-            { id: 1, price: { min_price: 40 } },
-            { id: 2, price: { min_price: 90 } },
-            { id: 3, price: { min_price: 160 } },
-        ] as any;
-        const counts = [1, 2, 3].map((id) => ({ id, count: 1 }));
-
-        beforeEach(() => {
-            listAll.mockResolvedValue(candidates);
-            getProductsPrices.mockResolvedValue(prices);
-            getFreeProductCount.mockResolvedValue(counts);
-        });
-
-        it.each([
-            [FitProductsStrategy.MAX_ACTION_PRICE, [50, 100]],
-            [FitProductsStrategy.MAX_FROM_ACTION_PRICE_AND_MIN_PRICE, [45, 90]],
-            [FitProductsStrategy.MIN_FROM_MIN_PRICE, [40, 90]],
-        ])('стратегия %s → цены %j', async (strategy, expected) => {
-            expect(await service.fitProductsAddition(1, strategy)).toBe(2);
-            expect(listAll).toHaveBeenCalledWith('candidates', 1);
-            expect(update.mock.calls.flatMap(([, rows]) => rows)).toEqual([
-                { productId: 1, actionPrice: expected[0], stock: 10 },
-                { productId: 2, actionPrice: expected[1], stock: 20 },
-            ]);
-        });
-
-        it('с нашим процентом лимит акции сравнивается с полом, цена по стратегии — от пола', async () => {
-            sellerPercents([
-                [1, 20],
-                [2, 5],
-            ]); // пол 1: ceil(40/0.8)=50 — ровно лимит, проходит; пол 2: ceil(90/0.95)=95 ≤ 100
-            expect(await service.fitProductsAddition(1, FitProductsStrategy.MIN_FROM_MIN_PRICE)).toBe(2);
-            expect(update.mock.calls.flatMap(([, rows]) => rows)).toEqual([
-                { productId: 1, actionPrice: 50, stock: 10 },
-                { productId: 2, actionPrice: 95, stock: 20 },
-            ]);
-        });
-
-        it('без остатка не добавляем', async () => {
-            getFreeProductCount.mockResolvedValue([
-                { id: 1, count: 0 },
-                { id: 2, count: 5 },
-                { id: 3, count: 0 },
-            ]);
-            expect(await service.fitProductsAddition(1, FitProductsStrategy.MAX_ACTION_PRICE)).toBe(1);
-            expect(update).toHaveBeenCalledWith(1, [{ productId: 2, actionPrice: 100, stock: 20 }]);
-        });
+    it('заниженную цену поднимает до пола с процентом, нулевой остаток снимает и не принимает неизвестный остаток за ноль', async () => {
+        listAll.mockResolvedValue([product(1, 90), product(2, 105), product(3, 103), product(4, 105)]);
+        prices.mockResolvedValue([1, 2, 3, 4].map((id) => price(id, 100)));
+        counts.mockResolvedValue([stock(1, 1), stock(2, 0), stock(3, 2)]);
+        percent([[1, 5]]);
+        expect(await service.unfitProductsRemoval(1)).toBe(2);
+        expect(apply).toHaveBeenCalledWith(
+            1,
+            [
+                { mode: 'repair', productId: 1, actionPrice: 106, stock: 1 },
+                { mode: 'remove', productId: 2, actionPrice: 100, stock: 2 },
+            ],
+            expect.any(Function),
+        );
+        expect(sellerList).toHaveBeenCalledWith('list', 42);
     });
-
-    describe('addRemoveProductToActions / update.promos', () => {
-        const prices = [
-            { product_id: 1, min_price: 100, fboCount: 5, fbsCount: 3 },
-            { product_id: 2, min_price: 200, fboCount: 2, fbsCount: 1 },
-            { product_id: 3, min_price: 300, fboCount: 0, fbsCount: 4 },
-        ];
-
-        it('участник с ценой акции ≤ минимальной снимается, кандидат с лимитом ≥ минимальной добавляется', async () => {
-            listActions.mockResolvedValue([boosting, { id: 2, is_voucher_action: false }]);
-            index.mockResolvedValue({ data: prices });
-            listAll
-                .mockResolvedValueOnce([
-                    product(1, { actionPrice: 90, maxActionPrice: 100, stock: 5 }),
-                    product(2, { actionPrice: 220, maxActionPrice: 250, stock: 3 }),
-                ])
-                .mockResolvedValueOnce([
-                    product(2, { maxActionPrice: 250, stock: 3 }),
-                    product(3, { maxActionPrice: 350, stock: 4 }),
-                ])
-                .mockResolvedValueOnce([])
-                .mockResolvedValueOnce([]);
-            update
-                .mockResolvedValueOnce(okUpdate({ removed: [1] })) // снятие в акции 1
-                .mockResolvedValueOnce(okUpdate({ added: [2] }))
-                .mockResolvedValueOnce(okUpdate({ rejected: [{ productId: 3, reason: 'x' }] })); // отказ только третьего товара
-
-            const result = await service.addRemoveProductToActions(['SKU1', 'SKU2', 'SKU3']);
-
-            expect(update).toHaveBeenNthCalledWith(1, 1, [{ productId: 1, actionPrice: 100, stock: 5 }]);
-            expect(update).toHaveBeenNthCalledWith(2, 1, [{ productId: 2, actionPrice: 250, stock: 3 }]);
-            expect(update).toHaveBeenNthCalledWith(3, 1, [{ productId: 3, actionPrice: 350, stock: 4 }]);
-            expect(update).toHaveBeenCalledTimes(3);
-            expect(result).toEqual([
-                {
-                    action_id: 1,
-                    removed: { success_ids: [1], failed: [] },
-                    added: { success_ids: [2], failed: [{ productId: 3, reason: 'x' }] },
-                },
-                { action_id: 2, removed: { success_ids: [], failed: [] }, added: { success_ids: [], failed: [] } },
-            ]);
+    it('неизвестная акция и ошибка транспорта доступны вызывающей стороне', async () => {
+        await expect(service.unfitProductsRemoval(847)).rejects.toThrow('847');
+        listAll.mockRejectedValue(new Error('API Error'));
+        await expect(service.unfitProductsRemoval(1)).rejects.toThrow('API Error');
+    });
+    it.each([
+        [FitProductsStrategy.MAX_ACTION_PRICE, [50, 100]],
+        [FitProductsStrategy.MAX_FROM_ACTION_PRICE_AND_MIN_PRICE, [45, 90]],
+        [FitProductsStrategy.MIN_FROM_MIN_PRICE, [40, 90]],
+    ])('отбирает кандидатов по остатку и лимиту, сохраняет цены стратегии %s', async (strategy, expected) => {
+        listAll.mockResolvedValue([product(1, 45, 50), product(2, 85, 100), product(3, 100, 150), product(4, 85, 100)]);
+        prices.mockResolvedValue([price(1, 40), price(2, 90), price(3, 160), price(4, 90)]);
+        counts.mockResolvedValue([stock(1, 1), stock(2, 1), stock(3, 1), stock(4, 0)]);
+        expect(await service.fitProductsAddition(1, strategy as FitProductsStrategy)).toBe(2);
+        expect(apply.mock.calls[0][1]).toEqual(
+            (expected as number[]).map((value, i) => ({
+                productId: i + 1,
+                mode: 'add',
+                actionPrice: value,
+                stock: i + 1,
+            })),
+        );
+    });
+    it('не считает неподтверждённый ответ успешным для ручки с числовым результатом', async () => {
+        listAll.mockResolvedValue([product(2, 85, 100)]);
+        prices.mockResolvedValue([price(2, 90)]);
+        counts.mockResolvedValue([stock(2, 1)]);
+        apply.mockResolvedValue({ added: [], removed: [], failed: [{ productId: 2, reason: 'Ожидаем Ozon' }] });
+        await expect(service.fitProductsAddition(1, FitProductsStrategy.MIN_FROM_MIN_PRICE)).rejects.toThrow(
+            '2: Ожидаем Ozon',
+        );
+    });
+    it('по событию берёт минимум с процентом и возвращает отдельно подтверждённые изменения и отказы', async () => {
+        index.mockResolvedValue({
+            data: [
+                { offer_id: '1', product_id: 1, min_price: 100, fboCount: 2, fbsCount: 1 },
+                { offer_id: '2', product_id: 2, min_price: 200, fboCount: 2, fbsCount: 1 },
+                { offer_id: '3', product_id: 3, min_price: 300, fboCount: 0, fbsCount: 4 },
+                { offer_id: '4', product_id: 4, min_price: 0, fboCount: 0, fbsCount: 1 },
+            ],
         });
-
-        it('с нашим процентом: участник на min_price снимается по полу, кандидат сравнивается с полом', async () => {
-            listActions.mockResolvedValue([boosting]);
-            index.mockResolvedValue({ data: prices });
-            sellerPercents([
-                [1, 5],
-                [3, 5],
-            ]); // полы: 1 → 106, 3 → 316; товар 2 без процента → 200
-            listAll
-                .mockResolvedValueOnce([product(1, { actionPrice: 100, maxActionPrice: 120, stock: 5 })])
-                .mockResolvedValueOnce([
-                    product(2, { maxActionPrice: 200, stock: 3 }),
-                    product(3, { maxActionPrice: 310, stock: 4 }), // лимит 310 < пол 316 → мимо
-                ]);
-            update.mockResolvedValueOnce(okUpdate({ removed: [1] })).mockResolvedValueOnce(okUpdate({ added: [2] }));
-
-            await service.addRemoveProductToActions(['SKU1', 'SKU2', 'SKU3']);
-
-            expect(update).toHaveBeenNthCalledWith(1, 1, [{ productId: 1, actionPrice: 106, stock: 5 }]);
-            expect(update).toHaveBeenNthCalledWith(2, 1, [{ productId: 2, actionPrice: 200, stock: 3 }]);
-            expect(sellerListAll).toHaveBeenCalledTimes(1); // участники нашей акции читаются один раз на проход
+        percent([
+            [1, 5],
+            [3, 5],
+        ]);
+        listAll
+            .mockResolvedValueOnce([product(1, 99)])
+            .mockResolvedValueOnce([product(2, 0, 220), product(3, 0, 315), product(4, 0, 15)]);
+        apply.mockResolvedValue({
+            added: [],
+            removed: [1],
+            failed: [{ productId: 2, reason: 'ожидает подтверждения' }],
         });
-
-        it('цены запрашиваются чанками по chunkLimit', async () => {
-            listActions.mockResolvedValue([]);
-            index.mockResolvedValue({ data: [] });
-            await service.addRemoveProductToActions(['a', 'b', 'c'], 2);
-            expect(index).toHaveBeenCalledTimes(2);
-            expect(index.mock.calls[0][0]).toMatchObject({ offer_id: ['a', 'b'], limit: 2 });
-        });
-
-        it('событие update.promos → пересмотр по полученным артикулам', async () => {
-            const spy = jest.spyOn(service, 'addRemoveProductToActions').mockResolvedValue([]);
-            await service.handleUpdatePromos(['sku1']);
-            expect(spy).toHaveBeenCalledWith(['sku1']);
-        });
+        const result = await service.addRemoveProductToActions(['1', '2', '3', '4']);
+        expect(apply.mock.calls[0][1]).toEqual([
+            { mode: 'repair', productId: 1, actionPrice: 106, stock: 1 },
+            { mode: 'add', productId: 2, actionPrice: 220, stock: 3 },
+        ]);
+        expect(result).toEqual([
+            {
+                action_id: 1,
+                removed: { success_ids: [1], failed: [] },
+                added: { success_ids: [], failed: [{ productId: 2, reason: 'ожидает подтверждения' }] },
+            },
+        ]);
+    });
+    it('цены запрашиваются страницами и массовое событие покрывает запрошенные SKU', async () => {
+        listActions.mockResolvedValue([]);
+        index.mockResolvedValue({ data: [] });
+        await service.addRemoveProductToActions(['a', 'b', 'c'], 2);
+        expect(index.mock.calls.map(([q]) => q.offer_id)).toEqual([['a', 'b'], ['c']]);
+        const call = jest.spyOn(service, 'addRemoveProductToActions').mockResolvedValue([]);
+        await service.handleUpdatePromos(['a']);
+        expect(call).toHaveBeenCalledWith(['a']);
     });
 });

@@ -59,7 +59,8 @@ export class OzonSellerActionsApi {
             limit: OzonSellerActionsApi.PAGE_LIMIT,
             offset: 0,
         });
-        return (res?.actions ?? []).map(OzonSellerActionsApi.toAction);
+        if (!Array.isArray(res?.actions)) throw new Error(res?.error?.message ?? 'Ozon не вернул список акций продавца');
+        return res.actions.map(OzonSellerActionsApi.toAction);
     }
 
     /** Текущая действующая акция (ACTIVE и включена) или null — тогда нашего процента ни у кого нет. */
@@ -93,8 +94,9 @@ export class OzonSellerActionsApi {
         const body: Record<string, unknown> = { action_id: actionId, limit: OzonSellerActionsApi.PAGE_LIMIT };
         if (cursor) body.cursor = cursor;
         const res: ApiProductsPage = await this.ozon.method(`/v1/seller-actions/products/${kind}`, body);
+        if (!Array.isArray(res?.products)) throw new Error('Ozon не вернул список товаров акции продавца');
         return {
-            products: (res?.products ?? []).map(OzonSellerActionsApi.toProduct),
+            products: res.products.map(OzonSellerActionsApi.toProduct),
             hasNext: Boolean(res?.has_next),
             cursor: res?.cursor ?? '',
         };

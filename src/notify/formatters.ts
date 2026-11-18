@@ -136,14 +136,14 @@ export function wbMinPricesMessage(report: {
 
 /** Сверка акций Ozon с применением: что поменяли и что не прошло. Тихо — без пуша. */
 export function ozonPromoSweepMessage(report: {
-    items: { offerId: string; applied?: boolean; steps: unknown[]; results?: { status: string; reason?: string }[] }[];
+    items: { offerId: string; applied?: boolean; verification?: 'confirmed' | 'unchanged' | 'pending'; steps: unknown[]; results?: { status: string; reason?: string }[] }[];
     keptInOzon: number;
     removedFromOzon: number;
     percentChanged: number;
     nothingToDo: number;
 }): NotifyMessage {
     const tried = report.items.filter((i) => i.steps.length && i.applied !== undefined);
-    const ok = tried.filter((i) => i.applied);
+    const ok = tried.filter((i) => i.applied && i.verification === 'confirmed');
     const failed = tried.filter((i) => !i.applied);
     const reason = (i: (typeof failed)[number]) => i.results?.find((r) => r.status !== 'ok')?.reason ?? 'не прошло';
     const parts = [

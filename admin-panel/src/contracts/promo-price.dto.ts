@@ -81,14 +81,19 @@ export interface PromoStepResult {
 }
 
 /** План, который применили: шаги в порядке выполнения с итогом каждого. */
-export interface PromoPriceApplyResult extends PromoPricePlan {
+interface PromoReadback {
+    verification?: 'confirmed' | 'unchanged' | 'pending';
+    observedBuyerPrice?: number;
+}
+
+export interface PromoPriceApplyResult extends PromoPricePlan, PromoReadback {
     results: PromoStepResult[];
     /** Все шаги прошли. */
     applied: boolean;
 }
 
 /** Товар в отчёте сверки «ниже минимума»: план без полного состояния (отчёт на сотни строк). */
-export interface PromoSweepItem {
+export interface PromoSweepItem extends PromoReadback {
     offerId: string;
     productId: number;
     price: number;
@@ -152,5 +157,6 @@ export interface PromoSweepReport {
     nothingToDo: number;
     /** При применении: товаров, где не все шаги прошли. */
     failed: number;
+    pendingConfirmation?: number;
     items: PromoSweepItem[];
 }

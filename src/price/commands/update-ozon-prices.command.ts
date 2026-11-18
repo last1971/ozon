@@ -22,6 +22,7 @@ export class UpdateOzonPricesCommand implements ICommandAsync<IGoodsProcessingCo
             price: String(p.price),
             old_price: String(p.old_price),
             currency_code: 'RUB' as const,
+            ...(p.ozon ? { ozonCalculated: true } : {}),
         }));
 
         await this.priceService.updatePrices(updatePrices);
