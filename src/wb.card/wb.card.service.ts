@@ -264,7 +264,12 @@ export class WbCardService extends ICountUpdateable implements OnModuleInit, IPr
                 amount: good[1],
             }));
         if (stocks && stocks.length) {
-            await this.api.method('/api/v3/stocks/' + this.warehouseId, 'put', { stocks });
+            const response = await this.api.method('/api/v3/stocks/' + this.warehouseId, 'put', { stocks });
+            if (response?.status === 'NotOk' || response?.error) {
+                const reason = response.error?.message || response.error?.service_message || response.errorText;
+                this.logger.warn(`Wildberries не принял остатки: ${reason || 'нет подтверждения'}`);
+                return 0;
+            }
             return stocks.length;
         }
         return 0;

@@ -34,7 +34,7 @@ import { RateLimit } from '../helpers/decorators/rate-limit.decorator';
 @Injectable()
 export class ProductService extends ICountUpdateable implements OnModuleInit, IProductable {
     private readonly logger = new Logger(ProductService.name);
-    private warehouseId: number;
+    private warehouseId: ProductCodeStockDto['warehouse_id'];
     constructor(
         private ozonApiService: OzonApiService,
         private configService: ConfigService,
@@ -44,7 +44,7 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
     }
     async onModuleInit(): Promise<void> {
         const ozon = await this.vaultService.get('ozon');
-        this.warehouseId = ozon.STORE as number;
+        this.warehouseId = ozon.STORE as number | string;
     }
     /** Одна страница каталога (/v3/product/list). Весь каталог — listAllOfferIds. */
     async list(

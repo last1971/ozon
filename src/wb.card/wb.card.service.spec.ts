@@ -93,7 +93,10 @@ describe('WbCardService', () => {
         expect(method.mock.calls[1]).toEqual(['/api/v3/stocks/undefined', 'post', { chrtIds: [1551826536] }]);
     });
 
-    it('updateGoodCounts', async () => {
+    it.each([
+        { response: '', updated: 1 },
+        { response: { status: 'NotOk', error: { status: 409, message: 'Конфликт остатков' } }, updated: 0 },
+    ])('updateGoodCounts: количество обновлённых SKU — $updated', async ({ response, updated }) => {
         method
             .mockResolvedValueOnce({
                 cards: [
@@ -113,32 +116,7 @@ describe('WbCardService', () => {
             })
             .mockResolvedValueOnce({ stocks: [{ chrtId: 1551826536, amount: 10 }] });
         await service.getGoodIds('');
-        method.mockResolvedValueOnce({
-            data: [
-                {
-                    nmID: 1,
-                    vendorCode: '1',
-                    sizes: [
-                        {
-                            chrtID: 1551826536,
-                            skus: ['1-1'],
-                        },
-                    ],
-                    photos: [{ big: 'test.jpg' }],
-                },
-                {
-                    nmID: 2,
-                    vendorCode: '2',
-                    sizes: [
-                        {
-                            chrtID: 1551826537,
-                            skus: ['1-2'],
-                        },
-                    ],
-                    photos: [{ big: 'test.jpg' }],
-                },
-            ],
-        });
+        method.mockResolvedValueOnce(response);
         const res = await service.updateGoodCounts(
             new Map([
                 ['1', 1],
@@ -146,7 +124,7 @@ describe('WbCardService', () => {
                 ['3', 3],
             ]),
         );
-        expect(res).toEqual(1);
+        expect(res).toEqual(updated);
         expect(method.mock.calls).toHaveLength(3);
         expect(method.mock.calls[2]).toEqual([
             '/api/v3/stocks/undefined',

@@ -66,7 +66,12 @@ export class OzonStockWriter {
             for (const [key, entry] of entries) {
                 const rows = response?.result?.filter((r) => r.offer_id === entry.stock.offer_id) ?? [];
                 const row =
-                    rows.find((r) => r.warehouse_id !== undefined && r.warehouse_id === entry.stock.warehouse_id) ??
+                    rows.find(
+                        (r) =>
+                            r.warehouse_id != null &&
+                            entry.stock.warehouse_id != null &&
+                            String(r.warehouse_id) === String(entry.stock.warehouse_id),
+                    ) ??
                     (rows.length === 1 &&
                     rows[0].warehouse_id === undefined &&
                     entries.filter(([, other]) => other.stock.offer_id === entry.stock.offer_id).length === 1

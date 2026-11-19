@@ -9,11 +9,11 @@ export class ProductCodeDto implements IOfferIdable {
 
 export class ProductCodeStockDto extends ProductCodeDto {
     stock: number;
-    warehouse_id?: number;
+    warehouse_id?: number | string;
 }
 
 export class ProductCodeUpdateStockDto extends ProductCodeDto {
-    warehouse_id?: number;
+    warehouse_id?: number | string;
     updated: boolean;
     errors: (string | { code?: string; message?: string })[];
     superseded?: boolean;

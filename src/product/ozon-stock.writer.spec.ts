@@ -68,12 +68,12 @@ describe('Очередь остатков Ozon', () => {
 describe('Остатки Ozon: ответ по складам и изменения во время запроса', () => {
     beforeEach(() => jest.useFakeTimers());
     afterEach(() => jest.useRealTimers());
-    it('ответ другого склада не засчитывается как успех', async () => {
+    it.each([1, '1'])('ответ засчитывается только для нужного склада (%p)', async (warehouseId) => {
         const send = jest
             .fn()
             .mockResolvedValue({ result: [{ offer_id: 'a', warehouse_id: 1, updated: true, errors: [] }] });
         const result = new OzonStockWriter(send).update([
-            { offer_id: 'a', warehouse_id: 1, stock: 2 },
+            { offer_id: 'a', warehouse_id: warehouseId, stock: 2 },
             { offer_id: 'a', warehouse_id: 2, stock: 3 },
         ]);
         await jest.advanceTimersByTimeAsync(0);
