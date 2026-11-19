@@ -2,7 +2,7 @@ import { Inject, Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
 import { FirebirdPool, FirebirdTransaction, ISOLATION_READ_COMMITTED } from 'ts-firebird';
 import { FIREBIRD } from '../../firebird/firebird.module';
-import { readBlob } from '../../firebird/read-blob';
+import { chunk } from 'lodash';
 import type { PromoPriceApplyResult, PromoPriceState } from './promo-price.types';
 
 export interface TransitionClaim<T> {
@@ -38,6 +38,13 @@ export interface TransitionNotice {
 }
 
 type Stream = 'PRICE_STEP' | 'PROMO_NOTICE';
+const OFFER_BATCH_SIZE = 100;
+const PAYLOAD_PART_SIZE = 4096;
+
+// Firebird возвращает текст напрямую, без сегментного чтения BLOB драйвером.
+const payloadPart = (start: '1' | 'CAST(? AS INTEGER)') =>
+    `CAST(SUBSTRING(PAYLOAD FROM ${start} FOR ${PAYLOAD_PART_SIZE}) AS VARCHAR(${PAYLOAD_PART_SIZE})) AS PART`;
+
 const scope = "SERVICE = 'OZON' AND KIND = ? AND STATE = 'pending'";
 
 /** Одна незавершённая запись на артикул в базе конкретного магазина.
@@ -62,8 +69,7 @@ export class OzonTransitionJournal {
         if (!unique.length) return new Map();
         return this.transaction(async tx => {
             const versions = new Map<string, string>();
-            for (let i = 0; i < unique.length; i += 500) {
-                const batch = unique.slice(i, i + 500);
+            for (const batch of chunk(unique, OFFER_BATCH_SIZE)) {
                 const rows = await tx.query(
                     `SELECT EXT_ID, POSTING FROM MP_EVENT WHERE ${scope} AND EXT_ID IN (${batch.map(() => '?').join(', ')})`,
                     ['PRICE_STEP', ...batch], false,
@@ -79,13 +85,12 @@ export class OzonTransitionJournal {
         if (!ids.length) return new Map();
         return this.transaction(async tx => {
             const receipts = new Map<string, OzonBaseReceipt>();
-            for (let i = 0; i < ids.length; i += 500) {
-                const batch = ids.slice(i, i + 500);
+            for (const batch of chunk(ids, OFFER_BATCH_SIZE)) {
                 const rows = await tx.query(
-                    `SELECT EXT_ID, PAYLOAD FROM MP_EVENT WHERE SERVICE = 'OZON' AND KIND = 'PRICE_BASE' AND STATE = 'confirmed'
+                    `SELECT EXT_ID, CAST(PAYLOAD AS VARCHAR(4096)) AS PAYLOAD_TEXT FROM MP_EVENT WHERE SERVICE = 'OZON' AND KIND = 'PRICE_BASE' AND STATE = 'confirmed'
                      AND EXT_ID IN (${batch.map(() => '?').join(', ')})`, batch, false);
                 for (const row of rows) {
-                    const receipt = JSON.parse(await readBlob(row.PAYLOAD, (tx as any).transaction));
+                    const receipt = JSON.parse(row.PAYLOAD_TEXT);
                     receipts.set(String(row.EXT_ID), receipt);
                 }
             }
@@ -173,12 +178,21 @@ export class OzonTransitionJournal {
         return this.transaction(async tx => {
             const filter = offerId === undefined ? '' : ' AND EXT_ID = ?';
             const rows = await tx.query(
-                `SELECT EXT_ID, POSTING, PAYLOAD FROM MP_EVENT WHERE ${scope} AND HANDLED_AT IS NULL${filter}`,
+                `SELECT EXT_ID, POSTING, CHAR_LENGTH(PAYLOAD) AS PAYLOAD_LENGTH, ${payloadPart('1')} FROM MP_EVENT WHERE ${scope} AND HANDLED_AT IS NULL${filter}`,
                 offerId === undefined ? [stream] : [stream, offerId], false,
             );
             const result = new Map<string, TransitionClaim<T>>();
             for (const row of rows) {
-                const raw = await readBlob(row.PAYLOAD, (tx as any).transaction);
+                let raw = row.PART;
+                for (let start = PAYLOAD_PART_SIZE + 1; start <= row.PAYLOAD_LENGTH; start += PAYLOAD_PART_SIZE) {
+                    const [next] = await tx.query(
+                        `SELECT ${payloadPart('CAST(? AS INTEGER)')} FROM MP_EVENT
+                         WHERE ${scope} AND EXT_ID = ? AND POSTING = ? AND HANDLED_AT IS NULL`,
+                        [start, stream, row.EXT_ID, row.POSTING], false,
+                    );
+                    if (!next) throw new Error(`Квитанция Ozon для ${row.EXT_ID} изменилась во время чтения`);
+                    raw += next.PART;
+                }
                 const claim: TransitionClaim<T> = JSON.parse(raw);
                 if (!claim || !claim.token || claim.token !== row.POSTING || !claim.createdAt || !('payload' in claim)) {
                     throw new Error(`Повреждена квитанция Ozon для ${row.EXT_ID}`);

@@ -1,4 +1,3 @@
-import { EventEmitter } from 'events';
 import { attachOzonBaseReceipts, OzonTransitionJournal } from './ozon-transition-journal';
 
 function database() {
@@ -17,10 +16,7 @@ function database() {
                         return [...draft].flatMap(([rowKey, row]) => {
                             const [type, offer] = JSON.parse(rowKey);
                             if (type !== 'PRICE_BASE' || !args.includes(offer)) return [];
-                            return [{ EXT_ID: offer, PAYLOAD: (_tx, cb) => {
-                                const stream = new EventEmitter(); cb(null, null, stream);
-                                stream.emit('data', Buffer.from(row.PAYLOAD)); stream.emit('end');
-                            }}];
+                            return [{ EXT_ID: offer, PAYLOAD_TEXT: row.PAYLOAD }];
                         });
                     }
                     if (sql.includes('EXT_ID IN (')) {
@@ -29,6 +25,12 @@ function database() {
                             return type === kind && args.slice(1).includes(offer) ? [{ EXT_ID: offer, POSTING: row.POSTING }] : [];
                         });
                     }
+                    if (sql.includes('SUBSTRING(PAYLOAD FROM CAST(?')) {
+                        const [start, stream, offer, token] = args;
+                        const row = draft.get(key(stream, offer));
+                        if (!row || row.POSTING !== token || row.HANDLED_AT) return [];
+                        return [{ PART: [...row.PAYLOAD].slice(start - 1, start - 1 + 4096).join('') }];
+                    }
                     if (sql.includes('WITH LOCK')) {
                         const row = draft.get(key(kind, id));
                         return row ? [row] : [];
@@ -36,13 +38,8 @@ function database() {
                     return [...draft].flatMap(([rowKey, row]) => {
                         const [type, offer] = JSON.parse(rowKey);
                         if (type !== kind || row.HANDLED_AT || (id !== undefined && offer !== id)) return [];
-                        const blob = (_tx, fn) => {
-                            const stream = new EventEmitter();
-                            fn(null, null, stream);
-                            stream.emit('data', Buffer.from(row.PAYLOAD));
-                            stream.emit('end');
-                        };
-                        return [{ EXT_ID: offer, ...row, PAYLOAD: blob }];
+                        const chars = [...row.PAYLOAD];
+                        return [{ EXT_ID: offer, POSTING: row.POSTING, PAYLOAD_LENGTH: chars.length, PART: chars.slice(0, 4096).join('') }];
                     });
                 },
                 execute: async (sql: string, args) => {
@@ -135,4 +132,23 @@ it('сохраняет подтверждение базовой цены до �
     const version = (await journal.versions([offer])).get(offer);
     expect(await journal.claim(offer, {phase:'second import'}, undefined, version, null)).toBeTruthy();
     expect((await journal.baseReceipts([offer])).size).toBe(0);
+});
+
+it('читает обе выборки по 100 уникальных артикулов и обрабатывает остаток', async () => {
+    const pool = database();
+    const journal = new OzonTransitionJournal(pool as any);
+    const offers = Array.from({ length: 205 }, (_, i) => String(i));
+    const receipt = { productId: 1, price: 300, minPrice: 200, oldPrice: 400 };
+    const step = await journal.claim('204', {}, 'PRICE_STEP', null, receipt);
+    pool.calls.length = 0;
+    expect((await journal.versions([...offers, '204'])).get('204')).toBe(step.token);
+    expect((await journal.baseReceipts([...offers, '204'])).get('204')).toEqual(receipt);
+    expect(pool.calls.map(sql => sql.split('EXT_ID IN (')[1].match(/\?/g).length)).toEqual([100, 100, 5, 100, 100, 5]);
+});
+
+it('читает длинную квитанцию полностью, включая кириллицу и многобайтные символы', async () => {
+    const journal = new OzonTransitionJournal(database() as any);
+    const notice = { notes: 'Цена подтверждена 🔔 '.repeat(600) };
+    const claim = await journal.claim('569740', notice, 'PROMO_NOTICE');
+    expect((await journal.outstanding('PROMO_NOTICE')).get('569740')).toEqual(claim);
 });
