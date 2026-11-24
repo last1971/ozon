@@ -1,3 +1,4 @@
+import { verifySweepChanges } from './verify-sweep-changes';
 import { Injectable } from '@nestjs/common';
 import { priceUpdateQueue } from '../../../helpers/price/price-update.queue';
 import { IJobCommand } from '../../../interfaces/i.job.context';
@@ -27,27 +28,31 @@ export class ApplySweepCommand implements IJobCommand<IPromoSweepContext> {
         context.results = [];
         context.progress.total = plans.length;
         context.progress.done = 0;
-        for (const plan of plans) {
-            if (context.stopChain) break;
-            let res = await this.applier.apply(plan, {
-                snapshot: context.pricingSnapshots?.get(plan.offerId),
-                priority: 'background',
-                onWaiting: (waiting) => {
-                    context.progress.counters.waiting = Number(waiting);
-                },
-                assertCurrent: async () => {
-                    await context.assertInputsCurrent?.(plan.offerId);
-                    if (context.stopChain) throw new Error('Задача остановлена');
-                },
-            });
+        const optionsFor = (plan: PromoPricePlan) => ({
+            shouldStop: () => Boolean(context.stopChain),
+            notify: true,
+            snapshot: context.pricingSnapshots?.get(plan.offerId),
+            priority: 'background' as const,
+            onWaiting: (waiting: boolean) => {
+                context.progress.counters.waiting = Number(waiting);
+            },
+            assertCurrent: async () => {
+                await context.assertInputsCurrent?.(plan.offerId);
+                if (context.stopChain) throw new Error('Задача остановлена');
+            },
+        });
+        if (context.stopChain || !plans.length) return context;
+        const results = await this.applier.applyBatch(plans, optionsFor);
+        for (let res of results) {
             if (res.stale && !res.attempted) {
                 res = await this.retryStale(res, goal, context);
             }
             context.results.push(res);
             context.progress.done++;
-            const key = res.applied ? 'appliedOk' : 'appliedFailed';
+            const key = res.verification === 'pending' ? 'pendingConfirmation' : res.applied ? 'appliedOk' : 'appliedFailed';
             context.progress.counters[key] = (context.progress.counters[key] ?? 0) + 1;
         }
+        await verifySweepChanges(context.results, this.priceService);
         return context;
     }
 
@@ -145,6 +150,7 @@ export class ApplySweepCommand implements IJobCommand<IPromoSweepContext> {
 
         // Одна попытка с новым снимком
         const retryRes = await this.applier.apply(freshPlan, {
+            notify: true,
             snapshot,
             priority: 'background',
             onWaiting: (waiting) => {

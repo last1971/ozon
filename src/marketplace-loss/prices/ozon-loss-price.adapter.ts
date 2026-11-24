@@ -1,3 +1,5 @@
+import { observedOzonBase, resolveOzonBaseTarget } from '../../helpers/price/ozon-base-target';
+import type { PromoPriceState } from '../../promos/price-lever/promo-price.types';
 import { setJobActivity } from '../../job/job.execution';
 import { PricingSnapshot } from '../../helpers/price/price-update.queue';
 import { Injectable } from '@nestjs/common';
@@ -53,7 +55,11 @@ export class OzonLossPriceAdapter implements LossPriceAdapter {
     }
     matches(target: UpdatePriceDto, actual: unknown) {
         // /v5 возвращает и цену, установленную акцией. Повтор прихода не должен сбрасывать её к normal.
-        return ozonPricesMatch(target, actual, 0) || ozonPromoPricesMatch(target, actual);
+        const state = (actual as { promoState?: PromoPriceState } | undefined)?.promoState;
+        if (!state || state.offerId !== target.offer_id) return false;
+        const effective = resolveOzonBaseTarget(target, state);
+        if (observedOzonBase(state) === undefined) return ozonPromoPricesMatch(effective, actual);
+        return ozonPricesMatch(effective, actual, 0) || ozonPromoPricesMatch(effective, actual);
     }
     async persist(_targets: UpdatePriceDto[]) {}
     async verifyPromos(targets: UpdatePriceDto[]): Promise<Map<string, LossPriceResult>> {
@@ -83,7 +89,7 @@ export class OzonLossPriceAdapter implements LossPriceAdapter {
                               message:
                                   row?.errors?.map((e) => e.message || e.code).join('; ') ||
                                   'Ozon не подтвердил приём цены',
-                              kind: row ? 'data' : 'temporary',
+                              kind: row && !row.errors?.some(e => e.code === 'transition_pending') ? 'data' : 'temporary',
                           },
                 ];
             }),
@@ -117,7 +123,7 @@ export class OzonLossPriceAdapter implements LossPriceAdapter {
                 const item = items.get(offer);
                 return [
                     offer,
-                    item && (!item.ok || item.applied === false)
+                    item && (!item.ok || item.applied === false || item.verification === 'pending')
                         ? {
                               message: item.notes.join('; ') || 'Акции Ozon не приведены к новой цене',
                               kind: item.ok ? 'temporary' : 'data',

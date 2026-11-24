@@ -48,9 +48,14 @@ export class VerifyOzonPricesCommand implements ICommandAsync<IGoodsProcessingCo
         if (!report?.sent.length) return context;
         try {
             const snapshot = priceUpdateQueue.reader('ozon');
+            // The transition writer already read both the buyer price and the actions. A lower
+            // promotional price in V5 must not trigger a second import of the list price.
+            const firstAnswers = ozonResultsByOffer(report.response);
+            const rawImports = report.sent.filter(p => !firstAnswers.get(p.offer_id)?.transition);
+            if (!rawImports.length) return context;
             await this.verify(
-                report.sent,
-                ozonResultsByOffer(report.response),
+                rawImports,
+                firstAnswers,
                 report.pricingSnapshots ?? new Map(report.sent.map((p) => [p.offer_id, snapshot([p.offer_id])])),
             );
         } catch (e) {

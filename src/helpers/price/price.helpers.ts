@@ -2,7 +2,7 @@ import { PricingDataError } from './pricing-error';
 import { calculateMarketplaceLossCosts, calculateTariffReturnDelivery } from './marketplace.loss.costs';
 import { ozonDisplayPrice } from './ozon.display-price';
 import { priceTaxDetails } from './price.tax';
-import { calculateOzonPrices, evaluateOzonPrice } from './ozon.pricing';
+import { calculateOzonPrices, evaluateOzonPrice, ozonDeadZoneFloor } from './ozon.pricing';
 import { ozonPricingInput } from './ozon.pricing.input';
 import { IPriceable } from '../../interfaces/i.priceable';
 import { ObtainCoeffsDto } from '../dto/obtain.coeffs.dto';
@@ -97,18 +97,22 @@ export const calculatePay = (price: IPriceable, percents: ObtainCoeffsDto, sum: 
 export const calculatePrice = (
     price: IPriceable,
     percents: ObtainCoeffsDto,
-    auto_action = AutoAction.ENABLED,
-    price_strategy_enabled = AutoAction.DISABLED,
+    auto_action?: AutoAction,
+    price_strategy_enabled?: AutoAction,
 ): UpdatePriceDto => {
     assertPriceInputsAvailable(price);
     if (price.ozon) {
-        const result = calculateOzonPrices(ozonPricingInput(price, percents));
+        const input = ozonPricingInput(price, percents);
+        const result = calculateOzonPrices(input);
         return {
-            auto_action_enabled: auto_action,
-            price_strategy_enabled,
+            // A price recalculation must respect the seller's promotion and pricing settings.
+            ...(auto_action !== undefined ? { auto_action_enabled: auto_action } : {}),
+            ...(price_strategy_enabled !== undefined ? { price_strategy_enabled } : {}),
+            ozonCalculated: true,
             currency_code: 'RUB',
             offer_id: price.offer_id,
             min_price: String(result.min.price),
+            ozonDeadZoneFloor: ozonDeadZoneFloor(input, result),
             price: String(result.normal.price),
             old_price: String(ozonDisplayPrice(result.normal.price, result.max.price)),
             incoming_price: price.incoming_price,
@@ -138,8 +142,8 @@ export const calculatePrice = (
         return calcPrice.toString();
     };
     return {
-        auto_action_enabled: auto_action,
-        price_strategy_enabled,
+        auto_action_enabled: auto_action ?? AutoAction.ENABLED,
+        price_strategy_enabled: price_strategy_enabled ?? AutoAction.DISABLED,
         currency_code: 'RUB',
         min_price: calc(price.min_perc, price),
         offer_id: price.offer_id,

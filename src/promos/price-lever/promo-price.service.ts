@@ -1,6 +1,7 @@
+import { attachOzonBaseReceipts, OzonTransitionJournal } from './ozon-transition-journal';
 import { priceUpdateQueue } from '../../helpers/price/price-update.queue';
 import { assertPricingWritesAllowed } from '../../helpers/price/pricing-review-mode';
-import { BadRequestException, Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable, Optional } from '@nestjs/common';
 import { chunk } from 'lodash';
 import { buyerPrice, ozonPriceActions } from '../../helpers/price/buyer.price.helper';
 import { ProductPriceDto } from '../../price/dto/product.price.dto';
@@ -11,6 +12,8 @@ import { ActionProduct } from '../promos.types';
 import { OzonSellerActionsApi } from '../seller-actions.api';
 import { PromoPriceApplier } from './promo-price.applier';
 import { planPromoPrice } from './promo-price.planner';
+import { EnrichWithPricingCommand } from './sweep/enrich-with-pricing.command';
+import { unavailablePromoPlan } from './sweep/plan-sweep.command';
 import {
     OzonActionSlot,
     PromoPriceApplyResult,
@@ -42,6 +45,8 @@ export class PromoPriceService {
         private readonly sellerApi: OzonSellerActionsApi,
         private readonly productService: ProductService,
         private readonly applier: PromoPriceApplier,
+        private readonly pricing: EnrichWithPricingCommand,
+        @Optional() private readonly journal?: OzonTransitionJournal,
     ) {}
 
     async states(offerIds: string[]): Promise<PromoPriceState[]> {
@@ -113,9 +118,9 @@ export class PromoPriceService {
         return this.toStates(items, await this.snapshot(new Set(items.map((i) => i.product_id))));
     }
 
-    private toStates(items: ProductPriceDto[], snapshot: PromoSnapshot): PromoPriceState[] {
+    private async toStates(items: ProductPriceDto[], snapshot: PromoSnapshot): Promise<PromoPriceState[]> {
         const { ozon: ozonSlots, seller: sellerSlots } = snapshot;
-        return items.map((item) => {
+        const states = items.map((item) => {
             const price = Number(item.price.price) || 0;
             const minPrice = Number(item.price.min_price) || 0;
             const seller = sellerSlots.get(item.product_id) ?? null;
@@ -124,6 +129,7 @@ export class PromoPriceService {
             return {
                 offerId: item.offer_id,
                 productId: item.product_id,
+                autoActionEnabled: item.price.auto_action_enabled,
                 oldPrice: Number(item.price.old_price) || 0,
                 price,
                 minPrice,
@@ -137,12 +143,23 @@ export class PromoPriceService {
                 ozonActions,
             };
         });
+        return this.journal ? attachOzonBaseReceipts(states, await this.journal.baseReceipts(states.map(s => s.offerId))) : states;
     }
 
     async plans(offerIds: string[], target: PromoTarget, percent?: number): Promise<PromoPricePlan[]> {
         const parsed = PromoPriceService.parseTarget(target);
         const states = await this.states(offerIds);
-        return states.map((s) => planPromoPrice(s, parsed, percent));
+        const plans: PromoPricePlan[] = [];
+        for (const state of states) {
+            const pricing = await this.pricing.enrichOne(state);
+            if (pricing.status === 'ready') {
+                plans.push(planPromoPrice(state, parsed === 'min' ? state.calcMinPrice : parsed, percent));
+            } else {
+                const reason = pricing.status === 'no-stock' ? 'Нет остатков' : `Расчёт недоступен: ${pricing.reason}`;
+                plans.push(unavailablePromoPlan(state, reason));
+            }
+        }
+        return plans;
     }
 
     /** Применить: состояние читается заново, план считается заново — плану из браузера не доверяем. По товару подряд. */
@@ -150,10 +167,12 @@ export class PromoPriceService {
         assertPricingWritesAllowed();
         const snapshot = priceUpdateQueue.reader('ozon');
         const plans = await this.plans(offerIds, target, percent);
-        const results: PromoPriceApplyResult[] = [];
-        for (const plan of plans)
-            results.push(await this.applier.apply(plan, { priority: 'manual', snapshot: snapshot([plan.offerId]) }));
-        return results;
+        const options = (plan: PromoPricePlan) => ({
+            priority: 'manual' as const,
+            snapshot: snapshot([plan.offerId, `#product:${plan.productId}`]),
+        });
+        if (plans.length === 1) return [await this.applier.apply(plans[0], options(plans[0]))];
+        return this.applier.applyBatch(plans, options);
     }
 
     static parseTarget(target: unknown): PromoTarget {

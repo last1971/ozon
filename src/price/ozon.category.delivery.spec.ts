@@ -129,6 +129,8 @@ function setup(database = 'opt', weights = [3, 1], data = new Map<string, any>()
         })),
     );
     const service = new PriceService(products as any, goods, config, null, helper, categories as any, pricing);
+    const promotionReader = { allStates: async (offers: string[]) => offers.map(offerId => ({offerId, seller: null})) };
+    Object.assign(service, {moduleRef: {get: () => promotionReader}});
     return {
         service,
         goods,

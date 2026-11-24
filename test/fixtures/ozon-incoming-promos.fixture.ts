@@ -1,3 +1,4 @@
+import { randomUUID } from 'crypto';
 import { ConfigService } from '@nestjs/config';
 import { Logger } from '@nestjs/common';
 import { JobService } from '../../src/job/job.service';
@@ -23,7 +24,11 @@ import {
     CheckLossPricePromosCommand,
 } from '../../src/marketplace-loss/prices/loss-price.commands';
 
-import { ozonPricesMatch } from '../../src/helpers/price/ozon-prices-match';
+import { buyerPrice } from '../../src/helpers/price/buyer.price.helper';
+import { PriceService } from '../../src/price/price.service';
+import { OzonPriceTransitionService } from '../../src/promos/price-lever/ozon-price-transition.service';
+import { OZON_PRICE_TRANSITIONS, OZON_PROMO_STATE_READER } from '../../src/promos/price-lever/transition.tokens';
+import type { OzonBaseReceipt, OzonTransitionJournal, TransitionClaim } from '../../src/promos/price-lever/ozon-transition-journal';
 import { ExtraPriceService } from '../../src/price/extra.price.service';
 import { ExtraGoodService } from '../../src/good/extra.good.service';
 import { GoodServiceEnum } from '../../src/good/good.service.enum';
@@ -41,8 +46,12 @@ import { MarkIncomingHandledCommand } from '../../src/trade2006.incoming/command
 
 /** Только внешнее состояние: переживает создание новых сервисов и сериализацию JSON. */
 export interface OzonIncomingFixtureState {
+    transitions: Record<string, TransitionClaim<any>>;
+    completedTransitions?: Record<string, string>;
+    baseReceipts?: Record<string, OzonBaseReceipt>;
     cost: number;
     live: { price: number; old_price: number; min_price: number; marketing_seller_price: number };
+    regularPrice?: number;
     actionPrice: number;
     sellerPercent: number;
     receipt: { extId: string; version: string; payload: Record<string, unknown>; handled: boolean };
@@ -52,13 +61,14 @@ export interface OzonIncomingFixtureState {
 
 /** Реальные команды прихода, Ozon-адаптер, планировщик, исполнитель акций и уведомление.
  * Подменены только внешние API и чтение исходных данных; сеть и база не используются. */
-export function setup(saved?: OzonIncomingFixtureState, options: { legacyComparison?: boolean } = {}) {
+export function setup(saved?: OzonIncomingFixtureState) {
     Logger.overrideLogger(false);
     const data: OzonIncomingFixtureState = saved
         ? structuredClone(saved)
         : {
               cost: 100,
-              live: { price: 150, old_price: 200, min_price: 100, marketing_seller_price: 143 },
+              transitions: {},
+              live: { price: 150, old_price: 200, min_price: 100, marketing_seller_price: 142 },
               actionPrice: 150,
               sellerPercent: 5,
               receipt: { extId: '50013', version: 'v1', payload: {}, handled: false },
@@ -101,18 +111,33 @@ export function setup(saved?: OzonIncomingFixtureState, options: { legacyCompari
     const coeffs = { minMil: 0, percMil: 0, percEkv: 0, sumObtain: 0, sumLabel: 0, taxUnit: 0 };
     const target = () => calculatePrice(input(), coeffs);
     const live = data.live;
+    data.regularPrice ??= live.price;
     const updateBuyer = () => {
-        live.marketing_seller_price = Math.round(
-            Math.min(live.price, data.actionPrice) * (1 - data.sellerPercent / 100),
-        );
+        live.price = Math.min(data.regularPrice, data.actionPrice);
+        live.marketing_seller_price = buyerPrice(live.price, [data.actionPrice], data.sellerPercent);
     };
     const products = {
+        setPrice: jest.fn(async ({ prices: targets }: { prices: UpdatePriceDto[] }) => {
+            data.requests.push({ kind: 'price', body: structuredClone(targets) });
+            // Поведение /import/prices в сохранённом инциденте: normal сбрасывает акционную price.
+            for (const row of targets) {
+                Object.assign(live, {
+                    price: Number(row.price),
+                    min_price: Number(row.min_price),
+                    old_price: Number(row.old_price),
+                });
+                data.regularPrice = live.price;
+                data.actionPrice = live.price;
+                updateBuyer();
+            }
+            return { result: targets.map((row) => ({ offer_id: row.offer_id, updated: true })) };
+        }),
         getPrices: jest.fn(async () => ({
             items: [
                 {
                     offer_id: offer,
                     product_id: 1,
-                    price: { ...live },
+                    price: { ...live, auto_action_enabled: true },
                     marketing_actions: {
                         actions: [
                             { title: 'Бустинг', value: data.actionPrice, date_from: '', date_to: '' },
@@ -124,24 +149,6 @@ export function setup(saved?: OzonIncomingFixtureState, options: { legacyCompari
         })),
         infoList: jest.fn(async (offers: string[]) => offers.map((sku) => ({ sku, fboCount: 1 }))),
         listAllOfferIds: jest.fn(async () => [offer]),
-    };
-    const pricing = {
-        getObtainCoeffs: () => coeffs,
-        getPricingAvailability: async () => new Map([[offer, { state: 'available', marketplace: 1 }]]),
-        updatePrices: jest.fn(async (targets: UpdatePriceDto[]) => {
-            data.requests.push({ kind: 'price', body: structuredClone(targets) });
-            // Поведение /import/prices в сохранённом инциденте: normal сбрасывает акционную price.
-            for (const row of targets) {
-                Object.assign(live, {
-                    price: Number(row.price),
-                    min_price: Number(row.min_price),
-                    old_price: Number(row.old_price),
-                });
-                data.actionPrice = live.price;
-                updateBuyer();
-            }
-            return { result: targets.map((row) => ({ offer_id: row.offer_id, updated: true })) };
-        }),
     };
     const actionProduct = () => ({
         id: 1,
@@ -173,7 +180,7 @@ export function setup(saved?: OzonIncomingFixtureState, options: { legacyCompari
             data.requests.push({ kind: 'percent', body: structuredClone(rows) });
             data.sellerPercent = rows[0].percent;
             updateBuyer();
-            return { applied: [1], rejected: [] };
+            return { applied: [{ sku: 1 }], rejected: [] };
         }),
     };
     const goods = {
@@ -186,8 +193,9 @@ export function setup(saved?: OzonIncomingFixtureState, options: { legacyCompari
         getPerc: jest.fn(async () => [{ ...input(), pieces: 1, packing_price: 0 }]),
     };
     const events = {
-        emit: jest.fn((event: string, report: unknown) => {
+        emitAsync: jest.fn(async (event: string, report: unknown) => {
             data.notifications.push({ event, report: structuredClone(report) });
+            return [true];
         }),
     };
     const journal = {
@@ -218,30 +226,96 @@ export function setup(saved?: OzonIncomingFixtureState, options: { legacyCompari
         SUM_PACK: 0,
         TAX_UNIT: 0,
     });
+    // Test double for the external durable store. Recreating all services only retains its JSON contents.
+    data.completedTransitions ??= {};
+    const transitionVersion = (key: string) => data.transitions[key]?.token ?? data.completedTransitions[key] ?? null;
+    data.baseReceipts ??= {};
+    const changeReceipt = (offer: string, receipt?: OzonBaseReceipt | null) => {
+        if (receipt === null) delete data.baseReceipts[offer];
+        else if (receipt) data.baseReceipts[offer] = structuredClone(receipt);
+    };
+    const transitionStore = {
+        baseReceipts: async (offers: string[]) => new Map(offers.flatMap(id => data.baseReceipts[id] ? [[id, data.baseReceipts[id]] as const] : [])),
+        versions: async (offers: string[]) => new Map(offers.flatMap(offer => {
+            const version = transitionVersion('PRICE_STEP:' + offer);
+            return version ? [[offer, version] as const] : [];
+        })),
+        pending: async (offer: string, kind = 'PRICE_STEP') => data.transitions[kind + ':' + offer] ?? null,
+        outstanding: async (kind = 'PRICE_STEP') =>
+            new Map(
+                Object.entries(data.transitions)
+                    .filter(([key]) => key.startsWith(kind + ':'))
+                    .map(([key, claim]) => [key.slice(kind.length + 1), claim]),
+            ),
+        claim: async (offer: string, payload: unknown, kind = 'PRICE_STEP', expectedToken?: string | null, receipt?: OzonBaseReceipt | null) => {
+            const key = kind + ':' + offer;
+            if (expectedToken !== undefined && transitionVersion(key) !== expectedToken) return null;
+            if (data.transitions[key]) return null;
+            changeReceipt(offer, receipt);
+            return (data.transitions[key] = {
+                token: randomUUID(),
+                createdAt: new Date().toISOString(),
+                payload: structuredClone(payload),
+            });
+        },
+        advance: async (offer: string, token: string, payload: unknown, kind = 'PRICE_STEP', receipt?: OzonBaseReceipt | null) => {
+            const key = kind + ':' + offer;
+            if (data.transitions[key]?.token !== token) return null;
+            delete data.transitions[key];
+            return transitionStore.claim(offer, payload, kind, undefined, receipt);
+        },
+        finish: async (offer: string, token: string, kind = 'PRICE_STEP', result?: unknown, receipt?: OzonBaseReceipt | null) => {
+            const key = kind + ':' + offer;
+            if (data.transitions[key]?.token !== token) return false;
+            changeReceipt(offer, receipt);
+            if (result) await transitionStore.claim(token, { result }, 'PROMO_NOTICE');
+            data.completedTransitions[key] = randomUUID();
+            delete data.transitions[key];
+            return true;
+        },
+    };
     function restart() {
         const jobs = new JobService();
-        const applier = new PromoPriceApplier(api as any, sellerApi as any, {} as any, products as any);
-        const promoPrices = new PromoPriceService(api as any, sellerApi as any, products as any, applier);
         const enrich = new EnrichWithPricingCommand(
             { prepare: async () => {}, load: async () => ozon } as any,
             products as any,
             goods as any,
             config,
         );
+        const store = transitionStore as unknown as OzonTransitionJournal;
+        const modules = {
+            get: (type: unknown) => {
+                if (type === OZON_PROMO_STATE_READER) return promoPrices;
+                if (type === OZON_PRICE_TRANSITIONS) return transitions;
+                throw new Error('Неизвестный сервис цен');
+            },
+        };
+        const transitions = new OzonPriceTransitionService(
+            modules as any,
+            enrich,
+            store,
+            products as any,
+            api as any,
+            sellerApi as any,
+        );
+        const applier = new PromoPriceApplier(transitions);
+        const pricing = Object.assign(Object.create(PriceService.prototype), {
+            moduleRef: modules,
+            product: products,
+            getObtainCoeffs: () => coeffs,
+            getPricingAvailability: async () => new Map([[offer, { state: 'available', marketplace: 1 }]]),
+        });
+        const promoPrices = new PromoPriceService(api as any, sellerApi as any, products as any, applier, enrich, store);
         const sweep = new PromoSweepService(
             jobs,
-            new CollectSweepCommand(promoPrices),
+            new CollectSweepCommand(promoPrices, transitions),
             enrich,
             new PlanSweepCommand(),
             new ApplySweepCommand(applier, promoPrices, enrich),
             new BuildSweepReportCommand(),
-            new NotifySweepCommand(events as any),
+            new NotifySweepCommand(events as any, store),
         );
         const adapter = new OzonLossPriceAdapter(pricing as any, products as any, sweep, jobs, promoPrices);
-        if (options.legacyComparison) {
-            // Точная реализация matches до исправления (HEAD 09c0dd6). Только отрицательный контроль теста.
-            adapter.matches = (target, actual) => ozonPricesMatch(target, actual, 0);
-        }
         const workflow = new MarketPriceWorkflowService(
             jobs,
             { OZON: adapter, WB: {} as any },
@@ -276,6 +350,7 @@ export function setup(saved?: OzonIncomingFixtureState, options: { legacyCompari
         );
         return {
             adapter,
+            pricing,
             run: () => workflow.incoming('OZON', [offer], async () => {}),
             runInvoice: () => incoming.run(),
         };
@@ -288,7 +363,7 @@ export function setup(saved?: OzonIncomingFixtureState, options: { legacyCompari
         offer,
         live,
         target,
-        pricing,
+        products,
         api,
         events,
         goods,
@@ -297,6 +372,12 @@ export function setup(saved?: OzonIncomingFixtureState, options: { legacyCompari
         },
         setAcknowledgementOnly: (on: boolean) => {
             acknowledgeOnly = on;
+        },
+        publishAcknowledgedAction: () => {
+            const lastAction = data.requests.filter((r) => r.kind === 'action').at(-1);
+            data.actionPrice = (lastAction.body as { actionPrice: number }[])[0].actionPrice;
+            live.price = data.actionPrice;
+            updateBuyer();
         },
     };
 }

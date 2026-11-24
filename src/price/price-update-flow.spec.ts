@@ -1,7 +1,8 @@
 import * as checkpoints from '../job/job.checkpoint';
+import { OzonPriceTransitionService } from '../promos/price-lever/ozon-price-transition.service';
 import { PromoPriceApplier } from '../promos/price-lever/promo-price.applier';
 import { ApplySweepCommand } from '../promos/price-lever/sweep/apply-sweep.command';
-import { PromoPricePlan } from '../promos/price-lever/promo-price.types';
+import { PromoPricePlan, PromoPriceState } from '../promos/price-lever/promo-price.types';
 import { PreparePriceReviewCommand, SendPriceReviewCommand } from './price-review.commands';
 import { PriceReviewService } from './price-review.service';
 import { priceUpdateQueue } from '../helpers/price/price-update.queue';
@@ -33,32 +34,62 @@ const plan = (id: string): PromoPricePlan => ({
         minPrice: 100,
         buyerPrice: 200,
         buyerPriceCalc: 200,
-        seller: null,
+        calcMinPrice: 100,
+        calculationKey: 'tariffs',
+        seller: { actionId: 1, sku: Number(id), title: 'Скидка', percent: 0, minPercent: 5, isActive: true },
         ozonActions: [],
     },
     steps: [{ kind: 'percent', actionId: 1, sku: Number(id), from: 0, to: 10 }],
 });
+// The only test doubles here are the marketplace, the economic inputs and durable storage.
+function transitions(states: Map<string, PromoPriceState>, sendPercent: (sku: string) => Promise<void>) {
+    const reader = {
+        allStates: async (ids: string[]) => ids.map((id) => structuredClone(states.get(id))),
+        states: async (ids: string[]) => ids.map((id) => structuredClone(states.get(id))),
+    };
+    const enrich = { enrichBatch: async () => {}, enrichOne: async () => ({ status: 'ready' }) };
+    const tickets = new Map<string, { token: string; payload: unknown }>();
+    const journal = {
+        versions: async () => new Map([...tickets].map(([key, entry]) => [key, entry.token])),
+        pending: async (id: string) => tickets.get(id),
+        claim: async (id: string, payload: unknown) => {
+            if (tickets.has(id)) throw new Error('Повторная отправка до подтверждения');
+            const ticket = { token: id, payload: structuredClone(payload) };
+            tickets.set(id, ticket);
+            return ticket;
+        },
+        finish: async (id: string, token: string) => tickets.get(id)?.token === token && tickets.delete(id),
+    };
+    const update = jest.fn();
+    const setPercent = jest.fn(async (_action: number, rows: { sku: number; percent: number }[]) => {
+        const { sku, percent } = rows[0];
+        const id = String(sku);
+        await sendPercent(id);
+        const current = states.get(id);
+        current.seller.percent = percent;
+        current.buyerPrice = current.buyerPriceCalc = (current.price * (100 - percent)) / 100;
+        return { applied: rows, rejected: [] };
+    });
+    const service = new OzonPriceTransitionService(
+        { get: () => reader } as any,
+        enrich as any,
+        journal as any,
+        {} as any,
+        { update } as any,
+        { setPercent } as any,
+    );
+    return { applier: new PromoPriceApplier(service), reader, enrich, setPercent, update };
+}
 it('реальный sweep пропускает ручную отправку между товарами; ВБ работает во время ожидания Ozon', async () => {
     const order: string[] = [],
         block = gate();
     const ids = ['99001', '99002', '99003'];
     const snapshots = new Map(ids.map((id) => [id, priceUpdateQueue.capture('ozon', [id])]));
-    const setPercent = jest.fn(async (_, rows) => {
-        const id = String(rows[0].sku);
+    const states = new Map(ids.map((id) => [id, plan(id).state]));
+    const { applier, reader, enrich, setPercent } = transitions(states, async (id) => {
         order.push(id);
         if (id === ids[0]) await block.wait;
-        return { applied: rows, rejected: [] };
     });
-    const products = {
-        getPrices: jest.fn(async ({ offer_id }) => ({
-            items: offer_id.map((offer_id) => ({
-                offer_id,
-                product_id: Number(offer_id),
-                price: { price: '200', min_price: '100', old_price: '300', marketing_seller_price: '200' },
-            })),
-        })),
-    };
-    const applier = new PromoPriceApplier({} as any, { setPercent } as any, {} as any, products as any);
     const context = {
         apply: true,
         goal: 'min' as const,
@@ -66,13 +97,15 @@ it('реальный sweep пропускает ручную отправку м
         pricingSnapshots: snapshots,
         progress: emptyProgress(),
     };
-    const sweep = new ApplySweepCommand(applier, {} as any, {} as any).execute(context);
+    const sweep = new ApplySweepCommand(applier, reader as any, enrich as any).execute(context);
     while (!order.length) await new Promise(setImmediate);
     const coeffs = { minMil: 0, percMil: 0, percEkv: 1, sumObtain: 0, sumLabel: 0, taxUnit: 6 };
     const ozon = {
         getObtainCoeffs: () => coeffs,
         updatePrices: jest.fn(async () => {
             order.push('manual');
+            // The freshly installed marketplace minimum now prevents a retry of the obsolete promotion.
+            states.get(ids[1]).minPrice = 190;
             return { result: [{ offer_id: ids[1], updated: true }] };
         }),
     };
@@ -112,27 +145,13 @@ it('реальный sweep пропускает ручную отправку м
     await Promise.all([sweep, jobs.whenDone(sending.id)]);
     expect(order).toEqual([ids[0], 'wb', 'manual', ids[2]]);
     expect(context['results'][1]).toMatchObject({ offerId: ids[1], applied: false });
-    expect(context['results'][1].results[0].reason).toContain('устарел');
+    expect(context['results'][1].stale).toBe(true);
+    expect(context['results'][1].notes.join(' ')).toContain('минимум Ozon');
 });
 it('смена цены в самом Ozon отклоняет старый план до первого изменения акции', async () => {
-    const update = jest.fn(),
-        setPercent = jest.fn();
-    const applier = new PromoPriceApplier(
-        { update } as any,
-        { setPercent } as any,
-        {} as any,
-        {
-            getPrices: async () => ({
-                items: [
-                    {
-                        offer_id: '99004',
-                        product_id: 99004,
-                        price: { price: '999', min_price: '100', old_price: '300', marketing_seller_price: '200' },
-                    },
-                ],
-            }),
-        } as any,
-    );
+    const stale = plan('99004');
+    const states = new Map([[stale.offerId, { ...stale.state, price: 999 }]]);
+    const { applier, update, setPercent } = transitions(states, async () => {});
     expect(await applier.apply(plan('99004'))).toMatchObject({ applied: false });
     expect(update).not.toHaveBeenCalled();
     expect(setPercent).not.toHaveBeenCalled();

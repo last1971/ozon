@@ -30,7 +30,7 @@ watch(
 );
 
 const job = computed(() => sweep.box.job);
-const hasProblems = computed(() => Boolean(report.value?.failed || report.value?.unfixable));
+const hasProblems = computed(() => Boolean(report.value?.failed || report.value?.unfixable || report.value?.pendingConfirmation));
 const running = computed(() => job.value?.status === 'running');
 const report = computed(() => (job.value?.status === 'done' ? job.value.result ?? null : null));
 /** Применять можно только после проверки по выбранной цели, и только если есть что. */
@@ -101,6 +101,7 @@ async function applyAll() {
                     <span v-if="report.unfixable" class="me-4 text-error">не вытянуть: {{ report.unfixable }}</span>
                     <span v-if="report.closest" class="me-4 text-medium-emphasis">ближе нельзя: {{ report.closest }}</span>
                     <span v-if="report.nothingToDo" class="me-4 text-warning">смотреть руками: {{ report.nothingToDo }}</span>
+                    <span v-if="report.pendingConfirmation" class="me-4 text-warning">ожидают подтверждения: {{ report.pendingConfirmation }}</span>
                     <span v-if="report.apply" class="me-4" :class="report.failed ? 'text-error' : ''">не всё прошло: {{ report.failed }}</span>
                 </div>
             </v-card-text>
@@ -114,17 +115,26 @@ async function applyAll() {
             </template>
             <template v-slot:item.target="{ item }">{{ item.target }} ₽</template>
             <template v-slot:item.buyerAfter="{ item }">
-                <span :class="item.ok ? 'text-success' : 'text-error'">{{ item.buyerAfter }} ₽</span>
+                <span v-if="item.verification === 'pending'" class="text-warning">
+                    {{ item.observedBuyerPrice != null ? item.observedBuyerPrice + ' ₽ · ' : '' }}ожидает подтверждения (план {{ item.buyerAfter }} ₽)
+                </span>
+                <span v-else-if="item.applied === false" class="text-error">
+                    Не применено<template v-if="item.observedBuyerPrice != null"> · {{ item.observedBuyerPrice }} ₽</template>
+                </span>
+                <span v-else :class="item.ok ? 'text-success' : 'text-error'">{{ item.buyerAfter }} ₽</span>
             </template>
             <template v-slot:item.minPrice="{ item }">{{ item.minPrice }} ₽</template>
             <template v-slot:item.price="{ item }">{{ item.price }} ₽</template>
             <template v-slot:item.steps="{ item }">
-                <div v-for="(s, i) in item.steps" :key="i" class="text-body-2 d-flex align-center ga-1">
+                <div v-for="(s, i) in (item.results?.length ? item.results.map(r => r.step) : item.steps)" :key="i" class="text-body-2 d-flex align-center ga-1">
                     <v-icon :icon="stepIcon(s)" size="small" />
                     <span>{{ stepText(s) }}</span>
-                    <v-chip v-if="item.results?.[i]" size="x-small" variant="tonal" :color="resultColor(item.results[i])">
-                        {{ resultLabel(item.results[i]) }}<template v-if="item.results[i].reason">: {{ item.results[i].reason }}</template>
+                    <v-chip v-if="item.results?.[i]" size="x-small" variant="tonal" :color="item.verification === 'pending' ? 'warning' : resultColor(item.results[i])">
+                        {{ item.verification === 'pending' && item.results[i].status === 'ok' ? 'принято Ozon' : resultLabel(item.results[i]) }}<template v-if="item.results[i].reason">: {{ item.results[i].reason }}</template>
                     </v-chip>
+                </div>
+                <div v-if="item.applied === false || !item.ok || item.verification === 'pending'" class="text-body-2">
+                    <div v-for="note in item.notes" :key="note">{{ note }}</div>
                 </div>
                 <div v-if="item.closest" class="text-medium-emphasis text-body-2">ближе нельзя — следующий шаг уводит ниже цели</div>
                 <div v-else-if="!item.steps.length" class="text-warning text-body-2">шагов нет — смотреть в карточке цены</div>

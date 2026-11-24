@@ -40,10 +40,11 @@ export const ozonPriceActions = (
             a.value >= minPrice * 0.3,
     );
 
-/** Цена покупателю: min(цены Ozon-акций, price) × (1 − percent/100), округление до рубля. */
+/** Ozon округляет цену после скидки до рубля. При ровно 50 копейках выбирает меньшую цену. */
 export const buyerPrice = (price: number, ozonActionPrices: number[], percent: number): number => {
     const base = Math.min(price, ...ozonActionPrices.filter((p) => p > 0));
-    return Math.round(base * (1 - percent / 100));
+    const discounted = (base * (100 - percent)) / 100;
+    return Math.max(0, Math.ceil(discounted - 0.5));
 };
 
 /** Пол для action_price Ozon-акций, чтобы с нашим процентом сверху итог не ушёл ниже min_price. percent 0 → min_price. */

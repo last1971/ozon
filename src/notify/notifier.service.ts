@@ -76,7 +76,10 @@ export class NotifierService {
                     continue;
                 }
                 const ok = await transport.send(target, tagged);
-                if (!ok && channel === 'matrix') await this.retry.enqueue(target, tagged);
+                if (!ok && channel === 'matrix') {
+                    await this.retry.enqueue(target, tagged);
+                    delivered ||= topic === NotifyTopic.PRICES && Boolean(message.deliveryKey);
+                }
                 delivered = delivered || ok;
             }
         }
@@ -128,9 +131,9 @@ export class NotifierService {
     }
 
     /** Сверка акций Ozon с применением что-то поменяла (крон или кнопка). */
-    @OnEvent('ozon.promo.sweep', { async: true })
-    async ozonPromoSweep(report: any): Promise<boolean> {
-        return this.notify(NotifyTopic.PRICES, ozonPromoSweepMessage(report));
+    @OnEvent('ozon.promo.sweep', { async: true, promisify: true })
+    async ozonPromoSweep(report: any, deliveryKey?: string): Promise<boolean> {
+        return this.notify(NotifyTopic.PRICES, { ...ozonPromoSweepMessage(report), deliveryKey });
     }
 
     @OnEvent('problematic.prices', { async: true })

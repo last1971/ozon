@@ -300,6 +300,20 @@ describe('PriceService', () => {
         expect(getPerc.mock.calls[0]).toEqual([['1', '2', '3'], null]);
     });
 
+    it('показывает обычную цену с обязательной скидкой до согласования и фиксирует согласованную сумму', async () => {
+        const target = { offer_id: '550611', price: '130', min_price: '128', old_price: '160', currency_code: 'RUB', ozonCalculated: true };
+        const lookup = jest.spyOn((service as any).moduleRef, 'get').mockReturnValue({
+            allStates: async () => [{ offerId: '550611', seller: { isActive: true, minPercent: 5 }}],
+        });
+        try {
+            const [approved] = await service.prepareReviewPrices([target]);
+            expect(approved).toEqual({offer_id: '550611', price: '135', min_price: '128', old_price: '160', currency_code: 'RUB'});
+            expect(target.price).toBe('130');
+        } finally {
+            lookup.mockRestore();
+        }
+    });
+
     it('test update', async () => {
         await service.update({ prices: [] });
         expect(setPrice.mock.calls[0]).toEqual([{ prices: [] }]);

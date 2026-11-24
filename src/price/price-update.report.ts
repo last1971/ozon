@@ -43,6 +43,8 @@ export interface OzonPriceResult {
     offer_id: string;
     product_id?: number;
     updated: boolean;
+    transition?: 'done' | 'pending' | 'blocked';
+    effectiveBasePrice?: number;
     errors?: { code?: string; message?: string }[];
 }
 

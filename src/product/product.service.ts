@@ -283,7 +283,7 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
                     priceUpdateQueue.assertCurrent(snapshot(batch.map((p) => p.offer_id)));
                     try {
                         const batchRequest: UpdatePricesDto = {
-                            prices: batch.map((row) =>
+                            prices: batch.map(({ ozonDeadZoneFloor, ozonCalculated, ...row }) =>
                                 row.price !== undefined && row.old_price !== undefined
                                     ? {
                                           ...row,

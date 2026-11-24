@@ -14,6 +14,7 @@ export interface IPriceUpdateable {
         onError?: (offerId: string, error: unknown) => void,
         stocks?: PricingStocks,
     ): Promise<IProductCoeffsable[]>;
+    prepareReviewPrices?(prices: UpdatePriceDto[]): Promise<UpdatePriceDto[]>;
     updatePrices(updatePrices: UpdatePriceDto[]): Promise<any>;
     /** Пакетное чтение протокольных данных до поштучной записи (например, текущих цен WB). */
     preparePriceUpdates?(): Promise<(prices: UpdatePriceDto[]) => Promise<any>>;

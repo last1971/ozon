@@ -78,6 +78,12 @@ describe('Свежие условия Ozon перед применением', (
         const s = state({ minPrice: 170, calcMinPrice: 170, deadZoneFloor: 500 });
         await expect(refreshPromoPlan(planPromoPrice(s, 600), api(400))).rejects.toThrow('минимальную прибыль');
     });
+    it('отказывается от изменений, если после снижения лимита безопасный вариант исчез', async () => {
+        const s = state({ price: 400, minPrice: 299, calcMinPrice: 299, deadZoneFloor: 500 });
+        const original = planPromoPrice(s, 299);
+        expect(original.ok).toBe(true);
+        await expect(refreshPromoPlan(original, api(200))).rejects.toThrow('минимальную прибыль');
+    });
     it('не применяет план при ошибке чтения или исчезновении товара', async () => {
         const original = planPromoPrice(state(), 'min');
         await expect(

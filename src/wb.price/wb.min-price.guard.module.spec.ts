@@ -1,3 +1,5 @@
+import { FirebirdModule } from '../firebird/firebird.module';
+import { OzonTransitionJournal } from '../promos/price-lever/ozon-transition-journal';
 import { JobModule } from '../job/job.module';
 import { WbMinPriceCheckCommand } from './wb-min-price-check.command';
 import { ConfigModule } from '@nestjs/config';
@@ -16,6 +18,7 @@ describe('кроны «к минимальной» — зависимости с
         const module = await Test.createTestingModule({
             imports: [
                 JobModule,
+                FirebirdModule,
                 ConfigModule.forRoot({ isGlobal: true, ignoreEnvFile: true }),
                 EventEmitterModule.forRoot(),
             ],
@@ -23,6 +26,7 @@ describe('кроны «к минимальной» — зависимости с
                 WbMinPriceGuard,
                 WbMinPriceCheckCommand,
                 NotifySweepCommand,
+                OzonTransitionJournal,
                 { provide: WbPriceService, useValue: {} },
             ],
         }).compile();

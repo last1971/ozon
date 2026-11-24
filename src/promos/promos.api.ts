@@ -46,7 +46,8 @@ export class OzonPromosApi {
 
     async listActions(): Promise<Action[]> {
         const res = await this.ozon.method('/v1/actions', {}, 'get');
-        const actions: Action[] = res?.result ?? [];
+        if (!Array.isArray(res?.result)) throw new Error(OzonPromosApi.errorText(res) || 'Ozon не вернул список акций');
+        const actions: Action[] = res.result;
         for (const action of actions) {
             if (action.action_type === 'ELASTIC_BOOSTING' || action.action_type === 'STOCK_DISCOUNT')
                 this.withoutStock.add(action.id);

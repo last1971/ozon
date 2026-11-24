@@ -1,3 +1,5 @@
+import { createHash } from 'crypto';
+import { emptyProgress } from '../../../interfaces/i.job.context';
 import { pricingStocks } from '../../../helpers/price/pricing-stock';
 import { measureJobOperation } from '../../../job/job.execution';
 import { jobCheckpoint } from '../../../job/job.checkpoint';
@@ -41,6 +43,7 @@ export class EnrichWithPricingCommand implements IJobCommand<IPromoSweepContext>
         context.progress.done = 0;
         for (const state of states) {
             delete state.calcMinPrice;
+            delete state.calculationKey;
             delete state.deadZoneFloor;
         }
         const coeffs = this.buildCoeffs();
@@ -89,11 +92,17 @@ export class EnrichWithPricingCommand implements IJobCommand<IPromoSweepContext>
         return context;
     }
 
+    async enrichBatch(states: PromoPriceState[]) {
+        const context = await this.execute({ collectedStates: states, goal: 'min', apply: false, progress: emptyProgress() });
+        return context.pricingErrors;
+    }
+
     /** Результат обогащения одного товара. */
     async enrichOne(
         state: PromoPriceState,
     ): Promise<{ status: 'ready' } | { status: 'no-stock' } | { status: 'error'; reason: string }> {
         delete state.calcMinPrice;
+        delete state.calculationKey;
         delete state.deadZoneFloor;
         let data: Awaited<ReturnType<typeof this.loadBatch>>;
         try {
@@ -162,6 +171,7 @@ export class EnrichWithPricingCommand implements IJobCommand<IPromoSweepContext>
             },
             coeffs,
         );
+        state.calculationKey = createHash('sha256').update(JSON.stringify(input)).digest('hex');
         const cached = this.calculations
             ? await this.calculations.calculate(state.offerId, input, {
                   product, info, goods: data.goods.find((g) => String(g.code) === code), percent, pieces,

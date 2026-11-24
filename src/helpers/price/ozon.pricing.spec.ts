@@ -262,6 +262,12 @@ describe('Единая цена Ozon по тарифным ступеням', ()
         expect(r.normal.price).toBeGreaterThanOrEqual(r.min.price);
         expect(r.max.price).toBeGreaterThanOrEqual(r.normal.price);
     });
+    it('расчёт цен Ozon сохраняет настройки автоматических акций и стратегий магазина', () => {
+        const target = calculatePrice(priceable(), coeffs);
+        expect(target.ozonCalculated).toBe(true);
+        expect(target).not.toHaveProperty('auto_action_enabled');
+        expect(target).not.toHaveProperty('price_strategy_enabled');
+    });
     it('общий контракт использует базу своей фасовки и данные Ozon, не старые глобальные тарифы', () => {
         const p = { ...priceable(), available_price: 120 };
         expect(ozonPricingInput(p, coeffs).base).toBe(120);
