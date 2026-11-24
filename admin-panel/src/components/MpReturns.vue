@@ -81,6 +81,53 @@ const STATUS: Record<ReturnRowStatus, { text: string; color: string }> = {
 const INVOICE_STATUS: Record<number, string> = { 0: 'расформирован', 1: 'сформирован', 2: 'резерв', 3: 'в подборке', 4: 'подобран', 5: 'закрыт', 6: 'корзина' };
 const fmtDate = formatMoscowDay;
 const fmtDateTime = formatMoscowDateTime;
+const columns = [
+    { header: 'Получен', width: 14 },
+    { header: 'Отправление', width: 26 },
+    { header: 'Счёт', width: 14 },
+    { header: 'Товар', width: 54 },
+    { header: 'Кол', width: 10 },
+    { header: 'Причина', width: 68 },
+    { header: 'Статус', width: 20 },
+];
+const exporting = ref(false);
+
+async function saveXlsx() {
+    const rows = store.rows;
+    if (!rows.length || exporting.value) return;
+    exporting.value = true;
+    try {
+        const { Workbook } = await import('exceljs');
+        const book = new Workbook();
+        const sheet = book.addWorksheet('Возвраты');
+        sheet.columns = columns;
+        for (const row of rows) {
+            sheet.addRow([
+                fmtDate(row.line.receivedAt, ''), row.line.posting, row.invoiceNumber,
+                row.goodsName ?? row.line.offerId, row.quan, row.line.reason, STATUS[row.status].text,
+            ]);
+        }
+        sheet.getColumn(3).numFmt = '"№"0';
+        sheet.getRow(1).font = { bold: true };
+        sheet.autoFilter = 'A1:G1';
+        const blob = new Blob([await book.xlsx.writeBuffer()], {
+            type: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        });
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `Возвраты ${serviceOf(rows[0].line.service)?.title ?? rows[0].line.service}.xlsx`;
+        try {
+            link.click();
+        } finally {
+            setTimeout(() => URL.revokeObjectURL(url), 1000);
+        }
+    } catch {
+        store.errorMessage = 'Не удалось сохранить список возвратов в XLSX.';
+    } finally {
+        exporting.value = false;
+    }
+}
 </script>
 
 <template>
@@ -220,10 +267,16 @@ const fmtDateTime = formatMoscowDateTime;
 
         <!-- Список полученных -->
         <v-card variant="outlined">
-            <v-card-title class="text-subtitle-1">Получены маркетплейсом: {{ store.rows.length }}</v-card-title>
+            <v-card-title class="text-subtitle-1 d-flex flex-wrap align-center ga-2">
+                <span>Получены маркетплейсом: {{ store.rows.length }}</span>
+                <v-spacer />
+                <v-btn variant="tonal" size="small" :disabled="!store.rows.length || store.isLoading" :loading="exporting" @click="saveXlsx">
+                    Сохранить в XLSX
+                </v-btn>
+            </v-card-title>
             <v-table v-if="store.rows.length" density="compact" hover>
                 <thead>
-                    <tr><th>Получен</th><th>Отправление</th><th>Счёт</th><th>Товар</th><th>Кол</th><th>Причина</th><th>Статус</th></tr>
+                    <tr><th v-for="column in columns" :key="column.header">{{ column.header }}</th></tr>
                 </thead>
                 <tbody>
                     <tr v-for="r in store.rows" :key="r.line.extId" style="cursor: pointer" @click="store.lookup(r.line.posting)">
