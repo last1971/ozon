@@ -46,6 +46,9 @@ export class ProductInfoDto {
     })
     marketSku?: number;
 
+    @ApiProperty({ description: 'SKU источника FBO для складской аналитики Ozon', required: false })
+    fboSku?: number;
+
     @ApiProperty({
         description:
             'SKU карточки в кабинете и отчётах Озона. У карточки с двумя источниками (sds + fbo или fbs) кабинет ' +

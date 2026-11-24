@@ -37,6 +37,7 @@ const make = () => {
         fboStocks: jest
             .fn()
             .mockResolvedValue([{ offer_id: '123-5', sku: 1, warehouse_id: 9, present: 5, reserved: 1 }]),
+        fboAnalyticsStocks: jest.fn(),
         ozonClusters: jest
             .fn()
             .mockResolvedValue([{ name: 'Новосибирск', logistic_clusters: [{ warehouses: [{ warehouse_id: 9 }] }] }]),
@@ -131,6 +132,29 @@ describe('Расходы Ozon для единого расчёта цены', ()
         expect(result.fbo.bands.map((b) => b.amount)).toEqual([40, 200]);
         expect(result.tariffRevision).toBe('v2');
         expect(m.products.fboStocks).toHaveBeenCalledTimes(1);
+    });
+    it.each([0, 4])('дополняет неполный складской отчёт (%i) целым снимком аналитики', async (present) => {
+        const m = make();
+        Object.assign(m.info, { marketSku: 12, fboSku: 42, fboCount: 25 });
+        m.products.fboStocks.mockResolvedValue([{ offer_id: m.info.sku, sku: 42, warehouse_id: 9, present, reserved: 0 }]);
+        m.rows.push({ ...m.rows[0], origin: 'Ростов', amount: 40 }, { ...m.rows[1], origin: 'Ростов', amount: 200 });
+        m.products.fboAnalyticsStocks.mockResolvedValue([
+            { sku: 42, warehouse_id: -10, cluster_name: 'Новосибирск', available_stock_count: 10 },
+            { sku: 42, warehouse_id: -11, cluster_name: 'Ростов', available_stock_count: 15 },
+        ]);
+        const { fbo, fbs } = await m.service.quote(m.product, m.info);
+        expect(fbo.bands.map(b => b.amount)).toEqual([32, 160]);
+        expect(fbs.bands.map(b => b.amount)).toEqual([20, 100]);
+        await m.service.quote(m.product, m.info);
+        expect(m.products.fboAnalyticsStocks).toHaveBeenCalledTimes(1);
+        expect(m.products.fboAnalyticsStocks).toHaveBeenCalledWith(42);
+    });
+    it('не рассчитывает цену по неподтверждённому остатку', async () => {
+        const m = make();
+        Object.assign(m.info, { marketSku: 42, fboCount: 25 });
+        m.products.fboStocks.mockResolvedValue([]);
+        m.products.fboAnalyticsStocks.mockResolvedValue([]);
+        await expect(m.service.quote(m.product, m.info)).rejects.toThrow('по кластерам 0, в карточке 25');
     });
     it('без остатка FBO не запрашивает склады', async () => {
         const m = make();

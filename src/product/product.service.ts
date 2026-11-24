@@ -109,6 +109,7 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
                 barCode: item.barcodes[0],
                 barcodes: item.barcodes ?? [],
                 marketSku: item.sku || undefined,
+                fboSku: fbo?.sku || undefined,
                 // кабинет показывает SKU «старого» источника (fbo или fbs), не sds; источника нет — sku
                 cabinetSku: (item.sources ?? []).find((s: any) => s.source !== 'sds')?.sku || item.sku || undefined,
                 remark: item.name,
@@ -251,6 +252,15 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
             }
         }
         return all;
+    }
+
+    async fboAnalyticsStocks(sku: number) {
+        const endpoint = '/v1/analytics/stocks';
+        const response = this.assertNoApiError(endpoint, await this.ozonApiService.method(endpoint, { skus: [sku] }));
+        if (!Array.isArray(response?.items)) throw new Error('Некорректный ответ аналитики остатков FBO');
+        return response.items as {
+            sku: number; warehouse_id: number; cluster_name: string; available_stock_count: number;
+        }[];
     }
 
     async ozonClusters(): Promise<{ name: string; logistic_clusters: { warehouses: { warehouse_id: number }[] }[] }[]> {

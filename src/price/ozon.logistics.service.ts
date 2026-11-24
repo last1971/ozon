@@ -9,7 +9,7 @@ import { ProductInfoDto } from '../product/dto/product.info.dto';
 import { ProductPriceDto } from './dto/product.price.dto';
 import { OzonRoutesService } from './ozon.routes.service';
 import { OzonRoutesSnapshot, OzonScheme, selectOzonRoutes } from '../helpers/price/ozon.routes';
-import { fboOrigins, LogisticsCostBand, weightedOzonLogistics } from '../helpers/price/ozon.logistics';
+import { analyticsFboOrigins, fboOrigins, LogisticsCostBand, weightedOzonLogistics } from '../helpers/price/ozon.logistics';
 
 export interface OzonSchemeLogistics {
     bands: LogisticsCostBand[];
@@ -122,6 +122,17 @@ export class OzonLogisticsService {
                         this.products.ozonClusters(),
                     );
                     origins = fboOrigins(info.sku, stocks, clusters);
+                    const sku = info.fboSku ?? info.marketSku;
+                    if (sku && origins.reduce((sum, origin) => sum + origin.units, 0) !== info.fboCount) {
+                        // Один полный снимок вместо сложения двух представлений тех же остатков.
+                        origins = await this.cached(`analytics-origins:${sku}:${info.fboCount}`, 300_000, async () => {
+                            const result = analyticsFboOrigins(sku, await this.products.fboAnalyticsStocks(sku));
+                            const total = result.reduce((sum, origin) => sum + origin.units, 0);
+                            if (total !== info.fboCount)
+                                throw new PricingDataError(`Остаток FBO по кластерам ${total}, в карточке ${info.fboCount}`);
+                            return result;
+                        });
+                    }
                 } catch (e) {
                     const message = `Не удалось определить склады FBO с остатком для доставки: ${e.message}`;
                     throw e instanceof PricingDataError ? new PricingDataError(message) : new Error(message);

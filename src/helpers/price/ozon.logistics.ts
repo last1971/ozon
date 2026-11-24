@@ -127,3 +127,28 @@ export function fboOrigins(
     }
     return [...result].map(([cluster, units]) => ({ cluster, units }));
 }
+
+/** Аналитика включает виртуальные склады с отрицательным warehouse_id и уже вычитает резерв. */
+export function analyticsFboOrigins(
+    sku: number,
+    rows: { sku: number; warehouse_id: number; cluster_name: string; available_stock_count: number }[],
+): WeightedCluster[] {
+    const byWarehouse = new Map<number, WeightedCluster>();
+    for (const row of rows) {
+        const units = row.available_stock_count;
+        if (row.sku !== sku || !Number.isSafeInteger(units) || units < 0 ||
+            !Number.isSafeInteger(row.warehouse_id) || row.warehouse_id === 0)
+            throw new PricingDataError('Некорректные данные склада в аналитике FBO');
+        const cluster = row.cluster_name?.trim();
+        if (units > 0 && !cluster) throw new PricingDataError('Не указан кластер остатка в аналитике FBO');
+        const prior = byWarehouse.get(row.warehouse_id);
+        if (prior && (prior.units !== units || prior.cluster !== cluster))
+            throw new PricingDataError('Разные остатки одного склада в аналитике FBO');
+        byWarehouse.set(row.warehouse_id, { cluster, units });
+    }
+    const totals = new Map<string, number>();
+    for (const { cluster, units } of byWarehouse.values()) {
+        if (units > 0) totals.set(cluster, (totals.get(cluster) ?? 0) + units);
+    }
+    return [...totals].map(([cluster, units]) => ({ cluster, units }));
+}
