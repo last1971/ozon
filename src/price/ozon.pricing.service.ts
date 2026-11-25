@@ -64,13 +64,15 @@ export class OzonPricingService {
             if (!(info[scheme === 'fbs' ? 'fbsCount' : 'fboCount'] > 0)) continue;
             const costs = quote[scheme];
             if (!costs) throw new PricingDataError(`${product.offer_id}: нет расходов ${scheme}`);
+            const extraRate = scheme === 'fbs' ? Number(this.config.get('OZON_FBS_COMMISSION_EXTRA_PP', 0)) / 100 : 0;
             schemes.push({
                 scheme,
-                commissions: commissions[scheme].map((r) => ({
-                    ...r,
-                    minIncluded: r.minIncluded !== false,
-                    maxIncluded: r.maxIncluded === true,
-                })),
+                commissions: commissions[scheme].map((band) => {
+                    const rate = band.rate + extraRate;
+                    if (!Number.isFinite(band.rate) || band.rate < 0 || !Number.isFinite(rate) || rate >= 1)
+                        throw new PricingDataError(`${product.offer_id}: некорректная комиссия Ozon ${scheme}`);
+                    return { ...band, rate, minIncluded: band.minIncluded !== false, maxIncluded: band.maxIncluded === true };
+                }),
                 logistics: costs.bands,
                 lastMile: costs.lastMile,
                 firstMile: costs.firstMile,

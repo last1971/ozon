@@ -7,7 +7,7 @@ import { Trade2006GoodService } from '../trade2006.good/trade2006.good.service';
 import { calculatePrice, calculatePay } from '../helpers/price/price.helpers';
 import { evaluateLine } from '../order/profit-check/profit-check.calculator';
 
-const make = () => {
+const make = (extraPp?: number) => {
     const bands = [
         { min: 0, max: 300, minIncluded: true, maxIncluded: true },
         { min: 300, max: null, minIncluded: false, maxIncluded: true },
@@ -25,6 +25,7 @@ const make = () => {
         quote: jest.fn().mockResolvedValue({ fbs: costs, fbo: { ...costs, firstMile: 0 }, acquiringRate: 0.01 }),
     };
     const config = new ConfigService({
+        ...(extraPp === undefined ? {} : { OZON_FBS_COMMISSION_EXTRA_PP: extraPp }),
         TAX_UNIT: 10,
         MIN_PROFIT_RUB: 20,
         MIN_PROFIT_PERC: 10,
@@ -86,6 +87,32 @@ describe('Данные и потребители единого расчёта O
         m.info.fboCount = fbo;
         const r = await m.loader.load(m.product, m.info);
         expect(r.schemes.map((s) => s.scheme)).toEqual(expected);
+    });
+    it.each([
+        { fbsCount: 1, fboCount: 0 },
+        { fbsCount: 0, fboCount: 1 },
+        { fbsCount: 1, fboCount: 1 },
+    ])('надбавка 3 п.п. при остатках $fbsCount FBS / $fboCount FBO', async (stocks) => {
+        const baseline = make(0);
+        const adjusted = make(3);
+        Object.assign(baseline.info, stocks);
+        Object.assign(adjusted.info, stocks);
+
+        const { schemes } = await adjusted.loader.load(adjusted.product, adjusted.info);
+        for (const scheme of schemes) {
+            const extra = scheme.scheme === 'fbs' ? 0.03 : 0;
+            expect(scheme.commissions.map((band) => band.rate)).toEqual([0.2 + extra, 0.5 + extra]);
+        }
+        const before = await baseline.priceService.getOzonPricingResult('123-5');
+        const after = await adjusted.priceService.getOzonPricingResult('123-5');
+        expect(before.error).toBeUndefined();
+        expect(after.error).toBeUndefined();
+        if (stocks.fbsCount) expect(after.min.price).toBeGreaterThan(before.min.price);
+        else expect(after.min.price).toBe(before.min.price);
+    });
+    it('отклоняет расчёт, если комиссия FBS с надбавкой достигает 100%', async () => {
+        const m = make(50);
+        await expect(m.loader.load(m.product, m.info)).rejects.toThrow('комиссия Ozon fbs');
     });
     it('изменение импортированных комиссий применяется при следующем запросе', async () => {
         const m = make();

@@ -1,5 +1,5 @@
 import { plainToInstance, Transform } from 'class-transformer';
-import { IsBoolean, IsIn, IsEmail, IsEnum, IsIP, IsNumber, IsOptional, IsString, IsUrl, validateSync } from 'class-validator';
+import { IsBoolean, IsIn, IsEmail, IsEnum, IsIP, IsNumber, IsOptional, IsString, IsUrl, Min, Max, validateSync } from 'class-validator';
 import { GoodServiceEnum } from './good/good.service.enum';
 
 export enum Environment {
@@ -199,6 +199,12 @@ class EnvironmentVariables {
     @IsOptional()
     @IsNumber()
     MIN_PROFIT_RUB: number;
+
+    /** Дополнительная комиссия FBS для расчёта цены Ozon, в процентных пунктах. */
+    @IsNumber()
+    @Min(0)
+    @Max(100)
+    OZON_FBS_COMMISSION_EXTRA_PP: number = 0;
 
     @IsOptional()
     @IsNumber()
