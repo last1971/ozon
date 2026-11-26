@@ -178,7 +178,9 @@ export class OzonPriceTransitionService {
                 const offers = active.map((r) => r.offer);
                 versions = await this.journal.versions(offers);
                 states = await reader.allStates(offers);
-                await this.pricing.enrichBatch(states);
+                const pricingErrors = await this.pricing.enrichBatch(states);
+                for (const [offerId, err] of pricingErrors)
+                    this.logger.warn(`[${offerId}] Не удалось рассчитать минимальную цену: ${err}`);
             } catch (error) {
                 for (const r of active)
                     answers.set(
@@ -401,6 +403,7 @@ export class OzonPriceTransitionService {
         } catch (error) {
             if (error instanceof RejectedChange) {
                 await this.journal.finish(offer, ticket.token);
+                this.logger.warn(`[${offer}] Ozon отклонил изменение цены: ${error.message}`);
                 return { status: 'blocked', results, reason: error.message, attempted: true };
             }
             // The connection can fail AFTER the write. Keep the outbox entry for a read-only reconciliation.
