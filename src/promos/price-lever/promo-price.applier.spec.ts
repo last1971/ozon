@@ -514,6 +514,27 @@ describe('569670 — единая цена бустингов', () => {
         expect(f.ops.update).toHaveBeenCalledTimes(1);
         expect(f.saved.size).toBe(0);
     });
+    it.each([true, false])('учитывает подтверждение скрытого импорта и изменение его полей: %s', async accepted => {
+        const f = opt();
+        const p = f.ticket.payload;
+        p.baseAccepted = accepted;
+        Object.assign(p.step, { confirmMaskedBase: true, change: { kind: 'base',
+            target: { offer_id: f.state.offerId, min_price: '603', old_price: '947', price: '635' } } });
+        Object.assign(f.state, { minPrice: 603, oldPrice: 947 });
+        await f.create().resume();
+        expect(f.saved.size).toBe(accepted ? 0 : 1);
+        expect(f.products.setPrice).not.toHaveBeenCalled();
+    });
+    it.each([1200, 1344])('проверяет лимит %i для обоих возможных порядков выхода из бустинга', async limit => {
+        const f = opt();
+        f.state.calcMinPrice = f.state.deadZoneFloor = 1277;
+        f.state.ozonActions[0].maxActionPrice = limit;
+        Object.assign(f.ticket.payload.initial, { price: 1344, buyerPrice: 1277 });
+        Object.assign(f.ticket.payload.step, { floor: 1344, change: { kind: 'ozon-remove', actionId: 5, from: 1344 } });
+        await f.create().resume();
+        expect(f.saved.size).toBe(limit === 1200 ? 0 : 1);
+        expect(f.ops.update).not.toHaveBeenCalled();
+    });
     it('не планирует общий выход при действующем промокоде или подходящем лимите', () => {
         const f = opt();
         f.state.ozonActions[0].isVoucher = true;

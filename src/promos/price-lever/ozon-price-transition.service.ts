@@ -14,7 +14,7 @@ import type { PromoApplyOptions } from './promo-price.applier';
 import { OZON_PROMO_STATE_READER } from './transition.tokens';
 import type { PromoPriceService } from './promo-price.service';
 import { PromoPriceApplyResult, PromoPricePlan, PromoPriceState, PromoStepResult } from './promo-price.types';
-import { hasUnifiedPrice, inPromoDeadZone, planPromoPrice } from './promo-price.planner';
+import { hasUnifiedPrice, inPromoDeadZone, planPromoPrice, unifiedBoostPlan } from './promo-price.planner';
 import {
     campaignChangedAtDifferentPrice,
     observedOzonBase,
@@ -90,22 +90,41 @@ function repeatsCampaignChange(previous: OzonTransitionStep, next?: OzonTransiti
 }
 
 // Legacy receipts did not record every successful campaign reply. A timeout alone cannot
-// retire a write. Require a different, coherent marketplace price and an obsolete unsafe target.
+// retire a write. Require a coherent marketplace snapshot and evidence specific to the saved operation.
 function obsoleteUnifiedStep(state: PromoPriceState, saved: Pending, createdAt: string) {
     const { step, initial } = saved;
     const change = step.change;
-    if (change.kind !== 'ozon-set' && change.kind !== 'ozon-remove') return false;
     const since = Date.parse(createdAt);
     if (!Number.isFinite(since) || Date.now() - since < 24 * 60 * 60 * 1000 ||
         !state.calculationKey || !(state.calcMinPrice > 0) || !hasUnifiedPrice(state) ||
         state.offerId !== step.offerId || state.productId !== step.productId ||
         state.productId !== initial.productId || state.offerId !== initial.offerId ||
         !Number.isFinite(initial.price) || !Number.isFinite(initial.buyerPrice)) return false;
+    if (change.kind === 'base') {
+        // The import was accepted, a changed price-list field has appeared, and the
+        // shared promotion now masks that base. Retire only the old intent; the
+        // current buyer price must still be checked by a newly calculated plan.
+        const target = change.target;
+        return saved.baseAccepted === true && step.confirmMaskedBase === true &&
+            Number(target.min_price) === state.minPrice && Number(target.old_price) === state.oldPrice &&
+            (state.minPrice !== initial.minPrice || state.oldPrice !== initial.oldPrice) &&
+            state.price < Number(target.price) && state.price !== initial.price &&
+            state.ozonActions.some(a => a.participant && a.actionPrice === state.price);
+    }
+    if (change.kind !== 'ozon-set' && change.kind !== 'ozon-remove') return false;
     const slot = state.ozonActions.find(a => a.actionId === change.actionId);
     const cap = change.kind === 'ozon-set' ? change.to : step.floor;
     if (!slot?.unifiedPrice || slot.isVoucher || !(cap > 0)) return false;
     const oldBuyer = buyerPrice(cap, [], state.seller?.isActive ? state.seller.percent : 0);
-    if (oldBuyer >= state.calcMinPrice && !inPromoDeadZone(oldBuyer, state.deadZoneFloor)) return false;
+    if (oldBuyer >= state.calcMinPrice && !inPromoDeadZone(oldBuyer, state.deadZoneFloor)) {
+        // A historic removal echoed its starting cap. Another shared cap is now live.
+        // Either publication order must leave the same boosts and meet today's floor.
+        if (change.kind !== 'ozon-remove' || change.from !== cap || !slot.participant ||
+            initial.price !== cap || state.price >= cap || state.buyerPrice === initial.buyerPrice) return false;
+        const next = unifiedBoostPlan(state, state.calcMinPrice);
+        return next?.unifiedExit === true && Math.abs(next.floor - cap) <= 1 &&
+            state.ozonActions.every(a => !a.unifiedPrice || a.maxActionPrice < cap);
+    }
     // The shared price of a live participant is independent readback even if Ozon
     // did not apply the requested membership. Do not keep trying to join at a loss.
     if (state.price === cap)
@@ -348,7 +367,7 @@ export class OzonPriceTransitionService {
                 if (obsoleteUnifiedStep(state, saved, claim.createdAt)) {
                     if (!(await this.journal.finish(offer, claim.token)))
                         return pending('Другой исполнитель уже обработал этот шаг');
-                    return { ...pending('Сверена единая цена Ozon. Прежний шаг ниже актуального минимума. Требуется свежий план.'),
+                    return { ...pending('Состояние старой операции сверено с Ozon. Требуется свежий план по текущей цене.'),
                         observed: state.buyerPrice, stale: true, obsolete: true };
                 }
                 const unifiedExit = !isBase(saved.goal) && (saved.goal.unifiedExit || saved.goal.unifiedPrice);
