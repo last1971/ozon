@@ -91,7 +91,7 @@ export class LossPriceQueueStore {
             ...payload,
             waitingForStock: undefined,
             attempts: (Number.isSafeInteger(payload?.attempts) ? payload.attempts : 0) + 1,
-            lastError: error,
+            lastError: error.replace(/[^\u0000-ӿ]/g, '?'),
             attemptedAt: new Date(now).toISOString(),
             retryKind,
             nextAttemptAt: new Date(now + lossPriceRetryDelay(retryKind)).toISOString(),
