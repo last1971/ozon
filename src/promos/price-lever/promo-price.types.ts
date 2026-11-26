@@ -13,6 +13,7 @@ export interface OzonActionSlot {
     title: string;
     /** Промокодная: цену не назначить, снять — только deactivate. */
     isVoucher: boolean;
+    unifiedPrice?: boolean;
     /** true — участник, false — кандидат. */
     participant: boolean;
     /** Текущая цена в акции (у кандидата 0). */
@@ -82,6 +83,8 @@ export interface PromoPricePlan {
     /** Пол, по которому решались Ozon-акции (с процентом на входе, до подбора процента). */
     floor: number;
     steps: PromoPriceStep[];
+    /** One shared Ozon price removes this product from all qualifying boosts. */
+    unifiedExit?: boolean;
     buyerBefore: number;
     /** Цена до нашего процента после выполнения плана. */
     baseAfter: number;

@@ -14,6 +14,33 @@ const startText = formatMoscowShortDateTime;
 export const inPromoDeadZone = (price: number, floor?: number): boolean =>
     floor !== undefined && price > 300 && price < floor;
 
+// V5 and the participant lists are published separately. Only act on a coherent shared price.
+export function hasUnifiedPrice(s: PromoPriceState): boolean {
+    const percent = s.seller?.isActive ? s.seller.percent : 0;
+    return Number.isSafeInteger(s.price) && s.price > 0 && percent >= 0 && percent < 100 &&
+        s.buyerPrice === s.buyerPriceCalc && s.buyerPrice === buyerPrice(s.price, [], percent) &&
+        s.ozonActions.every(a => !a.participant || (a.unifiedPrice && !a.isVoucher && a.actionPrice === s.price));
+}
+
+export function unifiedExitPlan(s: PromoPriceState, target: number, requestedPercent?: number): PromoPricePlan | undefined {
+    const percent = s.seller?.isActive ? s.seller.percent : 0;
+    if (!s.calcMinPrice || target !== s.calcMinPrice || s.buyerPrice >= target ||
+        (requestedPercent !== undefined && requestedPercent !== percent) || !hasUnifiedPrice(s)) return;
+    const floor = ozonActionFloor(inPromoDeadZone(target, s.deadZoneFloor) ? s.deadZoneFloor : target, percent);
+    const buyerAfter = buyerPrice(floor, [], percent);
+    const active = s.ozonActions.filter(a => a.participant);
+    if (!active.length || !Number.isSafeInteger(floor) || buyerAfter < target ||
+        inPromoDeadZone(buyerAfter, s.deadZoneFloor) ||
+        s.ozonActions.some(a => a.unifiedPrice && !(a.maxActionPrice > 0 && a.maxActionPrice < floor))) return;
+    const first = active[0];
+    return {
+        offerId: s.offerId, productId: s.productId, state: s, target, percent, floor,
+        buyerBefore: s.buyerPrice, buyerAfter, baseAfter: floor, unifiedExit: true, ok: true, closest: false,
+        steps: [removeStep(first, 'Единая цена выше порогов бустинга')],
+        notes: [`Предельная цена ${floor} ₽ выводит товар из бустингов. Проверяем участие и цену после скидки.`],
+    };
+}
+
 /** Изменения акций могут примениться в любом порядке или частично. */
 function safeDuringTransition(s: PromoPriceState, plan: PromoPricePlan, now: Date): boolean {
     const newPrices = new Map<number, number>();
@@ -71,6 +98,7 @@ export const planPromoPrice = (
     target: PromoTarget,
     percentWanted?: number,
     now: Date = new Date(),
+    allowUnifiedExit = true,
 ): PromoPricePlan => {
     const notes: string[] = [];
 
@@ -78,6 +106,8 @@ export const planPromoPrice = (
     const eff = s.calcMinPrice ?? s.minPrice;
 
     const wanted = targetRubles(s, target);
+    const exit = allowUnifiedExit && unifiedExitPlan(s, wanted, percentWanted);
+    if (exit) return exit;
     let t = Math.min(s.price, Math.max(eff, wanted));
     if (t !== wanted) notes.push(`цель ${wanted} вне коридора [${eff}, ${s.price}] — взята ${t}`);
 

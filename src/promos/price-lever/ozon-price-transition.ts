@@ -2,7 +2,7 @@ import { buyerPrice, ozonActionFloor } from '../../helpers/price/buyer.price.hel
 import { observedOzonBase, resolveOzonBaseTarget } from '../../helpers/price/ozon-base-target';
 import { ozonDisplayPrice } from '../../helpers/price/ozon.display-price';
 import type { UpdatePriceDto } from '../../price/dto/update.price.dto';
-import { planPromoPrice } from './promo-price.planner';
+import { hasUnifiedPrice, inPromoDeadZone, planPromoPrice, unifiedExitPlan } from './promo-price.planner';
 import type { OzonActionSlot, PromoPricePlan, PromoPriceState, PromoPriceStep } from './promo-price.types';
 
 type BaseChange = { kind: 'base'; target: UpdatePriceDto };
@@ -248,6 +248,25 @@ export function planOzonPriceTransition(
         )
     )
         return failed('Цена покупателя или исходные условия акций Ozon не подтверждены');
+    if (!('offer_id' in goal) && goal.unifiedExit) {
+        if (state.productId !== goal.productId || state.offerId !== goal.offerId || !hasUnifiedPrice(state) ||
+            (state.seller?.isActive ? state.seller.percent : 0) !== goal.percent ||
+            state.seller?.actionId !== goal.state.seller?.actionId || state.seller?.sku !== goal.state.seller?.sku)
+            return { ...failed('Ждём согласованных цен и участия в бустингах Ozon'), inconsistentSnapshot: true };
+        if (state.price === goal.floor && state.buyerPrice === goal.buyerAfter && state.buyerPrice >= minimum &&
+            !inPromoDeadZone(state.buyerPrice, upper) && !state.ozonActions.some(a => a.participant))
+            return { ok: true, steps: [], buyerAfter: state.buyerPrice };
+        if (state.price === goal.floor && state.buyerPrice === goal.buyerAfter &&
+            state.ozonActions.every(a => !a.participant || (a.unifiedPrice && a.maxActionPrice < goal.floor)))
+            return { ...failed('Ждём выхода товара из всех бустингов Ozon'), inconsistentSnapshot: true };
+        const fresh = unifiedExitPlan(state, goal.target, goal.percent);
+        if (!fresh || fresh.floor !== goal.floor || fresh.buyerAfter !== goal.buyerAfter)
+            return failed('Условия бустинга изменились. Требуется новый план');
+        return { ok: true, buyerAfter: fresh.buyerAfter, steps: [{
+            offerId: state.offerId, productId: state.productId, change: fresh.steps[0], floor: fresh.floor,
+            buyerPrices: [fresh.buyerAfter],
+        }] };
+    }
     const currentTime = +now;
     const frame = initialModel(state, currentTime, confirmedBase);
     if (!amounts(frame, currentTime).some((r) => contains(r, state.buyerPrice)))
@@ -289,6 +308,7 @@ export function planOzonPriceTransition(
               minimum,
               undefined,
               now,
+              false,
           )
         : (goal as PromoPricePlan);
     if (plan.offerId !== state.offerId || plan.productId !== state.productId)
@@ -590,7 +610,18 @@ export function planOzonPriceTransition(
         allowProtectedImport = true;
         steps = search(frame, needsBase, false) ?? search(frame, needsBase, true);
     }
-    if (steps) return { ok: true, steps, buyerAfter: plan.buyerAfter };
+    if (steps) {
+        // A base import may start with a boost exit. Ozon can publish the new shared
+        // price for all participating actions after this single write. Replan on readback.
+        const first = steps[0];
+        if (baseTarget && first?.change.kind === 'ozon-remove') {
+            const shared = unifiedExitPlan(state, minimum);
+            if (shared && shared.floor === first.floor && shared.steps[0].kind === 'ozon-remove' &&
+                shared.steps[0].actionId === first.change.actionId)
+                first.buyerPrices = unique([...first.buyerPrices, shared.buyerAfter]);
+        }
+        return { ok: true, steps, buyerAfter: plan.buyerAfter };
+    }
     const summary =
         checked.size >= maxStates
             ? 'Достигнут предел перебора вариантов акций, безопасный переход не подтверждён'

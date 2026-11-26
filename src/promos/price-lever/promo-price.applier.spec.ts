@@ -113,6 +113,7 @@ function fixture(offer = '539124-5') {
         notices,
         create,
         saved,
+        reserve,
         seller,
         ops,
         delay: () => {
@@ -189,36 +190,35 @@ describe('Защита минимума по 560166', () => {
         expect(f.state.buyerPrice).toBe(5495);
         expect((await f.create().updateBases([f.target]))[0].updated).toBe(true);
         expect(f.writes).toHaveLength(7);
-        if (reset === 'floor') expect(f.ops.deactivate).toHaveBeenCalledWith(5, [f.state.productId]);
+        expect(f.ops.deactivate).not.toHaveBeenCalled();
     });
     it('после явного выхода ждёт чтения Ozon и не дублирует запрос при перезапуске', async () => {
         const f = lossFixture('floor');
-        f.ops.deactivate.mockImplementationOnce(async () => { throw new Error('timeout'); });
+        const update = f.ops.update.getMockImplementation();
+        f.ops.update.mockImplementation(async (id, rows) => {
+            if (id === 5) throw new Error('timeout');
+            return update(id, rows);
+        });
         const [answer] = await f.create().updateBases([f.target]);
         expect(answer.transition).toBe('pending');
         await f.create().resume();
-        expect(f.ops.deactivate).toHaveBeenCalledTimes(1);
-        expect(f.state.ozonActions[4].participant).toBe(true);
+        expect(f.ops.update.mock.calls.filter(([id]) => id === 5)).toHaveLength(1);
+        expect(f.ops.deactivate).not.toHaveBeenCalled();
         f.state.ozonActions[4].participant = false;
         f.refresh();
         await f.create().resume();
         expect(f.state.buyerPrice).toBe(5495);
         expect(f.saved.size).toBe(0);
     });
-    it('различает подтверждённый прежний запрос без изменений и неизвестный ответ', async () => {
-        const f = lossFixture('floor');
-        f.ops.deactivate.mockImplementationOnce(async () => { throw new Error('timeout'); });
-        await f.create().updateBases([f.target]);
-        const saved = f.saved.get(f.state.offerId).payload;
-        expect(saved.step.change.from).toBe(saved.step.floor);
-        await f.create().resume();
-        expect(f.ops.deactivate).toHaveBeenCalledTimes(1);
-        // Previously recorded acknowledgement of a price-update request. The
-        // missing acknowledgement above must never authorize the same recovery.
-        saved.alternative = 'kept';
-        await f.create().resume();
-        expect(f.ops.deactivate).toHaveBeenCalledTimes(2);
-        expect(f.state.buyerPrice).toBe(5495);
+    it('возвращает причину отказа обновления бустинга', async () => {
+        const f = lossFixture();
+        f.ops.update.mockResolvedValue({ added: [], removed: [], unchanged: [],
+            rejected: [{ productId: f.state.productId, reason: 'price validation failed' }] });
+        const [answer] = await f.create().updateBases([f.target]);
+        expect(answer.transition).toBe('blocked');
+        expect(answer.errors[0].message).toContain('price validation failed');
+        expect(f.ops.deactivate).not.toHaveBeenCalled();
+        expect(f.saved.size).toBe(0);
     });
     it.each(['added', 'unchanged'])('сохраняет ответ %s между запусками и продолжает после подтверждения выхода', async reply => {
         const f = lossFixture();
@@ -395,5 +395,102 @@ describe('Ozon price writer with real planner and independent readback', () => {
         f.state.autoActionEnabled = false;
         expect((await f.create().updateBases([f.target]))[0].updated).toBe(false);
         expect(f.writes).toEqual([]);
+    });
+});
+
+describe('569670 — единая цена бустингов', () => {
+    function opt() {
+        const f = fixture('569670');
+        Object.assign(f.state, { price: 292, buyerPrice: 277, buyerPriceCalc: 277, minPrice: 292,
+            calcMinPrice: 603, deadZoneFloor: 603,
+            seller: { ...f.state.seller, percent: 5 },
+            ozonActions: [494, 576, 570, 574, 570].map((maxActionPrice, i) => ({
+                actionId: i + 1, title: 'Бустинг ' + i, participant: true, unifiedPrice: true,
+                isVoucher: false, stock: 0, startsAt: null, actionPrice: 292, maxActionPrice,
+            })),
+        });
+        const initial = { ...structuredClone(f.state), price: 308, buyerPrice: 293 };
+        const plan = () => planPromoPrice(f.state, 603);
+        const ticket = f.reserve(f.state.offerId, { goal: plan(), initial, results: [], calculationKey: 'old',
+            step: { offerId: f.state.offerId, productId: f.state.productId, buyerPrices: [293], floor: 308,
+                change: { kind: 'ozon-set', actionId: 5, title: 'Бустинг 4', from: null, to: 308 } } });
+        Object.assign(ticket, { createdAt: '2020-01-01T00:00:00Z' });
+        return { ...f, plan, ticket };
+    }
+    it('устаревший шаг закрывается отдельно, один запрос поднимает цену всех бустингов', async () => {
+        const f = opt();
+        await f.create().resume();
+        expect(f.saved.size).toBe(0);
+        expect(f.ops.update).not.toHaveBeenCalled();
+        expect(f.plan()).toMatchObject({ unifiedExit: true, ok: true, buyerAfter: 603, floor: 635 });
+        f.ops.update.mockImplementation(async (id, rows) => {
+            expect(rows).toEqual([{ productId: f.state.productId, stock: 0, actionPrice: 635 }]);
+            f.state.price = 635;
+            f.state.ozonActions.forEach(a => a.participant = false);
+            return { added: [], removed: [f.state.productId], unchanged: [], rejected: [] };
+        });
+        const answer = await f.create().applyPromo(f.plan(), {});
+        expect(answer.verification).toBe('pending');
+        await f.create().resume();
+        expect(f.saved.size).toBe(1);
+        f.state.buyerPrice = f.state.buyerPriceCalc = 603;
+        await f.create().resume();
+        expect(f.saved.size).toBe(0);
+        expect(f.ops.update).toHaveBeenCalledTimes(1);
+        expect(f.ops.deactivate).not.toHaveBeenCalled();
+    });
+    it('за одну ручную отправку снимает устаревший шаг, подтверждает общий выход и записывает прайс', async () => {
+        const f = opt();
+        f.ops.update.mockImplementation(async (_id, [row]) => {
+            expect(row.actionPrice).toBe(635);
+            f.apply('boost exit', () => {
+                f.state.price = 635;
+                f.state.ozonActions.forEach(a => a.participant = false);
+            });
+            return { added: [], removed: [f.state.productId], unchanged: [], rejected: [] };
+        });
+        const [answer] = await f.create().updateBases([{
+            offer_id: f.state.offerId, price: '804', min_price: '603', old_price: '1046', currency_code: 'RUB',
+        }]);
+        expect(answer).toMatchObject({ updated: true, observedBuyerPrice: 603 });
+        expect(f.ops.update).toHaveBeenCalledTimes(1);
+        expect(f.state).toMatchObject({ minPrice: 603, price: 804, seller: { percent: 25 } });
+    });
+    it('ручная отправка обновляет также min_price, если бустинги уже отключены', async () => {
+        const f = opt();
+        Object.assign(f.state, { price: 635, buyerPrice: 603, buyerPriceCalc: 603, oldPrice: 947 });
+        f.state.ozonActions.forEach(a => a.participant = false);
+        const target = { offer_id: f.state.offerId, price: '635', min_price: '603', old_price: '947', currency_code: 'RUB' as const };
+        const [answer] = await f.create().updateBases([target]);
+        expect(answer).toMatchObject({ updated: true, observedBuyerPrice: 603 });
+        expect(f.state.minPrice).toBe(603);
+        expect(f.products.setPrice).toHaveBeenCalledTimes(1);
+        expect(f.ops.update).not.toHaveBeenCalled();
+    });
+    it('сверяет исправленную вручную цену без отправки старых 308 рублей', async () => {
+        const f = opt();
+        Object.assign(f.state, { price: 635, buyerPrice: 603, buyerPriceCalc: 603 });
+        f.state.ozonActions.forEach(a => a.participant = false);
+        await f.create().resume();
+        expect(f.saved.size).toBe(0);
+        expect(f.ops.update).not.toHaveBeenCalled();
+    });
+    it.each(['recent', 'unchanged', 'inconsistent', 'other listing'])('сохраняет неподтверждённый шаг: %s', async reason => {
+        const f = opt();
+        if (reason === 'recent') Object.assign(f.ticket, { createdAt: new Date().toISOString() });
+        if (reason === 'unchanged') f.ticket.payload.initial = structuredClone(f.state);
+        if (reason === 'inconsistent') f.state.buyerPriceCalc = 290;
+        if (reason === 'other listing') f.state.productId++;
+        await f.create().resume();
+        expect(f.saved.size).toBe(1);
+        expect(f.ops.update).not.toHaveBeenCalled();
+    });
+    it('не планирует общий выход при действующем промокоде или подходящем лимите', () => {
+        const f = opt();
+        f.state.ozonActions[0].isVoucher = true;
+        expect(f.plan().unifiedExit).toBeUndefined();
+        f.state.ozonActions[0].isVoucher = false;
+        f.state.ozonActions[1].maxActionPrice = 635;
+        expect(f.plan().unifiedExit).toBeUndefined();
     });
 });

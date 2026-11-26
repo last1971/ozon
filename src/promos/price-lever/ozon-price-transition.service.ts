@@ -3,6 +3,7 @@ import { ModuleRef } from '@nestjs/core';
 import { priceUpdateQueue, PricePlanStaleError } from '../../helpers/price/price-update.queue';
 import { assertPricingWritesAllowed } from '../../helpers/price/pricing-review-mode';
 import { resolveOzonBaseTarget } from '../../helpers/price/ozon-base-target';
+import { buyerPrice } from '../../helpers/price/buyer.price.helper';
 import { ozonDisplayPrice } from '../../helpers/price/ozon.display-price';
 import { AutoAction, UpdatePriceDto } from '../../price/dto/update.price.dto';
 import { OzonPriceResult, ozonResultsByOffer } from '../../price/price-update.report';
@@ -13,7 +14,7 @@ import type { PromoApplyOptions } from './promo-price.applier';
 import { OZON_PROMO_STATE_READER } from './transition.tokens';
 import type { PromoPriceService } from './promo-price.service';
 import { PromoPriceApplyResult, PromoPricePlan, PromoPriceState, PromoStepResult } from './promo-price.types';
-import { planPromoPrice } from './promo-price.planner';
+import { hasUnifiedPrice, inPromoDeadZone, planPromoPrice } from './promo-price.planner';
 import {
     campaignChangedAtDifferentPrice,
     observedOzonBase,
@@ -45,6 +46,7 @@ type Outcome = {
     attempted?: boolean;
     effectiveBasePrice?: number;
     stale?: boolean;
+    obsolete?: boolean;
 };
 type Request = { offer: string; goal: Goal; options: PromoApplyOptions; recovery?: boolean };
 
@@ -66,6 +68,7 @@ function sameGoal(left: Goal, right: Goal) {
         );
     if (isBase(left) || isBase(right)) return false;
     return (
+        Boolean(left.unifiedExit) === Boolean(right.unifiedExit) &&
         left.productId === right.productId &&
         left.target === right.target &&
         left.percent === right.percent &&
@@ -83,6 +86,28 @@ function repeatsCampaignChange(previous: OzonTransitionStep, next?: OzonTransiti
         return a.actionId === b.actionId && previous.floor === next.floor;
     return a.kind === 'ozon-set' && b.kind === a.kind &&
         a.actionId === b.actionId && a.to === b.to && a.stock === b.stock;
+}
+
+// Legacy receipts did not record every successful campaign reply. A timeout alone cannot
+// retire a write. Require a different, coherent marketplace price and an obsolete unsafe target.
+function obsoleteUnifiedStep(state: PromoPriceState, saved: Pending, createdAt: string) {
+    const { step, initial } = saved;
+    const change = step.change;
+    if (change.kind !== 'ozon-set' && change.kind !== 'ozon-remove') return false;
+    const since = Date.parse(createdAt);
+    if (!Number.isFinite(since) || Date.now() - since < 24 * 60 * 60 * 1000 ||
+        !state.calculationKey || !(state.calcMinPrice > 0) || !hasUnifiedPrice(state) ||
+        state.offerId !== step.offerId || state.productId !== step.productId ||
+        state.productId !== initial.productId || state.offerId !== initial.offerId ||
+        state.price === initial.price || state.buyerPrice === initial.buyerPrice) return false;
+    const slot = state.ozonActions.find(a => a.actionId === change.actionId);
+    const cap = change.kind === 'ozon-set' ? change.to : step.floor;
+    if (!slot?.unifiedPrice || slot.isVoucher || !(cap > 0) || cap === state.price) return false;
+    if (slot.participant ? change.from === state.price :
+        state.price <= cap || state.buyerPrice < state.calcMinPrice || inPromoDeadZone(state.buyerPrice, state.deadZoneFloor) ||
+        state.ozonActions.some(a => a.participant)) return false;
+    const oldBuyer = buyerPrice(cap, [], state.seller?.isActive ? state.seller.percent : 0);
+    return oldBuyer < state.calcMinPrice || inPromoDeadZone(oldBuyer, state.deadZoneFloor);
 }
 
 function promoResult(goal: PromoPricePlan, result: Outcome): PromoPriceApplyResult {
@@ -171,7 +196,7 @@ export class OzonPriceTransitionService {
         }
     }
 
-    private async run(requests: Request[]) {
+    private async run(requests: Request[], retryObsolete = true) {
         const answers = new Map<string, Outcome>();
         if (!requests.length) return answers;
         assertPricingWritesAllowed();
@@ -246,6 +271,11 @@ export class OzonPriceTransitionService {
             active = next;
         }
         for (const r of active) answers.set(r.offer, pending('Продолжение сохранено до следующей сверки Ozon'));
+        if (retryObsolete) {
+            const fresh = requests.filter(r => !r.recovery && answers.get(r.offer)?.obsolete);
+            if (fresh.length)
+                for (const [offer, answer] of await this.run(fresh, false)) answers.set(offer, answer);
+        }
         return answers;
     }
 
@@ -293,14 +323,7 @@ export class OzonPriceTransitionService {
                 if (request.recovery && saved.calculationKey !== state.calculationKey)
                     return blocked(`${reason} Условия расчёта изменились. Требуется новый план.`);
                 const next = planOzonPriceTransition(state, goal, new Date(), confirmedBase);
-                // Older workers could acknowledge a price update that merely echoed the
-                // participant's existing price. A freshly planned explicit removal is a
-                // different operation. An unknown response never enters this branch.
-                const acknowledgedNoOp = seen && saved.alternative === 'kept' &&
-                    change.kind === 'ozon-remove' && !slot?.isVoucher && change.from === saved.step.floor &&
-                    next.steps[0]?.change.kind === 'ozon-remove' && next.steps[0].change.actionId === change.actionId &&
-                    slot?.actionPrice === next.steps[0].floor;
-                if (!next.ok || (seen && repeatsCampaignChange(saved.step, next.steps[0]) && !acknowledgedNoOp)) {
+                if (!next.ok || (seen && repeatsCampaignChange(saved.step, next.steps[0]))) {
                     // Keep the receipt across manual retries, cron and restarts.
                     if (!saved.alternativeConfirmed)
                         await this.journal.advance(offer, claim.token, { ...saved, alternativeConfirmed: true });
@@ -314,7 +337,14 @@ export class OzonPriceTransitionService {
         if (claim && !alternativePath) {
             const maskedImport = saved.step.change.kind === 'base' && observedOzonBase(state) === undefined;
             if ((maskedImport && !saved.baseAccepted) || !transitionStepConfirmed(state, saved.step)) {
-                if (!saved.alternative && campaignChangedAtDifferentPrice(state, saved.step)) {
+                if (obsoleteUnifiedStep(state, saved, claim.createdAt)) {
+                    if (!(await this.journal.finish(offer, claim.token)))
+                        return pending('Другой исполнитель уже обработал этот шаг');
+                    return { ...pending('Единая цена Ozon изменилась, прежний шаг ниже минимума. Требуется свежий план.'),
+                        observed: state.buyerPrice, stale: true, obsolete: true };
+                }
+                const unifiedExit = !isBase(saved.goal) && saved.goal.unifiedExit;
+                if (!unifiedExit && !saved.alternative && campaignChangedAtDifferentPrice(state, saved.step)) {
                     await this.journal.finish(offer, claim.token);
                     return { ...pending('Ozon подтвердил изменение акции по другой итоговой цене. Нужен свежий расчёт.'),
                         observed: state.buyerPrice, stale: true };
@@ -407,6 +437,7 @@ export class OzonPriceTransitionService {
                 reason: path.reason,
                 effectiveBasePrice: isBase(goal) ? Number(goal.price) : undefined,
             };
+            if (claim && path.inconsistentSnapshot) return result;
             let notice: PromoPriceApplyResult | undefined;
             if (path.ok) {
                 const final = isBase(goal)
@@ -500,7 +531,7 @@ export class OzonPriceTransitionService {
         }
         const slot = state.ozonActions.find((a) => a.actionId === change.actionId);
         if (!slot) throw new Error('Не найдено состояние акции Ozon');
-        if (change.kind === 'ozon-remove' && (slot.isVoucher || (slot.participant && slot.actionPrice === step.floor))) {
+        if (change.kind === 'ozon-remove' && slot.isVoucher) {
             if ((await this.actions.deactivate(change.actionId, [id])).includes(id)) return;
             throw new Error('Нет подтверждения исключения');
         }
@@ -517,10 +548,6 @@ export class OzonPriceTransitionService {
         if (result.added.includes(id) || result.unchanged.includes(id) || result.removed.includes(id)) return;
         const refusal = result.rejected.find((r) => r.productId === id);
         if (!refusal) throw new Error('Ответ акции Ozon не содержит результат товара');
-        if (change.kind === 'ozon-remove') {
-            if ((await this.actions.deactivate(change.actionId, [id])).includes(id)) return;
-            throw new Error('Ozon ещё не подтвердил исключение товара');
-        }
         throw new RejectedChange(refusal.reason);
     }
 }

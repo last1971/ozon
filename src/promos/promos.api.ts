@@ -5,6 +5,10 @@ import { Action, ActionProduct, ActionProductUpdate, ActionUpdateResult, Rejecte
 /** Ozon отвечает так, когда запрошенное уже стоит. */
 const NO_CHANGES = /has no changes/i;
 
+export function usesUnifiedPrice(actionType: string): boolean {
+    return actionType === 'ELASTIC_BOOSTING' || actionType === 'STOCK_DISCOUNT';
+}
+
 /** Деньги в Seller API v2: сумма строкой, валюта (в акциях часто пустая). */
 interface Money {
     amount: string;
@@ -49,7 +53,7 @@ export class OzonPromosApi {
         if (!Array.isArray(res?.result)) throw new Error(OzonPromosApi.errorText(res) || 'Ozon не вернул список акций');
         const actions: Action[] = res.result;
         for (const action of actions) {
-            if (action.action_type === 'ELASTIC_BOOSTING' || action.action_type === 'STOCK_DISCOUNT')
+            if (usesUnifiedPrice(action.action_type))
                 this.withoutStock.add(action.id);
         }
         return actions;

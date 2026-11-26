@@ -7,7 +7,7 @@ import { buyerPrice, ozonPriceActions } from '../../helpers/price/buyer.price.he
 import { ProductPriceDto } from '../../price/dto/product.price.dto';
 import { ProductService } from '../../product/product.service';
 import { ProductVisibility } from '../../product/product.visibility';
-import { OzonPromosApi } from '../promos.api';
+import { OzonPromosApi, usesUnifiedPrice } from '../promos.api';
 import { ActionProduct } from '../promos.types';
 import { OzonSellerActionsApi } from '../seller-actions.api';
 import { PromoPriceApplier } from './promo-price.applier';
@@ -205,6 +205,7 @@ export class PromoPriceService {
                     actionId: action.id,
                     title: action.title,
                     isVoucher: Boolean(action.is_voucher_action),
+                    unifiedPrice: usesUnifiedPrice(action.action_type),
                     participant,
                     actionPrice: participant ? p.actionPrice : 0,
                     maxActionPrice: p.maxActionPrice,
