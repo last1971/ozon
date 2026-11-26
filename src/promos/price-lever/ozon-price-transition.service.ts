@@ -110,6 +110,8 @@ export class OzonPriceTransitionService {
         const answers = await this.run(requests);
         return requests.map(({ offer, goal }) => {
             const res = answers.get(offer);
+            if (res.status !== 'done')
+                this.logger.warn(`[${offer}] transition ${res.status}: ${res.reason ?? '(без причины)'}`);
             return {
                 offer_id: offer,
                 updated: res.status === 'done',
