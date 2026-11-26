@@ -22,7 +22,7 @@ export function hasUnifiedPrice(s: PromoPriceState): boolean {
         s.ozonActions.every(a => !a.participant || (a.unifiedPrice && !a.isVoucher && a.actionPrice === s.price));
 }
 
-export function unifiedExitPlan(s: PromoPriceState, target: number, requestedPercent?: number): PromoPricePlan | undefined {
+export function unifiedBoostPlan(s: PromoPriceState, target: number, requestedPercent?: number): PromoPricePlan | undefined {
     const percent = s.seller?.isActive ? s.seller.percent : 0;
     if (!s.calcMinPrice || target !== s.calcMinPrice || s.buyerPrice >= target ||
         (requestedPercent !== undefined && requestedPercent !== percent) || !hasUnifiedPrice(s)) return;
@@ -31,13 +31,17 @@ export function unifiedExitPlan(s: PromoPriceState, target: number, requestedPer
     const active = s.ozonActions.filter(a => a.participant);
     if (!active.length || !Number.isSafeInteger(floor) || buyerAfter < target ||
         inPromoDeadZone(buyerAfter, s.deadZoneFloor) ||
-        s.ozonActions.some(a => a.unifiedPrice && !(a.maxActionPrice > 0 && a.maxActionPrice < floor))) return;
-    const first = active[0];
+        s.ozonActions.some(a => a.unifiedPrice && !(a.maxActionPrice > 0))) return;
+    const allExit = !s.ozonActions.some(a => a.unifiedPrice && a.maxActionPrice >= floor);
+    const first = active.find(a => a.maxActionPrice >= floor) ?? active[0];
+    const step: PromoPriceStep = first.maxActionPrice >= floor
+        ? { kind: 'ozon-set', actionId: first.actionId, title: first.title, from: first.actionPrice, to: floor }
+        : removeStep(first, 'Единая цена выше порога бустинга');
     return {
         offerId: s.offerId, productId: s.productId, state: s, target, percent, floor,
-        buyerBefore: s.buyerPrice, buyerAfter, baseAfter: floor, unifiedExit: true, ok: true, closest: false,
-        steps: [removeStep(first, 'Единая цена выше порогов бустинга')],
-        notes: [`Предельная цена ${floor} ₽ выводит товар из бустингов. Проверяем участие и цену после скидки.`],
+        buyerBefore: s.buyerPrice, buyerAfter, baseAfter: floor, ok: true, closest: false,
+        ...(allExit ? { unifiedExit: true } : { unifiedPrice: true }), steps: [step],
+        notes: [`Единая предельная цена ${floor} ₽. Проверяем участие в бустингах и цену после скидки.`],
     };
 }
 
@@ -106,7 +110,7 @@ export const planPromoPrice = (
     const eff = s.calcMinPrice ?? s.minPrice;
 
     const wanted = targetRubles(s, target);
-    const exit = allowUnifiedExit && unifiedExitPlan(s, wanted, percentWanted);
+    const exit = allowUnifiedExit && unifiedBoostPlan(s, wanted, percentWanted);
     if (exit) return exit;
     let t = Math.min(s.price, Math.max(eff, wanted));
     if (t !== wanted) notes.push(`цель ${wanted} вне коридора [${eff}, ${s.price}] — взята ${t}`);

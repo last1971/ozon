@@ -2,7 +2,7 @@ import { buyerPrice, ozonActionFloor } from '../../helpers/price/buyer.price.hel
 import { observedOzonBase, resolveOzonBaseTarget } from '../../helpers/price/ozon-base-target';
 import { ozonDisplayPrice } from '../../helpers/price/ozon.display-price';
 import type { UpdatePriceDto } from '../../price/dto/update.price.dto';
-import { hasUnifiedPrice, inPromoDeadZone, planPromoPrice, unifiedExitPlan } from './promo-price.planner';
+import { hasUnifiedPrice, inPromoDeadZone, planPromoPrice, unifiedBoostPlan } from './promo-price.planner';
 import type { OzonActionSlot, PromoPricePlan, PromoPriceState, PromoPriceStep } from './promo-price.types';
 
 type BaseChange = { kind: 'base'; target: UpdatePriceDto };
@@ -248,18 +248,22 @@ export function planOzonPriceTransition(
         )
     )
         return failed('Цена покупателя или исходные условия акций Ozon не подтверждены');
-    if (!('offer_id' in goal) && goal.unifiedExit) {
+    if (!('offer_id' in goal) && (goal.unifiedExit || goal.unifiedPrice)) {
         if (state.productId !== goal.productId || state.offerId !== goal.offerId || !hasUnifiedPrice(state) ||
             (state.seller?.isActive ? state.seller.percent : 0) !== goal.percent ||
             state.seller?.actionId !== goal.state.seller?.actionId || state.seller?.sku !== goal.state.seller?.sku)
             return { ...failed('Ждём согласованных цен и участия в бустингах Ozon'), inconsistentSnapshot: true };
+        const intended = goal.steps[0];
+        const slot = intended && intended.kind !== 'percent' && state.ozonActions.find(a => a.actionId === intended.actionId);
+        const membershipMatches = goal.unifiedExit ? !state.ozonActions.some(a => a.participant) :
+            intended?.kind === 'ozon-set' ? slot?.participant && slot.actionPrice === intended.to :
+            intended?.kind === 'ozon-remove' && !slot?.participant;
         if (state.price === goal.floor && state.buyerPrice === goal.buyerAfter && state.buyerPrice >= minimum &&
-            !inPromoDeadZone(state.buyerPrice, upper) && !state.ozonActions.some(a => a.participant))
+            !inPromoDeadZone(state.buyerPrice, upper) && membershipMatches)
             return { ok: true, steps: [], buyerAfter: state.buyerPrice };
-        if (state.price === goal.floor && state.buyerPrice === goal.buyerAfter &&
-            state.ozonActions.every(a => !a.participant || (a.unifiedPrice && a.maxActionPrice < goal.floor)))
+        if (state.price === goal.floor && state.buyerPrice === goal.buyerAfter && !membershipMatches)
             return { ...failed('Ждём выхода товара из всех бустингов Ozon'), inconsistentSnapshot: true };
-        const fresh = unifiedExitPlan(state, goal.target, goal.percent);
+        const fresh = unifiedBoostPlan(state, goal.target, goal.percent);
         if (!fresh || fresh.floor !== goal.floor || fresh.buyerAfter !== goal.buyerAfter)
             return failed('Условия бустинга изменились. Требуется новый план');
         return { ok: true, buyerAfter: fresh.buyerAfter, steps: [{
@@ -614,9 +618,10 @@ export function planOzonPriceTransition(
         // A base import may start with a boost exit. Ozon can publish the new shared
         // price for all participating actions after this single write. Replan on readback.
         const first = steps[0];
-        if (baseTarget && first?.change.kind === 'ozon-remove') {
-            const shared = unifiedExitPlan(state, minimum);
-            if (shared && shared.floor === first.floor && shared.steps[0].kind === 'ozon-remove' &&
+        if (baseTarget && (first?.change.kind === 'ozon-remove' || first?.change.kind === 'ozon-set')) {
+            const shared = unifiedBoostPlan(state, minimum);
+            if (shared && shared.floor === first.floor && shared.steps[0].kind === first.change.kind &&
+                (first.change.kind !== 'ozon-set' || first.change.to === shared.floor) &&
                 shared.steps[0].actionId === first.change.actionId)
                 first.buyerPrices = unique([...first.buyerPrices, shared.buyerAfter]);
         }

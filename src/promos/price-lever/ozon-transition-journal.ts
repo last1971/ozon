@@ -41,6 +41,13 @@ type Stream = 'PRICE_STEP' | 'PROMO_NOTICE';
 const OFFER_BATCH_SIZE = 100;
 const PAYLOAD_PART_SIZE = 4096;
 
+// Older cabinets keep the text BLOB in WIN1251. JSON escapes preserve every UTF-16
+// code unit, including surrogate pairs; keep common Cyrillic compact for long receipts.
+function journalJson(value: unknown): string {
+    return JSON.stringify(value).replace(/[^\x20-\x7eА-Яа-яЁё]/g, ch =>
+        '\\u' + ch.charCodeAt(0).toString(16).padStart(4, '0'));
+}
+
 // Firebird возвращает текст напрямую, без сегментного чтения BLOB драйвером.
 const payloadPart = (start: '1' | 'CAST(? AS INTEGER)') =>
     `CAST(SUBSTRING(PAYLOAD FROM ${start} FOR ${PAYLOAD_PART_SIZE}) AS VARCHAR(${PAYLOAD_PART_SIZE})) AS PART`;
@@ -107,7 +114,7 @@ export class OzonTransitionJournal {
                 `UPDATE OR INSERT INTO MP_EVENT (SERVICE, KIND, EXT_ID, STATE, PAYLOAD, HANDLED_AT, LAST_SEEN)
                  VALUES ('OZON', 'PRICE_BASE', ?, 'confirmed', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
                  MATCHING (SERVICE, KIND, EXT_ID, STATE)`,
-                [offer, JSON.stringify(receipt)], false);
+                [offer, journalJson(receipt)], false);
         }
     }
 
@@ -125,7 +132,7 @@ export class OzonTransitionJournal {
                 } else {
                     await tx.execute(
                         "INSERT INTO MP_EVENT (SERVICE, KIND, EXT_ID, STATE, POSTING, PAYLOAD) VALUES ('OZON', ?, ?, 'pending', ?, ?)",
-                        [stream, offerId, claim.token, JSON.stringify(claim)], false,
+                        [stream, offerId, claim.token, journalJson(claim)], false,
                     );
                 }
                 await this.changeBaseReceipt(tx, offerId, baseReceipt);
@@ -162,7 +169,7 @@ export class OzonTransitionJournal {
                 };
                 await tx.execute(
                     "INSERT INTO MP_EVENT (SERVICE, KIND, EXT_ID, STATE, POSTING, PAYLOAD) VALUES ('OZON', ?, ?, 'pending', ?, ?)",
-                    ['PROMO_NOTICE', token, receipt.token, JSON.stringify(receipt)], false,
+                    ['PROMO_NOTICE', token, receipt.token, journalJson(receipt)], false,
                 );
             }
             await tx.execute(
@@ -213,7 +220,7 @@ export class OzonTransitionJournal {
     private replace<T>(tx: FirebirdTransaction, stream: Stream, offerId: string, claim: TransitionClaim<T>) {
         return tx.execute(
             `UPDATE MP_EVENT SET POSTING = ?, PAYLOAD = ?, HANDLED_AT = NULL, LAST_SEEN = CURRENT_TIMESTAMP WHERE ${scope} AND EXT_ID = ?`,
-            [claim.token, JSON.stringify(claim), stream, offerId], false,
+            [claim.token, journalJson(claim), stream, offerId], false,
         );
     }
 

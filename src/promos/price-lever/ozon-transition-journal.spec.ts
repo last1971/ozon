@@ -43,6 +43,10 @@ function database() {
                     });
                 },
                 execute: async (sql: string, args) => {
+                    for (const arg of args) {
+                        if (typeof arg === 'string' && arg.startsWith('{') && /[₽🔔]/u.test(arg))
+                            throw new Error('Cannot transliterate character between character sets');
+                    }
                     calls.push(sql);
                     if (sql.startsWith('UPDATE OR INSERT')) {
                         draft.set(key('PRICE_BASE', args[0]), { POSTING: '', PAYLOAD: args[1], HANDLED_AT: 'now' });
@@ -148,7 +152,7 @@ it('читает обе выборки по 100 уникальных артик�
 
 it('читает длинную квитанцию полностью, включая кириллицу и многобайтные символы', async () => {
     const journal = new OzonTransitionJournal(database() as any);
-    const notice = { notes: 'Цена подтверждена 🔔 '.repeat(600) };
+    const notice = { notes: 'Цена 635 ₽ подтверждена 🔔 '.repeat(600) };
     const claim = await journal.claim('569740', notice, 'PROMO_NOTICE');
     expect((await journal.outstanding('PROMO_NOTICE')).get('569740')).toEqual(claim);
 });

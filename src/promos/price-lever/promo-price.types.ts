@@ -85,6 +85,8 @@ export interface PromoPricePlan {
     steps: PromoPriceStep[];
     /** One shared Ozon price removes this product from all qualifying boosts. */
     unifiedExit?: boolean;
+    /** Shared price update when Ozon can keep the product in eligible boosts. */
+    unifiedPrice?: boolean;
     buyerBefore: number;
     /** Цена до нашего процента после выполнения плана. */
     baseAfter: number;

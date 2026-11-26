@@ -485,6 +485,35 @@ describe('569670 — единая цена бустингов', () => {
         expect(f.saved.size).toBe(1);
         expect(f.ops.update).not.toHaveBeenCalled();
     });
+    it('перепланирует старую цену, уже опубликованную в соседних бустингах', async () => {
+        const f = opt();
+        Object.assign(f.state, { price: 308, buyerPrice: 293, buyerPriceCalc: 293 });
+        f.state.ozonActions.forEach(a => a.actionPrice = 308);
+        Object.assign(f.state.ozonActions[4], { participant: false, actionPrice: 0 });
+        await f.create().resume();
+        expect(f.saved.size).toBe(0);
+        expect(f.ops.update).not.toHaveBeenCalled();
+    });
+    it('поднимает общую цену, сохраняя участие там, где лимит допускает целевую цену', async () => {
+        const f = opt();
+        await f.create().resume();
+        f.state.ozonActions[2].maxActionPrice = 660;
+        expect(f.plan()).toMatchObject({ unifiedPrice: true, floor: 635, buyerAfter: 603,
+            steps: [{ kind: 'ozon-set', actionId: 3, to: 635 }] });
+        f.ops.update.mockImplementation(async (id, [row]) => {
+            f.apply('shared cap', () => {
+                f.state.price = row.actionPrice;
+                for (const a of f.state.ozonActions) {
+                    a.participant = a.maxActionPrice >= row.actionPrice;
+                    a.actionPrice = a.participant ? row.actionPrice : 0;
+                }
+            });
+            return { added: [f.state.productId], removed: [], rejected: [], unchanged: [] };
+        });
+        expect((await f.create().applyPromo(f.plan(), {})).verification).toBe('confirmed');
+        expect(f.ops.update).toHaveBeenCalledTimes(1);
+        expect(f.saved.size).toBe(0);
+    });
     it('не планирует общий выход при действующем промокоде или подходящем лимите', () => {
         const f = opt();
         f.state.ozonActions[0].isVoucher = true;

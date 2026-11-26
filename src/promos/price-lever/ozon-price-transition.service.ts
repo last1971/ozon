@@ -69,6 +69,7 @@ function sameGoal(left: Goal, right: Goal) {
     if (isBase(left) || isBase(right)) return false;
     return (
         Boolean(left.unifiedExit) === Boolean(right.unifiedExit) &&
+        Boolean(left.unifiedPrice) === Boolean(right.unifiedPrice) &&
         left.productId === right.productId &&
         left.target === right.target &&
         left.percent === right.percent &&
@@ -99,15 +100,22 @@ function obsoleteUnifiedStep(state: PromoPriceState, saved: Pending, createdAt: 
         !state.calculationKey || !(state.calcMinPrice > 0) || !hasUnifiedPrice(state) ||
         state.offerId !== step.offerId || state.productId !== step.productId ||
         state.productId !== initial.productId || state.offerId !== initial.offerId ||
-        state.price === initial.price || state.buyerPrice === initial.buyerPrice) return false;
+        !Number.isFinite(initial.price) || !Number.isFinite(initial.buyerPrice)) return false;
     const slot = state.ozonActions.find(a => a.actionId === change.actionId);
     const cap = change.kind === 'ozon-set' ? change.to : step.floor;
-    if (!slot?.unifiedPrice || slot.isVoucher || !(cap > 0) || cap === state.price) return false;
+    if (!slot?.unifiedPrice || slot.isVoucher || !(cap > 0)) return false;
+    const oldBuyer = buyerPrice(cap, [], state.seller?.isActive ? state.seller.percent : 0);
+    if (oldBuyer >= state.calcMinPrice && !inPromoDeadZone(oldBuyer, state.deadZoneFloor)) return false;
+    // The shared price of a live participant is independent readback even if Ozon
+    // did not apply the requested membership. Do not keep trying to join at a loss.
+    if (state.price === cap)
+        return state.ozonActions.some(a => a.participant) &&
+            (change.kind === 'ozon-set' || change.from === cap);
+    if (state.price === initial.price || state.buyerPrice === initial.buyerPrice) return false;
     if (slot.participant ? change.from === state.price :
         state.price <= cap || state.buyerPrice < state.calcMinPrice || inPromoDeadZone(state.buyerPrice, state.deadZoneFloor) ||
         state.ozonActions.some(a => a.participant)) return false;
-    const oldBuyer = buyerPrice(cap, [], state.seller?.isActive ? state.seller.percent : 0);
-    return oldBuyer < state.calcMinPrice || inPromoDeadZone(oldBuyer, state.deadZoneFloor);
+    return true;
 }
 
 function promoResult(goal: PromoPricePlan, result: Outcome): PromoPriceApplyResult {
@@ -340,10 +348,10 @@ export class OzonPriceTransitionService {
                 if (obsoleteUnifiedStep(state, saved, claim.createdAt)) {
                     if (!(await this.journal.finish(offer, claim.token)))
                         return pending('Другой исполнитель уже обработал этот шаг');
-                    return { ...pending('Единая цена Ozon изменилась, прежний шаг ниже минимума. Требуется свежий план.'),
+                    return { ...pending('Сверена единая цена Ozon. Прежний шаг ниже актуального минимума. Требуется свежий план.'),
                         observed: state.buyerPrice, stale: true, obsolete: true };
                 }
-                const unifiedExit = !isBase(saved.goal) && saved.goal.unifiedExit;
+                const unifiedExit = !isBase(saved.goal) && (saved.goal.unifiedExit || saved.goal.unifiedPrice);
                 if (!unifiedExit && !saved.alternative && campaignChangedAtDifferentPrice(state, saved.step)) {
                     await this.journal.finish(offer, claim.token);
                     return { ...pending('Ozon подтвердил изменение акции по другой итоговой цене. Нужен свежий расчёт.'),
