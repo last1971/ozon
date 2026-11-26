@@ -29,6 +29,7 @@ export class BulkPriceJobService {
             params: {},
             clientId,
             context,
+            progressMarker: source.checkpoint ? () => context.progress.counters.batches ?? 0 : undefined,
             commands: [this.collect, this.update, this.report],
             execute: (run) => withPricingWarnings(context.warnings, run),
             // После отмены ждём текущий запрос; следующий пакет уже не отправляем.

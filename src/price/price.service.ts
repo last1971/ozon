@@ -9,6 +9,7 @@ import { pricingStocks } from '../helpers/price/pricing-stock';
 import { jobCheckpoint } from '../job/job.checkpoint';
 import { PricingDataError } from '../helpers/price/pricing-error';
 import { lossPriceFields, productLossPriceFields } from '../helpers/price/marketplace.loss.input';
+import { ozonBulkCheckpoint } from './bulk/ozon-bulk-checkpoint';
 import { BulkPriceJobService } from './bulk/bulk-price-job.service';
 import { OzonPricingResultDto, OzonPricingPreviewDto } from './dto/ozon-pricing-result.dto';
 import {
@@ -412,7 +413,17 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                         next: page.items.length ? page.cursor : undefined,
                     };
                 },
-                update: (offers, context) => this.goodService.repriceForService(this, offers, undefined, context),
+                checkpoint: ozonBulkCheckpoint(),
+                update: (offers, context) => this.goodService.repriceForService(this, offers, undefined, context,
+                    async (prices, snapshot) => {
+                        const transitions = this.moduleRef.get<OzonPriceTransitionService>(OZON_PRICE_TRANSITIONS, { strict: false });
+                        const result = await transitions.updateBases(prices, offer => ({
+                            priority: 'background',
+                            snapshot: snapshot([offer]),
+                            shouldStop: () => Boolean(context?.stopChain),
+                        }));
+                        return { result };
+                    }),
             },
             clientId,
         );

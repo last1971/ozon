@@ -20,6 +20,8 @@ export interface JobRunOptions<T extends IJobContext, R> {
     result: (context: T) => R;
     /** Сколько задаче можно идти; дольше — считается зависшей и уходит в failed. По умолчанию час. */
     timeoutMs?: number;
+    /** Renew the watchdog while a long-running batch is making measurable progress. */
+    progressMarker?: () => number;
     /** Освободить ресурсы после остановки цепочки, до завершения задачи (например, откатить транзакцию). */
     cleanup?: (context: T) => Promise<void>;
     /** Короткий необратимый участок (COMMIT): отмена уже не может обещать откат. */
@@ -123,7 +125,14 @@ export class JobService {
                 if (!opts.cleanup) fail(error);
             };
             const timeoutMs = opts.timeoutMs ?? DEFAULT_TIMEOUT_MS;
+            let lastProgress = opts.progressMarker?.();
             const timer = setTimeout(() => {
+                const progress = opts.progressMarker?.();
+                if (progress !== lastProgress) {
+                    lastProgress = progress;
+                    timer.refresh();
+                    return;
+                }
                 cancel(`не уложилась в ${Math.round(timeoutMs / 60000)} мин — остановлена как зависшая`);
             }, timeoutMs);
             timer.unref?.();

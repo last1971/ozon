@@ -696,12 +696,18 @@ export class Trade2006GoodService extends WithTransactions(class {}) implements 
         skus: string[],
         prices?: Map<string, UpdatePriceDto>,
         context?: IJobContext,
+        sendBatch?: import('../interfaces/IGood').SendCalculatedBatch,
     ): Promise<PriceUpdateReport> {
         const snapshot = priceUpdateQueue.reader(service.priceUpdateKey, skus);
         const { priceables, skipped } = await this.collectPriceables(service, skus, prices);
         const coeffs = service.getObtainCoeffs();
         const calculated = await calculatePriceBatch(priceables, coeffs, context);
         skipped.push(...calculated.skipped);
+        if (sendBatch) {
+            await jobCheckpoint(context);
+            const sent = calculated.prices;
+            return { coeffs, inputs: priceables, sent, skipped, response: sent.length ? await sendBatch(sent, snapshot) : null };
+        }
         if (!service.priceUpdateKey) {
             const sent = calculated.prices;
             return {

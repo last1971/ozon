@@ -351,7 +351,23 @@ describe('PriceService', () => {
         expect(result).toMatchObject({ total: 3, failed: 3 });
         expect(getPrices.mock.calls).toHaveLength(1);
         expect(getPrices.mock.calls[0]).toEqual([{ cursor: '', limit: 1000, visibility: 'IN_SALE' }]);
-        expect(repriceForService).toHaveBeenCalledWith(service, ['1', '2', '3'], undefined, expect.objectContaining({ offers: ['1', '2', '3'] }));
+        expect(repriceForService).toHaveBeenCalledWith(service, ['1', '2', '3'], undefined,
+            expect.objectContaining({ offers: ['1', '2', '3'] }), expect.any(Function));
+        const transitions = { updateBases: jest.fn().mockResolvedValue([]) };
+        const resolve = jest.spyOn((service as any).moduleRef, 'get').mockReturnValue(transitions);
+        try {
+            const send = repriceForService.mock.lastCall[4];
+            const rows = [{ offer_id: '1' }, { offer_id: '2' }];
+            const snapshot = jest.fn().mockReturnValue({ key: 'ozon', versions: [] });
+            await send(rows, snapshot);
+            expect(transitions.updateBases).toHaveBeenCalledTimes(1);
+            const [batch, options] = transitions.updateBases.mock.calls[0];
+            expect(batch).toBe(rows);
+            expect(options('2').priority).toBe('background');
+            expect(snapshot).toHaveBeenCalledWith(['2']);
+        } finally {
+            resolve.mockRestore();
+        }
     });
     it('getObtainCoeffs', () => {
         expect(service.getObtainCoeffs()).toEqual({

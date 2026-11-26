@@ -45,6 +45,7 @@ export interface OzonPriceResult {
     updated: boolean;
     transition?: 'done' | 'pending' | 'blocked';
     effectiveBasePrice?: number;
+    observedBuyerPrice?: number;
     errors?: { code?: string; message?: string }[];
 }
 

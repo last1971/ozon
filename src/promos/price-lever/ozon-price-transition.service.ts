@@ -117,8 +117,11 @@ export class OzonPriceTransitionService {
         private readonly seller: OzonSellerActionsApi,
     ) {}
 
-    async updateBases(rows: UpdatePriceDto[]): Promise<OzonPriceResult[]> {
-        const requests = rows.map((row) => ({ offer: row.offer_id, goal: row, options: {} }));
+    async updateBases(
+        rows: UpdatePriceDto[],
+        optionsFor: (offer: string) => PromoApplyOptions = () => ({}),
+    ): Promise<OzonPriceResult[]> {
+        const requests = rows.map((row) => ({ offer: row.offer_id, goal: row, options: optionsFor(row.offer_id) }));
         const answers = await this.run(requests);
         return requests.map(({ offer, goal }) => {
             const res = answers.get(offer);
@@ -128,6 +131,7 @@ export class OzonPriceTransitionService {
                 offer_id: offer,
                 updated: res.status === 'done',
                 transition: res.status,
+                ...(res.observed !== undefined ? { observedBuyerPrice: res.observed } : {}),
                 ...(res.effectiveBasePrice !== undefined && res.effectiveBasePrice !== Number(goal.price)
                     ? { effectiveBasePrice: res.effectiveBasePrice }
                     : {}),

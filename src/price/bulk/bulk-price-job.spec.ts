@@ -146,3 +146,30 @@ describe('Команды массового обновления', () => {
         expect(ctx.source.update).not.toHaveBeenCalled();
     });
 });
+
+it('после рестарта пропускает уже подтверждённые строки и перечитывает только ожидающие', async () => {
+    const { ozonBulkCheckpoint } = await import('./ozon-bulk-checkpoint');
+    const { mkdtemp, rm } = await import('node:fs/promises');
+    const { tmpdir } = await import('node:os');
+    const { join } = await import('node:path');
+    const directory = await mkdtemp(join(tmpdir(), 'bulk-price-test-'));
+    try {
+        await ozonBulkCheckpoint(directory).save([{ offer_id: '1', status: 'accepted' }], false);
+        const source = {
+            checkpoint: ozonBulkCheckpoint(directory),
+            update: jest.fn()
+                .mockResolvedValueOnce(report([{ offer_id: '2', updated: false, transition: 'pending' },
+                    { offer_id: '3', updated: true, observedBuyerPrice: 100 }]))
+                .mockResolvedValueOnce(report([{ offer_id: '2', updated: true, observedBuyerPrice: 150 }])),
+        };
+        const ctx = context(source);
+        ctx.offers = ['1', '2', '3'];
+        await new UpdateBulkPricesCommand().execute(ctx);
+        expect(source.update.mock.calls.map(([offers]) => offers)).toEqual([['2', '3'], ['2']]);
+        expect(ctx.rows.map(r => r.observedBuyerPrice)).toEqual([undefined, 150, 100]);
+        expect(ctx.progress.counters.accepted).toBe(3);
+        expect(await ozonBulkCheckpoint(directory).load()).toEqual([]);
+    } finally {
+        await rm(directory, { recursive: true, force: true });
+    }
+});

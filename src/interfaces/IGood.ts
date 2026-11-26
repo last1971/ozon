@@ -14,6 +14,11 @@ import { PricesContextDto } from '../helpers/dto/prices.context.dto';
 import { TierThresholdsDto } from '../helpers/price/quantity.tiers.helper';
 import { PriceUpdateReport, PriceSkip } from '../price/price-update.report';
 
+export type SendCalculatedBatch = (
+    prices: UpdatePriceDto[],
+    snapshot: (offers: string[]) => import('../helpers/price/price-update.queue').PricingSnapshot,
+) => Promise<PriceUpdateReport['response']>;
+
 export interface IGood {
     /** Транзакция для чтения нескольких выборок из одного снимка (остаток и коды не должны разъезжаться). */
     getTransaction(): Promise<FirebirdTransaction>;
@@ -36,6 +41,7 @@ export interface IGood {
         skus: string[],
         prices?: Map<string, UpdatePriceDto>,
         context?: IJobContext,
+        sendBatch?: SendCalculatedBatch,
     ): Promise<PriceUpdateReport>;
     /**
      * Данные расчёта цены по артикулам (себестоимость, наценки, комиссия, доставка) — единственный

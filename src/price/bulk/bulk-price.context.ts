@@ -5,6 +5,8 @@ export interface BulkPriceRow {
     offer_id: string;
     status: 'accepted' | 'unchanged' | 'skipped' | 'error';
     reason?: string;
+    observedBuyerPrice?: number;
+    retryable?: boolean;
 }
 export interface BulkPriceReport {
     total: number;
@@ -17,6 +19,10 @@ export interface BulkPriceReport {
 }
 export interface BulkPriceSource {
     market: 'ozon' | 'wb';
+    checkpoint?: {
+        load(): Promise<BulkPriceRow[]>;
+        save(rows: BulkPriceRow[], completed: boolean): Promise<void>;
+    };
     page: (cursor: string) => Promise<{ offers: string[]; next?: string }>;
     update: (offers: string[], context?: IJobContext) => Promise<PriceUpdateReport>;
 }

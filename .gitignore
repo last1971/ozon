@@ -60,3 +60,5 @@ wb_card_*.json
 
 # One-off diagnostic scripts
 tmp_*.js
+
+/data/bulk-prices/
