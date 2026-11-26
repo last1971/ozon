@@ -273,6 +273,49 @@ describe('Защита минимума по 560166', () => {
     });
 });
 
+describe('570066-50: действующая скидка делает обычную базу ниже минимума', () => {
+    it.each(['keep', 'base', 'floor'])('возвращает обычный прайс после подтверждения акции и процента: %s', async reset => {
+        const f = fixture('570066-50');
+        const { state, target } = f;
+        Object.assign(target, { price: '25896', min_price: '20981', old_price: '33458', ozonCalculated: true, ozonDeadZoneFloor: 20981 });
+        Object.assign(state, { price: 19174, minPrice: 18922, oldPrice: 30167, buyerPrice: 15531, buyerPriceCalc: 15531,
+            calcMinPrice: 20981, deadZoneFloor: 20981, seller: { ...state.seller, percent: 19 },
+            ozonActions: [{ actionId: 1, title: 'Эластичный бустинг', isVoucher: false, participant: true,
+                actionPrice: 19174, maxActionPrice: 16236, stock: 0, startsAt: null }],
+        });
+        let base = 19174;
+        const slot = state.ozonActions[0];
+        const refresh = () => {
+            state.price = slot.participant ? Math.min(base, slot.actionPrice) : base;
+        };
+        f.products.setPrice.mockImplementation(async ({ prices: [row] }) => {
+            f.apply('base ' + row.price, () => {
+                base = Number(row.price);
+                state.minPrice = Number(row.min_price);
+                state.oldPrice = Number(row.old_price);
+                if (reset === 'base') slot.actionPrice = base;
+                if (reset === 'floor') slot.actionPrice = state.minPrice;
+                refresh();
+            });
+            return { result: [{ offer_id: state.offerId, updated: true }] };
+        });
+        const remove = () => f.apply('remove', () => { slot.participant = false; refresh(); });
+        f.ops.update.mockImplementation(async () => {
+            remove();
+            return { added: [], removed: [state.productId], unchanged: [], rejected: [] };
+        });
+        f.ops.deactivate.mockImplementation(async () => { remove(); return [state.productId]; });
+        expect((await f.create().updateBases([target]))[0].updated).toBe(true);
+        expect(f.writes[0]).toBe('base 25904');
+        expect(f.prices.every(price => price === 15531 || price >= 20981)).toBe(true);
+        expect(state).toMatchObject({ price: 25896, minPrice: 20981, oldPrice: 33458, buyerPrice: 21235 });
+        expect(slot.participant).toBe(false);
+        const count = f.writes.length;
+        expect((await f.create().updateBases([target]))[0].updated).toBe(true);
+        expect(f.writes).toHaveLength(count);
+    });
+});
+
 describe('Ozon price writer with real planner and independent readback', () => {
     it('changes 539124-5 only through profitable states and a repeated import does not write', async () => {
         const f = fixture();

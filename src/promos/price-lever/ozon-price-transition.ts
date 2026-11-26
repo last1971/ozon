@@ -1,5 +1,6 @@
 import { buyerPrice, ozonActionFloor } from '../../helpers/price/buyer.price.helper';
 import { observedOzonBase, resolveOzonBaseTarget } from '../../helpers/price/ozon-base-target';
+import { ozonDisplayPrice } from '../../helpers/price/ozon.display-price';
 import type { UpdatePriceDto } from '../../price/dto/update.price.dto';
 import { planPromoPrice } from './promo-price.planner';
 import type { OzonActionSlot, PromoPricePlan, PromoPriceState, PromoPriceStep } from './promo-price.types';
@@ -556,6 +557,19 @@ export function planOzonPriceTransition(
                     true,
                 );
                 if (path) return path;
+            }
+            // The active seller discount can make even the requested regular price
+            // insufficient. Cover that discount until its change is actually observed.
+            // Keep the calculated crossed-out price and restore the requested base.
+            if (baseTarget.ozonCalculated && m.sellerActive && net(normal, m.percent) < minimum) {
+                const floor = ozonActionFloor(minimum, m.percent);
+                const temporaryBase = floor + 1;
+                if (floor > m.minPrice && temporaryBase < old && ozonDisplayPrice(temporaryBase, old) === old) {
+                    const path = attempt({ kind: 'base', target: {
+                        ...baseTarget, price: String(temporaryBase), min_price: String(floor),
+                    } }, false, true);
+                    if (path) return path;
+                }
             }
         }
         if (!bridgeAvailable || !hasSellerTarget) return;
