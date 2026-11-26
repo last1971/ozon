@@ -34,6 +34,7 @@ type Pending = {
     results: PromoStepResult[];
     notify: boolean;
     alternative?: 'removed' | 'kept';
+    alternativeConfirmed?: boolean;
 };
 type Outcome = {
     status: 'done' | 'pending' | 'blocked';
@@ -70,6 +71,17 @@ function sameGoal(left: Goal, right: Goal) {
         left.buyerAfter === right.buyerAfter &&
         JSON.stringify(left.steps) === JSON.stringify(right.steps)
     );
+}
+
+// Compare the actual campaign request. A new plan's "from" or reason may
+// change after readback even when its outgoing price and action are identical.
+function repeatsCampaignChange(previous: OzonTransitionStep, next?: OzonTransitionStep) {
+    if (!next || next.productId !== previous.productId) return false;
+    const a = previous.change, b = next.change;
+    if (a.kind === 'ozon-remove' && b.kind === a.kind)
+        return a.actionId === b.actionId && previous.floor === next.floor;
+    return a.kind === 'ozon-set' && b.kind === a.kind &&
+        a.actionId === b.actionId && a.to === b.to && a.stock === b.stock;
 }
 
 function promoResult(goal: PromoPricePlan, result: Outcome): PromoPriceApplyResult {
@@ -218,6 +230,11 @@ export class OzonPriceTransitionService {
                                 : { ...blocked(message(error)), stale: true }
                             : pending(message(error));
                 }
+                if (result?.reason && state?.buyerPrice > 0 && state.buyerPrice === state.buyerPriceCalc) {
+                    const minimum = Math.max(state.calcMinPrice ?? 0, isBase(request.goal) ? Number(request.goal.min_price) : 0);
+                    if (state.buyerPrice < minimum)
+                        result.reason = `${request.offer}: цена покупателю ${state.buyerPrice} ₽ ниже минимума ${minimum} ₽. ${result.reason}`;
+                }
                 if (result) answers.set(request.offer, result);
                 else next.push(request);
             }
@@ -250,27 +267,39 @@ export class OzonPriceTransitionService {
             goal = resolveOzonBaseTarget(goal, state);
             goal = { ...goal, old_price: String(ozonDisplayPrice(Number(goal.price), Number(goal.old_price))) };
         }
-        if (claim) {
-            const saved = claim.payload;
-            if (saved.alternative && saved.step.change.kind !== 'base' && saved.step.change.kind !== 'percent') {
-                const change = saved.step.change;
-                const slot = state.ozonActions.find((a) => a.actionId === change.actionId);
-                const seen =
-                    saved.alternative === 'removed'
-                        ? !slot?.participant
-                        : slot?.participant && slot.actionPrice === saved.step.floor;
-                if (
-                    seen &&
-                    state.productId === saved.step.productId &&
-                    state.buyerPrice > 0 &&
-                    state.buyerPrice === state.buyerPriceCalc
-                ) {
-                    await this.journal.finish(offer, claim.token);
-                    return blocked(
-                        'Ozon изменил участие в акции иначе, чем запрошено. Последующие шаги остановлены до нового расчёта',
-                    );
+        const saved = claim?.payload;
+        let alternativePath: ReturnType<typeof planOzonPriceTransition>;
+        if (saved?.alternative && saved.step.change.kind !== 'base' && saved.step.change.kind !== 'percent') {
+            const change = saved.step.change;
+            const slot = state.ozonActions.find((a) => a.actionId === change.actionId);
+            const seen =
+                saved.alternative === 'removed'
+                    ? !slot?.participant
+                    : slot?.participant && slot.actionPrice === saved.step.floor;
+            if (
+                (seen || (saved.alternativeConfirmed && !transitionStepConfirmed(state, saved.step))) &&
+                state.productId === saved.step.productId &&
+                state.buyerPrice > 0 &&
+                state.buyerPrice === state.buyerPriceCalc
+            ) {
+                const reason = `Ozon ${saved.alternative === 'kept' ? 'оставил товар в акции' : 'исключил товар из акции'} «${change.title}».`;
+                if (!state.calculationKey || !state.calcMinPrice)
+                    return blocked(`${reason} Ждём актуальный расчёт минимальной цены.`);
+                if (request.recovery && saved.calculationKey !== state.calculationKey)
+                    return blocked(`${reason} Условия расчёта изменились. Требуется новый план.`);
+                const next = planOzonPriceTransition(state, goal, new Date(), confirmedBase);
+                if (!next.ok || (seen && repeatsCampaignChange(saved.step, next.steps[0]))) {
+                    // Keep the receipt across manual retries, cron and restarts.
+                    if (!saved.alternativeConfirmed)
+                        await this.journal.advance(offer, claim.token, { ...saved, alternativeConfirmed: true });
+                    return blocked(`${reason} ${next.reason ?? 'Повтор той же команды остановлен.'}`);
                 }
+                // Replace the held receipt by CAS only when actually sending a different
+                // step. Releasing it here would let another worker repeat the old write.
+                alternativePath = next;
             }
+        }
+        if (claim && !alternativePath) {
             const maskedImport = saved.step.change.kind === 'base' && observedOzonBase(state) === undefined;
             if ((maskedImport && !saved.baseAccepted) || !transitionStepConfirmed(state, saved.step))
                 return {
@@ -302,14 +331,14 @@ export class OzonPriceTransitionService {
                 };
             }
             goal = saved.goal;
-        } else if (request.recovery || wave) {
+        } else if (!claim && (request.recovery || wave)) {
             return blocked('Операция уже завершена другим исполнителем');
         }
         if (!state.calcMinPrice || !state.calculationKey)
             return blocked('Нет остатка или полного расчёта минимальной прибыли');
         if (
             !isBase(goal) &&
-            !claim &&
+            (!claim || alternativePath) &&
             (state.price !== goal.state.price ||
                 state.minPrice !== goal.state.minPrice ||
                 state.oldPrice !== goal.state.oldPrice ||
@@ -326,7 +355,7 @@ export class OzonPriceTransitionService {
                       oldPrice: state.oldPrice,
                       productId: state.productId,
                   };
-        const path = planOzonPriceTransition(state, goal, new Date(), confirmedBase);
+        const path = alternativePath ?? planOzonPriceTransition(state, goal, new Date(), confirmedBase);
         if (isBase(goal)) {
             const enables = goal.auto_action_enabled === AutoAction.ENABLED;
             if (
@@ -335,7 +364,7 @@ export class OzonPriceTransitionService {
                     state.autoActionEnabled !== enables) ||
                 goal.price_strategy_enabled === AutoAction.ENABLED
             ) {
-                if (claim) await this.journal.finish(offer, claim.token);
+                if (claim && !alternativePath) await this.journal.finish(offer, claim.token);
                 return blocked(
                     'Импорт изменил бы автоматическое управление акциями или ценой. Итог Ozon нельзя рассчитать заранее',
                 );
@@ -375,19 +404,22 @@ export class OzonPriceTransitionService {
                     );
                 }
             }
-            if (claim && !(await this.journal.finish(offer, claim.token, undefined, notice, baseReceipt)))
+            const completesHeldGoal = path.ok && sameGoal(saved?.goal ?? goal, goal);
+            if (claim && (!alternativePath || completesHeldGoal) &&
+                !(await this.journal.finish(offer, claim.token, undefined, notice, baseReceipt)))
                 return pending('Другой исполнитель уже обработал этот шаг');
             return result;
         }
+        const previous = alternativePath ? undefined : saved;
         const step = path.steps[0];
         const intent: Pending = {
             goal,
-            requested: claim?.payload.requested ?? (isBase(request.goal) ? request.goal : undefined),
-            initial: claim?.payload.initial ?? state,
+            requested: previous?.requested ?? (isBase(request.goal) ? request.goal : undefined),
+            initial: previous?.initial ?? state,
             step,
             results,
             calculationKey: state.calculationKey,
-            notify: claim?.payload.notify ?? (isBase(goal) || Boolean(options.notify)),
+            notify: previous?.notify ?? (isBase(goal) || Boolean(options.notify)),
         };
         if (options.shouldStop?.()) return blocked('Задача остановлена');
         await options.assertCurrent?.();
@@ -451,7 +483,8 @@ export class OzonPriceTransitionService {
             },
         ]);
         if (change.kind === 'ozon-set' && result.removed.includes(id)) return 'removed';
-        if (change.kind === 'ozon-remove' && result.added.includes(id)) return 'kept';
+        // "Unchanged" does not prove removal. The reader can confirm either outcome.
+        if (change.kind === 'ozon-remove' && (result.added.includes(id) || result.unchanged.includes(id))) return 'kept';
         if (result.added.includes(id) || result.unchanged.includes(id) || result.removed.includes(id)) return;
         const refusal = result.rejected.find((r) => r.productId === id);
         if (!refusal) throw new Error('Ответ акции Ozon не содержит результат товара');

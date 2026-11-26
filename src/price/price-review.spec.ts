@@ -90,10 +90,12 @@ describe('Предпросмотр и подтверждённая отправ�
     it('отказ Ozon и ошибка ВБ видны отдельно после отправки', async () => {
         const m = setup(),
             review = await m.preview();
-        m.ozon.updatePrices.mockResolvedValue({ result: [{ offer_id: '123', updated: false }] });
+        m.ozon.updatePrices.mockResolvedValue({ result: [{ offer_id: '123', updated: false, errors: [{ message: '123: цена покупателю 100 ₽ ниже минимума 150 ₽.' }] }] });
         m.wb.updatePrices.mockRejectedValue(new Error('ВБ недоступен'));
         const done = await m.jobs.whenDone(m.service.sendReview(review.token).id);
-        expect((done.result as any).entries.map((e) => Boolean(e.error))).toEqual([true, true]);
+        expect((done.result as any).entries.map((e) => e.error)).toEqual([
+            '123: цена покупателю 100 ₽ ниже минимума 150 ₽.', 'ВБ недоступен',
+        ]);
     });
 });
 

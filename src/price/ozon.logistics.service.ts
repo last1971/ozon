@@ -133,6 +133,8 @@ export class OzonLogisticsService {
                             this.warn(`Не удалось уточнить распределение FBO через analytics/stocks (${analyticsError.message}), используем приблизительные данные`, info.sku);
                         }
                     }
+                    if (!origins.length)
+                        throw new PricingDataError(`Остаток FBO по кластерам 0, в карточке ${info.fboCount}`);
                 } catch (e) {
                     const message = `Не удалось определить склады FBO с остатком для доставки: ${e.message}`;
                     throw e instanceof PricingDataError ? new PricingDataError(message) : new Error(message);

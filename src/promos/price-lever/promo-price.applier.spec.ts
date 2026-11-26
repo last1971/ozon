@@ -5,8 +5,7 @@ import { planPromoPrice } from './promo-price.planner';
 import { PromoPriceState } from './promo-price.types';
 import { OzonPriceTransitionService } from './ozon-price-transition.service';
 
-function fixture() {
-    const offer = '539124-5';
+function fixture(offer = '539124-5') {
     const target: UpdatePriceDto = {
         offer_id: offer,
         price: '822',
@@ -97,7 +96,7 @@ function fixture() {
     const create = () =>
         new OzonPriceTransitionService(
             { get: () => reader } as any,
-            { enrichBatch: async () => undefined } as any,
+            { enrichBatch: async () => new Map() } as any,
             journal as any,
             products as any,
             ops as any,
@@ -106,6 +105,8 @@ function fixture() {
     return {
         state,
         target,
+        apply,
+        products,
         writes,
         prices,
         notices,
@@ -123,6 +124,98 @@ function fixture() {
         },
     };
 }
+
+// Five promotions from the 560166 incident. Model the visible Ozon price
+// independently of the planner, including a promotion reset during a base import.
+function lossFixture(reset: 'keep' | 'base' | 'floor' = 'keep') {
+    const f = fixture('560166');
+    const { state, target } = f;
+    let base = 5415;
+    Object.assign(target, { price: '5909', min_price: '5469', old_price: '6789', ozonDeadZoneFloor: 5469 });
+    Object.assign(state, {
+        price: 3931, confirmedBase: base, minPrice: 5012, oldPrice: 6222, buyerPrice: 3656, buyerPriceCalc: 3656,
+        calcMinPrice: 5469, deadZoneFloor: 5469,
+        seller: { ...state.seller, percent: 7 },
+        ozonActions: [4115, 3931, 4318, 4294, 4466].map((cap, index) => ({
+            actionId: index + 1, title: 'Акция ' + (index + 1), isVoucher: false, participant: true,
+            actionPrice: 3931, maxActionPrice: cap, stock: 0,
+        })),
+    });
+    const refresh = () => {
+        const participants = state.ozonActions.filter(a => a.participant);
+        state.price = Math.min(base, ...participants.map(a => a.actionPrice));
+        state.buyerPrice = state.buyerPriceCalc = buyerPrice(state.price, [], state.seller.percent);
+    };
+    f.products.setPrice.mockImplementation(async ({ prices: [row] }) => {
+        f.apply('base ' + row.min_price, () => {
+            base = Number(row.price);
+            state.minPrice = Number(row.min_price);
+            state.oldPrice = Number(row.old_price);
+            state.confirmedBase = base;
+            for (const action of state.ozonActions.filter(a => a.participant)) {
+                if (reset === 'floor') action.actionPrice = state.minPrice;
+                if (reset === 'base') action.actionPrice = base;
+            }
+            refresh();
+        });
+        return { result: [{ offer_id: state.offerId, updated: true }] };
+    });
+    f.ops.update.mockImplementation(async (id, [row]) => {
+        expect(row.actionPrice).toBe(5881);
+        f.apply('remove ' + id, () => {
+            state.ozonActions.find(a => a.actionId === id).participant = false;
+            refresh();
+        });
+        return { added: [], unchanged: [], removed: [state.productId], rejected: [] };
+    });
+    return { ...f, refresh };
+}
+
+describe('Защита минимума по 560166', () => {
+    it.each(['keep', 'base', 'floor'] as const)('подтверждает выход до снятия защиты, ответ %s', async reset => {
+        const f = lossFixture(reset);
+        expect((await f.create().updateBases([f.target]))[0].updated).toBe(true);
+        expect(f.writes).toEqual(['remove 1', 'remove 2', 'remove 3', 'remove 4', 'base 5881', 'remove 5', 'base 5469']);
+        expect(f.prices.every(price => price === 3656 || price >= 5469)).toBe(true);
+        expect(f.state.buyerPrice).toBe(5495);
+        expect((await f.create().updateBases([f.target]))[0].updated).toBe(true);
+        expect(f.writes).toHaveLength(7);
+    });
+    it.each(['added', 'unchanged'])('сохраняет ответ %s между запусками и продолжает после подтверждения выхода', async reply => {
+        const f = lossFixture();
+        f.ops.update.mockImplementationOnce(async (id, [row]) => {
+            f.apply('kept', () => {
+                f.state.ozonActions.find(a => a.actionId === id).actionPrice = row.actionPrice;
+                f.refresh();
+            });
+            return { added: [], removed: [], rejected: [], unchanged: [], [reply]: [f.state.productId] };
+        });
+        for (let i = 0; i < 2; i++) {
+            const [result] = await f.create().updateBases([f.target]);
+            expect(result.transition).toBe('blocked');
+            expect(result.errors[0].message).toMatch(/560166.*3656.*5469.*Акция 1.*Повтор/);
+            await f.create().resume();
+        }
+        expect(f.ops.update).toHaveBeenCalledTimes(1);
+        f.state.ozonActions[0].participant = false;
+        f.refresh();
+        await f.create().resume();
+        expect(f.saved.size).toBe(0);
+        expect(f.state.buyerPrice).toBe(5495);
+    });
+    it('ждёт запоздалого подтверждения без второй отправки', async () => {
+        const f = lossFixture();
+        f.delay();
+        const [result] = await f.create().updateBases([f.target]);
+        expect(result.transition).toBe('pending');
+        expect(result.errors[0].message).toMatch(/560166.*3656.*5469/);
+        await f.create().resume();
+        expect(f.ops.update).toHaveBeenCalledTimes(1);
+        f.deliver();
+        await f.create().resume();
+        expect(f.state.buyerPrice).toBe(5495);
+    });
+});
 
 describe('Ozon price writer with real planner and independent readback', () => {
     it('changes 539124-5 only through profitable states and a repeated import does not write', async () => {

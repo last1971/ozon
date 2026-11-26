@@ -8,7 +8,20 @@ import { GoodServiceEnum } from '../good/good.service.enum';
 import { calculatePrice } from '../helpers/price/price.helpers';
 import { wbDiscountTo } from '../helpers/price/wb.discount.helper';
 import { UpdatePriceDto } from './dto/update.price.dto';
+import { ozonResultsByOffer } from './price-update.report';
 import { jobCheckpoint } from '../job/job.checkpoint';
+
+function unconfirmedOzonPrices(prices: UpdatePriceDto[], response: unknown): string {
+    const rows = ozonResultsByOffer(response);
+    const messages: string[] = [];
+    for (const { offer_id } of prices) {
+        const row = rows.get(offer_id);
+        if (row?.updated) continue;
+        const reason = row?.errors?.map(error => error.message || error.code).filter(Boolean).join(', ');
+        messages.push(reason?.startsWith(offer_id + ':') ? reason : `${offer_id}: ${reason || 'нет подтверждения Ozon'}`);
+    }
+    return messages.join('\n');
+}
 
 export interface PriceReviewEntry {
     service: GoodServiceEnum;
@@ -56,9 +69,9 @@ export class PreparePriceReviewCommand implements IJobCommand<PriceReviewContext
         try {
             const inputs = await this.goods.buildPriceables(service, [offerId]);
             const warnings = [...new Set(inputs.flatMap((input) => input.ozon?.warnings ?? []))];
-            if (warnings.length) entry.warnings = warnings;
+            entry.warnings = warnings;
             entry.prices = inputs.map((input) => calculatePrice(input, service.getObtainCoeffs()));
-            if (service.prepareReviewPrices) entry.prices = await service.prepareReviewPrices(entry.prices);
+            if (service.prepareReviewPrices) entry.prices = await service.prepareReviewPrices(entry.prices, warnings);
             if (!entry.prices.length) entry.error = 'Товар не найден или нет базы для расчёта';
             if (
                 entry.prices.some(
@@ -73,6 +86,7 @@ export class PreparePriceReviewCommand implements IJobCommand<PriceReviewContext
             entry.prices = [];
             entry.error = error.message;
         }
+        if (!entry.warnings?.length) delete entry.warnings;
         return entry;
     }
 }
@@ -127,15 +141,10 @@ export class SendPriceReviewCommand implements IJobCommand<PriceReviewContext> {
                             },
                         );
                         const r: any = entry.response;
-                        if (
-                            entry.service === GoodServiceEnum.OZON &&
-                            (!r?.result?.length ||
-                                entry.prices.some(
-                                    (price) =>
-                                        !r.result.some((item) => item.offer_id === price.offer_id && item.updated),
-                                ))
-                        )
-                            entry.error = 'Ozon не подтвердил обновление всех цен. Смотрите ответ площадки.';
+                        const ozonError = entry.service === GoodServiceEnum.OZON
+                            ? unconfirmedOzonPrices(entry.prices, r)
+                            : undefined;
+                        if (ozonError) entry.error = ozonError;
                         else if (
                             r == null ||
                             (Array.isArray(r) && r.some((row) => row?.error)) ||

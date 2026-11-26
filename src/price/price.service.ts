@@ -1,4 +1,6 @@
 import { ModuleRef } from '@nestjs/core';
+import { planOzonPriceTransition } from '../promos/price-lever/ozon-price-transition';
+import { ozonDisplayPrice } from '../helpers/price/ozon.display-price';
 import { resolveOzonBaseTarget } from '../helpers/price/ozon-base-target';
 import type { PromoPriceService } from '../promos/price-lever/promo-price.service';
 import { OZON_PRICE_TRANSITIONS, OZON_PROMO_STATE_READER } from '../promos/price-lever/transition.tokens';
@@ -352,7 +354,7 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
         }
     }
 
-    async prepareReviewPrices(prices: UpdatePriceDto[]): Promise<UpdatePriceDto[]> {
+    async prepareReviewPrices(prices: UpdatePriceDto[], warnings?: string[]): Promise<UpdatePriceDto[]> {
         const offers = prices.filter(p => p.ozonCalculated).map(p => p.offer_id);
         if (!offers.length) return prices;
         const reader = this.moduleRef.get<PromoPriceService>(OZON_PROMO_STATE_READER, { strict: false });
@@ -363,6 +365,16 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
             if (!state) throw new Error(`Ozon не вернул условия акций для ${price.offer_id}`);
             // Once the operator sees the quote, only these exact prices may be sent.
             const { ozonCalculated, ...approved } = resolveOzonBaseTarget(price, state);
+            approved.old_price = String(ozonDisplayPrice(Number(approved.price), Number(approved.old_price)));
+            const minimum = Number(approved.min_price);
+            const path = planOzonPriceTransition({
+                ...state, calcMinPrice: minimum, deadZoneFloor: approved.ozonDeadZoneFloor,
+            }, approved);
+            const observed = state.buyerPrice > 0 ? `Цена покупателю ${state.buyerPrice} ₽. ` : '';
+            const summary = `${price.offer_id}: ${observed}Расчётный минимум ${minimum} ₽.`;
+            if (!path.ok) throw new Error(`${summary} ${path.reason}`);
+            if (state.buyerPrice < minimum)
+                warnings?.push(`${summary} После выполнения плана — ${path.buyerAfter} ₽.`);
             return approved;
         });
     }

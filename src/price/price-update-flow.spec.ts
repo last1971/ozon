@@ -47,7 +47,7 @@ function transitions(states: Map<string, PromoPriceState>, sendPercent: (sku: st
         allStates: async (ids: string[]) => ids.map((id) => structuredClone(states.get(id))),
         states: async (ids: string[]) => ids.map((id) => structuredClone(states.get(id))),
     };
-    const enrich = { enrichBatch: async () => {}, enrichOne: async () => ({ status: 'ready' }) };
+    const enrich = { enrichBatch: async () => new Map(), enrichOne: async () => ({ status: 'ready' }) };
     const tickets = new Map<string, { token: string; payload: unknown }>();
     const journal = {
         versions: async () => new Map([...tickets].map(([key, entry]) => [key, entry.token])),

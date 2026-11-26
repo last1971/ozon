@@ -1,4 +1,4 @@
-import { buyerPrice } from '../../helpers/price/buyer.price.helper';
+import { buyerPrice, ozonActionFloor } from '../../helpers/price/buyer.price.helper';
 import { observedOzonBase, resolveOzonBaseTarget } from '../../helpers/price/ozon-base-target';
 import type { UpdatePriceDto } from '../../price/dto/update.price.dto';
 import { planPromoPrice } from './promo-price.planner';
@@ -22,6 +22,7 @@ export interface OzonTransitionStep {
 
 export interface OzonPriceTransition {
     ok: boolean;
+    buyerAfter?: number;
     steps: OzonTransitionStep[];
     reason?: string;
 }
@@ -216,6 +217,7 @@ export function planOzonPriceTransition(
     const minimum = Math.max(state.calcMinPrice ?? state.minPrice, baseTarget ? Number(baseTarget.min_price) : 0);
     const upper = Math.max(state.deadZoneFloor ?? 0, baseTarget?.ozonDeadZoneFloor ?? 0);
     if (
+        (state.seller?.isActive && !(state.seller.percent >= 0 && state.seller.percent < 100)) ||
         !(minimum > 0) ||
         !Number.isFinite(minimum) ||
         !Number.isFinite(upper) ||
@@ -368,6 +370,9 @@ export function planOzonPriceTransition(
         ]);
         if (checked.size >= maxStates || checked.has(key)) return;
         checked.add(key);
+        // The seller discount can change between steps. Price an alternative outcome
+        // (Ozon retaining a participant) at the discount in force at this step.
+        const actionFloor = Math.max(plan.floor, ozonActionFloor(minimum, m.percent));
         const remaining = changes.filter((c) => !slotSatisfied(m, c));
         if (!baseDue && !remaining.length) {
             const terminal = amounts(m, targetTime);
@@ -390,6 +395,13 @@ export function planOzonPriceTransition(
 
         const attempt = (change: Change, bridging = false, stagingImport = false): OzonTransitionStep[] | undefined => {
             if (checked.size >= maxStates) return;
+            // Do not release the temporary floor under a promotion we still have to exit.
+            // Each confirmed step starts a fresh search, including after a restart.
+            if (change.kind === 'base' && Number(change.target.min_price) < m.minPrice) {
+                const discountedFloor = net(Number(change.target.min_price), m.percent);
+                if (!safe({ min: discountedFloor, max: discountedFloor }, bounds) &&
+                    remaining.some(step => step.kind === 'ozon-remove')) return;
+            }
             const next = applyChange(m, change);
             const prices = timings.flatMap((t) => amounts(next, t));
             // When several tied actions hold an already insufficient price, lifting the first
@@ -430,7 +442,7 @@ export function planOzonPriceTransition(
                               actionId: slot.actionId,
                               title: slot.title,
                               from: change.from,
-                              to: plan.floor,
+                              to: actionFloor,
                           };
                 if (
                     (change.kind === 'ozon-set' || !slot.isVoucher) &&
@@ -470,7 +482,7 @@ export function planOzonPriceTransition(
             return [
                 {
                     change,
-                    floor: plan.floor,
+                    floor: actionFloor,
                     offerId: state.offerId,
                     productId: state.productId,
                     buyerPrices: unique(prices.filter((r) => r.min === r.max).map((r) => r.min)),
@@ -518,7 +530,7 @@ export function planOzonPriceTransition(
             // advertised regular price is used as a synthetic marker. Both writes need readback.
             // Keep the temporary floor below the regular price so that an import does
             // not rely on Ozon accepting equal regular and minimum prices.
-            const protectedMin = Math.min(normal - 1, plan.floor > minimum ? plan.floor : normal - 1);
+            const protectedMin = Math.min(normal - 1, actionFloor > minimum ? actionFloor : normal - 1);
             if (protectedMin > Math.max(minimum, m.minPrice)) {
                 const path = attempt(
                     { kind: 'base', target: { ...baseTarget, min_price: String(protectedMin) } },
@@ -546,7 +558,7 @@ export function planOzonPriceTransition(
         allowProtectedImport = true;
         steps = search(frame, needsBase, false) ?? search(frame, needsBase, true);
     }
-    if (steps) return { ok: true, steps };
+    if (steps) return { ok: true, steps, buyerAfter: plan.buyerAfter };
     const summary =
         checked.size >= maxStates
             ? 'Достигнут предел перебора вариантов акций, безопасный переход не подтверждён'
