@@ -23,6 +23,7 @@ export interface OzonTransitionStep {
 export interface OzonPriceTransition {
     ok: boolean;
     buyerAfter?: number;
+    inconsistentSnapshot?: boolean;
     steps: OzonTransitionStep[];
     reason?: string;
 }
@@ -177,6 +178,23 @@ export function transitionStepConfirmed(s: PromoPriceState, step: OzonTransition
         !(step.buyerPrices.includes(s.buyerPrice) || step.buyerRanges?.some((r) => contains(r, s.buyerPrice)))
     )
         return false;
+    return changeObserved(s, step, now);
+}
+
+// A confirmed campaign mutation and an unexpected buyer price can coexist:
+// another campaign can have changed while the marketplace published its reply.
+// Close only that mutation; a new read and plan are required before another write.
+export function campaignChangedAtDifferentPrice(s: PromoPriceState, step: OzonTransitionStep, now = new Date()) {
+    const change = step.change;
+    if (change.kind === 'base' || s.offerId !== step.offerId || s.productId !== step.productId ||
+        !(s.buyerPrice > 0) || s.buyerPrice !== s.buyerPriceCalc ||
+        (change.kind !== 'ozon-remove' && change.from === change.to)) return false;
+    const base = observedOzonBase(s, now) ?? s.confirmedBase;
+    const frame = initialModel(s, +now, base);
+    return amounts(frame, +now).some(range => contains(range, s.buyerPrice)) && changeObserved(s, step, now);
+}
+
+function changeObserved(s: PromoPriceState, step: OzonTransitionStep, now: Date) {
     const change = step.change;
     if (change.kind === 'base') {
         const target = change.target;
@@ -232,7 +250,7 @@ export function planOzonPriceTransition(
     const currentTime = +now;
     const frame = initialModel(state, currentTime, confirmedBase);
     if (!amounts(frame, currentTime).some((r) => contains(r, state.buyerPrice)))
-        return failed('Цена покупателя расходится с действующими акциями Ozon');
+        return { ...failed('Цена покупателя расходится с действующими акциями Ozon'), inconsistentSnapshot: true };
     const normal = baseTarget ? Number(baseTarget.price) : state.price;
     const old = baseTarget ? Number(baseTarget.old_price) : state.oldPrice;
     if (

@@ -203,6 +203,23 @@ describe('Защита минимума по 560166', () => {
         expect(f.saved.size).toBe(0);
         expect(f.state.buyerPrice).toBe(5495);
     });
+    it('закрывает подтверждённый выход, если Ozon одновременно изменил другие акции, и заново считает цель', async () => {
+        const f = lossFixture();
+        f.ops.update.mockImplementationOnce(async () => {
+            f.apply('external group removal', () => {
+                f.state.ozonActions.forEach(a => a.participant = false);
+                f.refresh();
+            });
+            return { added: [], removed: [f.state.productId], unchanged: [], rejected: [] };
+        });
+        const [first] = await f.create().updateBases([f.target]);
+        expect(first).toMatchObject({ transition: 'pending', updated: false, observedBuyerPrice: 5036 });
+        expect(f.saved.size).toBe(0);
+        expect(f.ops.update).toHaveBeenCalledTimes(1);
+        expect((await f.create().updateBases([f.target]))[0]).toMatchObject({ updated: true, observedBuyerPrice: 5495 });
+        expect(f.ops.update).toHaveBeenCalledTimes(1);
+    });
+
     it('ждёт запоздалого подтверждения без второй отправки', async () => {
         const f = lossFixture();
         f.delay();

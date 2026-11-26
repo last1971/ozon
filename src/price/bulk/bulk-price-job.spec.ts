@@ -169,6 +169,8 @@ it('после рестарта пропускает уже подтверждё
         expect(ctx.rows.map(r => r.observedBuyerPrice)).toEqual([undefined, 150, 100]);
         expect(ctx.progress.counters.accepted).toBe(3);
         expect(await ozonBulkCheckpoint(directory).load()).toEqual([]);
+        await source.checkpoint.save([...ctx.rows, { offer_id: '4', status: 'error' }], true);
+        expect(await ozonBulkCheckpoint(directory, true).load()).toEqual(ctx.rows);
     } finally {
         await rm(directory, { recursive: true, force: true });
     }

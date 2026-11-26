@@ -397,7 +397,7 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
         return this.update(prices);
     }
     // @Cron('0 0 0 * * 0', { name: 'updateOzonPrices' })
-    startUpdateAllPrices(clientId?: string) {
+    startUpdateAllPrices(clientId?: string, retryFailed = false) {
         return this.bulk.start(
             {
                 market: 'ozon',
@@ -413,7 +413,7 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                         next: page.items.length ? page.cursor : undefined,
                     };
                 },
-                checkpoint: ozonBulkCheckpoint(),
+                checkpoint: ozonBulkCheckpoint(undefined, retryFailed),
                 update: (offers, context) => this.goodService.repriceForService(this, offers, undefined, context,
                     async (prices, snapshot) => {
                         const transitions = this.moduleRef.get<OzonPriceTransitionService>(OZON_PRICE_TRANSITIONS, { strict: false });

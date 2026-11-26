@@ -5,16 +5,21 @@ import { BulkPriceRow, BulkPriceSource } from './bulk-price.context';
 
 /** The market transition journal protects individual writes. This file remembers which
  * rows a catalog run has already checked when its worker is stopped or restarted. */
-export function ozonBulkCheckpoint(directory = join(process.cwd(), 'data', 'bulk-prices')): BulkPriceSource['checkpoint'] {
+export function ozonBulkCheckpoint(directory = join(process.cwd(), 'data', 'bulk-prices'), retryFailed = false): BulkPriceSource['checkpoint'] {
     const cabinet = createHash('sha256').update(JSON.stringify([process.env.FB_HOST, process.env.FB_BASE, process.env.APP_PORT])).digest('hex');
     const path = join(directory, cabinet + '.json');
     return {
         async load() {
             try {
                 const snapshot: { completed: boolean; rows: BulkPriceRow[] } = JSON.parse(await readFile(path, 'utf8'));
+                if (retryFailed)
+                    return snapshot.rows.filter(row => row.status !== 'error' && !row.retryable);
                 return snapshot.completed ? [] : snapshot.rows;
             } catch (error) {
-                if (error.code === 'ENOENT') return [];
+                if (error.code === 'ENOENT') {
+                    if (retryFailed) throw new Error('Нет сохранённого массового пересчёта Ozon');
+                    return [];
+                }
                 throw error;
             }
         },

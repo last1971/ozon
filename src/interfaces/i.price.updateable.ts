@@ -6,7 +6,7 @@ import Excel from 'exceljs';
 
 export interface IPriceUpdateable {
     readonly priceUpdateKey?: string;
-    startUpdateAllPrices?(clientId?: string): import('../job/job.state.dto').JobStateDto;
+    startUpdateAllPrices?(clientId?: string, retryFailed?: boolean): import('../job/job.state.dto').JobStateDto;
     getObtainCoeffs(): ObtainCoeffsDto;
     getPricingAvailability?(skus: string[]): Promise<PricingStocks>;
     getProductsWithCoeffs(

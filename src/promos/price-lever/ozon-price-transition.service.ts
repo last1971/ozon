@@ -15,6 +15,7 @@ import type { PromoPriceService } from './promo-price.service';
 import { PromoPriceApplyResult, PromoPricePlan, PromoPriceState, PromoStepResult } from './promo-price.types';
 import { planPromoPrice } from './promo-price.planner';
 import {
+    campaignChangedAtDifferentPrice,
     observedOzonBase,
     OzonTransitionStep,
     planOzonPriceTransition,
@@ -305,12 +306,18 @@ export class OzonPriceTransitionService {
         }
         if (claim && !alternativePath) {
             const maskedImport = saved.step.change.kind === 'base' && observedOzonBase(state) === undefined;
-            if ((maskedImport && !saved.baseAccepted) || !transitionStepConfirmed(state, saved.step))
+            if ((maskedImport && !saved.baseAccepted) || !transitionStepConfirmed(state, saved.step)) {
+                if (!saved.alternative && campaignChangedAtDifferentPrice(state, saved.step)) {
+                    await this.journal.finish(offer, claim.token);
+                    return { ...pending('Ozon подтвердил изменение акции по другой итоговой цене. Нужен свежий расчёт.'),
+                        observed: state.buyerPrice, stale: true };
+                }
                 return {
                     ...pending('Ждём подтверждения цены и акции от Ozon', saved.results),
                     observed: state.buyerPrice,
                     attempted: true,
                 };
+            }
             confirmedBase = saved.step.change.kind === 'base' ? Number(saved.step.change.target.price) : confirmedBase;
             confirmedBase = observedOzonBase(state) ?? confirmedBase;
             state.confirmedBase = confirmedBase;
@@ -324,6 +331,15 @@ export class OzonPriceTransitionService {
                         ...blocked('Шаг подтверждён, но условия скидки изменились. Требуется новый расчёт'),
                         stale: true,
                     };
+                }
+                if (isBase(goal) && options.snapshot) {
+                    // A fresh catalog request supersedes the previous goal only after
+                    // readback of its outstanding step. Never resend either request here.
+                    const receipt = confirmedBase === undefined ? undefined : {
+                        price: confirmedBase, productId: state.productId, minPrice: state.minPrice, oldPrice: state.oldPrice,
+                    };
+                    await this.journal.finish(offer, claim.token, undefined, undefined, receipt);
+                    return pending('Предыдущий шаг подтверждён. Проверяем новую расчётную цену.');
                 }
                 return pending('Другая операция ожидает завершения по этому товару');
             }
@@ -376,7 +392,7 @@ export class OzonPriceTransitionService {
         }
         if (!path.ok || !path.steps.length) {
             const result: Outcome = {
-                status: path.ok ? 'done' : 'blocked',
+                status: path.ok ? 'done' : path.inconsistentSnapshot ? 'pending' : 'blocked',
                 results,
                 observed: state.buyerPrice,
                 reason: path.reason,

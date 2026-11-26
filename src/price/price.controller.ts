@@ -116,12 +116,19 @@ export class PriceController {
         ] },
     })
     @ApiQuery({ name: 'background', required: false, type: Boolean, description: 'Вернуть задачу сразу; прогресс GET /api/job/{id}' })
+    @ApiQuery({ name: 'retryFailed', required: false, type: Boolean, description: 'Ozon: повторить только незавершённые цены последнего прохода' })
     async updatePrices(
         @Param('service') service: GoodServiceEnum,
         @Query('background') background?: string,
         @Headers('x-client-id') clientId?: string,
+        @Query('retryFailed') retryFailed?: string,
     ): Promise<any> {
         const command = this.extraService.getService(service) || this.service;
+        if (retryFailed === 'true') {
+            if (service !== GoodServiceEnum.OZON || background !== 'true')
+                throw new BadRequestException('Повтор доступен для фонового пересчёта Ozon');
+            return command.startUpdateAllPrices(clientId, true);
+        }
         if (background === 'true' && command.startUpdateAllPrices) return command.startUpdateAllPrices(clientId);
         return command.updateAllPrices();
     }
