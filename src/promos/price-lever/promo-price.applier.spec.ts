@@ -1,4 +1,5 @@
 import { buyerPrice } from '../../helpers/price/buyer.price.helper';
+import { priceUpdateQueue } from '../../helpers/price/price-update.queue';
 import { AutoAction, UpdatePriceDto } from '../../price/dto/update.price.dto';
 import { PromoPriceApplier } from './promo-price.applier';
 import { planPromoPrice } from './promo-price.planner';
@@ -160,12 +161,20 @@ function lossFixture(reset: 'keep' | 'base' | 'floor' = 'keep') {
         });
         return { result: [{ offer_id: state.offerId, updated: true }] };
     });
-    f.ops.update.mockImplementation(async (id, [row]) => {
-        expect(row.actionPrice).toBe(5881);
+    const remove = (id: number) => {
         f.apply('remove ' + id, () => {
             state.ozonActions.find(a => a.actionId === id).participant = false;
             refresh();
         });
+    };
+    f.ops.deactivate.mockImplementation(async (id, products) => {
+        expect(products).toEqual([state.productId]);
+        remove(id);
+        return products;
+    });
+    f.ops.update.mockImplementation(async (id, [row]) => {
+        expect(row.actionPrice).toBe(5881);
+        remove(id);
         return { added: [], unchanged: [], removed: [state.productId], rejected: [] };
     });
     return { ...f, refresh };
@@ -180,6 +189,36 @@ describe('Защита минимума по 560166', () => {
         expect(f.state.buyerPrice).toBe(5495);
         expect((await f.create().updateBases([f.target]))[0].updated).toBe(true);
         expect(f.writes).toHaveLength(7);
+        if (reset === 'floor') expect(f.ops.deactivate).toHaveBeenCalledWith(5, [f.state.productId]);
+    });
+    it('после явного выхода ждёт чтения Ozon и не дублирует запрос при перезапуске', async () => {
+        const f = lossFixture('floor');
+        f.ops.deactivate.mockImplementationOnce(async () => { throw new Error('timeout'); });
+        const [answer] = await f.create().updateBases([f.target]);
+        expect(answer.transition).toBe('pending');
+        await f.create().resume();
+        expect(f.ops.deactivate).toHaveBeenCalledTimes(1);
+        expect(f.state.ozonActions[4].participant).toBe(true);
+        f.state.ozonActions[4].participant = false;
+        f.refresh();
+        await f.create().resume();
+        expect(f.state.buyerPrice).toBe(5495);
+        expect(f.saved.size).toBe(0);
+    });
+    it('различает подтверждённый прежний запрос без изменений и неизвестный ответ', async () => {
+        const f = lossFixture('floor');
+        f.ops.deactivate.mockImplementationOnce(async () => { throw new Error('timeout'); });
+        await f.create().updateBases([f.target]);
+        const saved = f.saved.get(f.state.offerId).payload;
+        expect(saved.step.change.from).toBe(saved.step.floor);
+        await f.create().resume();
+        expect(f.ops.deactivate).toHaveBeenCalledTimes(1);
+        // Previously recorded acknowledgement of a price-update request. The
+        // missing acknowledgement above must never authorize the same recovery.
+        saved.alternative = 'kept';
+        await f.create().resume();
+        expect(f.ops.deactivate).toHaveBeenCalledTimes(2);
+        expect(f.state.buyerPrice).toBe(5495);
     });
     it.each(['added', 'unchanged'])('сохраняет ответ %s между запусками и продолжает после подтверждения выхода', async reply => {
         const f = lossFixture();
@@ -265,6 +304,19 @@ describe('Ozon price writer with real planner and independent readback', () => {
         await f.create().resume();
         expect(f.writes).toEqual(['percent 11']);
         expect(f.notices).toHaveLength(0);
+    });
+    it('пакет заново рассчитывает цель после изменения затрат и подтверждения старого шага', async () => {
+        const f = fixture();
+        f.delay();
+        await f.create().updateBases([f.target]);
+        f.deliver();
+        f.state.calculationKey = 'new cost';
+        const [result] = await f.create().updateBases([f.target], offer => ({
+            snapshot: priceUpdateQueue.capture('ozon', [offer]),
+        }));
+        expect(result.transition).toBe('pending');
+        expect(f.saved.size).toBe(0);
+        expect(f.writes).toEqual(['percent 11']);
     });
     it('uses the same lock for manual promotion and base writes', async () => {
         const f = fixture();

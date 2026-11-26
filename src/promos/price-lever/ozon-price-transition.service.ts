@@ -293,7 +293,14 @@ export class OzonPriceTransitionService {
                 if (request.recovery && saved.calculationKey !== state.calculationKey)
                     return blocked(`${reason} Условия расчёта изменились. Требуется новый план.`);
                 const next = planOzonPriceTransition(state, goal, new Date(), confirmedBase);
-                if (!next.ok || (seen && repeatsCampaignChange(saved.step, next.steps[0]))) {
+                // Older workers could acknowledge a price update that merely echoed the
+                // participant's existing price. A freshly planned explicit removal is a
+                // different operation. An unknown response never enters this branch.
+                const acknowledgedNoOp = seen && saved.alternative === 'kept' &&
+                    change.kind === 'ozon-remove' && !slot?.isVoucher && change.from === saved.step.floor &&
+                    next.steps[0]?.change.kind === 'ozon-remove' && next.steps[0].change.actionId === change.actionId &&
+                    slot?.actionPrice === next.steps[0].floor;
+                if (!next.ok || (seen && repeatsCampaignChange(saved.step, next.steps[0]) && !acknowledgedNoOp)) {
                     // Keep the receipt across manual retries, cron and restarts.
                     if (!saved.alternativeConfirmed)
                         await this.journal.advance(offer, claim.token, { ...saved, alternativeConfirmed: true });
@@ -345,8 +352,10 @@ export class OzonPriceTransitionService {
             }
             if (state.calculationKey && state.calculationKey !== saved.calculationKey) {
                 await this.journal.finish(offer, claim.token);
+                const reason = 'Предыдущий шаг подтверждён. Цель или условия расчёта изменились, требуется новый план';
+                if (isBase(goal) && options.snapshot && !request.recovery) return pending(reason);
                 return {
-                    ...blocked('Предыдущий шаг подтверждён. Цель или условия расчёта изменились, требуется новый план'),
+                    ...blocked(reason),
                     stale: true,
                 };
             }
@@ -491,7 +500,7 @@ export class OzonPriceTransitionService {
         }
         const slot = state.ozonActions.find((a) => a.actionId === change.actionId);
         if (!slot) throw new Error('Не найдено состояние акции Ozon');
-        if (change.kind === 'ozon-remove' && slot.isVoucher) {
+        if (change.kind === 'ozon-remove' && (slot.isVoucher || (slot.participant && slot.actionPrice === step.floor))) {
             if ((await this.actions.deactivate(change.actionId, [id])).includes(id)) return;
             throw new Error('Нет подтверждения исключения');
         }
