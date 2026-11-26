@@ -125,13 +125,18 @@ export class OzonLogisticsService {
                     const sku = info.fboSku ?? info.marketSku;
                     if (sku && origins.reduce((sum, origin) => sum + origin.units, 0) !== info.fboCount) {
                         // Один полный снимок вместо сложения двух представлений тех же остатков.
-                        origins = await this.cached(`analytics-origins:${sku}:${info.fboCount}`, 300_000, async () => {
-                            const result = analyticsFboOrigins(sku, await this.products.fboAnalyticsStocks(sku));
-                            const total = result.reduce((sum, origin) => sum + origin.units, 0);
-                            if (total !== info.fboCount)
-                                throw new PricingDataError(`Остаток FBO по кластерам ${total}, в карточке ${info.fboCount}`);
-                            return result;
-                        });
+                        try {
+                            origins = await this.cached(`analytics-origins:${sku}:${info.fboCount}`, 300_000, async () => {
+                                const result = analyticsFboOrigins(sku, await this.products.fboAnalyticsStocks(sku));
+                                const total = result.reduce((sum, origin) => sum + origin.units, 0);
+                                if (total !== info.fboCount)
+                                    throw new PricingDataError(`Остаток FBO по кластерам ${total}, в карточке ${info.fboCount}`);
+                                return result;
+                            });
+                        } catch (analyticsError) {
+                            if (analyticsError instanceof PricingDataError) throw analyticsError;
+                            this.warn(`Не удалось уточнить распределение FBO через analytics/stocks (${analyticsError.message}), используем приблизительные данные`, info.sku);
+                        }
                     }
                 } catch (e) {
                     const message = `Не удалось определить склады FBO с остатком для доставки: ${e.message}`;
