@@ -1,55 +1,20 @@
-import { inPromoDeadZone, planPromoPrice } from '../promo-price.planner';
-import { PromoPricePlan, PromoPriceState } from '../promo-price.types';
+import { PromoPricePlan } from '../promo-price.types';
 
-/** Цель сверки акций: что ищем и к чему приводим. */
-export type SweepGoalKind = 'below-min' | 'min' | 'normal';
-export const SWEEP_GOAL_KINDS: SweepGoalKind[] = ['below-min', 'min', 'normal'];
+/** Цель сверки: 'below-min' — только показать, кто продаётся ниже минимальной; 'min' — всех, чья цена не по правилу. */
+export type SweepGoalKind = 'below-min' | 'min';
+export const SWEEP_GOAL_KINDS: SweepGoalKind[] = ['below-min', 'min'];
 
-/** Расхождение с целью меньше рубля — округление Ozon, не повод менять акции. */
-const TOLERANCE_RUB = 1;
-
-/**
- * Единственное место, где решается, какие товары берёт сверка и каким планом их лечит.
- * Команды цепочки цель не толкуют — спрашивают её.
- */
 export interface SweepGoal {
     readonly kind: SweepGoalKind;
     readonly title: string;
-    selects(s: PromoPriceState): boolean;
-    plan(s: PromoPriceState): PromoPricePlan;
+    selects(plan: PromoPricePlan): boolean;
 }
 
-const priced = (s: PromoPriceState) => s.minPrice > 0 && s.buyerPrice > 0;
-
-/** Проверка нижней границы тарифа; наш процент — минимум акции, цель min. */
-const belowMin: SweepGoal = {
-    kind: 'below-min',
-    title: 'ниже минимальной',
-    selects: (s) =>
-        priced(s) && (s.buyerPrice < (s.calcMinPrice ?? s.minPrice) || inPromoDeadZone(s.buyerPrice, s.deadZoneFloor)),
-    plan: (s) => planPromoPrice(s, s.calcMinPrice ?? s.minPrice, s.seller?.minPercent),
-};
-
-/** Решение 20.10: цена покупателю ≠ цели в обе стороны; процент подбирает планировщик. */
-const toTarget = (target: 'min' | 'normal', title: string): SweepGoal => {
-    const effectiveTarget = (s: PromoPriceState): number =>
-        target === 'min' ? (s.calcMinPrice ?? s.minPrice) : s.price;
-    return {
-        kind: target,
-        title,
-        selects: (s) =>
-            priced(s) &&
-            (s.buyerPrice < (s.calcMinPrice ?? s.minPrice) ||
-                Math.abs(s.buyerPrice - effectiveTarget(s)) > TOLERANCE_RUB ||
-                inPromoDeadZone(s.buyerPrice, s.deadZoneFloor)),
-        plan: (s) => planPromoPrice(s, effectiveTarget(s)),
-    };
-};
+const belowMin = (p: PromoPricePlan) => p.state.buyerPrice > 0 && p.target > 0 && p.state.buyerPrice < p.target;
 
 const GOALS: Record<SweepGoalKind, SweepGoal> = {
-    'below-min': belowMin,
-    min: toTarget('min', 'привести к минимальной'),
-    normal: toTarget('normal', 'привести к нормальной'),
+    'below-min': { kind: 'below-min', title: 'ниже минимальной', selects: belowMin },
+    min: { kind: 'min', title: 'привести к минимальной', selects: (p) => p.steps.length > 0 || belowMin(p) },
 };
 
 export const sweepGoal = (kind: SweepGoalKind): SweepGoal => GOALS[kind];

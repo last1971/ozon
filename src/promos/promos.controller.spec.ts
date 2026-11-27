@@ -34,13 +34,10 @@ describe('PromosController', () => {
         expect(page).toHaveBeenCalledWith('candidates', 1, undefined);
     });
 
-    it('price-plan: цель из тела разбирается (строка-число → число), процент проходит как есть', async () => {
+    it('price-plan: артикулы в сервис', async () => {
         plans.mockResolvedValue([]);
-        await controller.pricePlan({ offer_ids: ['383367'], target: '240', percent: 6 });
-        expect(plans).toHaveBeenCalledWith(['383367'], 240, 6);
-        await controller.pricePlan({ offer_ids: ['383367'], target: 'min' });
-        expect(plans).toHaveBeenCalledWith(['383367'], 'min', undefined);
-        expect(() => controller.pricePlan({ offer_ids: ['1'], target: 'abc' })).toThrow('abc');
+        await controller.pricePlan({ offer_ids: ['383367'] });
+        expect(plans).toHaveBeenCalledWith(['383367']);
     });
 
     it('price-state: артикулы в сервис', async () => {
@@ -49,17 +46,17 @@ describe('PromosController', () => {
         expect(states).toHaveBeenCalledWith(['383367']);
     });
 
-    it('price-apply: та же разборка тела, что у плана', async () => {
+    it('price-apply: артикулы в сервис', async () => {
         apply.mockResolvedValue([]);
-        await controller.priceApply({ offer_ids: ['532100'], target: 'min', percent: 14 });
-        expect(apply).toHaveBeenCalledWith(['532100'], 'min', 14);
+        await controller.priceApply({ offer_ids: ['532100'] });
+        expect(apply).toHaveBeenCalledWith(['532100']);
     });
 
     it('promo-sweep: без apply — только отчёт, без цели — «ниже минимальной»; метка браузера в задачу', () => {
         sweepStart.mockReturnValue({ id: 'j' });
         expect(controller.promoSweep(undefined, undefined, 'cid')).toEqual({ id: 'j' });
         expect(sweepStart).toHaveBeenCalledWith(false, 'below-min', 'cid');
-        controller.promoSweep(true, 'normal', '');
-        expect(sweepStart).toHaveBeenLastCalledWith(true, 'normal', undefined);
+        controller.promoSweep(true, 'min', '');
+        expect(sweepStart).toHaveBeenLastCalledWith(true, 'min', undefined);
     });
 });

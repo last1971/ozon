@@ -2,17 +2,16 @@ import { Body, Controller, Get, Headers, HttpCode, ParseBoolPipe, ParseEnumPipe,
 import { ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { ActionProductsPageParamsDto } from './dto/actionProductsPage.dto';
 import { ActionsDto } from './dto/actions.dto';
-import { AddRemoveProductToActionsParamsDto } from './dto/addRemoveProductToActionsParams.dto';
-import { PromoPricePlanRequestDto, PromoPriceStateRequestDto } from './dto/promoPrice.dto';
+import { PromoPriceStateRequestDto } from './dto/promoPrice.dto';
 import { JobStateDto } from '../job/job.state.dto';
 import { PromoPriceService } from './price-lever/promo-price.service';
 import { PromoSweepService } from './price-lever/sweep/promo-sweep.service';
 import { SWEEP_GOAL_KINDS, SweepGoalKind } from './price-lever/sweep/sweep-goal';
 import { PromoPriceApplyResult, PromoPricePlan, PromoPriceState } from './price-lever/promo-price.types';
 import { OzonPromosApi } from './promos.api';
-import { AddRemoveProductToAction, FitProductsStrategy, PromosService } from './promos.service';
+import { PromosService } from './promos.service';
 
-/** Ручки акций: чтение — прямо из шлюза API, действия — через бизнес-правила PromosService. */
+/** Ручки акций Ozon (только чтение) и цены по единому правилу. */
 @ApiTags('promos')
 @Controller('promos')
 export class PromosController {
@@ -41,44 +40,10 @@ export class PromosController {
         return this.api.page('products', params.action_id, params.last_id);
     }
 
-    @ApiOkResponse({
-        description: 'Снять с акции товары с ценой ниже нашей минимальной или без остатка.',
-        type: Number,
-    })
-    @ApiQuery({ name: 'actionId', type: Number, required: true })
-    @Get('actions/products/unfit-removal')
-    unfitProductsRemoval(@Query('actionId') actionId: number): Promise<number> {
-        return this.service.unfitProductsRemoval(Number(actionId));
-    }
-
-    @ApiOkResponse({ description: 'Добавить в акцию подходящих кандидатов по стратегии цены.', type: Number })
-    @ApiQuery({ name: 'actionId', type: Number, required: true })
-    @ApiQuery({
-        name: 'strategy',
-        description: 'max_action_price | max(action_price, min_price) | min_price',
-        enum: FitProductsStrategy,
-        required: true,
-    })
-    @Get('actions/products/fit-addition')
-    fitProductsAddition(
-        @Query('actionId') actionId: number,
-        @Query('strategy') strategy: FitProductsStrategy,
-    ): Promise<number> {
-        return this.service.fitProductsAddition(Number(actionId), strategy);
-    }
-
-    @ApiOkResponse({ description: 'Пересмотр участия товаров во всех акциях по их ценам.', type: [Object] })
-    @Post('actions/products/add-remove')
-    addRemoveProductToActions(
-        @Query() params: AddRemoveProductToActionsParamsDto,
-    ): Promise<AddRemoveProductToAction[]> {
-        return this.service.addRemoveProductToActions(params.ids, params.chunkLimit);
-    }
-
     @ApiOperation({
         summary: 'Ozon: состояние товара в акциях',
         description:
-            'Цены, наш процент, Ozon-акции (участник/кандидат, цена, лимит), цена покупателю. Ничего не меняет. ~40 запросов к Ozon.',
+            'Предельная цена, ограничение, наш процент, участие в акциях Ozon, цена покупателю. Ничего не меняет.',
     })
     @Post('ozon/price-state')
     @HttpCode(200)
@@ -87,33 +52,29 @@ export class PromosController {
     }
 
     @ApiOperation({
-        summary: 'Ozon: план цены через акции (dry-run)',
-        description:
-            'Шаги: цена в Ozon-акции / выкинуть из Ozon-акции / процент нашей акции, итог покупателю. Ничего не применяет.',
+        summary: 'Ozon: план цены по правилу (dry-run)',
+        description: 'Предельная цена под нашу минимальную с учётом процента нашей акции. Ничего не применяет.',
     })
     @Post('ozon/price-plan')
     @HttpCode(200)
-    pricePlan(@Body() body: PromoPricePlanRequestDto): Promise<PromoPricePlan[]> {
-        return this.promoPrice.plans(body.offer_ids, PromoPriceService.parseTarget(body.target), body.percent);
+    pricePlan(@Body() body: PromoPriceStateRequestDto): Promise<PromoPricePlan[]> {
+        return this.promoPrice.plans(body.offer_ids);
     }
 
     @ApiOperation({
-        summary: 'Ozon: применить план цены через акции',
-        description:
-            'Читает состояние заново, считает план и выполняет шаги: сначала Ozon-акции, потом процент нашей акции. ' +
-            'Повышение процента пропускается, если шаг по Ozon-акции не прошёл. Ответ — итог по каждому шагу.',
+        summary: 'Ozon: применить цену по правилу',
+        description: 'Читает состояние заново, считает план и отправляет процент нашей акции и цену. Ответ — итог по шагам.',
     })
     @Post('ozon/price-apply')
     @HttpCode(200)
-    priceApply(@Body() body: PromoPricePlanRequestDto): Promise<PromoPriceApplyResult[]> {
-        return this.promoPrice.apply(body.offer_ids, PromoPriceService.parseTarget(body.target), body.percent);
+    priceApply(@Body() body: PromoPriceStateRequestDto): Promise<PromoPriceApplyResult[]> {
+        return this.promoPrice.apply(body.offer_ids);
     }
 
     @ApiOperation({
-        summary: 'Ozon: сверка акций по цели (фоновая задача)',
+        summary: 'Ozon: сверка цен по правилу (фоновая задача)',
         description:
-            'goal=below-min — товары, у которых цена покупателю ниже min_price (процент — минимум нашей акции); ' +
-            'goal=min|normal — цена покупателю не равна минимальной/нормальной, план приводит к ней в обе стороны. ' +
+            'goal=below-min — товары, у которых цена покупателю ниже минимальной; goal=min — все, чья цена не по правилу. ' +
             'apply=false — только отчёт, apply=true — применить. Ход и отчёт — GET /job/:id.',
     })
     @ApiQuery({ name: 'apply', type: Boolean, required: false })

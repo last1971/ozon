@@ -26,15 +26,16 @@ describe('Адаптер Ozon', () => {
             adapter: new OzonLossPriceAdapter(pricing as any, products as any, sweep as any, jobs as any, promoPrices as any),
         };
     };
-    it('сравнивает все три суммы без рублёвого допуска, отсутствие ответа не считается совпадением', async () => {
+    it('совпадение — цена в Ozon по правилу от расчётной минимальной; расчётная normal не отправляется', async () => {
         const { adapter } = setup();
-        const promoState = {offerId: target.offer_id, price: 250, buyerPrice: 200, buyerPriceCalc: 200, ozonActions: []};
-        expect(adapter.matches(target, { ...target, promoState, price: 250 })).toBe(true);
-        expect(adapter.matches(target, { ...target, promoState, min_price: 199 })).toBe(false);
+        const promoState = { offerId: '123', productId: 1, price: 200, minPrice: 200, oldPrice: 400, buyerPrice: 200, buyerPriceCalc: 200, seller: null, ozonActions: [] };
+        expect(adapter.matches(target, { promoState })).toBe(true);
+        expect(adapter.matches(target, { promoState: { ...promoState, price: 250 } })).toBe(false);
+        expect(adapter.matches(target, { promoState: { ...promoState, minPrice: 199 } })).toBe(false);
+        const seller = { actionId: 9, title: '26-11', minPercent: 5, actionOn: false, sku: 1, percent: 5, isActive: true };
+        expect(adapter.matches(target, { promoState: { ...promoState, seller } })).toBe(false);
+        expect(adapter.matches(target, { promoState: { ...promoState, seller, price: 211 } })).toBe(true);
         expect(adapter.matches(target, { ...target, price: 250 })).toBe(false);
-        expect(adapter.matches(target, {...target, promoState:{...promoState, ozonActions:[
-            {actionId:1, participant:true, actionPrice:250, startsAt:null},
-        ], buyerPrice:200, minPrice:200, oldPrice:400}})).toBe(false);
         expect(adapter.matches(target, null)).toBe(false);
         expect(ozonPricesMatch(target, { ...target, min_price: 199 })).toBe(true); // прежняя сверка сохраняет свой допуск
         expect(ozonPricesMatch(target, { ...target, price: undefined })).toBe(false);
@@ -131,22 +132,21 @@ describe('Адаптер ВБ', () => {
         });
     });
 });
-it('ограниченный сбор переиспользует allStates с фильтром, полный сбор остаётся для прежних запусков', async () => {
-    const price = { states: jest.fn().mockResolvedValue([]), allStates: jest.fn().mockResolvedValue([]) };
+it('ограниченный сбор читает только свои артикулы, полный — весь каталог', async () => {
+    const price = { pricedStates: jest.fn().mockResolvedValue([]) };
     const collect = new CollectSweepCommand(price as any);
     await collect.execute({ offerIds: ['123'], apply: true, goal: 'min', progress: emptyProgress() });
-    expect(price.allStates).toHaveBeenCalledWith(['123']);
-    expect(price.states).not.toHaveBeenCalled();
+    expect(price.pricedStates).toHaveBeenCalledWith(['123']);
     await collect.execute({ apply: true, goal: 'min', progress: emptyProgress() });
-    expect(price.allStates).toHaveBeenCalledTimes(2);
+    expect(price.pricedStates).toHaveBeenLastCalledWith(undefined);
 });
 it('ограниченная сверка имеет отдельные параметры JobService и тот же порядок команд', async () => {
     const jobs = new JobService(),
         called: number[] = [];
-    const commands = Array.from({ length: 6 }, (_, i) => ({
+    const commands = Array.from({ length: 4 }, (_, i) => ({
         execute: async (ctx) => {
             called.push(i);
-            if (i === 4) ctx.report = { checked: ctx.offerIds.length };
+            if (i === 2) ctx.report = { checked: ctx.offerIds.length };
             return ctx;
         },
     }));
@@ -156,11 +156,9 @@ it('ограниченная сверка имеет отдельные пара
         commands[1] as any,
         commands[2] as any,
         commands[3] as any,
-        commands[4] as any,
-        commands[5] as any,
     );
     const job = service.start(true, 'min', 'loss', ['123']);
     expect(job.params).toEqual({ apply: true, goal: 'min', offerIds: ['123'] });
     expect((await jobs.whenDone(job.id)).status).toBe('done');
-    expect(called).toEqual([0, 1, 2, 3, 4, 5]);
+    expect(called).toEqual([0, 1, 2, 3]);
 });

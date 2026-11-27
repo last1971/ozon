@@ -22,28 +22,6 @@ export interface ActionProduct {
     addMode?: string;
 }
 
-/** Что отправляем по товару в акцию: предельная цена и сток. */
-export interface ActionProductUpdate {
-    productId: number;
-    actionPrice: number;
-    stock: number;
-}
-
-export interface RejectedProduct {
-    productId: number;
-    reason: string;
-}
-
-/** Ответ /v1/actions/products/update: один вызов и добавляет, и исключает. */
-export interface ActionUpdateResult {
-    added: number[];
-    removed: number[];
-    /** Ozon: «Product update has no changes» — запрошенное уже стоит (цена та же / товара в акции уже нет). */
-    unchanged: number[];
-    rejected: RejectedProduct[];
-    warnings: string[];
-}
-
 /* ---------- Наша акция (контур /v1/seller-actions, по sku) ---------- */
 
 /** Акция продавца из seller-actions/list. minPercent — ниже этого процента Ozon товар не принимает (code5). */

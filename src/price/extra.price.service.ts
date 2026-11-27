@@ -27,7 +27,6 @@ import { GetAllOzonSkusCommand } from './commands/get-all-ozon-skus.command';
 import { OzonSkusToTradeSkusCommand } from './commands/ozon-skus-to-trade-skus.command';
 import { UpdatePriceForGoodSkusCommand } from './commands/update-price-for-good-skus.command';
 import { CheckPriceDifferenceAndNotifyCommand } from './commands/check-price-difference-and-notify.command';
-import { EmitUpdatePromosCommand } from './commands/emit-update-promos.command';
 import { LogResultProcessingMessageCommand } from './commands/log-result-processing-message.command';
 import { ValidateSkusNotEmptyCommand } from './commands/validate-skus-not-empty.command';
 import { SetResultProcessingMessageCommand } from './commands/set-result-processing-message.command';
@@ -73,7 +72,6 @@ export class ExtraPriceService {
         private readonly ozonSkusToTradeSkusCommand: OzonSkusToTradeSkusCommand,
         private readonly updatePriceForGoodSkusCommand: UpdatePriceForGoodSkusCommand,
         private readonly checkPriceDifferenceAndNotifyCommand: CheckPriceDifferenceAndNotifyCommand,
-        private readonly emitUpdatePromosCommand: EmitUpdatePromosCommand,
         private readonly logResultProcessingMessageCommand: LogResultProcessingMessageCommand,
         private readonly validateSkusNotEmptyCommand: ValidateSkusNotEmptyCommand,
         private readonly setResultProcessingMessageCommand: SetResultProcessingMessageCommand,
@@ -352,7 +350,6 @@ export class ExtraPriceService {
             this.ozonSkusToTradeSkusCommand,
             this.updatePercentsForGoodSkusCommand,
             this.updatePriceForGoodSkusCommand,
-            this.emitUpdatePromosCommand,
             this.setResultProcessingMessageCommand,
             this.logResultProcessingMessageCommand,
         ]);

@@ -1,25 +1,21 @@
 import type { UpdatePriceDto } from '../../price/dto/update.price.dto';
 import type { SweepGoalKind } from './sweep/sweep-goal';
 /**
- * Ручка цены через акции: состояние товара и план (dry-run). Доменные типы без полей Seller API.
- * Цена покупателю = min(цены Ozon-акций, price) × (1 − процент нашей акции) — см. buyer.price.helper.
+ * Цена товара на Ozon с 12.10.2026: одна предельная цена (price), акции Ozon её не снижают, товар попадает
+ * в акцию сам, если price ≤ порога. Покупатель = price × (1 − процент нашей акции). min_price («Ограничение
+ * для акций и стратегий») хранит нашу минимальную. Доменные типы без полей Seller API.
  */
-
-/** Цель: 'min' — min_price, 'normal' — price, число — своя цена в коридоре [min_price, price]. */
-export type PromoTarget = 'min' | 'normal' | number;
 
 /** Участие (или кандидатство) товара в одной Ozon-акции. */
 export interface OzonActionSlot {
     actionId: number;
     title: string;
-    /** Промокодная: цену не назначить, снять — только deactivate. */
     isVoucher: boolean;
-    unifiedPrice?: boolean;
     /** true — участник, false — кандидат. */
     participant: boolean;
     /** Текущая цена в акции (у кандидата 0). */
     actionPrice: number;
-    /** Предельная цена: выше — Ozon в акцию не берёт (или исключает). */
+    /** Порог акции: товар участвует, пока предельная цена не выше. */
     maxActionPrice: number;
     stock: number;
     /** Начало акции (date_start из /v1/actions); null — неизвестно, считаем идущей. */
@@ -32,6 +28,8 @@ export interface SellerSlot {
     title: string;
     /** min_action_percent текущей акции — ниже Ozon не принимает. */
     minPercent: number;
+    /** Акция включена в кабинете: только тогда процент снижает цену покупателю. */
+    actionOn: boolean;
     sku: number;
     /** Текущий процент (у кандидата — предложенный Ozon, не действующий). */
     percent: number;
@@ -51,53 +49,30 @@ export interface PromoPriceState {
     /** Та же цена по нашей формуле — расхождение с buyerPrice значит, что формула чего-то не знает. */
     buyerPriceCalc: number;
     seller: SellerSlot | null;
+    /** Участие в акциях Ozon — только для просмотра, цену не меняет. */
     ozonActions: OzonActionSlot[];
-    /**
-     * Минимальная прибыльная цена покупателю из расчёта OzonPricingService (этап 6).
-     * Если задана — используется как пол вместо minPrice (Ozon API).
-     */
-    calcMinPrice?: number;
-    /** Снимок входов расчёта для продолжения сохранённой операции после рестарта. */
-    calculationKey?: string;
-    /**
-     * Нижняя граница мёртвой зоны P300: цена покупателю должна быть ≤ 300 или ≥ deadZoneFloor.
-     * Задаётся, когда minPrice и calcMinPrice обеих ступеней разделены мёртвой зоной (300; P300].
-     */
-    deadZoneFloor?: number;
 }
 
-/** Шаг плана. from = null — товара там ещё нет (добавление). */
-export type PromoPriceStep =
-    | { kind: 'ozon-set'; actionId: number; title: string; from: number | null; to: number; stock?: number }
-    | { kind: 'ozon-remove'; actionId: number; title: string; from: number; reason: string }
-    | { kind: 'percent'; actionId: number; sku: number; from: number | null; to: number };
-
-/** Импорт базовой цены — тоже шаг: он двигает цену покупателя наравне с акциями. */
+/** Импорт цены: предельная, ограничение (наша минимальная), зачёркнутая. */
 export type BaseStep = { kind: 'base'; target: UpdatePriceDto };
-export type PriceStep = PromoPriceStep | BaseStep;
+/** Процент нашей акции: только вниз, до минимального процента акции. */
+export type PercentStep = { kind: 'percent'; actionId: number; sku: number; from: number; to: number };
+export type PromoPriceStep = BaseStep | PercentStep;
 
 export interface PromoPricePlan {
     offerId: string;
     productId: number;
-    /** Цель в рублях после зажатия в коридор. */
+    /** Наша минимальная: покупатель платит не меньше. */
     target: number;
-    /** Процент нашей акции после плана (0 — товар не в ней). */
+    /** Процент нашей акции, по которому посчитана предельная цена (0 — товар не в ней). */
     percent: number;
-    /** Пол, по которому решались Ozon-акции (с процентом на входе, до подбора процента). */
-    floor: number;
+    /** Предельная цена после плана. */
+    price: number;
     steps: PromoPriceStep[];
-    /** One shared Ozon price removes this product from all qualifying boosts. */
-    unifiedExit?: boolean;
-    /** Shared price update when Ozon can keep the product in eligible boosts. */
-    unifiedPrice?: boolean;
     buyerBefore: number;
-    /** Цена до нашего процента после выполнения плана. */
-    baseAfter: number;
     buyerAfter: number;
-    /** Итог не ниже min_price. */
+    /** Итог не ниже минимальной. */
     ok: boolean;
-    /** Шагов нет, а ближе к цели не подойти: следующий шаг рычага (рубль цены в акции Ozon или процент нашей акции) уводит ниже цели. */
-    closest: boolean;
     notes: string[];
     state: PromoPriceState;
 }
@@ -134,13 +109,11 @@ export interface PromoSweepItem extends PromoReadback {
     productId: number;
     price: number;
     minPrice: number;
-    /** Цель плана в рублях. */
+    /** Наша минимальная. */
     target: number;
     buyerBefore: number;
     buyerAfter: number;
     ok: boolean;
-    /** Шагов нет — ближе к цели не подойти (см. PromoPricePlan.closest). */
-    closest: boolean;
     steps: PromoPriceStep[];
     notes: string[];
     /** Только при применении. */
@@ -156,18 +129,12 @@ export interface PromoSweepReport {
     checked: number;
     /** Отобрано целью. */
     selected: number;
-    /** Ozon-акции остались (цена поднята до пола), из них никого не выкинули. */
-    keptInOzon: number;
-    /** Хоть из одной Ozon-акции выкинуты. */
-    removedFromOzon: number;
+    /** Меняется предельная цена, ограничение или зачёркнутая. */
+    priceChanged: number;
     /** Меняется процент нашей акции. */
     percentChanged: number;
-    /** План не выводит выше минимума. */
+    /** Нет минимальной в Ozon или формула не объясняет цену покупателю — смотреть руками. */
     unfixable: number;
-    /** Шагов нет: цена уже ближайшая к цели, следующий шаг уводит ниже. */
-    closest: number;
-    /** Отобран, но шагов нет и это не «ближе нельзя» (формула расходится с Ozon или акции не дают) — смотреть руками. */
-    nothingToDo: number;
     /** При применении: товаров, где не все шаги прошли. */
     failed: number;
     pendingConfirmation?: number;

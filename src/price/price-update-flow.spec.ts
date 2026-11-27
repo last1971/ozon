@@ -16,14 +16,12 @@ const gate = () => {
 const plan = (id: string): PromoPricePlan => ({
     offerId: id,
     productId: Number(id),
-    target: 180,
+    target: 100,
     percent: 10,
-    floor: 100,
-    buyerBefore: 200,
-    baseAfter: 200,
-    buyerAfter: 180,
+    price: 200,
+    buyerBefore: 180,
+    buyerAfter: 190,
     ok: true,
-    closest: false,
     notes: [],
     state: {
         offerId: id,
@@ -31,23 +29,19 @@ const plan = (id: string): PromoPricePlan => ({
         oldPrice: 300,
         price: 200,
         minPrice: 100,
-        buyerPrice: 200,
-        buyerPriceCalc: 200,
-        calcMinPrice: 100,
-        calculationKey: 'tariffs',
-        seller: { actionId: 1, sku: Number(id), title: 'Скидка', percent: 0, minPercent: 5, isActive: true },
+        buyerPrice: 180,
+        buyerPriceCalc: 180,
+        seller: { actionId: 1, sku: Number(id), title: 'Скидка', percent: 10, minPercent: 5, actionOn: true, isActive: true },
         ozonActions: [],
     },
-    steps: [{ kind: 'percent', actionId: 1, sku: Number(id), from: 0, to: 10 }],
+    steps: [{ kind: 'percent', actionId: 1, sku: Number(id), from: 10, to: 5 }],
 });
 // The only test doubles here are the marketplace and the economic inputs.
 function transitions(states: Map<string, PromoPriceState>, sendPercent: (skus: string[]) => Promise<void>) {
     const reader = {
-        allStates: async (ids: string[]) => ids.map((id) => structuredClone(states.get(id))),
-        states: async (ids: string[]) => ids.map((id) => structuredClone(states.get(id))),
+        pricedStates: async (ids: string[]) => ids.map((id) => structuredClone(states.get(id))),
         forget: () => {},
     };
-    const enrich = { enrichBatch: async () => new Map(), enrichOne: async () => ({ status: 'ready' }) };
     const update = jest.fn();
     const setPercent = jest.fn(async (_action: number, rows: { sku: number; percent: number }[]) => {
         await sendPercent(rows.map((r) => String(r.sku)));
@@ -58,14 +52,8 @@ function transitions(states: Map<string, PromoPriceState>, sendPercent: (skus: s
         }
         return { applied: rows, rejected: [] };
     });
-    const writer = new OzonPriceWriter(
-        { get: () => reader } as any,
-        {} as any,
-        { update } as any,
-        { setPercent } as any,
-        { emitAsync: async () => [] } as any,
-    );
-    return { applier: writer, reader, enrich, setPercent, update };
+    const writer = new OzonPriceWriter({ get: () => reader } as any, { setPrice: update } as any, { setPercent } as any);
+    return { applier: writer, reader, setPercent, update };
 }
 it('сверка пишет пачкой одной операцией очереди Ozon: ВБ не ждёт, ручная цена Ozon после неё устарела и не уходит', async () => {
     const order: string[] = [],
@@ -73,7 +61,7 @@ it('сверка пишет пачкой одной операцией очер�
     const ids = ['99001', '99002', '99003'];
     const snapshots = new Map(ids.map((id) => [id, priceUpdateQueue.capture('ozon', [id])]));
     const states = new Map(ids.map((id) => [id, plan(id).state]));
-    const { applier, reader, enrich, setPercent } = transitions(states, async (skus) => {
+    const { applier, reader, setPercent } = transitions(states, async (skus) => {
         order.push(skus.join(','));
         await block.wait;
     });
@@ -84,7 +72,7 @@ it('сверка пишет пачкой одной операцией очер�
         pricingSnapshots: snapshots,
         progress: emptyProgress(),
     };
-    const sweep = new ApplySweepCommand(applier, reader as any, enrich as any).execute(context);
+    const sweep = new ApplySweepCommand(applier, reader as any).execute(context);
     while (!order.length) await new Promise(setImmediate);
     const coeffs = { minMil: 0, percMil: 0, percEkv: 1, sumObtain: 0, sumLabel: 0, taxUnit: 6 };
     const ozon = {
@@ -137,7 +125,7 @@ it('смена цены в самом Ozon отклоняет старый пл�
     const stale = plan('99004');
     const states = new Map([[stale.offerId, { ...stale.state, price: 999 }]]);
     const { applier, update, setPercent } = transitions(states, async () => {});
-    expect(await applier.applyPromo(plan('99004'))).toMatchObject({ applied: false, stale: true });
+    expect((await applier.applyPlans([plan('99004')]))[0]).toMatchObject({ applied: false, stale: true });
     expect(update).not.toHaveBeenCalled();
     expect(setPercent).not.toHaveBeenCalled();
 });

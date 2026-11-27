@@ -1,7 +1,6 @@
 import { ModuleRef } from '@nestjs/core';
-import { formulaMatches, planBaseUpdate } from '../promos/price-lever/promo-price.planner';
+import { effectiveMinimum, planOzonPrice } from '../promos/price-lever/promo-price.planner';
 import { ozonDisplayPrice } from '../helpers/price/ozon.display-price';
-import { resolveOzonBaseTarget } from '../helpers/price/ozon-base-target';
 import type { PromoPriceService } from '../promos/price-lever/promo-price.service';
 import { OZON_PRICE_TRANSITIONS, OZON_PROMO_STATE_READER } from '../promos/price-lever/transition.tokens';
 import type { OzonPriceWriter } from '../promos/price-lever/ozon-price-writer';
@@ -359,21 +358,25 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
         const offers = prices.filter(p => p.ozonCalculated).map(p => p.offer_id);
         if (!offers.length) return prices;
         const reader = this.moduleRef.get<PromoPriceService>(OZON_PROMO_STATE_READER, { strict: false });
-        const states = new Map((await reader.allStates(offers)).map(state => [state.offerId, state]));
+        const states = new Map((await reader.pricedStates(offers)).map(state => [state.offerId, state]));
         return prices.map(price => {
             if (!price.ozonCalculated) return price;
             const state = states.get(price.offer_id);
-            if (!state) throw new Error(`Ozon не вернул условия акций для ${price.offer_id}`);
+            if (!state) throw new Error(`Ozon не вернул цену ${price.offer_id}`);
             // Once the operator sees the quote, only these exact prices may be sent.
-            const { target, minimum, plan } = planBaseUpdate(state, price);
-            const { ozonCalculated, ...approved } = target;
+            const { min_price, old_price, ozonCalculated, ozonDeadZoneFloor, ...rest } = price;
+            const minimum = effectiveMinimum(Number(min_price), ozonDeadZoneFloor);
+            const plan = planOzonPrice(state, minimum, Number(old_price), rest);
             const observed = state.buyerPrice > 0 ? `Цена покупателю ${state.buyerPrice} ₽. ` : '';
-            const summary = `${price.offer_id}: ${observed}Расчётный минимум ${minimum} ₽.`;
-            if (!formulaMatches(state))
-                throw new Error(`${summary} Цены Ozon не подтверждены формулой: по ней покупателю ${state.buyerPriceCalc} ₽`);
             if (state.buyerPrice < minimum || !plan.ok)
-                warnings?.push(`${summary} После выполнения плана — ${plan.buyerAfter} ₽.`);
-            return approved;
+                warnings?.push(`${price.offer_id}: ${observed}Расчётный минимум ${minimum} ₽. После отправки — ${plan.buyerAfter} ₽.`);
+            return {
+                ...rest,
+                offer_id: price.offer_id,
+                price: String(plan.price),
+                min_price: String(minimum),
+                old_price: String(ozonDisplayPrice(plan.price, Number(old_price))),
+            };
         });
     }
 

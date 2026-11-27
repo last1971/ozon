@@ -27,12 +27,11 @@ describe('сообщения «к минимальной»', () => {
                 { offerId: '552293', steps: [{}], applied: false, results: [{ status: 'rejected', reason: 'лимит' }] },
                 { offerId: '542774', steps: [] },
             ],
-            keptInOzon: 0,
-            removedFromOzon: 0,
-            percentChanged: 2,
-            nothingToDo: 0,
+            priceChanged: 1,
+            percentChanged: 0,
+            unfixable: 0,
         });
-        expect(m.subject).toBe('Озон акции к минимальной: применено 1, не прошло 1');
+        expect(m.subject).toBe('Озон цены к минимальной: применено 1, не прошло 1');
         expect(m.text).toContain('552293: лимит');
         expect(m.text).not.toContain('542774');
         expect(m.text).not.toContain('pending');

@@ -1,95 +1,52 @@
-import { priceUpdateQueue } from '../../helpers/price/price-update.queue';
-import { assertPricingWritesAllowed } from '../../helpers/price/pricing-review-mode';
 import { BadRequestException, Injectable } from '@nestjs/common';
 import { chunk } from 'lodash';
-import { buyerPrice, ozonPriceActions } from '../../helpers/price/buyer.price.helper';
+import { buyerPrice } from '../../helpers/price/buyer.price.helper';
+import { priceUpdateQueue } from '../../helpers/price/price-update.queue';
+import { assertPricingWritesAllowed } from '../../helpers/price/pricing-review-mode';
 import { ProductPriceDto } from '../../price/dto/product.price.dto';
 import { ProductService } from '../../product/product.service';
 import { ProductVisibility } from '../../product/product.visibility';
-import { OzonPromosApi, usesUnifiedPrice } from '../promos.api';
+import { OzonPromosApi } from '../promos.api';
 import { ActionProduct } from '../promos.types';
 import { OzonSellerActionsApi } from '../seller-actions.api';
 import { OzonPriceWriter } from './ozon-price-writer';
-import { planPromoPrice } from './promo-price.planner';
-import { EnrichWithPricingCommand } from './sweep/enrich-with-pricing.command';
-import { unavailablePromoPlan } from './sweep/plan-sweep.command';
+import { guardPlan } from './promo-price.planner';
 import {
     OzonActionSlot,
     PromoPriceApplyResult,
     PromoPricePlan,
     PromoPriceState,
-    PromoTarget,
     SellerSlot,
 } from './promo-price.types';
 
 /**
- * Ручка цены через акции: собирает состояние товара из обоих контуров (акции Ozon — `OzonPromosApi`,
- * наша акция — `OzonSellerActionsApi`, цены — ProductService) и отдаёт план планировщика. Сам ничего не меняет:
- * применение — `PromoPriceApplier` по плану, пересчитанному здесь же из свежего состояния.
- * Дорого: все участники и кандидаты всех акций, ~45 запросов на вызов — для ручной работы, не для списка.
- * Снимок акций читается один раз на вызов независимо от числа товаров — сверка берёт все товары одним снимком.
+ * Состояние цен Ozon и план по единому правилу (promo-price.planner). Для решений нужны только цены
+ * каталога и наша акция; участие в акциях Ozon читается лишь для просмотра товара в карточке.
  */
-/** Снимок акций: слоты Ozon-акций и нашей акции по product_id. */
-interface PromoSnapshot {
-    ozon: Map<number, OzonActionSlot[]>;
-    seller: Map<number, SellerSlot>;
-}
-
 @Injectable()
 export class PromoPriceService {
     static readonly MAX_OFFERS = 100;
-    static readonly SNAPSHOT_TTL_MS = 60_000;
+    /** Пересчёт цен идёт по одному товару — список нашей акции живёт минуту, изменённые товары читаются заново. */
+    static readonly SELLER_TTL_MS = 60_000;
 
-    private cached?: { until: number; dirty: Set<number>; data: Promise<PromoSnapshot> };
+    private seller?: { until: number; dirty: Set<number>; data: Promise<Map<number, SellerSlot>> };
 
     constructor(
         private readonly api: OzonPromosApi,
         private readonly sellerApi: OzonSellerActionsApi,
         private readonly productService: ProductService,
         private readonly writer: OzonPriceWriter,
-        private readonly pricing: EnrichWithPricingCommand,
     ) {}
 
+    /** Карточка товара: цены, наша акция и участие в акциях Ozon. */
     async states(offerIds: string[]): Promise<PromoPriceState[]> {
-        const ids = [...new Set(offerIds.map((o) => String(o).trim()).filter(Boolean))];
-        if (!ids.length) throw new BadRequestException('нет артикулов');
-        if (ids.length > PromoPriceService.MAX_OFFERS) {
-            throw new BadRequestException(`не больше ${PromoPriceService.MAX_OFFERS} артикулов за раз`);
-        }
-
-        const prices = await this.productService.getPrices({
-            offer_id: ids,
-            visibility: ProductVisibility.ALL,
-            limit: ids.length,
-        });
-        const items = prices.items ?? [];
-        const snapshot = await this.snapshot(new Set(items.map((i) => i.product_id)));
-        return this.toStates(items, snapshot);
+        const states = await this.pricedStates(PromoPriceService.offers(offerIds));
+        const ozon = await this.ozonSlots(new Set(states.map((s) => s.productId)));
+        return states.map((s) => ({ ...s, ozonActions: ozon.get(s.productId) ?? [] }));
     }
 
-    /**
-     * Все товары, которые сейчас в какой-нибудь акции: участники Ozon-акций и участники нашей.
-     * Один снимок акций на всех, цены — /v5 пачками по 1000 product_id. Для сверки «ниже минимума».
-     */
-    async allInActionsStates(): Promise<PromoPriceState[]> {
-        const snapshot = await this.snapshot();
-        const ids = new Set<number>();
-        snapshot.ozon.forEach((slots, id) => slots.some((a) => a.participant) && ids.add(id));
-        snapshot.seller.forEach((slot, id) => slot.isActive && ids.add(id));
-        const items: ProductPriceDto[] = [];
-        for (const part of chunk([...ids], 1000)) {
-            const res = await this.productService.getPrices({
-                product_id: part,
-                visibility: ProductVisibility.ALL,
-                limit: part.length,
-            });
-            items.push(...(res.items ?? []));
-        }
-        return this.toStates(items, snapshot);
-    }
-
-    /** Весь каталог кабинета, включая товары без участия в акциях. */
-    async allStates(offerIds?: string[]): Promise<PromoPriceState[]> {
+    /** Цены и наша акция по артикулам; без артикулов — весь каталог кабинета. */
+    async pricedStates(offerIds?: string[]): Promise<PromoPriceState[]> {
         const offers = [...new Set(offerIds ?? (await this.productService.listAllOfferIds()))];
         if (!offers.length) return [];
         const items: ProductPriceDto[] = [];
@@ -101,169 +58,131 @@ export class PromoPriceService {
             });
             const rows = response?.items;
             const found = new Set(rows?.map((p) => p.offer_id));
-            if (
-                !Array.isArray(rows) ||
-                found.size !== rows.length ||
-                found.size !== part.length ||
-                part.some((id) => !found.has(id))
-            )
-                throw new Error('Неполный ответ цен Ozon: сверка всего каталога остановлена');
+            if (!Array.isArray(rows) || found.size !== rows.length || part.some((id) => !found.has(id)))
+                throw new Error('Неполный ответ цен Ozon');
             items.push(...rows);
         }
         return this.statesForPrices(items);
     }
 
-    /** Свежий снимок акций для уже прочитанных цен: один обход акций на всю пачку. */
+    /** Состояние для уже прочитанных цен /v5: добавляет только нашу акцию. */
     async statesForPrices(items: ProductPriceDto[]): Promise<PromoPriceState[]> {
         if (!items.length) return [];
-        return this.toStates(items, await this.snapshot(new Set(items.map((i) => i.product_id))));
+        const seller = await this.sellerSlots(new Set(items.map((i) => i.product_id)));
+        return items.map((item) => PromoPriceService.toState(item, seller.get(item.product_id) ?? null));
     }
 
-    private toStates(items: ProductPriceDto[], snapshot: PromoSnapshot): PromoPriceState[] {
-        const { ozon: ozonSlots, seller: sellerSlots } = snapshot;
-        return items.map((item) => {
-            const price = Number(item.price.price) || 0;
-            const minPrice = Number(item.price.min_price) || 0;
-            const seller = sellerSlots.get(item.product_id) ?? null;
-            const ozonActions = ozonSlots.get(item.product_id) ?? [];
-            const marketing = ozonPriceActions(item.marketing_actions?.actions, minPrice, seller?.title);
-            return {
-                offerId: item.offer_id,
-                productId: item.product_id,
-                autoActionEnabled: item.price.auto_action_enabled,
-                oldPrice: Number(item.price.old_price) || 0,
-                price,
-                minPrice,
-                buyerPrice: Number(item.price.marketing_seller_price) || 0,
-                buyerPriceCalc: buyerPrice(
-                    price,
-                    marketing.map((a) => a.value),
-                    seller?.isActive ? seller.percent : 0,
-                ),
-                seller,
-                ozonActions,
-            };
-        });
+    /** После нашей записи процент этих товаров в кеше устарел. */
+    forget(productIds: number[]) {
+        for (const id of productIds) this.seller?.dirty.add(id);
     }
 
-    async plans(offerIds: string[], target: PromoTarget, percent?: number): Promise<PromoPricePlan[]> {
-        const parsed = PromoPriceService.parseTarget(target);
-        const states = await this.states(offerIds);
-        const plans: PromoPricePlan[] = [];
-        for (const state of states) {
-            const pricing = await this.pricing.enrichOne(state);
-            if (pricing.status === 'ready') {
-                plans.push(planPromoPrice(state, parsed === 'min' ? state.calcMinPrice : parsed, percent));
-            } else {
-                const reason = pricing.status === 'no-stock' ? 'Нет остатков' : `Расчёт недоступен: ${pricing.reason}`;
-                plans.push(unavailablePromoPlan(state, reason));
-            }
-        }
-        return plans;
+    async plans(offerIds: string[]): Promise<PromoPricePlan[]> {
+        const states = await this.pricedStates(PromoPriceService.offers(offerIds));
+        return states.map(guardPlan);
     }
 
-    /** Применить: состояние читается заново, план считается заново — плану из браузера не доверяем. По товару подряд. */
-    async apply(offerIds: string[], target: PromoTarget, percent?: number): Promise<PromoPriceApplyResult[]> {
+    /** Применить: состояние читается заново, план считается заново — плану из браузера не доверяем. */
+    async apply(offerIds: string[]): Promise<PromoPriceApplyResult[]> {
         assertPricingWritesAllowed();
         const snapshot = priceUpdateQueue.reader('ozon');
-        const plans = await this.plans(offerIds, target, percent);
-        const options = (plan: PromoPricePlan) => ({
+        const plans = await this.plans(offerIds);
+        return this.writer.applyPlans(plans, (plan) => ({
             priority: 'manual' as const,
             snapshot: snapshot([plan.offerId, `#product:${plan.productId}`]),
-        });
-        return this.writer.applyPromos(plans, options);
+        }));
     }
 
-    static parseTarget(target: unknown): PromoTarget {
-        if (target === 'min' || target === 'normal') return target;
-        const t = Number(target);
-        if (t > 0) return t;
-        throw new BadRequestException(`цель «${target}»: min, normal или цена в рублях`);
+    private static offers(offerIds: string[]): string[] {
+        const ids = [...new Set(offerIds.map((o) => String(o).trim()).filter(Boolean))];
+        if (!ids.length) throw new BadRequestException('нет артикулов');
+        if (ids.length > PromoPriceService.MAX_OFFERS)
+            throw new BadRequestException(`не больше ${PromoPriceService.MAX_OFFERS} артикулов за раз`);
+        return ids;
     }
 
-    /** Снимок обоих контуров акций; productIds не задан — по всем товарам. */
-    private async snapshot(productIds?: Set<number>): Promise<PromoSnapshot> {
-        const full = await this.fullSnapshot(productIds);
-        if (!productIds) return full;
-        const pick = <T>(map: Map<number, T>) => new Map([...map].filter(([id]) => productIds.has(id)));
-        return { ozon: pick(full.ozon), seller: pick(full.seller) };
+    private static toState(item: ProductPriceDto, seller: SellerSlot | null): PromoPriceState {
+        const price = Number(item.price.price) || 0;
+        return {
+            offerId: item.offer_id,
+            productId: item.product_id,
+            autoActionEnabled: item.price.auto_action_enabled,
+            oldPrice: Number(item.price.old_price) || 0,
+            price,
+            minPrice: Number(item.price.min_price) || 0,
+            buyerPrice: Number(item.price.marketing_seller_price) || 0,
+            buyerPriceCalc: buyerPrice(price, [], seller?.isActive && seller.actionOn ? seller.percent : 0),
+            seller,
+            ozonActions: [],
+        };
     }
 
-    /**
-     * Списки акций — самое дорогое чтение (все участники и кандидаты). Пересчёт идёт по одному товару,
-     * поэтому снимок живёт минуту; товар, который мы только что меняли, читается заново.
-     */
-    private fullSnapshot(productIds?: Set<number>): Promise<PromoSnapshot> {
-        const entry = this.cached;
-        const dirty = entry && (productIds ? [...productIds].some((id) => entry.dirty.has(id)) : entry.dirty.size > 0);
+    private sellerSlots(productIds: Set<number>): Promise<Map<number, SellerSlot>> {
+        const entry = this.seller;
+        const dirty = entry && [...productIds].some((id) => entry.dirty.has(id));
         if (entry && entry.until > Date.now() && !dirty) return entry.data;
-        const next = { until: Infinity, dirty: new Set<number>(), data: undefined as Promise<PromoSnapshot> };
-        next.data = Promise.all([this.ozonSlots(), this.sellerSlots()])
-            .then(([ozon, seller]) => {
-                next.until = Date.now() + PromoPriceService.SNAPSHOT_TTL_MS;
-                return { ozon, seller };
+        const next = { until: Infinity, dirty: new Set<number>(), data: undefined as Promise<Map<number, SellerSlot>> };
+        next.data = this.readSellerSlots()
+            .then((slots) => {
+                next.until = Date.now() + PromoPriceService.SELLER_TTL_MS;
+                return slots;
             })
             .catch((error) => {
-                if (this.cached === next) this.cached = undefined;
+                if (this.seller === next) this.seller = undefined;
                 throw error;
             });
-        this.cached = next;
+        this.seller = next;
         return next.data;
     }
 
-    /** После нашей записи эти товары в снимке устарели. */
-    forget(productIds: number[]) {
-        for (const id of productIds) this.cached?.dirty.add(id);
-    }
-
-    /** Участие и кандидатство товаров во всех доступных Ozon-акциях; участник важнее кандидата. */
-    private async ozonSlots(): Promise<Map<number, OzonActionSlot[]>> {
-        const slots = new Map<number, OzonActionSlot[]>();
-        const actions = await this.api.listActions();
-        for (const action of actions) {
-            const participants = await this.api.listAll('products', action.id);
-            const inAction = new Set(participants.map((p) => p.id));
-            const candidates = (await this.api.listAll('candidates', action.id)).filter((p) => !inAction.has(p.id));
-            const push = (p: ActionProduct, participant: boolean) => {
-                const list = slots.get(p.id) ?? [];
-                list.push({
-                    actionId: action.id,
-                    title: action.title,
-                    isVoucher: Boolean(action.is_voucher_action),
-                    unifiedPrice: usesUnifiedPrice(action.action_type),
-                    participant,
-                    actionPrice: participant ? p.actionPrice : 0,
-                    maxActionPrice: p.maxActionPrice,
-                    stock: p.stock,
-                    startsAt: action.date_start || null,
-                });
-                slots.set(p.id, list);
-            };
-            participants.forEach((p) => push(p, true));
-            candidates.forEach((p) => push(p, false));
-        }
-        return slots;
-    }
-
-    /** Товары в нашей активной акции (участники) или годные в неё (кандидаты). Акции нет — пусто. */
-    private async sellerSlots(): Promise<Map<number, SellerSlot>> {
+    /** Участники и кандидаты нашей текущей акции — и выключенной: её включение не должно застать цену врасплох. */
+    private async readSellerSlots(): Promise<Map<number, SellerSlot>> {
         const slots = new Map<number, SellerSlot>();
-        const action = await this.sellerApi.activeAction();
+        const action = await this.sellerApi.currentAction();
         if (!action) return slots;
         const [list, candidates] = await Promise.all([
             this.sellerApi.listAll('list', action.id),
             this.sellerApi.listAll('candidates', action.id),
         ]);
         // кандидаты первыми, участники перетирают: is_active из list надёжнее
-        for (const p of [...candidates, ...list]) {
+        for (const p of [...candidates, ...list])
             slots.set(p.productId, {
                 actionId: action.id,
                 title: action.title,
                 minPercent: action.minPercent,
+                actionOn: action.isOn,
                 sku: p.sku,
                 percent: p.percent,
                 isActive: p.isActive,
             });
+        return slots;
+    }
+
+    /** Участие и кандидатство в акциях Ozon — для просмотра. */
+    private async ozonSlots(productIds: Set<number>): Promise<Map<number, OzonActionSlot[]>> {
+        const slots = new Map<number, OzonActionSlot[]>();
+        for (const action of await this.api.listActions()) {
+            const participants = (await this.api.listAll('products', action.id)).filter((p) => productIds.has(p.id));
+            const inAction = new Set(participants.map((p) => p.id));
+            const candidates = (await this.api.listAll('candidates', action.id)).filter(
+                (p) => productIds.has(p.id) && !inAction.has(p.id),
+            );
+            const push = (p: ActionProduct, participant: boolean) =>
+                slots.set(p.id, [
+                    ...(slots.get(p.id) ?? []),
+                    {
+                        actionId: action.id,
+                        title: action.title,
+                        isVoucher: Boolean(action.is_voucher_action),
+                        participant,
+                        actionPrice: participant ? p.actionPrice : 0,
+                        maxActionPrice: p.maxActionPrice,
+                        stock: p.stock,
+                        startsAt: action.date_start || null,
+                    },
+                ]);
+            participants.forEach((p) => push(p, true));
+            candidates.forEach((p) => push(p, false));
         }
         return slots;
     }

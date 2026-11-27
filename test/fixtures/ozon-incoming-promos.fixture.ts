@@ -6,11 +6,9 @@ import { UpdatePriceDto } from '../../src/price/dto/update.price.dto';
 import { PromoPriceService } from '../../src/promos/price-lever/promo-price.service';
 import { PromoSweepService } from '../../src/promos/price-lever/sweep/promo-sweep.service';
 import { CollectSweepCommand } from '../../src/promos/price-lever/sweep/collect-sweep.command';
-import { PlanSweepCommand } from '../../src/promos/price-lever/sweep/plan-sweep.command';
 import { ApplySweepCommand } from '../../src/promos/price-lever/sweep/apply-sweep.command';
 import { BuildSweepReportCommand } from '../../src/promos/price-lever/sweep/build-sweep-report.command';
 import { NotifySweepCommand } from '../../src/promos/price-lever/sweep/notify-sweep.command';
-import { EnrichWithPricingCommand } from '../../src/promos/price-lever/sweep/enrich-with-pricing.command';
 import { OzonLossPriceAdapter } from '../../src/marketplace-loss/prices/ozon-loss-price.adapter';
 import { MarketPriceWorkflowService } from '../../src/marketplace-loss/prices/market-price-workflow.service';
 import { CheckLossPriceStockCommand } from '../../src/marketplace-loss/prices/check-loss-price-stock.command';
@@ -45,15 +43,15 @@ import { MarkIncomingHandledCommand } from '../../src/trade2006.incoming/command
 export interface OzonIncomingFixtureState {
     cost: number;
     live: { price: number; old_price: number; min_price: number; marketing_seller_price: number };
-    regularPrice?: number;
-    actionPrice: number;
     sellerPercent: number;
+    sellerOn: boolean;
     receipt: { extId: string; version: string; payload: Record<string, unknown>; handled: boolean };
-    requests: { kind: 'price' | 'action' | 'percent'; body: unknown }[];
+    requests: { kind: 'price' | 'percent'; body: unknown }[];
     notifications: { event: string; report: unknown }[];
 }
 
-/** Реальные команды прихода, Ozon-адаптер, планировщик, исполнитель акций и уведомление.
+/** Реальные команды прихода, Ozon-адаптер, правило цены, писатель и уведомление. Ozon после 12.10.2026:
+ * импорт задаёт предельную цену, покупатель = предельная × (1 − процент нашей акции), акции Ozon цену не меняют.
  * Подменены только внешние API и чтение исходных данных; сеть и база не используются. */
 export function setup(saved?: OzonIncomingFixtureState) {
     Logger.overrideLogger(false);
@@ -62,8 +60,8 @@ export function setup(saved?: OzonIncomingFixtureState) {
         : {
               cost: 100,
               live: { price: 150, old_price: 200, min_price: 100, marketing_seller_price: 142 },
-              actionPrice: 150,
               sellerPercent: 5,
+              sellerOn: true,
               receipt: { extId: '50013', version: 'v1', payload: {}, handled: false },
               requests: [],
               notifications: [],
@@ -104,68 +102,28 @@ export function setup(saved?: OzonIncomingFixtureState) {
     const coeffs = { minMil: 0, percMil: 0, percEkv: 0, sumObtain: 0, sumLabel: 0, taxUnit: 0 };
     const target = () => calculatePrice(input(), coeffs);
     const live = data.live;
-    data.regularPrice ??= live.price;
     const updateBuyer = () => {
-        live.price = Math.min(data.regularPrice, data.actionPrice);
-        live.marketing_seller_price = buyerPrice(live.price, [data.actionPrice], data.sellerPercent);
+        live.marketing_seller_price = buyerPrice(live.price, [], data.sellerOn ? data.sellerPercent : 0);
     };
     const products = {
         setPrice: jest.fn(async ({ prices: targets }: { prices: UpdatePriceDto[] }) => {
             data.requests.push({ kind: 'price', body: structuredClone(targets) });
-            // Поведение /import/prices в сохранённом инциденте: normal сбрасывает акционную price.
-            for (const row of targets) {
-                Object.assign(live, {
-                    price: Number(row.price),
-                    min_price: Number(row.min_price),
-                    old_price: Number(row.old_price),
-                });
-                data.regularPrice = live.price;
-                data.actionPrice = live.price;
-                updateBuyer();
-            }
+            if (!acknowledgeOnly)
+                for (const row of targets) {
+                    Object.assign(live, { price: Number(row.price), min_price: Number(row.min_price), old_price: Number(row.old_price) });
+                    updateBuyer();
+                }
             return { result: targets.map((row) => ({ offer_id: row.offer_id, updated: true })) };
         }),
         getPrices: jest.fn(async () => ({
-            items: [
-                {
-                    offer_id: offer,
-                    product_id: 1,
-                    price: { ...live, auto_action_enabled: true },
-                    marketing_actions: {
-                        actions: [
-                            { title: 'Бустинг', value: data.actionPrice, date_from: '', date_to: '' },
-                            { title: '26-11', value: data.sellerPercent, date_from: '', date_to: '' },
-                        ],
-                    },
-                },
-            ],
+            items: [{ offer_id: offer, product_id: 1, price: { ...live, auto_action_enabled: true }, marketing_actions: { actions: [] } }],
         })),
         infoList: jest.fn(async (offers: string[]) => offers.map((sku) => ({ sku, fboCount: 1 }))),
         listAllOfferIds: jest.fn(async () => [offer]),
     };
-    const actionProduct = () => ({
-        id: 1,
-        actionPrice: data.actionPrice,
-        maxActionPrice: 2000,
-        stock: 1,
-        participant: true,
-    });
-    const api = {
-        listActions: jest.fn(async () => [{ id: 1, title: 'Бустинг', is_voucher_action: false }]),
-        listAll: jest.fn(async (kind: string) => (kind === 'products' ? [actionProduct()] : [])),
-        currentProduct: jest.fn(async () => actionProduct()),
-        update: jest.fn(async (_id: number, rows: { actionPrice: number }[]) => {
-            data.requests.push({ kind: 'action', body: structuredClone(rows) });
-            if (!acknowledgeOnly) {
-                data.actionPrice = rows[0].actionPrice;
-                live.price = data.actionPrice;
-                updateBuyer();
-            }
-            return { added: [1], unchanged: [], rejected: [], removed: [], warnings: [] };
-        }),
-    };
+    const api = { listActions: jest.fn(async () => []), listAll: jest.fn(async () => []) };
     const sellerApi = {
-        activeAction: jest.fn(async () => ({ id: 2, title: '26-11', minPercent: 5 })),
+        currentAction: jest.fn(async () => ({ id: 2, title: '26-11', minPercent: 5, isOn: data.sellerOn })),
         listAll: jest.fn(async (kind: string) =>
             kind === 'list' ? [{ productId: 1, sku: 1, percent: data.sellerPercent, isActive: true }] : [],
         ),
@@ -221,12 +179,6 @@ export function setup(saved?: OzonIncomingFixtureState) {
     });
     function restart() {
         const jobs = new JobService();
-        const enrich = new EnrichWithPricingCommand(
-            { prepare: async () => {}, load: async () => ozon } as any,
-            products as any,
-            goods as any,
-            config,
-        );
         const modules = {
             get: (type: unknown) => {
                 if (type === OZON_PROMO_STATE_READER) return promoPrices;
@@ -234,20 +186,18 @@ export function setup(saved?: OzonIncomingFixtureState) {
                 throw new Error('Неизвестный сервис цен');
             },
         };
-        const transitions = new OzonPriceWriter(modules as any, products as any, api as any, sellerApi as any, events as any);
+        const transitions = new OzonPriceWriter(modules as any, products as any, sellerApi as any);
         const pricing = Object.assign(Object.create(PriceService.prototype), {
             moduleRef: modules,
             product: products,
             getObtainCoeffs: () => coeffs,
             getPricingAvailability: async () => new Map([[offer, { state: 'available', marketplace: 1 }]]),
         });
-        const promoPrices = new PromoPriceService(api as any, sellerApi as any, products as any, transitions, enrich);
+        const promoPrices = new PromoPriceService(api as any, sellerApi as any, products as any, transitions);
         const sweep = new PromoSweepService(
             jobs,
             new CollectSweepCommand(promoPrices),
-            enrich,
-            new PlanSweepCommand(),
-            new ApplySweepCommand(transitions, promoPrices, enrich),
+            new ApplySweepCommand(transitions, promoPrices),
             new BuildSweepReportCommand(),
             new NotifySweepCommand(events as any),
         );
@@ -301,6 +251,7 @@ export function setup(saved?: OzonIncomingFixtureState) {
         target,
         products,
         api,
+        sellerApi,
         events,
         goods,
         setCost: (next: number) => {
@@ -309,10 +260,8 @@ export function setup(saved?: OzonIncomingFixtureState) {
         setAcknowledgementOnly: (on: boolean) => {
             acknowledgeOnly = on;
         },
-        publishAcknowledgedAction: () => {
-            const lastAction = data.requests.filter((r) => r.kind === 'action').at(-1);
-            data.actionPrice = (lastAction.body as { actionPrice: number }[])[0].actionPrice;
-            live.price = data.actionPrice;
+        setSellerOn: (on: boolean) => {
+            data.sellerOn = on;
             updateBuyer();
         },
     };

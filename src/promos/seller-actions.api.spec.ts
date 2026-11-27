@@ -61,17 +61,14 @@ describe('OzonSellerActionsApi — контракт /v1/seller-actions (наша
         expect(method).toHaveBeenCalledWith('/v1/seller-actions/list', { limit: 100, offset: 0 });
     });
 
-    it('activeAction — только ACTIVE и включённая; нет такой → null', async () => {
-        method.mockResolvedValue({
-            actions: [
-                apiAction(1, { is_turn_on: false }),
-                apiAction(2, { action_parameters: { ...apiAction(2).action_parameters, status: 'FINISHED' } }),
-                apiAction(3),
-            ],
-        });
-        expect((await api.activeAction())?.id).toBe(3);
-        method.mockResolvedValue({ actions: [apiAction(1, { is_turn_on: false })] });
-        expect(await api.activeAction()).toBeNull();
+    it('currentAction — ACTIVE, включённая важнее; выключенная тоже текущая; завершённая — нет', async () => {
+        const finished = apiAction(2, { action_parameters: { ...apiAction(2).action_parameters, status: 'FINISHED' } });
+        method.mockResolvedValue({ actions: [apiAction(1, { is_turn_on: false }), finished, apiAction(3)] });
+        expect((await api.currentAction())?.id).toBe(3);
+        method.mockResolvedValue({ actions: [apiAction(1, { is_turn_on: false }), finished] });
+        expect(await api.currentAction()).toMatchObject({ id: 1, isOn: false });
+        method.mockResolvedValue({ actions: [finished] });
+        expect(await api.currentAction()).toBeNull();
     });
 
     it('page — sku из массива первым элементом, числа как есть, cursor наружу', async () => {

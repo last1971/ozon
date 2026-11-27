@@ -30,7 +30,6 @@ import { GetAllOzonSkusCommand } from './commands/get-all-ozon-skus.command';
 import { OzonSkusToTradeSkusCommand } from './commands/ozon-skus-to-trade-skus.command';
 import { UpdatePriceForGoodSkusCommand } from './commands/update-price-for-good-skus.command';
 import { CheckPriceDifferenceAndNotifyCommand } from './commands/check-price-difference-and-notify.command';
-import { EmitUpdatePromosCommand } from './commands/emit-update-promos.command';
 import { LogResultProcessingMessageCommand } from './commands/log-result-processing-message.command';
 import { ValidateSkusNotEmptyCommand } from './commands/validate-skus-not-empty.command';
 import { SetResultProcessingMessageCommand } from './commands/set-result-processing-message.command';
@@ -81,7 +80,6 @@ import { VerifyOzonPricesCommand } from './commands/verify-ozon-prices.command';
         OzonSkusToTradeSkusCommand,
         UpdatePriceForGoodSkusCommand,
         CheckPriceDifferenceAndNotifyCommand,
-        EmitUpdatePromosCommand,
         LogResultProcessingMessageCommand,
         ValidateSkusNotEmptyCommand,
         SetResultProcessingMessageCommand,
@@ -113,7 +111,6 @@ import { VerifyOzonPricesCommand } from './commands/verify-ozon-prices.command';
         OzonSkusToTradeSkusCommand,
         UpdatePriceForGoodSkusCommand,
         CheckPriceDifferenceAndNotifyCommand,
-        EmitUpdatePromosCommand,
         LogResultProcessingMessageCommand,
         ValidateSkusNotEmptyCommand,
         SetResultProcessingMessageCommand,

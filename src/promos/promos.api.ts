@@ -1,13 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { OzonApiService } from '../ozon.api/ozon.api.service';
-import { Action, ActionProduct, ActionProductUpdate, ActionUpdateResult, RejectedProduct } from './promos.types';
-
-/** Ozon отвечает так, когда запрошенное уже стоит. */
-const NO_CHANGES = /has no changes/i;
-
-export function usesUnifiedPrice(actionType: string): boolean {
-    return actionType === 'ELASTIC_BOOSTING' || actionType === 'STOCK_DISCOUNT';
-}
+import { Action, ActionProduct } from './promos.types';
 
 /** Деньги в Seller API v2: сумма строкой, валюта (в акциях часто пустая). */
 interface Money {
@@ -35,28 +28,19 @@ interface ApiProductsPage {
 export type ActionProductsKind = 'products' | 'candidates';
 
 /**
- * Единственная точка, знающая контракт Seller API по акциям (методы от 22.09.2026,
- * старые отключаются 13.10.2026): URL-ы, формат Money, пагинация по last_id,
- * раздельные списки ответа update. Наружу — доменные типы `promos.types.ts`.
+ * Чтение акций Ozon (методы от 22.09.2026): URL-ы, формат Money, пагинация по last_id.
+ * Записи нет: с 12.10.2026 цена в акции и есть цена товара — её задаёт импорт цены.
  */
 @Injectable()
 export class OzonPromosApi {
     static readonly PAGE_LIMIT = 100;
-
-    private readonly withoutStock = new Set<number>();
-    private readonly current = new Map<string, { until: number; rows: Promise<Map<number, ActionProduct>> }>();
 
     constructor(private readonly ozon: OzonApiService) {}
 
     async listActions(): Promise<Action[]> {
         const res = await this.ozon.method('/v1/actions', {}, 'get');
         if (!Array.isArray(res?.result)) throw new Error(OzonPromosApi.errorText(res) || 'Ozon не вернул список акций');
-        const actions: Action[] = res.result;
-        for (const action of actions) {
-            if (usesUnifiedPrice(action.action_type))
-                this.withoutStock.add(action.id);
-        }
-        return actions;
+        return res.result;
     }
 
     /** Все участники или все кандидаты акции — страницами по last_id до конца. */
@@ -70,36 +54,6 @@ export class OzonPromosApi {
             lastId = page.lastId;
         }
         return all;
-    }
-
-    /** Короткий снимок на акцию, общий для товаров массового применения. Не кешируем ошибки. */
-    async currentProduct(
-        actionId: number,
-        productId: number,
-        participant: boolean,
-    ): Promise<(ActionProduct & { participant: boolean }) | null> {
-        const first: ActionProductsKind = participant ? 'products' : 'candidates';
-        for (const kind of [first, first === 'products' ? 'candidates' : 'products'] as ActionProductsKind[]) {
-            const key = `${actionId}:${kind}`;
-            let entry = this.current.get(key);
-            if (!entry || entry.until <= Date.now()) {
-                entry = { until: Infinity, rows: null };
-                const pending = entry;
-                entry.rows = this.listAll(kind, actionId)
-                    .then((rows) => {
-                        pending.until = Date.now() + 60_000;
-                        return new Map(rows.map((row) => [row.id, row]));
-                    })
-                    .catch((error) => {
-                        this.current.delete(key);
-                        throw error;
-                    });
-                this.current.set(key, entry);
-            }
-            const product = (await entry.rows).get(productId);
-            if (product) return { ...product, participant: kind === 'products' };
-        }
-        return null;
     }
 
     async page(
@@ -120,69 +74,10 @@ export class OzonPromosApi {
         };
     }
 
-    /**
-     * Добавить или исключить: цена ≤ лимита акции — товар в акции с этой ценой,
-     * выше лимита — исключается (для «Эластичного бустинга» и «Скидки на сток»).
-     */
-    async update(actionId: number, products: ActionProductUpdate[]): Promise<ActionUpdateResult> {
-        if (!products.length) return { added: [], removed: [], unchanged: [], rejected: [], warnings: [] };
-        let res = await this.sendUpdate(actionId, products, !this.withoutStock.has(actionId));
-        // Для неизвестного типа запоминаем явный отказ stock и повторяем только без этого поля.
-        if (/stock not supported/i.test(OzonPromosApi.errorText(res))) {
-            this.withoutStock.add(actionId);
-            res = await this.sendUpdate(actionId, products, false);
-        }
-        // Ошибка Озона — не «пустой ответ»: каждый товар запроса в отказ с текстом Озона
-        const error = OzonPromosApi.errorText(res);
-        if (error) {
-            return {
-                added: [],
-                removed: [],
-                unchanged: [],
-                rejected: products.map((p) => ({ productId: p.productId, reason: error })),
-                warnings: [],
-            };
-        }
-        const rejected: RejectedProduct[] = (res?.rejected ?? []).map((r: { product_id: number; reason: string }) => ({
-            productId: r.product_id,
-            reason: String(r.reason ?? ''),
-        }));
-        // «Изменений нет» — не отказ: Ozon уже держит то, что просим (23.10.2026: общая цена бустингов, товар уже вне акции)
-        const unchanged = rejected.filter((r) => NO_CHANGES.test(r.reason));
-        return {
-            added: res?.active_product_ids ?? [],
-            removed: res?.deactivated_product_ids ?? [],
-            unchanged: unchanged.map((r) => r.productId),
-            rejected: rejected.filter((r) => !unchanged.includes(r)),
-            warnings: (res?.warnings ?? []).map((w: unknown) => (typeof w === 'string' ? w : JSON.stringify(w))),
-        };
-    }
-
-    private sendUpdate(actionId: number, products: ActionProductUpdate[], withStock: boolean): Promise<any> {
-        return this.ozon.method('/v1/actions/products/update', {
-            action_id: actionId,
-            products: products.map((p) => ({
-                product_id: p.productId,
-                action_price: OzonPromosApi.money(p.actionPrice),
-                ...(withStock ? { stock: p.stock } : {}),
-            })),
-        });
-    }
-
     /** Текст ошибки, которую OzonApiService вернул вместо ответа ({ error: { message } }); нет ошибки — ''. */
     private static errorText(res: any): string {
         const e = res?.error;
         return e ? String(e.message || e.service_message || 'ошибка Ozon без текста') : '';
-    }
-
-    /** Принудительное исключение — только для акций с промокодами; остальным это 400. */
-    async deactivate(actionId: number, productIds: number[]): Promise<number[]> {
-        if (!productIds.length) return [];
-        const res = await this.ozon.method('/v2/actions/products/deactivate', {
-            action_id: actionId,
-            product_ids: productIds,
-        });
-        return res?.product_ids ?? [];
     }
 
     private static toProduct(p: ApiActionProduct): ActionProduct {
@@ -199,9 +94,5 @@ export class OzonPromosApi {
 
     private static amount(m?: Money | null): number {
         return Number(m?.amount ?? 0) || 0;
-    }
-
-    private static money(amount: number): Money {
-        return { amount: String(amount), currency: 'RUB' };
     }
 }

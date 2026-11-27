@@ -21,7 +21,6 @@ import { GetAllOzonSkusCommand } from './commands/get-all-ozon-skus.command';
 import { OzonSkusToTradeSkusCommand } from './commands/ozon-skus-to-trade-skus.command';
 import { UpdatePriceForGoodSkusCommand } from './commands/update-price-for-good-skus.command';
 import { CheckPriceDifferenceAndNotifyCommand } from './commands/check-price-difference-and-notify.command';
-import { EmitUpdatePromosCommand } from './commands/emit-update-promos.command';
 import { LogResultProcessingMessageCommand } from './commands/log-result-processing-message.command';
 import { ValidateSkusNotEmptyCommand } from './commands/validate-skus-not-empty.command';
 import { SetResultProcessingMessageCommand } from './commands/set-result-processing-message.command';
@@ -174,7 +173,6 @@ describe('ExtraPriceService', () => {
                 { provide: OzonSkusToTradeSkusCommand, useValue: mockCommand },
                 { provide: UpdatePriceForGoodSkusCommand, useValue: mockCommand },
                 { provide: CheckPriceDifferenceAndNotifyCommand, useValue: mockCommand },
-                { provide: EmitUpdatePromosCommand, useValue: mockCommand },
                 { provide: LogResultProcessingMessageCommand, useValue: mockCommand },
                 { provide: ValidateSkusNotEmptyCommand, useValue: mockCommand },
                 { provide: SetResultProcessingMessageCommand, useValue: mockCommand },
@@ -212,7 +210,6 @@ describe('ExtraPriceService', () => {
             mockCommand as any, // ozonSkusToTradeSkusCommand
             mockCommand as any, // updatePriceForGoodSkusCommand
             mockCommand as any, // checkPriceDifferenceAndNotifyCommand
-            mockCommand as any, // emitUpdatePromosCommand
             mockCommand as any, // logResultProcessingMessageCommand
             mockCommand as any, // validateSkusNotEmptyCommand
             mockCommand as any, // setResultProcessingMessageCommand
@@ -262,7 +259,6 @@ describe('ExtraPriceService', () => {
                 mockCommand as any, // ozonSkusToTradeSkusCommand
                 mockCommand as any, // updatePriceForGoodSkusCommand
                 mockCommand as any, // checkPriceDifferenceAndNotifyCommand
-                mockCommand as any, // emitUpdatePromosCommand
                 mockCommand as any, // logResultProcessingMessageCommand
                 mockCommand as any, // validateSkusNotEmptyCommand
                 mockCommand as any, // setResultProcessingMessageCommand
@@ -822,7 +818,6 @@ describe('ExtraPriceService', () => {
                 mockCommand as any,
                 mockCommand as any,
                 mockCommand as any,
-                mockCommand as any,
             );
         (extraPriceService as any).incomingPricesCommand = mockCommand;
         });
@@ -876,7 +871,6 @@ describe('ExtraPriceService', () => {
                 mockConfigService as unknown as ConfigService,
                 mockExtraGoodService as unknown as ExtraGoodService,
                 mockEventEmitter as EventEmitter2,
-                mockCommand as any,
                 mockCommand as any,
                 mockCommand as any,
                 mockCommand as any,

@@ -300,23 +300,19 @@ describe('PriceService', () => {
         expect(getPerc.mock.calls[0]).toEqual([['1', '2', '3'], null]);
     });
 
-    it('показывает обычную цену с обязательной скидкой до согласования и фиксирует согласованную сумму', async () => {
+    it('согласование цены: предельная по правилу от расчётной минимальной с процентом нашей акции', async () => {
         const target = { offer_id: '550611', price: '130', min_price: '128', old_price: '160', currency_code: 'RUB', ozonCalculated: true };
         const lookup = jest.spyOn((service as any).moduleRef, 'get').mockReturnValue({
-            allStates: async () => [{ offerId: '550611', productId: 10, price: 130, minPrice: 120, oldPrice: 160,
+            pricedStates: async () => [{ offerId: '550611', productId: 10, price: 130, minPrice: 120, oldPrice: 160,
                 buyerPrice: 123, buyerPriceCalc: 123, ozonActions: [],
-                seller: { sku: 11, actionId: 2, isActive: true, minPercent: 5, percent: 5 } }],
+                seller: { sku: 11, actionId: 2, isActive: true, actionOn: true, minPercent: 5, percent: 5 } }],
         });
         try {
             const warnings: string[] = [];
             const [approved] = await service.prepareReviewPrices([target], warnings);
             expect(warnings[0]).toMatch(/550611.*123.*128.*128/);
-            expect(approved).toEqual({offer_id: '550611', price: '135', min_price: '128', old_price: '160', currency_code: 'RUB'});
+            expect(approved).toEqual({ offer_id: '550611', price: '135', min_price: '128', old_price: '160', currency_code: 'RUB' });
             expect(target.price).toBe('130');
-            lookup.mockReturnValue({ allStates: async () => [{
-                offerId: '550611', price: 130, buyerPrice: 121, buyerPriceCalc: 123, ozonActions: [],
-            }] });
-            await expect(service.prepareReviewPrices([target])).rejects.toThrow(/550611.*121.*128.*не подтверждены/);
         } finally {
             lookup.mockRestore();
         }

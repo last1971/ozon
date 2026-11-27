@@ -134,29 +134,27 @@ export function wbMinPricesMessage(report: {
     };
 }
 
-/** Сверка акций Ozon с применением: что поменяли и что не прошло. Тихо — без пуша. */
+/** Сверка цен Ozon с применением: что поменяли и что не прошло. Тихо — без пуша. */
 export function ozonPromoSweepMessage(report: {
     items: { offerId: string; applied?: boolean; verification?: 'confirmed' | 'unchanged' | 'pending'; steps: unknown[]; results?: { status: string; reason?: string }[] }[];
-    keptInOzon: number;
-    removedFromOzon: number;
+    priceChanged: number;
     percentChanged: number;
-    nothingToDo: number;
+    unfixable: number;
 }): NotifyMessage {
     const tried = report.items.filter((i) => i.steps.length && i.applied !== undefined);
     const ok = tried.filter((i) => i.applied && i.verification === 'confirmed');
     const failed = tried.filter((i) => !i.applied);
     const reason = (i: (typeof failed)[number]) => i.results?.find((r) => r.status !== 'ok')?.reason ?? 'не прошло';
     const parts = [
-        `Применено: ${ok.length} (меняли наш процент ${report.percentChanged}, остались в акциях Ozon ${report.keptInOzon}, ` +
-            `выкинуты из акций Ozon ${report.removedFromOzon})`,
+        `Применено: ${ok.length} (цена ${report.priceChanged}, наш процент ${report.percentChanged})`,
         ...listed(ok.map((i) => `  ${i.offerId}`)),
         ...(failed.length
             ? [`🟡 Не прошло: ${failed.length}`, ...listed(failed.map((i) => `  ${i.offerId}: ${reason(i)}`))]
             : []),
-        ...(report.nothingToDo ? [`Смотреть руками: ${report.nothingToDo}`] : []),
+        ...(report.unfixable ? [`Нет минимальной цены, смотреть руками: ${report.unfixable}`] : []),
     ];
     return {
-        subject: `Озон акции к минимальной: применено ${ok.length}${failed.length ? `, не прошло ${failed.length}` : ''}`,
+        subject: `Озон цены к минимальной: применено ${ok.length}${failed.length ? `, не прошло ${failed.length}` : ''}`,
         text: parts.join('\n'),
         notice: true,
     };

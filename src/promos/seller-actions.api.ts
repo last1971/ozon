@@ -63,10 +63,10 @@ export class OzonSellerActionsApi {
         return res.actions.map(OzonSellerActionsApi.toAction);
     }
 
-    /** Текущая действующая акция (ACTIVE и включена) или null — тогда нашего процента ни у кого нет. */
-    async activeAction(): Promise<SellerAction | null> {
-        const actions = await this.listActions();
-        return actions.find((a) => a.status === 'ACTIVE' && a.isOn) ?? null;
+    /** Текущая акция (ACTIVE), включённая или нет; включённая важнее. Нет — нашего процента ни у кого нет. */
+    async currentAction(): Promise<SellerAction | null> {
+        const actions = (await this.listActions()).filter((a) => a.status === 'ACTIVE');
+        return actions.find((a) => a.isOn) ?? actions[0] ?? null;
     }
 
     /** Все участники или все кандидаты — страницами по cursor до has_next:false. */

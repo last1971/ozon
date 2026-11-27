@@ -1,4 +1,4 @@
-import { buyerPrice, ozonActionFloor, ozonPriceActions } from './buyer.price.helper';
+import { buyerPrice, ozonActionFloor } from './buyer.price.helper';
 
 describe('buyer price helper — наложение акций Ozon и нашей', () => {
     describe('buyerPrice', () => {
@@ -38,31 +38,5 @@ describe('buyer price helper — наложение акций Ozon и наше�
             }
         });
         it('100 % — ошибка, не деление на ноль', () => expect(() => ozonActionFloor(100, 100)).toThrow());
-    });
-
-    describe('ozonPriceActions', () => {
-        const actions = [
-            { title: 'Эластичный бустинг. Без ограничения срока действия', value: 2739, date_from: '', date_to: '' },
-            { title: 'РК. Рассрочка 0-0-4', value: 4, date_from: '', date_to: '' },
-            { title: 'АБ тест 24 к', value: 24, date_from: '', date_to: '' },
-            { title: '26-10', value: 5, date_from: '', date_to: '' },
-            { title: 'Максимальный бустинг', value: 2800, date_from: '', date_to: '' },
-        ];
-        it('остаются только акции с ценой; наша и рассрочки/АБ отсекаются', () => {
-            expect(ozonPriceActions(actions, 2596, '26-10').map((a) => a.value)).toEqual([2739, 2800]);
-        });
-        it('без названия нашей акции отсекает её по порогу «треть min_price»', () => {
-            expect(ozonPriceActions(actions, 2596).map((a) => a.value)).toEqual([2739, 2800]);
-        });
-        it('undefined → пусто', () => expect(ozonPriceActions(undefined, 100)).toEqual([]));
-        it('акция, которая ещё не началась или уже кончилась, цену сейчас не задаёт (513498: Супербустинг 30.10)', () => {
-            const dated = [
-                { title: 'Супербустинг', value: 1598, date_from: '2026-10-29T21:00:00Z', date_to: '2026-10-30T21:00:59Z' },
-                { title: 'Прошлая', value: 1500, date_from: '2026-10-01T00:00:00Z', date_to: '2026-10-10T00:00:00Z' },
-                { title: 'Идёт', value: 1700, date_from: '2026-10-20T00:00:00Z', date_to: '2026-11-10T00:00:00Z' },
-            ];
-            const now = new Date('2026-10-23T09:00:00Z');
-            expect(ozonPriceActions(dated, 1518, undefined, now).map((a) => a.title)).toEqual(['Идёт']);
-        });
     });
 });

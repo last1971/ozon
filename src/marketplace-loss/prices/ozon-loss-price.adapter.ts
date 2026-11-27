@@ -1,5 +1,3 @@
-import { observedOzonBase, resolveOzonBaseTarget } from '../../helpers/price/ozon-base-target';
-import type { PromoPriceState } from '../../promos/price-lever/promo-price.types';
 import { setJobActivity } from '../../job/job.execution';
 import { PricingSnapshot } from '../../helpers/price/price-update.queue';
 import { Injectable } from '@nestjs/common';
@@ -9,7 +7,6 @@ import { ProductService } from '../../product/product.service';
 import { ProductVisibility } from '../../product/product.visibility';
 import { UpdatePriceDto } from '../../price/dto/update.price.dto';
 import { ozonResultsByOffer } from '../../price/price-update.report';
-import { ozonPricesMatch } from '../../helpers/price/ozon-prices-match';
 import { PromoSweepService } from '../../promos/price-lever/sweep/promo-sweep.service';
 import { JobService } from '../../job/job.service';
 import { PromoSweepReport } from '../../promos/price-lever/promo-price.types';
@@ -53,13 +50,9 @@ export class OzonLossPriceAdapter implements LossPriceAdapter {
     availability(offers: string[]) {
         return this.pricing.getPricingAvailability(offers);
     }
+    /** Расчётная normal не отправляется: предельную цену задаёт правило от расчётной минимальной. */
     matches(target: UpdatePriceDto, actual: unknown) {
-        // /v5 возвращает и цену, установленную акцией. Повтор прихода не должен сбрасывать её к normal.
-        const state = (actual as { promoState?: PromoPriceState } | undefined)?.promoState;
-        if (!state || state.offerId !== target.offer_id) return false;
-        const effective = resolveOzonBaseTarget(target, state);
-        if (observedOzonBase(state) === undefined) return ozonPromoPricesMatch(effective, actual);
-        return ozonPricesMatch(effective, actual, 0) || ozonPromoPricesMatch(effective, actual);
+        return ozonPromoPricesMatch(target, actual);
     }
     async persist(_targets: UpdatePriceDto[]) {}
     async verifyPromos(targets: UpdatePriceDto[]): Promise<Map<string, LossPriceResult>> {
@@ -70,7 +63,7 @@ export class OzonLossPriceAdapter implements LossPriceAdapter {
                 ozonPromoPricesMatch(t, current.get(t.offer_id))
                     ? null
                     : {
-                          message: 'Ozon ещё не подтвердил итоговую цену с акциями; задание оставлено для повтора',
+                          message: 'Ozon ещё не показывает цену по правилу; задание оставлено для повтора',
                           kind: 'temporary',
                       },
             ]),

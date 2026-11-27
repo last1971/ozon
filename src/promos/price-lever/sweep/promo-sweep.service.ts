@@ -2,7 +2,6 @@ import { randomUUID } from 'crypto';
 import { PricingSnapshot } from '../../../helpers/price/price-update.queue';
 import { withPricingWarnings, PricingWarning } from '../../../helpers/price/pricing-warnings';
 import { assertPricingWritesAllowed } from '../../../helpers/price/pricing-review-mode';
-import { EnrichWithPricingCommand } from './enrich-with-pricing.command';
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron } from '@nestjs/schedule';
 import { emptyProgress, IJobCommand } from '../../../interfaces/i.job.context';
@@ -13,14 +12,13 @@ import { ApplySweepCommand } from './apply-sweep.command';
 import { BuildSweepReportCommand } from './build-sweep-report.command';
 import { CollectSweepCommand } from './collect-sweep.command';
 import { NotifySweepCommand } from './notify-sweep.command';
-import { PlanSweepCommand } from './plan-sweep.command';
 import { IPromoSweepContext, PROMO_SWEEP_JOB } from './promo-sweep.context';
 import { SweepGoalKind } from './sweep-goal';
 
 /**
- * Сверка акций фоновой задачей: весь каталог → расчёт минимума → отбор по цели → план → (применение) → отчёт.
- * Что отбирать и к чему вести — решает цель (sweep-goal.ts), цепочка одна на все цели.
- * Запуск руками (кнопка в админке) и кроном holdMin — тот же start.
+ * Сторож цен Ozon фоновой задачей: каталог и наша акция → план по правилу → (применение) → отчёт.
+ * Минимальная берётся из Ozon (её ставит пересчёт цен), поэтому проход занимает секунды.
+ * Запуск руками (кнопка в админке), кроном holdMin и после прихода — тот же start.
  */
 @Injectable()
 export class PromoSweepService {
@@ -30,18 +28,16 @@ export class PromoSweepService {
     constructor(
         private readonly jobs: JobService,
         collect: CollectSweepCommand,
-        enrich: EnrichWithPricingCommand,
-        plan: PlanSweepCommand,
         apply: ApplySweepCommand,
         report: BuildSweepReportCommand,
         notify: NotifySweepCommand,
     ) {
-        this.commands = [collect, enrich, plan, apply, report, notify];
+        this.commands = [collect, apply, report, notify];
     }
 
     /**
      * Покупатель видит минимальную (решение владельца 23.10.2026): «Привести к минимальной» с применением.
-     * Боевое время задаёт cron.setup.ts: каждые 10 минут — за проход идёт одно направление цены.
+     * Боевое время задаёт cron.setup.ts: каждые 10 минут — ловит включение и смену нашей акции.
      */
     @Cron('0 */10 * * * *', { name: 'ozonPromoSweepMin' })
     holdMin(): void {

@@ -137,7 +137,7 @@ describe('режим проверки цен', () => {
     });
     it('сверка без применения запускается, применение и отправка не создают job', () => {
         const jobs: any = { run: jest.fn(() => ({ id: 'dry-run' })) };
-        const sweep = new PromoSweepService(jobs, ...(Array(6).fill({}) as [any, any, any, any, any, any]));
+        const sweep = new PromoSweepService(jobs, ...(Array(4).fill({}) as [any, any, any, any]));
         expect(sweep.start(false, 'min')).toEqual({ id: 'dry-run' });
         expect(jobs.run.mock.calls[0][0].context.apply).toBe(false);
         expect(() => sweep.start(true, 'min')).toThrow('Режим проверки цен');
