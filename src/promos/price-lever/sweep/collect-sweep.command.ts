@@ -1,6 +1,5 @@
-import { OzonPriceTransitionService } from '../ozon-price-transition.service';
 import { priceUpdateQueue } from '../../../helpers/price/price-update.queue';
-import { Injectable, Optional } from '@nestjs/common';
+import { Injectable } from '@nestjs/common';
 import { IJobCommand } from '../../../interfaces/i.job.context';
 import { PromoPriceService } from '../promo-price.service';
 import { IPromoSweepContext } from './promo-sweep.context';
@@ -12,10 +11,9 @@ export class CollectSweepCommand implements IJobCommand<IPromoSweepContext> {
     readonly phase = 'Сбор товаров и акций Ozon';
     readonly weight = 3;
 
-    constructor(private readonly promoPrice: PromoPriceService, @Optional() private readonly transitions?: OzonPriceTransitionService) {}
+    constructor(private readonly promoPrice: PromoPriceService) {}
 
     async execute(context: IPromoSweepContext): Promise<IPromoSweepContext> {
-        if (context.apply && !context.stopChain) await this.transitions?.resume(context.offerIds);
         const snapshot = priceUpdateQueue.reader('ozon');
         const goal = sweepGoal(context.goal);
         const all = context.offerIds

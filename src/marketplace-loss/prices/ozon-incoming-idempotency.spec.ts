@@ -16,7 +16,7 @@ const counts = (state: OzonIncomingFixtureState) => ({
     percentUpdates: state.requests.filter((r) => r.kind === 'percent').length,
     notifications: state.notifications.length,
 });
-const stableCounts = { priceImports: 2, actionUpdates: 1, percentUpdates: 0, notifications: 1 };
+const stableCounts = { priceImports: 1, actionUpdates: 1, percentUpdates: 0, notifications: 1 };
 const assertStable = (state: OzonIncomingFixtureState) => expect(counts(state)).toEqual(stableCounts);
 
 async function sixPasses() {
@@ -52,7 +52,7 @@ it('приход с ошибкой ВБ: шесть проходов и холо
     expect(state.requests.filter((r) => r.kind === 'price').map((r) => {
         const [row] = r.body as {price: string; min_price: string}[];
         return [row.price, row.min_price];
-    })).toEqual([['699','294'], ['699','279']]);
+    })).toEqual([['699','279']]);
     expect(state.requests.filter((r) => r.kind === 'action').map((r) => (r.body as any[])[0].actionPrice)).toEqual([
         294,
     ]);
@@ -64,7 +64,6 @@ it('на холодном старте проверяет итог скидок,
     expect(Number(app.target().price)).toBe(699);
     expect(saved.live.price).toBe(294);
     expect(app.adapter.matches(app.target(), (await app.adapter.current([app.offer])).get(app.offer))).toBe(true);
-    expect(saved.transitions).toEqual({});
 });
 
 it('отрицательный контроль: устаревшее сравнение отклоняет приход, но координатор защищает от повторного импорта', async () => {
@@ -88,7 +87,7 @@ it('новая себестоимость после холодного запу
     expect(changed.failures[0].service).toBe('wb');
     expect(app.live).toEqual({ price: 588, min_price: 558, old_price: 1674, marketing_seller_price: 559 });
     const after = JSON.parse(JSON.stringify(app.data));
-    expect(counts(after)).toEqual({ priceImports: 3, actionUpdates: 3, percentUpdates: 0, notifications: 2 });
+    expect(counts(after)).toEqual({ priceImports: 2, actionUpdates: 2, percentUpdates: 0, notifications: 2 });
     app = await coldStart(after);
     await app.runInvoice();
     expect(app.data.requests).toEqual(after.requests);
@@ -96,7 +95,7 @@ it('новая себестоимость после холодного запу
     expect(app.data.receipt.handled).toBe(false);
 });
 
-it('без истории записи подтверждает скрытую base один раз, после рестарта сохраняет результат', async () => {
+it('база за ценой акции не переимпортируется: покупатель уже на минимальной, рестарт ничего не шлёт', async () => {
     const initial = await coldStart();
     const saved = initial.data;
     Object.assign(saved.live, { price: 294, min_price: 279, old_price: 837, marketing_seller_price: 279 });
@@ -107,9 +106,10 @@ it('без истории записи подтверждает скрытую b
     const result = await app.runInvoice();
     expect(result.failures).toHaveLength(1);
     expect(result.failures[0].service).toBe('wb');
-    expect(app.data.regularPrice).toBe(699);
+    expect(app.data.regularPrice).toBe(555);
+    expect(app.live.marketing_seller_price).toBe(279);
     const after = counts(app.data);
-    expect(after.priceImports).toBe(1);
+    expect(after.priceImports).toBe(0);
     const restarted = await coldStart(app.data);
     await restarted.runInvoice();
     expect(counts(restarted.data)).toEqual(after);

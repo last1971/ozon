@@ -1,10 +1,10 @@
 import { ModuleRef } from '@nestjs/core';
-import { planOzonPriceTransition } from '../promos/price-lever/ozon-price-transition';
+import { formulaMatches, planBaseUpdate } from '../promos/price-lever/promo-price.planner';
 import { ozonDisplayPrice } from '../helpers/price/ozon.display-price';
 import { resolveOzonBaseTarget } from '../helpers/price/ozon-base-target';
 import type { PromoPriceService } from '../promos/price-lever/promo-price.service';
 import { OZON_PRICE_TRANSITIONS, OZON_PROMO_STATE_READER } from '../promos/price-lever/transition.tokens';
-import type { OzonPriceTransitionService } from '../promos/price-lever/ozon-price-transition.service';
+import type { OzonPriceWriter } from '../promos/price-lever/ozon-price-writer';
 import { pricingStocks } from '../helpers/price/pricing-stock';
 import { jobCheckpoint } from '../job/job.checkpoint';
 import { PricingDataError } from '../helpers/price/pricing-error';
@@ -365,17 +365,14 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
             const state = states.get(price.offer_id);
             if (!state) throw new Error(`Ozon не вернул условия акций для ${price.offer_id}`);
             // Once the operator sees the quote, only these exact prices may be sent.
-            const { ozonCalculated, ...approved } = resolveOzonBaseTarget(price, state);
-            approved.old_price = String(ozonDisplayPrice(Number(approved.price), Number(approved.old_price)));
-            const minimum = Number(approved.min_price);
-            const path = planOzonPriceTransition({
-                ...state, calcMinPrice: minimum, deadZoneFloor: approved.ozonDeadZoneFloor,
-            }, approved);
+            const { target, minimum, plan } = planBaseUpdate(state, price);
+            const { ozonCalculated, ...approved } = target;
             const observed = state.buyerPrice > 0 ? `Цена покупателю ${state.buyerPrice} ₽. ` : '';
             const summary = `${price.offer_id}: ${observed}Расчётный минимум ${minimum} ₽.`;
-            if (!path.ok) throw new Error(`${summary} ${path.reason}`);
-            if (state.buyerPrice < minimum)
-                warnings?.push(`${summary} После выполнения плана — ${path.buyerAfter} ₽.`);
+            if (!formulaMatches(state))
+                throw new Error(`${summary} Цены Ozon не подтверждены формулой: по ней покупателю ${state.buyerPriceCalc} ₽`);
+            if (state.buyerPrice < minimum || !plan.ok)
+                warnings?.push(`${summary} После выполнения плана — ${plan.buyerAfter} ₽.`);
             return approved;
         });
     }
@@ -383,7 +380,7 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
     async update(prices: UpdatePricesDto): Promise<any> {
         const economic = prices.prices.filter(p => p.price !== undefined || p.min_price !== undefined || p.old_price !== undefined);
         if (!economic.length) return this.product.setPrice(prices);
-        const service = this.moduleRef.get<OzonPriceTransitionService>(OZON_PRICE_TRANSITIONS, { strict: false });
+        const service = this.moduleRef.get<OzonPriceWriter>(OZON_PRICE_TRANSITIONS, { strict: false });
         const result = await service.updateBases(economic);
         const other = prices.prices.filter(p => !economic.includes(p));
         if (other.length) result.push(...(await this.product.setPrice({ prices: other })).result);
@@ -416,7 +413,7 @@ export class PriceService implements IPriceUpdateable, IVatUpdateable {
                 checkpoint: ozonBulkCheckpoint(undefined, retryFailed),
                 update: (offers, context) => this.goodService.repriceForService(this, offers, undefined, context,
                     async (prices, snapshot) => {
-                        const transitions = this.moduleRef.get<OzonPriceTransitionService>(OZON_PRICE_TRANSITIONS, { strict: false });
+                        const transitions = this.moduleRef.get<OzonPriceWriter>(OZON_PRICE_TRANSITIONS, { strict: false });
                         const result = await transitions.updateBases(prices, offer => ({
                             priority: 'background',
                             snapshot: snapshot([offer]),

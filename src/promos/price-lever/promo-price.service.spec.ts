@@ -2,7 +2,7 @@ import { Test } from '@nestjs/testing';
 import { ProductService } from '../../product/product.service';
 import { OzonPromosApi } from '../promos.api';
 import { OzonSellerActionsApi } from '../seller-actions.api';
-import { PromoPriceApplier } from './promo-price.applier';
+import { OzonPriceWriter } from './ozon-price-writer';
 import { PromoPriceService } from './promo-price.service';
 import { EnrichWithPricingCommand } from './sweep/enrich-with-pricing.command';
 
@@ -60,7 +60,7 @@ describe('PromoPriceService — состояние товара из обоих 
                 { provide: OzonPromosApi, useValue: { listActions, listAll } },
                 { provide: OzonSellerActionsApi, useValue: { activeAction, listAll: sellerListAll } },
                 { provide: ProductService, useValue: { getPrices } },
-                { provide: PromoPriceApplier, useValue: { apply: applierApply } },
+                { provide: OzonPriceWriter, useValue: { applyPromos: (plans: any[], optionsFor: any) => Promise.all(plans.map((p) => applierApply(p, optionsFor(p)))) } },
             ],
         }).compile();
         service = module.get(PromoPriceService);

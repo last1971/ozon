@@ -5,7 +5,7 @@ import { priceUpdateQueue, PricingSnapshot } from '../helpers/price/price-update
 import { ProductPriceDto } from '../price/dto/product.price.dto';
 import { ProductService } from '../product/product.service';
 import { ProductVisibility } from '../product/product.visibility';
-import { OzonPriceTransitionService } from './price-lever/ozon-price-transition.service';
+import { OzonPriceWriter } from './price-lever/ozon-price-writer';
 import { PromoPriceService } from './price-lever/promo-price.service';
 import { PromoPricePlan, PromoPriceState, PromoPriceStep } from './price-lever/promo-price.types';
 import { ActionProductUpdate, RejectedProduct } from './promos.types';
@@ -19,7 +19,7 @@ export class LegacyPromoActionWriter {
     constructor(
         private readonly products: ProductService,
         private readonly promos: PromoPriceService,
-        private readonly transitions: OzonPriceTransitionService,
+        private readonly transitions: OzonPriceWriter,
     ) {}
 
     async apply(actionId: number, intents: LegacyPromoIntent[], snapshotFor?: (p: PromoPricePlan) => PricingSnapshot) {

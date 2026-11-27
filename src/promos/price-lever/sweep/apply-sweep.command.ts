@@ -2,7 +2,7 @@ import { verifySweepChanges } from './verify-sweep-changes';
 import { Injectable } from '@nestjs/common';
 import { priceUpdateQueue } from '../../../helpers/price/price-update.queue';
 import { IJobCommand } from '../../../interfaces/i.job.context';
-import { PromoPriceApplier } from '../promo-price.applier';
+import { OzonPriceWriter } from '../ozon-price-writer';
 import { PromoPriceService } from '../promo-price.service';
 import { PromoPriceApplyResult, PromoPricePlan } from '../promo-price.types';
 import { EnrichWithPricingCommand } from './enrich-with-pricing.command';
@@ -16,7 +16,7 @@ export class ApplySweepCommand implements IJobCommand<IPromoSweepContext> {
     readonly weight = 20;
 
     constructor(
-        private readonly applier: PromoPriceApplier,
+        private readonly applier: OzonPriceWriter,
         private readonly priceService: PromoPriceService,
         private readonly enrich: EnrichWithPricingCommand,
     ) {}
@@ -42,7 +42,7 @@ export class ApplySweepCommand implements IJobCommand<IPromoSweepContext> {
             },
         });
         if (context.stopChain || !plans.length) return context;
-        const results = await this.applier.applyBatch(plans, optionsFor);
+        const results = await this.applier.applyPromos(plans, optionsFor);
         for (let res of results) {
             if (res.stale && !res.attempted) {
                 res = await this.retryStale(res, goal, context);
@@ -149,7 +149,7 @@ export class ApplySweepCommand implements IJobCommand<IPromoSweepContext> {
         }
 
         // Одна попытка с новым снимком
-        const retryRes = await this.applier.apply(freshPlan, {
+        const retryRes = await this.applier.applyPromo(freshPlan, {
             notify: true,
             snapshot,
             priority: 'background',

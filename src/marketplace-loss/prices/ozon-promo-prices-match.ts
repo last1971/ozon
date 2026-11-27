@@ -26,7 +26,7 @@ export function ozonPromoPricesMatch(target: UpdatePriceDto, actual: unknown, no
     );
     const observedBase = observedOzonBase(state, now);
     const priceMatches = observedBase === undefined
-        ? state.confirmedBase === normal && state.price <= normal && state.price === plan.baseAfter &&
+        ? state.price <= normal && state.price === plan.baseAfter &&
             state.ozonActions.some(a => a.participant && a.actionPrice === state.price && (!a.startsAt || Date.parse(a.startsAt) <= +now))
         : observedBase === normal;
     return (

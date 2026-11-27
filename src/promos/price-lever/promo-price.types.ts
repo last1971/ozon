@@ -1,3 +1,4 @@
+import type { UpdatePriceDto } from '../../price/dto/update.price.dto';
 import type { SweepGoalKind } from './sweep/sweep-goal';
 /**
  * Ручка цены через акции: состояние товара и план (dry-run). Доменные типы без полей Seller API.
@@ -41,8 +42,6 @@ export interface SellerSlot {
 export interface PromoPriceState {
     offerId: string;
     productId: number;
-    /** Последняя подтверждённая базовая цена из журнала этого магазина. */
-    confirmedBase?: number;
     autoActionEnabled?: boolean;
     oldPrice: number;
     price: number;
@@ -72,6 +71,10 @@ export type PromoPriceStep =
     | { kind: 'ozon-set'; actionId: number; title: string; from: number | null; to: number; stock?: number }
     | { kind: 'ozon-remove'; actionId: number; title: string; from: number; reason: string }
     | { kind: 'percent'; actionId: number; sku: number; from: number | null; to: number };
+
+/** Импорт базовой цены — тоже шаг: он двигает цену покупателя наравне с акциями. */
+export type BaseStep = { kind: 'base'; target: UpdatePriceDto };
+export type PriceStep = PromoPriceStep | BaseStep;
 
 export interface PromoPricePlan {
     offerId: string;

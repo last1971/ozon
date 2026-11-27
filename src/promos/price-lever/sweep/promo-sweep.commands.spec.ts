@@ -124,8 +124,8 @@ describe('сверка акций — команды цепочки', () => {
 
     describe('apply', () => {
         const executor = (apply: jest.Mock) => ({
-            apply,
-            applyBatch: async (plans, optionsFor) => {
+            applyPromo: apply,
+            applyPromos: async (plans, optionsFor) => {
                 const results = [];
                 for (const plan of plans) {
                     const options = optionsFor(plan);

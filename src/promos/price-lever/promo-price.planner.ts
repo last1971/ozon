@@ -1,6 +1,16 @@
 import { formatMoscowShortDateTime } from '../../shared/moscow-time';
 import { buyerPrice, ozonActionFloor } from '../../helpers/price/buyer.price.helper';
-import { OzonActionSlot, PromoPricePlan, PromoPriceState, PromoPriceStep, PromoTarget } from './promo-price.types';
+import { resolveOzonBaseTarget } from '../../helpers/price/ozon-base-target';
+import { ozonDisplayPrice } from '../../helpers/price/ozon.display-price';
+import type { UpdatePriceDto } from '../../price/dto/update.price.dto';
+import {
+    OzonActionSlot,
+    PriceStep,
+    PromoPricePlan,
+    PromoPriceState,
+    PromoPriceStep,
+    PromoTarget,
+} from './promo-price.types';
 
 /**
  * Акцию Ozon учитываем за час до старта, раньше — как будто её нет (решение 23.10.2026). Сверка идёт чаще
@@ -324,6 +334,95 @@ function planAtFloor(
         notes,
         state: s,
     };
+}
+
+/** Цена покупателю, если Ozon применит только эти шаги из плана. */
+export function buyerAfterSteps(s: PromoPriceState, steps: PriceStep[], now: Date = new Date()): number {
+    let price = s.price;
+    let percent = s.seller?.isActive ? s.seller.percent : 0;
+    const prices = new Map<number, number>();
+    for (const a of s.ozonActions)
+        if (counts(a, now)) prices.set(a.actionId, a.participant && a.actionPrice > 0 ? a.actionPrice : Infinity);
+    for (const step of steps) {
+        if (step.kind === 'base') price = Number(step.target.price);
+        else if (step.kind === 'percent') percent = step.to;
+        else if (!prices.has(step.actionId)) continue;
+        else if (step.kind === 'ozon-remove') prices.set(step.actionId, Infinity);
+        else {
+            // Цена бустинга общая: запись в один бустинг меняет её во всех, где товар участвует.
+            if (s.ozonActions.find((a) => a.actionId === step.actionId)?.unifiedPrice)
+                for (const a of s.ozonActions)
+                    if (a.unifiedPrice && Number.isFinite(prices.get(a.actionId))) prices.set(a.actionId, step.to);
+            prices.set(step.actionId, step.to);
+        }
+    }
+    return buyerPrice(price, [...prices.values()].filter(Number.isFinite), percent);
+}
+
+const MAX_LOWERING_STEPS = 12;
+
+/** Ozon показал цену покупателю, и наша формула её объясняет — только тогда модели можно верить. */
+export const formulaMatches = (s: PromoPriceState): boolean => s.buyerPrice > 0 && s.buyerPrice === s.buyerPriceCalc;
+
+/**
+ * Что отправить сейчас. Ozon применяет шаги в любом порядке и с задержкой, поэтому за проход
+ * идёт одно направление: сначала всё, что поднимает цену покупателю; опускание — только когда
+ * поднимать нечего и ни один частичный итог не уходит ниже минимальной. Остальное — следующий проход.
+ */
+export function stepsToSend(
+    s: PromoPriceState,
+    steps: PriceStep[],
+    minimum: number,
+    deadZoneFloor?: number,
+    now: Date = new Date(),
+): { send: PriceStep[]; deferred: PriceStep[] } {
+    const before = buyerAfterSteps(s, [], now);
+    const raising: PriceStep[] = [];
+    const lowering: PriceStep[] = [];
+    for (const step of steps) (buyerAfterSteps(s, [step], now) < before ? lowering : raising).push(step);
+    // Формула не объясняет цену Ozon — опускать вслепую нельзя, поднимать можно.
+    if (raising.length || !lowering.length || !formulaMatches(s)) return { send: raising, deferred: lowering };
+    const safe = (p: number) => p >= minimum && !inPromoDeadZone(p, deadZoneFloor);
+    if (lowering.length > MAX_LOWERING_STEPS) return { send: [], deferred: lowering };
+    for (let mask = 1; mask < 1 << lowering.length; mask++) {
+        const subset = lowering.filter((_, i) => mask & (1 << i));
+        if (!safe(buyerAfterSteps(s, subset, now))) return { send: [], deferred: lowering };
+    }
+    return { send: lowering, deferred: [] };
+}
+
+/**
+ * Новая базовая цена из пересчёта и план акций под неё (покупатель видит минимальную).
+ * Минимум — расчётный из того же пересчёта (min_price), повторно тарифы не считаем.
+ */
+export function planBaseUpdate(state: PromoPriceState, requested: UpdatePriceDto, now: Date = new Date()) {
+    const minimum = Number(requested.min_price);
+    const deadZoneFloor = requested.ozonDeadZoneFloor;
+    const priced = { ...state, calcMinPrice: minimum, deadZoneFloor };
+    const resolved = resolveOzonBaseTarget(requested, priced);
+    const target: UpdatePriceDto = {
+        ...resolved,
+        old_price: String(ozonDisplayPrice(Number(resolved.price), Number(resolved.old_price))),
+    };
+    const future: PromoPriceState = {
+        ...priced,
+        price: Number(target.price),
+        minPrice: Number(target.min_price),
+        oldPrice: Number(target.old_price),
+    };
+    // Пока товар в акции дешевле базы, Ozon показывает в price цену акции, а саму базу не видно.
+    // Такая база цену покупателю не меняет — повторный импорт только сбросил бы цену акции.
+    const masked = state.ozonActions.some(
+        (a) => counts(a, now) && a.participant && a.actionPrice > 0 && a.actionPrice <= state.price,
+    );
+    const changesBase =
+        (masked ? future.price < state.price : future.price !== state.price) ||
+        future.minPrice !== state.minPrice ||
+        future.oldPrice !== state.oldPrice;
+    // Импорт базы Ozon может сбросить цены акций к новой базе — план считаем от неё.
+    const plan = planPromoPrice({ ...future, price: changesBase ? future.price : state.price }, minimum, undefined, now);
+    const steps: PriceStep[] = [...(changesBase ? [{ kind: 'base' as const, target }] : []), ...plan.steps];
+    return { target, minimum, deadZoneFloor, plan, steps };
 }
 
 const removeStep = (a: OzonActionSlot, reason: string): PromoPriceStep => ({

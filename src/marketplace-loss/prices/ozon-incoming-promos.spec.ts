@@ -3,19 +3,19 @@ import { setup } from '../../../test/fixtures/ozon-incoming-promos.fixture';
 
 beforeAll(() => Logger.overrideLogger(false));
 
-it('первый приход → акция → два повтора и рестарт: защитный минимум, затем целевой и одно уведомление', async () => {
+it('первый приход → база и цена акции одним проходом, повторы и рестарт ничего не шлют, одно уведомление', async () => {
     const s = setup();
     expect(await s.run()).toEqual([{ offerId: s.offer }]);
     const after = { ...s.live };
     expect(after.price).toBeLessThan(Number(s.target().price));
     expect(after.marketing_seller_price).toBeGreaterThanOrEqual(Number(s.target().min_price));
-    expect(s.products.setPrice).toHaveBeenCalledTimes(2);
+    expect(s.products.setPrice).toHaveBeenCalledTimes(1);
     expect(s.api.update).toHaveBeenCalledTimes(1);
     expect(s.events.emitAsync).toHaveBeenCalledTimes(1);
     expect(await s.run()).toEqual([{ offerId: s.offer }]);
     expect(await s.restart().run()).toEqual([{ offerId: s.offer }]);
     expect(s.live).toEqual(after);
-    expect(s.products.setPrice).toHaveBeenCalledTimes(2);
+    expect(s.products.setPrice).toHaveBeenCalledTimes(1);
     expect(s.api.update).toHaveBeenCalledTimes(1);
     expect(s.events.emitAsync).toHaveBeenCalledTimes(1);
 });
@@ -28,24 +28,22 @@ it('рост себестоимости заново меняет цены, по
     expect(s.live.marketing_seller_price).toBeGreaterThan(before);
     expect(s.live.min_price).toBe(Number(s.target().min_price));
     expect(s.live.marketing_seller_price).toBeGreaterThanOrEqual(s.live.min_price);
-    expect(s.products.setPrice).toHaveBeenCalledTimes(3);
+    expect(s.products.setPrice).toHaveBeenCalledTimes(2);
     expect(await s.restart().run()).toEqual([{ offerId: s.offer }]);
-    expect(s.products.setPrice).toHaveBeenCalledTimes(3);
-    expect(s.api.update).toHaveBeenCalledTimes(3);
+    expect(s.products.setPrice).toHaveBeenCalledTimes(2);
+    expect(s.api.update).toHaveBeenCalledTimes(2);
 });
-it('API принял акцию, но цена не изменилась: приход остаётся незавершённым до чтения настоящей цены', async () => {
+it('API принял акцию, но цена не изменилась: приход не закрыт, следующий проход считает заново и шлёт снова', async () => {
     const s = setup();
     s.setAcknowledgementOnly(true);
     const rows = await s.run();
-    expect(rows[0].error).toMatch(/подтвержден/i);
+    expect(rows[0].error).toMatch(/подтверд/i);
     expect(s.events.emitAsync).not.toHaveBeenCalled();
     s.setAcknowledgementOnly(false);
-    expect((await s.restart().run())[0].error).toMatch(/подтвержден/i);
-    expect(s.api.update).toHaveBeenCalledTimes(1);
-    s.publishAcknowledgedAction();
     expect(await s.restart().run()).toEqual([{ offerId: s.offer }]);
-    expect(s.products.setPrice).toHaveBeenCalledTimes(2);
-    expect(s.api.update).toHaveBeenCalledTimes(1);
+    expect(s.live.marketing_seller_price).toBe(Number(s.target().min_price));
+    expect(s.products.setPrice).toHaveBeenCalledTimes(1);
+    expect(s.api.update).toHaveBeenCalledTimes(2);
     expect(s.events.emitAsync).toHaveBeenCalledTimes(1);
 });
 it('сбой чтения акций не позволяет вслепую заменить акционную цену обычной', async () => {
@@ -53,5 +51,5 @@ it('сбой чтения акций не позволяет вслепую за
     await s.run();
     s.api.listActions.mockRejectedValueOnce(Error('Ozon недоступен'));
     await expect(s.restart().run()).rejects.toThrow('Ozon недоступен');
-    expect(s.products.setPrice).toHaveBeenCalledTimes(2);
+    expect(s.products.setPrice).toHaveBeenCalledTimes(1);
 });

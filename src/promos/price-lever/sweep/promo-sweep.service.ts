@@ -41,9 +41,9 @@ export class PromoSweepService {
 
     /**
      * Покупатель видит минимальную (решение владельца 23.10.2026): «Привести к минимальной» с применением.
-     * Боевое время задаёт cron.setup.ts; раз в час на 20-й минуте; акция Ozon учитывается за час до старта.
+     * Боевое время задаёт cron.setup.ts: каждые 10 минут — за проход идёт одно направление цены.
      */
-    @Cron('0 20 * * * *', { name: 'ozonPromoSweepMin' })
+    @Cron('0 */10 * * * *', { name: 'ozonPromoSweepMin' })
     holdMin(): void {
         this.start(true, 'min', 'cron');
     }

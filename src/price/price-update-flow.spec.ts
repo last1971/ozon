@@ -1,6 +1,5 @@
 import * as checkpoints from '../job/job.checkpoint';
-import { OzonPriceTransitionService } from '../promos/price-lever/ozon-price-transition.service';
-import { PromoPriceApplier } from '../promos/price-lever/promo-price.applier';
+import { OzonPriceWriter } from '../promos/price-lever/ozon-price-writer';
 import { ApplySweepCommand } from '../promos/price-lever/sweep/apply-sweep.command';
 import { PromoPricePlan, PromoPriceState } from '../promos/price-lever/promo-price.types';
 import { PreparePriceReviewCommand, SendPriceReviewCommand } from './price-review.commands';
@@ -41,54 +40,42 @@ const plan = (id: string): PromoPricePlan => ({
     },
     steps: [{ kind: 'percent', actionId: 1, sku: Number(id), from: 0, to: 10 }],
 });
-// The only test doubles here are the marketplace, the economic inputs and durable storage.
-function transitions(states: Map<string, PromoPriceState>, sendPercent: (sku: string) => Promise<void>) {
+// The only test doubles here are the marketplace and the economic inputs.
+function transitions(states: Map<string, PromoPriceState>, sendPercent: (skus: string[]) => Promise<void>) {
     const reader = {
         allStates: async (ids: string[]) => ids.map((id) => structuredClone(states.get(id))),
         states: async (ids: string[]) => ids.map((id) => structuredClone(states.get(id))),
+        forget: () => {},
     };
     const enrich = { enrichBatch: async () => new Map(), enrichOne: async () => ({ status: 'ready' }) };
-    const tickets = new Map<string, { token: string; payload: unknown }>();
-    const journal = {
-        versions: async () => new Map([...tickets].map(([key, entry]) => [key, entry.token])),
-        pending: async (id: string) => tickets.get(id),
-        claim: async (id: string, payload: unknown) => {
-            if (tickets.has(id)) throw new Error('Повторная отправка до подтверждения');
-            const ticket = { token: id, payload: structuredClone(payload) };
-            tickets.set(id, ticket);
-            return ticket;
-        },
-        finish: async (id: string, token: string) => tickets.get(id)?.token === token && tickets.delete(id),
-    };
     const update = jest.fn();
     const setPercent = jest.fn(async (_action: number, rows: { sku: number; percent: number }[]) => {
-        const { sku, percent } = rows[0];
-        const id = String(sku);
-        await sendPercent(id);
-        const current = states.get(id);
-        current.seller.percent = percent;
-        current.buyerPrice = current.buyerPriceCalc = (current.price * (100 - percent)) / 100;
+        await sendPercent(rows.map((r) => String(r.sku)));
+        for (const { sku, percent } of rows) {
+            const current = states.get(String(sku));
+            current.seller.percent = percent;
+            current.buyerPrice = current.buyerPriceCalc = (current.price * (100 - percent)) / 100;
+        }
         return { applied: rows, rejected: [] };
     });
-    const service = new OzonPriceTransitionService(
+    const writer = new OzonPriceWriter(
         { get: () => reader } as any,
-        enrich as any,
-        journal as any,
         {} as any,
         { update } as any,
         { setPercent } as any,
+        { emitAsync: async () => [] } as any,
     );
-    return { applier: new PromoPriceApplier(service), reader, enrich, setPercent, update };
+    return { applier: writer, reader, enrich, setPercent, update };
 }
-it('реальный sweep пропускает ручную отправку между товарами; ВБ работает во время ожидания Ozon', async () => {
+it('сверка пишет пачкой одной операцией очереди Ozon: ВБ не ждёт, ручная цена Ozon после неё устарела и не уходит', async () => {
     const order: string[] = [],
         block = gate();
     const ids = ['99001', '99002', '99003'];
     const snapshots = new Map(ids.map((id) => [id, priceUpdateQueue.capture('ozon', [id])]));
     const states = new Map(ids.map((id) => [id, plan(id).state]));
-    const { applier, reader, enrich, setPercent } = transitions(states, async (id) => {
-        order.push(id);
-        if (id === ids[0]) await block.wait;
+    const { applier, reader, enrich, setPercent } = transitions(states, async (skus) => {
+        order.push(skus.join(','));
+        await block.wait;
     });
     const context = {
         apply: true,
@@ -104,8 +91,6 @@ it('реальный sweep пропускает ручную отправку м
         getObtainCoeffs: () => coeffs,
         updatePrices: jest.fn(async () => {
             order.push('manual');
-            // The freshly installed marketplace minimum now prevents a retry of the obsolete promotion.
-            states.get(ids[1]).minPrice = 190;
             return { result: [{ offer_id: ids[1], updated: true }] };
         }),
     };
@@ -142,17 +127,17 @@ it('реальный sweep пропускает ручную отправку м
     expect(ozon.updatePrices).not.toHaveBeenCalled();
     expect(setPercent).toHaveBeenCalledTimes(1);
     block.open();
-    await Promise.all([sweep, jobs.whenDone(sending.id)]);
-    expect(order).toEqual([ids[0], 'wb', 'manual', ids[2]]);
-    expect(context['results'][1]).toMatchObject({ offerId: ids[1], applied: false });
-    expect(context['results'][1].stale).toBe(true);
-    expect(context['results'][1].notes.join(' ')).toContain('минимум Ozon');
+    const [, sent] = await Promise.all([sweep, jobs.whenDone(sending.id)]);
+    expect(order).toEqual([ids.join(','), 'wb']);
+    expect(ozon.updatePrices).not.toHaveBeenCalled();
+    expect((sent.result as any).entries[0]).toMatchObject({ service: 'ozon', status: 'skipped', error: expect.stringContaining('устарел') });
+    expect(context['results'].map((r) => r.applied)).toEqual([true, true, true]);
 });
 it('смена цены в самом Ozon отклоняет старый план до первого изменения акции', async () => {
     const stale = plan('99004');
     const states = new Map([[stale.offerId, { ...stale.state, price: 999 }]]);
     const { applier, update, setPercent } = transitions(states, async () => {});
-    expect(await applier.apply(plan('99004'))).toMatchObject({ applied: false });
+    expect(await applier.applyPromo(plan('99004'))).toMatchObject({ applied: false, stale: true });
     expect(update).not.toHaveBeenCalled();
     expect(setPercent).not.toHaveBeenCalled();
 });

@@ -1,8 +1,7 @@
 import { OZON_PROMO_STATE_READER, OZON_PRICE_TRANSITIONS } from './price-lever/transition.tokens';
 import { LegacyPromoActionWriter } from './legacy-promo-action-writer';
 import { FirebirdModule } from '../firebird/firebird.module';
-import { OzonTransitionJournal } from './price-lever/ozon-transition-journal';
-import { OzonPriceTransitionService } from './price-lever/ozon-price-transition.service';
+import { OzonPriceWriter } from './price-lever/ozon-price-writer';
 import { GoodModule } from '../good/good.module';
 import { EnrichWithPricingCommand } from './price-lever/sweep/enrich-with-pricing.command';
 import { Module, forwardRef } from '@nestjs/common';
@@ -14,7 +13,6 @@ import { OzonPromosApi } from './promos.api';
 import { PromosController } from './promos.controller';
 import { PromosService } from './promos.service';
 import { OzonSellerActionsApi } from './seller-actions.api';
-import { PromoPriceApplier } from './price-lever/promo-price.applier';
 import { PromoPriceService } from './price-lever/promo-price.service';
 import { ApplySweepCommand } from './price-lever/sweep/apply-sweep.command';
 import { BuildSweepReportCommand } from './price-lever/sweep/build-sweep-report.command';
@@ -31,10 +29,8 @@ import { NotifySweepCommand } from './price-lever/sweep/notify-sweep.command';
         PromosService,
         PromoPriceService,
         { provide: OZON_PROMO_STATE_READER, useExisting: PromoPriceService },
-        { provide: OZON_PRICE_TRANSITIONS, useExisting: OzonPriceTransitionService },
-        PromoPriceApplier,
-        OzonTransitionJournal,
-        OzonPriceTransitionService,
+        { provide: OZON_PRICE_TRANSITIONS, useExisting: OzonPriceWriter },
+        OzonPriceWriter,
         LegacyPromoActionWriter,
         CollectSweepCommand,
         EnrichWithPricingCommand,
@@ -45,6 +41,6 @@ import { NotifySweepCommand } from './price-lever/sweep/notify-sweep.command';
         PromoSweepService,
     ],
     controllers: [PromosController],
-    exports: [OzonPriceTransitionService, PromosService, OzonSellerActionsApi, PromoSweepService, PromoPriceService],
+    exports: [OzonPriceWriter, PromosService, OzonSellerActionsApi, PromoSweepService, PromoPriceService],
 })
 export class PromosModule {}

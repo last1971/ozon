@@ -9,7 +9,6 @@ const state = (over: Partial<PromoPriceState> = {}): PromoPriceState => ({
     offerId: '535776',
     productId: 1,
     price: 294,
-    confirmedBase: 699,
     minPrice: 279,
     oldPrice: 837,
     buyerPrice: 279,
@@ -155,17 +154,16 @@ it('более дорогая вторая акция не вызывает по
 
 it('повтор прихода подтверждает фактическую цену с обязательной скидкой по исходному расчёту', () => {
     const target = {...normal, ozonCalculated: true, price: '130', old_price: '151', min_price: '128'};
-    const s = state({price: 135, confirmedBase: 135, oldPrice: 156, minPrice: 128, buyerPrice: 128, buyerPriceCalc: 128});
+    const s = state({price: 135, oldPrice: 156, minPrice: 128, buyerPrice: 128, buyerPriceCalc: 128});
     s.ozonActions = [{...s.ozonActions[0], actionPrice: 135, maxActionPrice: 195}];
     expect(ozonPromoPricesMatch(target, actual(s), now)).toBe(true);
     expect(ozonPromoPricesMatch({...target, ozonCalculated:false}, actual(s), now)).toBe(false);
     expect(ozonPromoPricesMatch(target, actual({...s, oldPrice: 151}), now)).toBe(false);
 });
 
-it('акция может скрывать большую базовую цену даже когда видимая равна целевой', () => {
-    const s = state({confirmedBase:undefined, price:294});
+it('база за ценой акции не видна: совпадение решает итог покупателю и поля прайс-листа', () => {
+    const s = state({price:294});
     const target = {...normal, price:'294'};
-    expect(ozonPromoPricesMatch(target, actual(s), now)).toBe(false);
-    expect(ozonPromoPricesMatch(target, actual({...s, confirmedBase:699}), now)).toBe(false);
-    expect(ozonPromoPricesMatch(target, actual({...s, confirmedBase:294}), now)).toBe(true);
+    expect(ozonPromoPricesMatch(target, actual(s), now)).toBe(true);
+    expect(ozonPromoPricesMatch(target, actual({...s, oldPrice: 900}), now)).toBe(false);
 });

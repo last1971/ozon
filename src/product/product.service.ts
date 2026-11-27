@@ -283,7 +283,7 @@ export class ProductService extends ICountUpdateable implements OnModuleInit, IP
             'ozon',
             prices.prices.map((p) => p.offer_id),
         );
-        const batchSize = 1;
+        const batchSize = 100;
         const results = [];
 
         for (const batch of chunk(prices.prices, batchSize)) {
